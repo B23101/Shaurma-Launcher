@@ -1,0 +1,17 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "shaurma-launcher-wails",
+  "outputfilename": "shaurma-launcher-wails",
+  "frontend:install": "npm install --legacy-peer-deps",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "author": {
+    "name": "B23101",
+    "email": "b23101ua@gmail.com"
+  },
+  "info": {
+    "productName": "Shaurma Launcher"
+  },
+  "tags": "shaurma"
+}

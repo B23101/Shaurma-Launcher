@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Shaurma Launcher — Оновлення</title>
+<style>
+  @font-face { font-family: 'Inter'; src: url('fonts/Inter-Regular.ttf'); font-weight: 400; }
+  @font-face { font-family: 'Inter'; src: url('fonts/Inter-SemiBold.ttf'); font-weight: 600; }
+  @font-face { font-family: 'Inter'; src: url('fonts/Inter-ExtraBold.ttf'); font-weight: 800; }
+  @font-face { font-family: 'JetBrains Mono'; src: url('fonts/JetBrainsMono-Regular.ttf'); font-weight: 400; }
+  @font-face { font-family: 'JetBrains Mono'; src: url('fonts/JetBrainsMono-SemiBold.ttf'); font-weight: 700; }
+
+  /* ── Палітра і розміри. Вікно апдейтера — вертикальне (9:16, як у
+     старого лаунчера). Сплеш заповнює ВЕСЬ екран вікна: фон з радіальними
+     свіченнями, контент по центру. Кольори дублюють палітру основного
+     лаунчера (--bg-app/--bg-card/--orange*). ── */
+  :root {
+    --bg-app:   #0f0f0f;
+    --bg-card:  #161616;
+    --bg-input: #141414;
+    --border:   rgba(255,255,255,.08);
+    --text:     #ffffff;
+    --text-mute:#a0a0a0;
+    --text-dim: #666666;
+    --accent:   #ff8a00;
+    --accent-2: #ff5e00;
+    --accent-rgb: 255, 138, 0;
+    --error:    #ff6b6b;
+  }
+
+  /* Світла тема — застосовується з JS за налаштуванням theme у settings.json */
+  html[data-theme="light"] {
+    --bg-app:   #f2f2f3;
+    --bg-card:  #ffffff;
+    --bg-input: #ececee;
+    --border:   rgba(0,0,0,.10);
+    --text:     #1a1a1a;
+    --text-mute:#6b6b6b;
+    --text-dim:#9a9a9a;
+    --error:    #e5484d;
+  }
+
+  html, body {
+    margin: 0; padding: 0;
+    width: 100vw; height: 100vh;
+    background: var(--bg-app);
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag; /* весь фон вікна тягається, як безрамкове вікно */
+  }
+
+  /* Екран 9:16 — заповнює все вікно */
+  .updater-screen {
+    position: fixed; inset: 0;
+    width: 100vw; height: 100vh;
+    background:
+      radial-gradient(360px 230px at 50% -10%, rgba(var(--accent-rgb),.09), transparent 60%),
+      radial-gradient(360px 260px at 100% 110%, rgba(123,77,255,.08), transparent 55%),
+      var(--bg-app);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    padding: 12px;
+  }
+
+  .updater-content {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    box-sizing: border-box;
+    -webkit-app-region: no-drag;
+  }
+
+  .icon-container {
+    width: 72px; height: 72px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .icon-container img {
+    width: 60px; height: 60px;
+    filter: drop-shadow(0 0 12px rgba(var(--accent-rgb),.4));
+  }
+
+  .brand-title {
+    font-size: 19px; font-weight: 800; color: var(--text);
+    letter-spacing: .6px; text-align: center; margin: 0;
+  }
+  .brand-subtitle {
+    font-size: 9px; font-weight: 600; color: var(--text-mute);
+    letter-spacing: 3px; text-align: center; text-transform: uppercase;
+    margin: -2px 0 0;
+  }
+
+  .version-row {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; color: var(--text-mute); text-align: center;
+    margin: 2px 0 0;
+  }
+  .version-row .accent { color: var(--accent); }
+
+  .status-text {
+    font-size: 12px; font-weight: 600; color: var(--text);
+    text-align: center; min-height: 17px; margin-top: 5px;
+  }
+
+  /* Прогрес-бар — широкий, з помітним заповненням та % */
+  .progress-row {
+    width: 100%; display: flex; align-items: center; justify-content: center;
+    gap: 8px; margin-top: 3px;
+  }
+  .progress-track {
+    flex: 1; height: 8px; border-radius: 8px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+  .progress-bar {
+    height: 100%; width: 0%;
+    border-radius: 8px;
+    background: linear-gradient(to right, var(--accent), var(--accent-2));
+    box-shadow: 0 0 10px rgba(var(--accent-rgb),.5);
+    transition: width .18s ease-out;
+  }
+  .status-pct {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px; font-weight: 800; color: var(--accent);
+    min-width: 36px; text-align: right;
+  }
+
+  /* Рядок розміру оновлення (Нова версія X • завантажити N МБ) */
+  .update-info {
+    font-size: 10.5px; color: var(--text-mute); text-align: center;
+    min-height: 14px;
+  }
+  .update-info .v { color: var(--accent); font-weight: 700; }
+
+  .progress-details {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px; color: var(--text-dim); text-align: center;
+    min-height: 12px;
+  }
+
+  .error-text {
+    font-size: 12px; color: var(--error); text-align: center;
+    padding: 0 8px; max-height: 80px; overflow-y: auto;
+  }
+
+  .buttons-row {
+    display: flex; gap: 10px; margin-top: 4px;
+    -webkit-app-region: no-drag;
+  }
+  .btn-retry {
+    background: var(--accent); border: none; border-radius: 8px;
+    color: #0f0f0f; font-family: inherit; font-weight: 700; font-size: 11.5px;
+    padding: 8px 20px; cursor: pointer;
+  }
+  .btn-retry:hover { background: var(--accent-2); }
+  .btn-close {
+    background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text-mute); font-family: inherit;
+    font-size: 11px; font-weight: 600; padding: 8px 16px; cursor: pointer;
+  }
+  .btn-close:hover { color: var(--text); border-color: rgba(255,255,255,.3); }
+
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+  <div class="updater-screen">
+    <div class="updater-content">
+      <div class="icon-container"><img src="icon.png" alt=""></div>
+      <div class="brand-title">SHAURMA</div>
+      <div class="brand-subtitle">LAUNCHER</div>
+      <div class="version-row" id="versionRow">&nbsp;</div>
+
+      <div id="normalState" style="width:100%;display:flex;flex-direction:column;align-items:center;gap:5px;margin-top:2px">
+        <div class="status-text" id="statusText">Перевірка оновлень...</div>
+        <div class="progress-row">
+          <div class="progress-track"><div class="progress-bar" id="progressBar"></div></div>
+          <div class="status-pct" id="statusPct"></div>
+        </div>
+        <div class="update-info" id="updateInfo"></div>
+        <div class="progress-details" id="progressDetails">&nbsp;</div>
+      </div>
+
+      <div id="errorState" class="hidden" style="display:flex;flex-direction:column;align-items:center;gap:9px;width:100%">
+        <div class="error-text" id="errorText"></div>
+        <div class="buttons-row">
+          <button class="btn-retry" id="retryBtn">Повторити</button>
+          <button class="btn-close" id="closeBtn">Закрити</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script type="module">
+import { Call, Events } from '/wails/runtime.js';
+  // ── i18n: повідомлення статусів приходять з Go вже перекладені (core
+  // отримує мову з settings.json), тут дублюються лише статичні тексти
+  // кнопок/дефолтного статусу для фронтенду. Мова береться з GetPrefs().
+  const I18N = {
+    uk: {
+      checking: 'Перевірка оновлень...',
+      retry: 'Повторити',
+      close: 'Закрити',
+      updateInfo: 'Нова версія {v} • завантажити {size}',
+      noUpdate: 'Лаунчер актуальний',
+    },
+    en: {
+      checking: 'Checking for updates...',
+      retry: 'Retry',
+      close: 'Close',
+      updateInfo: 'New version {v} • download {size}',
+      noUpdate: 'Launcher is up to date',
+    }
+  };
+
+  const $ = (id) => document.getElementById(id);
+  let lang = 'uk';
+
+  function fmtBytes(b) {
+    if (!b || b <= 0) return '';
+    if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + ' ГБ';
+    if (b >= 1 << 20) return (b / (1 << 20)).toFixed(1) + ' МБ';
+    return Math.ceil(b / 1024) + ' КБ';
+  }
+
+  function applyPrefs(prefs) {
+    lang = (prefs && prefs.lang) || 'uk';
+    const dict = I18N[lang] || I18N.uk;
+
+    // Тема: темна (за замовчуванням) або світла.
+    const theme = (prefs && prefs.theme) || 'dark';
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+
+    // Акцент: кольори акцентів лаунчера (ті самі, що в theme.svelte.ts).
+    const ACCENTS = {
+      orange: { main: '#ff8a00', deep: '#ff5e00', rgb: '255, 138, 0' },
+      violet: { main: '#7b4dff', deep: '#5a2eff', rgb: '123, 77, 255' },
+      green:  { main: '#10b981', deep: '#059669', rgb: '16, 185, 129' },
+      blue:   { main: '#3b82f6', deep: '#2563eb', rgb: '59, 130, 246' },
+      red:    { main: '#ef4444', deep: '#dc2626', rgb: '239, 68, 68' },
+    };
+    const a = ACCENTS[(prefs && prefs.accent) || 'orange'] || ACCENTS.orange;
+    const root = document.documentElement.style;
+    root.setProperty('--accent', a.main);
+    root.setProperty('--accent-2', a.deep);
+    root.setProperty('--accent-rgb', a.rgb);
+
+    $('retryBtn').textContent = dict.retry;
+    $('closeBtn').textContent = dict.close;
+    if (!$('statusText').textContent || $('statusText').textContent === I18N.uk.checking || $('statusText').textContent === I18N.en.checking) {
+      $('statusText').textContent = dict.checking;
+    }
+  }
+
+  try {
+    Call.ByName('main.App.GetPrefs').then(applyPrefs);
+  } catch (e) { /* dev: без біндінгів — дефолти */ }
+
+  // ── Прогрес-бар ──
+  // Поки немає реального прогресу (перевірка, паузи), бар плавно росте
+  // до 90% — щоб сплеш виглядав живим. На статусах фіналізації
+  // (up_to_date / launching) бар доходить до 100%, і ЛИШЕ після цього
+  // бекенд запускає launcher.exe (core.launchPause дає на це час).
+  let animTimer = null;
+  let hasRealProgress = false;
+
+  function animateTo(target, done) {
+    stopAnim();
+    let cur = parseFloat($('progressBar').style.width) || 0;
+    animTimer = setInterval(() => {
+      cur += (target - cur) * 0.12;
+      if (Math.abs(target - cur) < 1) {
+        cur = target;
+        stopAnim();
+        if (done) done();
+      }
+      $('progressBar').style.width = cur + '%';
+      $('statusPct').textContent = Math.round(cur) + '%';
+    }, 30);
+  }
+
+  function stopAnim() { if (animTimer) { clearInterval(animTimer); animTimer = null; } }
+
+  function setRealProgress(pct) {
+    stopAnim();
+    $('progressBar').style.width = pct + '%';
+    $('statusPct').textContent = pct + '%';
+  }
+
+  // Статуси приходять з Go (core.Status) як event "updater:status"
+  // з payload {status, message}. Прогрес — окремий event
+  // "updater:progress" з payload {fileIndex, fileTotal, fileName,
+  // bytesDone, bytesTotal}.
+  Events.On('updater:status', (event) => {
+    const payload = event.data;
+    const { status, message } = payload;
+    $('statusText').textContent = message;
+
+    if (status === 'error') {
+      stopAnim();
+      $('normalState').classList.add('hidden');
+      $('errorState').classList.remove('hidden');
+      $('errorText').textContent = message;
+      return;
+    }
+    $('normalState').classList.remove('hidden');
+    $('errorState').classList.add('hidden');
+
+    if (status === 'downloading') {
+      // Реальний прогрес приходить з updater:progress — його і показуємо.
+      hasRealProgress = true;
+      return;
+    }
+    if (status === 'installing') {
+      // Завантаження завершено на 100% — даємо користувачу побачити це.
+      setRealProgress(100);
+      return;
+    }
+    if (status === 'up_to_date') {
+      const dict = I18N[lang] || I18N.uk;
+      $('updateInfo').textContent = dict.noUpdate;
+      animateTo(100);
+      return;
+    }
+    if (status === 'launching') {
+      // Фінальний етап: бар доходить до 100%, і вже потім бекенд
+      // (з паузою launchPause) відкриває launcher.exe.
+      animateTo(100);
+      return;
+    }
+    // checking / update_available — без реального прогресу: плавний рух.
+    hasRealProgress = false;
+    animateTo(90);
+  });
+
+  Events.On('updater:progress', (event) => {
+    const p = event.data;
+    hasRealProgress = true;
+    const pct = p.bytesTotal > 0 ? Math.round((p.bytesDone / p.bytesTotal) * 100) : 0;
+    setRealProgress(pct);
+    $('progressDetails').textContent =
+      `${p.fileName} (${p.fileIndex + 1}/${p.fileTotal}) • ${fmtBytes(p.bytesDone)} / ${fmtBytes(p.bytesTotal)}`;
+  });
+
+  // "updater:update" — знайдено оновлення: нова версія + розмір завантаження.
+  Events.On('updater:update', (event) => {
+    const payload = event.data;
+    const dict = I18N[lang] || I18N.uk;
+    if (payload && payload.version) {
+      $('updateInfo').innerHTML =
+        dict.updateInfo.replace('{v}', `<span class="v">${payload.version}</span>`).replace('{size}', fmtBytes(payload.bytesTotal));
+    }
+  });
+
+  Events.On('updater:version', (event) => {
+    const payload = event.data;
+    // backends версію remote не надсилає (core не повертає її) —
+    // тож якщо remote немає, показуємо просто поточну версію.
+    if (payload && payload.remote) {
+      $('versionRow').innerHTML =
+        `${payload.current || '—'} <span class="accent">→</span> ${payload.remote}`;
+    } else {
+      $('versionRow').innerHTML = `v${payload.current || '—'}`;
+    }
+  });
+
+  $('retryBtn').addEventListener('click', () => {
+    Call.ByName('main.App.Retry');
+  });
+  $('closeBtn').addEventListener('click', () => {
+    Call.ByName('main.App.CloseUpdater');
+  });
+
+  // Стартуємо анімацію одразу, щоб бар рухався ще до першого статус-евенту.
+  animateTo(90);
+</script>
+</body>
+</html>

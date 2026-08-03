@@ -1,0 +1,15 @@
+name = "shaurma-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+# ── R2 Bucket binding ──────────────────────────────────────────────────────
+# Замін "shaurm-packs" на реальну назву твого bucket
+[[r2_buckets]]
+binding    = "R2_BUCKET"
+bucket_name = "shaurm-packs"
+
+# ── Secrets (НЕ зберігай тут — додавай через CLI або Dashboard) ────────────
+# wrangler secret put TOKEN_SHAURMA
+# wrangler secret put TOKEN_BASE
+#
+# Або у Dashboard: Workers → shaurma-proxy → Settings → Variables → Secrets

@@ -1,0 +1,76 @@
+# 1. Ігноруємо абсолютно все за замовчуванням
+*
+
+# 2. Дозволяємо Git сканувати необхідні директорії (інакше не спрацюють правила для підпапок)
+!/launcher/
+!/launcher/internal/
+!/launcher/internal/**
+!/launcher/frontend/
+!/launcher/frontend/src/
+!/launcher/frontend/src/**
+!/launcher/build/
+!/launcher/build/windows/
+
+!/updater/
+!/updater/internal/
+!/updater/internal/**
+!/updater/build/
+!/updater/build/windows/
+!/updater/frontend/
+!/updater/frontend/fonts/
+!/updater/frontend/fonts/**
+
+!/pack-manager/
+!/pack-manager/src/
+!/pack-manager/src/main/
+!/pack-manager/src/main/**
+
+!/installer/
+!/worker/
+
+# 3. Кореневі файли репозиторію
+!/build.ps1
+!/BUILD.md
+!/pack-launcher-source.ps1
+!.gitignore
+
+# 4. Компонент: launcher
+!/launcher/*.go
+!/launcher/go.mod
+!/launcher/go.sum
+!/launcher/wails.json
+!/launcher/CHANGES.md
+!/launcher/frontend/index.html
+!/launcher/frontend/package.json
+!/launcher/frontend/package-lock.json
+!/launcher/frontend/svelte.config.js
+!/launcher/frontend/tsconfig.json
+!/launcher/frontend/tsconfig.node.json
+!/launcher/frontend/vite.config.ts
+!/launcher/build/appicon.png
+!/launcher/build/windows/*.ico
+!/launcher/build/windows/*.manifest
+
+# 5. Компонент: updater
+!/updater/*.go
+!/updater/go.mod
+!/updater/wails.json
+!/updater/README.md
+!/updater/.gitignore
+!/updater/frontend/index.html
+!/updater/frontend/icon.png
+!/updater/build/windows/*.ico
+
+# 6. Компонент: pack-manager
+!/pack-manager/pom.xml
+!/pack-manager/buid.bat
+!/pack-manager/rebuild-pack-manager.bat
+!/pack-manager/rebuild-pm.ps1
+
+# 7. Компонент: installer
+!/installer/*.iss
+
+# 8. Компонент: worker
+!/worker/worker.js
+!/worker/wrangler.toml
+!/worker/README.md

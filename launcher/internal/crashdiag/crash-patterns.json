@@ -1,0 +1,108 @@
+{
+  "_readme": [
+    "Кожне правило аналізує накопичений лог гри і намагається розпізнати причину краша.",
+    "Поля:",
+    "  id              — унікальний рядок (для діагностики/логів, на роботу не впливає)",
+    "  loader          — 'fabric' | 'forge' | 'neoforge' | 'quilt' | 'any'",
+    "  kind            — 'MISSING_DEPENDENCY' | 'MOD_CONFLICT'",
+    "  regex           — regex (екранування як у Go-рядку, \\\\ для \\)",
+    "  dotall          — true якщо потрібен (?s) (помилка розірвана переносами рядків)",
+    "  requesterGroup  — номер групи regex = назва/id мода, що вимагає залежність (0 = немає)",
+    "  missingGroup    — номер групи regex = назва відсутньої залежності (для MISSING_DEPENDENCY)",
+    "  conflictGroups  — список номерів груп = імена/id конфліктуючих модів (для MOD_CONFLICT)",
+    "  summary         — текст для користувача, {N} підставляється з regex-групи N",
+    "Правила перевіряються по порядку, перше співпадіння виграє. Додавайте нові",
+    "об'єкти в масив 'rules' нижче — Go-код міняти не потрібно."
+  ],
+  "rules": [
+    {
+      "id": "fabric_missing_dep_modern",
+      "loader": "fabric",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)mod\\s+'([^']+)'\\s*\\(([A-Za-z0-9_\\-]+)\\)[^\\n]*?requires\\s+version[^\\n]*?\\bof\\s+([A-Za-z0-9_\\-]+),?\\s+which is missing",
+      "requesterGroup": 1,
+      "missingGroup": 3,
+      "summary": "Мод \"{1}\" потребує \"{3}\", якого немає серед встановлених модів."
+    },
+    {
+      "id": "fabric_hard_dep_reason_block",
+      "loader": "fabric",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)HARD_DEP(?:_NO_CANDIDATE)?\\s+([A-Za-z0-9_\\-]+)\\s+[\\d.]+\\s*\\{depends\\s+([A-Za-z0-9_\\-]+)",
+      "requesterGroup": 1,
+      "missingGroup": 2,
+      "summary": "Мод \"{1}\" потребує \"{2}\", якого немає серед встановлених модів."
+    },
+    {
+      "id": "fabric_missing_dep_legacy",
+      "loader": "fabric",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)mod\\s+'([^']+)'\\s+requires\\s+(?:mod\\s+)?'?([A-Za-z0-9_\\-]+)'?",
+      "requesterGroup": 1,
+      "missingGroup": 2,
+      "summary": "Мод \"{1}\" потребує \"{2}\", якого немає серед встановлених модів."
+    },
+    {
+      "id": "quilt_missing_dep",
+      "loader": "quilt",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)needs\\s+(?:mod\\s+)?['\"]?([A-Za-z0-9_\\-]+)['\"]?.{0,30}?\\bnot (?:installed|found)\\b",
+      "requesterGroup": 0,
+      "missingGroup": 1,
+      "summary": "Не знайдено залежність \"{1}\", потрібну одному з модів."
+    },
+    {
+      "id": "forge_missing_dep",
+      "loader": "forge",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)mod\\s+['\"]?([A-Za-z0-9_\\-]+)['\"]?\\s+requires\\s+(?:mod\\s+)?['\"]?([A-Za-z0-9_\\-]+)['\"]?",
+      "requesterGroup": 1,
+      "missingGroup": 2,
+      "summary": "Мод \"{1}\" потребує \"{2}\", якого немає серед встановлених модів."
+    },
+    {
+      "id": "forge_missing_dep_modern_table",
+      "loader": "forge",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)mod\\s+id:\\s*['\"]?([A-Za-z0-9_\\-]+)['\"]?.{0,200}?missing\\s+(?:or\\s+unsupported\\s+)?(?:mandatory\\s+)?dependenc(?:y|ies).{0,200}?['\"]?([A-Za-z0-9_\\-]+)['\"]?",
+      "dotall": true,
+      "requesterGroup": 1,
+      "missingGroup": 2,
+      "summary": "Мод \"{1}\" потребує \"{2}\", якого немає серед встановлених модів."
+    },
+    {
+      "id": "neoforge_missing_dep",
+      "loader": "neoforge",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)mod\\s+['\"]?([A-Za-z0-9_\\-]+)['\"]?\\s+requires\\s+(?:mod\\s+)?['\"]?([A-Za-z0-9_\\-]+)['\"]?.{0,80}?(?:version|@)?\\s*([><=^~][\\d.,\\s><=^~]*)?",
+      "requesterGroup": 1,
+      "missingGroup": 2,
+      "summary": "Мод \"{1}\" потребує \"{2}\", якого немає серед встановлених модів."
+    },
+    {
+      "id": "generic_missing_dep",
+      "loader": "any",
+      "kind": "MISSING_DEPENDENCY",
+      "regex": "(?i)(?:missing|could not find|unable to find)\\s+(?:dependency|mod|library)\\s*[:\\-]?\\s*['\"]?([A-Za-z0-9_\\-]+)['\"]?",
+      "requesterGroup": 0,
+      "missingGroup": 1,
+      "summary": "Не знайдено залежність \"{1}\", потрібну одному з модів."
+    },
+    {
+      "id": "duplicate_mod_id",
+      "loader": "any",
+      "kind": "MOD_CONFLICT",
+      "regex": "(?i)duplicate\\s+mod\\s+(?:id\\s+)?['\"]?([A-Za-z0-9_\\-]+)['\"]?",
+      "conflictGroups": [1],
+      "summary": "Виявлено дублікат мода \"{1}\" — два встановлені файли реєструють той самий ідентифікатор."
+    },
+    {
+      "id": "incompatible_mods",
+      "loader": "any",
+      "kind": "MOD_CONFLICT",
+      "regex": "(?i)['\"]?([A-Za-z0-9_\\-]+)['\"]?\\s+is\\s+incompatible\\s+with\\s+['\"]?([A-Za-z0-9_\\-]+)['\"]?",
+      "conflictGroups": [1, 2],
+      "summary": "Мод \"{1}\" конфліктує з модом \"{2}\" — одночасно вони не працюють."
+    }
+  ]
+}

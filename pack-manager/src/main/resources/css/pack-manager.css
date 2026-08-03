@@ -1,0 +1,675 @@
+/* ═══════════════════════════════════════════════════════════════════════
+   Pack Manager — Dark Theme CSS
+   Стиль узгоджений з основним лаунчером (#0D0D1E / фіолетовий акцент)
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ── ГЛОБАЛЬНИЙ ДЕФОЛТ ЗАОКРУГЛЕННЯ (страховка від "квадратних" кнопок,
+   якщо конкретний .btn-* клас десь не підключений) ────────────────── */
+.button, .toggle-button, .menu-button, .combo-box, .combo-box-base,
+.text-field, .text-area, .password-field, .choice-box,
+.list-cell, .list-view, .scroll-pane, .titled-pane, .tab,
+.check-box .box, .radio-button .radio {
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+}
+
+/* ── Кольорові змінні ────────────────────────────────────────────────── */
+.root {
+    -color-bg-primary:    #0D0D1E;
+    -color-bg-secondary:  #13132A;
+    -color-bg-card:       #161630;
+    -color-border:        rgba(124,58,237,0.20);
+    -color-border-hover:  rgba(124,58,237,0.55);
+    -color-accent:        #7C3AED;
+    -color-accent-light:  #9B59F0;
+    -color-text:          #EEEEF4;
+    -color-text-dim:      rgba(238,238,244,0.55);
+    -color-text-muted:    rgba(238,238,244,0.30);
+    -color-success:       #10B981;
+    -color-warn:          #F59E0B;
+    -color-error:         #EF4444;
+
+    -fx-base: #0D0D1E;
+    -fx-background: #0D0D1E;
+    -fx-control-inner-background: #13132A;
+    -fx-text-fill: #EEEEF4;
+    -fx-font-family: 'Segoe UI', 'Ubuntu', sans-serif;
+    -fx-font-size: 13px;
+}
+
+/* ── Кореневий layout ────────────────────────────────────────────────── */
+.main-root {
+    -fx-background-color: #0D0D1E;
+}
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+.sidebar {
+    -fx-background-color: #0A0A1A;
+    -fx-border-color: rgba(124,58,237,0.15);
+    -fx-border-width: 0 1 0 0;
+}
+
+.sidebar-title {
+    -fx-font-size: 13px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #EEEEF4;
+    -fx-letter-spacing: 1.5px;
+    -fx-padding: 8 4 12 4;
+}
+
+.sidebar-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(238,238,244,0.65);
+    -fx-font-size: 12.5px;
+    -fx-alignment: CENTER_LEFT;
+    -fx-padding: 9 12;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-cursor: hand;
+}
+.sidebar-btn:hover {
+    -fx-background-color: rgba(124,58,237,0.12);
+    -fx-text-fill: #EEEEF4;
+}
+.sidebar-btn:pressed {
+    -fx-background-color: rgba(124,58,237,0.22);
+}
+
+/* ── Сторінка ────────────────────────────────────────────────────────── */
+.page {
+    -fx-background-color: #0D0D1E;
+}
+
+.page-header {
+    -fx-background-color: rgba(13,13,30,0.8);
+    -fx-border-color: rgba(124,58,237,0.10);
+    -fx-border-width: 0 0 1 0;
+}
+
+.page-title {
+    -fx-font-size: 20px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #EEEEF4;
+    -fx-letter-spacing: 0.5px;
+}
+
+.section-desc {
+    -fx-font-size: 12.5px;
+    -fx-text-fill: rgba(238,238,244,0.55);
+    -fx-wrap-text: true;
+}
+
+/* ── Card ────────────────────────────────────────────────────────────── */
+.card {
+    -fx-background-color: #13132A;
+    -fx-background-radius: 12;
+    -fx-border-color: rgba(124,58,237,0.18);
+    -fx-border-radius: 12;
+    -fx-border-width: 1;
+}
+
+.card-title {
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #EEEEF4;
+}
+
+/* ── Pack Cards ──────────────────────────────────────────────────────── */
+.cards-pane {
+    -fx-background-color: transparent;
+    -fx-padding: 4;
+}
+
+.cards-scroll {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+}
+.cards-scroll .viewport {
+    -fx-background-color: transparent;
+}
+
+.pack-card {
+    -fx-background-color: #13132A;
+    -fx-background-radius: 14;
+    -fx-border-color: rgba(124,58,237,0.18);
+    -fx-border-radius: 14;
+    -fx-border-width: 1;
+    -fx-cursor: default;
+}
+.pack-card:hover {
+    -fx-border-color: rgba(124,58,237,0.45);
+    -fx-effect: dropshadow(gaussian, rgba(124,58,237,0.18), 14, 0.3, 0, 3);
+}
+
+.pack-card-name {
+    -fx-font-size: 14px;
+    -fx-font-weight: 700;
+    -fx-text-fill: #EEEEF4;
+}
+
+.pack-card-meta {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: rgba(238,238,244,0.50);
+}
+
+/* ── Теги ────────────────────────────────────────────────────────────── */
+.tag {
+    -fx-background-color: rgba(124,58,237,0.18);
+    -fx-text-fill: #9B59F0;
+    -fx-font-size: 10.5px;
+    -fx-font-weight: 600;
+    -fx-padding: 2 8;
+    -fx-background-radius: 20;
+}
+
+.tag-editor {
+    -fx-background-color: rgba(124,58,237,0.15);
+    -fx-background-radius: 6;
+    -fx-padding: 2 6 2 8;
+    -fx-alignment: CENTER_LEFT;
+}
+
+.tag-del {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(238,238,244,0.45);
+    -fx-font-size: 11px;
+    -fx-padding: 0 2;
+    -fx-cursor: hand;
+}
+.tag-del:hover { -fx-text-fill: #EF4444; }
+
+/* ── Status ──────────────────────────────────────────────────────────── */
+.status-dirty {
+    -fx-font-size: 11px;
+    -fx-text-fill: #F59E0B;
+    -fx-font-weight: 600;
+}
+.status-clean {
+    -fx-font-size: 11px;
+    -fx-text-fill: #10B981;
+    -fx-font-weight: 600;
+}
+.status-ok {
+    -fx-text-fill: #10B981;
+    -fx-font-size: 12px;
+}
+.status-error {
+    -fx-text-fill: #EF4444;
+    -fx-font-size: 12px;
+}
+.status-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: rgba(238,238,244,0.55);
+}
+
+/* ── Кнопки ──────────────────────────────────────────────────────────── */
+.btn {
+    -fx-font-size: 12.5px;
+    -fx-font-weight: 600;
+    -fx-padding: 7 16;
+    -fx-background-radius: 8;
+    -fx-border-radius: 8;
+    -fx-cursor: hand;
+}
+
+.btn-primary {
+    -fx-background-color: #7C3AED;
+    -fx-text-fill: white;
+    -fx-border-color: transparent;
+}
+.btn-primary:hover { -fx-background-color: #6D28D9; }
+.btn-primary:pressed { -fx-background-color: #5B21B6; }
+
+.btn-default {
+    -fx-background-color: rgba(255,255,255,0.07);
+    -fx-text-fill: #EEEEF4;
+    -fx-border-color: rgba(255,255,255,0.12);
+}
+.btn-default:hover {
+    -fx-background-color: rgba(124,58,237,0.15);
+    -fx-border-color: rgba(124,58,237,0.4);
+}
+
+.btn-ghost {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(238,238,244,0.60);
+    -fx-border-color: transparent;
+}
+.btn-ghost:hover { -fx-text-fill: #EEEEF4; }
+
+.btn-danger {
+    -fx-background-color: rgba(239,68,68,0.12);
+    -fx-text-fill: #EF4444;
+    -fx-border-color: rgba(239,68,68,0.25);
+}
+.btn-danger:hover {
+    -fx-background-color: rgba(239,68,68,0.25);
+    -fx-border-color: rgba(239,68,68,0.55);
+}
+
+.btn-large {
+    -fx-font-size: 14px;
+    -fx-padding: 11 28;
+}
+
+.icon-btn {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(238,238,244,0.60);
+    -fx-padding: 4 8;
+    -fx-background-radius: 6;
+    -fx-cursor: hand;
+    -fx-font-size: 13px;
+}
+.icon-btn:hover { -fx-background-color: rgba(124,58,237,0.15); -fx-text-fill: #EEEEF4; }
+
+/* ── Форма ───────────────────────────────────────────────────────────── */
+.form {
+    -fx-background-color: transparent;
+}
+
+.form-label {
+    -fx-text-fill: rgba(238,238,244,0.70);
+    -fx-font-size: 12.5px;
+    -fx-font-weight: 600;
+}
+
+.form-field {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-text-fill: #EEEEF4;
+    -fx-prompt-text-fill: rgba(238,238,244,0.30);
+    -fx-border-color: rgba(124,58,237,0.25);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-padding: 7 12;
+    -fx-font-size: 12.5px;
+}
+.form-field:focused {
+    -fx-border-color: rgba(124,58,237,0.65);
+    -fx-background-color: rgba(124,58,237,0.07);
+}
+
+.form-area {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-text-fill: #EEEEF4;
+    -fx-prompt-text-fill: rgba(238,238,244,0.30);
+    -fx-border-color: rgba(124,58,237,0.25);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-font-size: 12.5px;
+}
+.form-area:focused { -fx-border-color: rgba(124,58,237,0.65); }
+
+.form-combo {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-text-fill: #EEEEF4;
+    -fx-border-color: rgba(124,58,237,0.25);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+
+/* ── Таблиця ─────────────────────────────────────────────────────────── */
+.sync-table {
+    -fx-background-color: transparent;
+    -fx-border-color: rgba(124,58,237,0.15);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+.sync-table .column-header-background {
+    -fx-background-color: rgba(124,58,237,0.10);
+}
+.sync-table .column-header .label {
+    -fx-text-fill: rgba(238,238,244,0.65);
+    -fx-font-weight: 700;
+    -fx-font-size: 12px;
+}
+.sync-table .table-row-cell {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent transparent rgba(124,58,237,0.08) transparent;
+}
+.sync-table .table-row-cell:selected {
+    -fx-background-color: rgba(124,58,237,0.18);
+}
+.sync-table .table-row-cell:odd {
+    -fx-background-color: rgba(255,255,255,0.02);
+}
+.sync-table .table-cell { -fx-text-fill: #EEEEF4; }
+
+/* ── Sync rule badges ────────────────────────────────────────────────── */
+.badge {
+    -fx-font-size: 11px;
+    -fx-font-weight: 700;
+    -fx-padding: 3 10;
+    -fx-background-radius: 20;
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.badge-hash {
+    -fx-background-color: rgba(16,185,129,0.18);
+    -fx-text-fill: #10B981;
+    -fx-border-color: rgba(16,185,129,0.35);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.badge-archive {
+    -fx-background-color: rgba(245,158,11,0.18);
+    -fx-text-fill: #F59E0B;
+    -fx-border-color: rgba(245,158,11,0.35);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.badge-missing {
+    -fx-background-color: rgba(59,130,246,0.18);
+    -fx-text-fill: #3B82F6;
+    -fx-border-color: rgba(59,130,246,0.35);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.badge-first {
+    -fx-background-color: rgba(124,58,237,0.18);
+    -fx-text-fill: #9B59F0;
+    -fx-border-color: rgba(124,58,237,0.35);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.badge-skip {
+    -fx-background-color: rgba(107,114,128,0.18);
+    -fx-text-fill: rgba(238,238,244,0.40);
+    -fx-border-color: rgba(107,114,128,0.25);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+}
+
+.badge-unknown {
+    -fx-background-color: rgba(107,114,128,0.12);
+    -fx-text-fill: rgba(238,238,244,0.35);
+}
+
+/* ── Rule boxes ──────────────────────────────────────────────────────── */
+.rule-box {
+    -fx-background-color: rgba(255,255,255,0.03);
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-border-width: 1;
+    -fx-border-color: rgba(255,255,255,0.06);
+}
+
+.rule-paths {
+    -fx-font-size: 11.5px;
+    -fx-text-fill: rgba(238,238,244,0.55);
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.rule-desc {
+    -fx-font-size: 12px;
+    -fx-text-fill: rgba(238,238,244,0.65);
+    -fx-wrap-text: true;
+    -fx-padding: 4 0 0 0;
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────── */
+.edit-tabs {
+    -fx-background-color: transparent;
+    -fx-tab-min-height: 36px;
+}
+.edit-tabs .tab-header-area .tab-header-background {
+    -fx-background-color: rgba(13,13,30,0.8);
+    -fx-border-color: rgba(124,58,237,0.12);
+    -fx-border-width: 0 0 1 0;
+}
+.edit-tabs .tab {
+    -fx-background-color: transparent;
+    -fx-text-fill: rgba(238,238,244,0.55);
+    -fx-font-weight: 600;
+    -fx-font-size: 12.5px;
+    -fx-padding: 8 18;
+}
+.edit-tabs .tab:selected {
+    -fx-background-color: rgba(124,58,237,0.15);
+    -fx-text-fill: #9B59F0;
+    -fx-border-color: transparent transparent #7C3AED transparent;
+    -fx-border-width: 0 0 2 0;
+}
+.edit-tabs .tab:hover:!selected {
+    -fx-background-color: rgba(124,58,237,0.07);
+    -fx-text-fill: rgba(238,238,244,0.80);
+}
+.edit-tabs .tab-content-area {
+    -fx-background-color: #0D0D1E;
+}
+
+/* ── JSON area ───────────────────────────────────────────────────────── */
+.json-area {
+    -fx-background-color: #0A0A1A;
+    -fx-text-fill: #A8B4C8;
+    -fx-border-color: rgba(124,58,237,0.20);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+    -fx-font-size: 12px;
+}
+
+/* ── Log area ────────────────────────────────────────────────────────── */
+.log-area {
+    -fx-background-color: #080812;
+    -fx-text-fill: #8FB3A8;
+    -fx-border-color: rgba(124,58,237,0.15);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+    -fx-font-size: 11.5px;
+}
+
+/* ── Progress bar ────────────────────────────────────────────────────── */
+.deploy-progress {
+    -fx-accent: #7C3AED;
+    -fx-control-inner-background: rgba(255,255,255,0.05);
+    -fx-background-radius: 4;
+    -fx-border-radius: 4;
+    -fx-pref-height: 8px;
+}
+.deploy-progress .bar {
+    -fx-background-color: linear-gradient(to right, #7C3AED, #9B59F0);
+    -fx-background-radius: 4;
+}
+
+.progress-label {
+    -fx-font-size: 12px;
+    -fx-text-fill: rgba(238,238,244,0.65);
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+/* ── ScrollPane ──────────────────────────────────────────────────────── */
+.scroll-pane {
+    -fx-background-color: transparent;
+    -fx-background: transparent;
+}
+.scroll-pane .viewport { -fx-background-color: transparent; }
+.scroll-pane .scroll-bar:vertical .track { -fx-background-color: rgba(255,255,255,0.04); }
+.scroll-pane .scroll-bar:vertical .thumb {
+    -fx-background-color: rgba(124,58,237,0.35);
+    -fx-background-radius: 4;
+}
+
+/* ── Separator ───────────────────────────────────────────────────────── */
+.separator { -fx-background-color: rgba(124,58,237,0.15); -fx-pref-height: 1px; -fx-max-height: 1px; }
+
+/* ── Tooltip ─────────────────────────────────────────────────────────── */
+.tooltip {
+    -fx-background-color: #161630;
+    -fx-text-fill: rgba(238,238,244,0.85);
+    -fx-border-color: rgba(124,58,237,0.25);
+    -fx-border-radius: 6;
+    -fx-background-radius: 6;
+    -fx-font-size: 12px;
+}
+
+/* ── Dialog ──────────────────────────────────────────────────────────── */
+.dialog-pane {
+    -fx-background-color: #0D0D1E;
+    -fx-border-color: rgba(124,58,237,0.25);
+    -fx-border-radius: 12;
+    -fx-background-radius: 12;
+}
+.dialog-pane .header-panel { -fx-background-color: #13132A; }
+.dialog-pane .content { -fx-background-color: #0D0D1E; }
+.dialog-pane .button-bar .button-bar .button {
+    -fx-background-color: rgba(124,58,237,0.20);
+    -fx-text-fill: #EEEEF4;
+}
+
+/* ── Launcher Update Screen (splash theme) ──────────────────────────── */
+
+.launcher-update-root {
+    -fx-background-color: #0f0f0f;
+}
+.launcher-update-root .viewport {
+    -fx-background-color: #0f0f0f;
+}
+
+.launcher-update-card {
+    -fx-background-color: #161616;
+    -fx-background-radius: 20;
+    -fx-border-color: rgba(255,255,255,0.07);
+    -fx-border-radius: 20;
+    -fx-border-width: 1;
+    -fx-padding: 24;
+    -fx-effect: dropshadow(gaussian, rgba(0,0,0,0.85), 40, 0, 0, 20);
+}
+
+.launcher-update-brand {
+    -fx-font-size: 26px;
+    -fx-font-weight: 800;
+    -fx-text-fill: #ffffff;
+    -fx-letter-spacing: 1px;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+.launcher-update-brand-sub {
+    -fx-font-size: 11px;
+    -fx-font-weight: 600;
+    -fx-text-fill: #a0a0a0;
+    -fx-letter-spacing: 3px;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+.launcher-update-icon-container {
+    -fx-background-radius: 20;
+    -fx-min-width: 80px;
+    -fx-min-height: 80px;
+    -fx-max-width: 80px;
+    -fx-max-height: 80px;
+}
+
+.launcher-update-field {
+    -fx-background-color: rgba(255,255,255,0.07);
+    -fx-text-fill: #ffffff;
+    -fx-prompt-text-fill: rgba(255,255,255,0.30);
+    -fx-border-color: rgba(255,255,255,0.08);
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-padding: 9 14;
+    -fx-font-size: 12.5px;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+.launcher-update-field:focused {
+    -fx-border-color: #ff8a00;
+    -fx-background-color: rgba(255,138,0,0.07);
+}
+
+.launcher-update-area {
+    -fx-background-color: rgba(255,255,255,0.07);
+    -fx-text-fill: #ffffff;
+    -fx-prompt-text-fill: rgba(255,255,255,0.30);
+    -fx-border-color: rgba(255,255,255,0.08);
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-font-size: 12.5px;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+.launcher-update-area:focused {
+    -fx-border-color: #ff8a00;
+}
+
+.launcher-update-btn {
+    -fx-background-color: #ff8a00;
+    -fx-text-fill: #ffffff;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+    -fx-font-weight: 700;
+    -fx-font-size: 14px;
+    -fx-padding: 11 28;
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-cursor: hand;
+}
+.launcher-update-btn:hover {
+    -fx-background-color: #e67a00;
+}
+.launcher-update-btn:disabled {
+    -fx-background-color: rgba(255,138,0,0.35);
+}
+
+.launcher-update-label {
+    -fx-text-fill: rgba(255,255,255,0.55);
+    -fx-font-size: 12px;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+    -fx-font-weight: 600;
+}
+
+.launcher-update-progress {
+    -fx-accent: #ff8a00;
+    -fx-control-inner-background: rgba(255,255,255,0.08);
+    -fx-background-radius: 10;
+    -fx-border-radius: 10;
+    -fx-pref-height: 8px;
+    -fx-max-height: 8px;
+}
+.launcher-update-progress .bar {
+    -fx-background-color: linear-gradient(to right, #ff8a00, #ffb347);
+    -fx-background-radius: 10;
+}
+
+.launcher-update-progress-text {
+    -fx-font-size: 12px;
+    -fx-text-fill: #a0a0a0;
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+}
+
+.launcher-update-log {
+    -fx-background-color: rgba(0,0,0,0.35);
+    -fx-text-fill: #8FB3A8;
+    -fx-border-color: rgba(255,255,255,0.06);
+    -fx-border-radius: 10;
+    -fx-background-radius: 10;
+    -fx-font-family: 'JetBrains Mono', 'Consolas', monospace;
+    -fx-font-size: 11px;
+}
+
+.launcher-update-browse-btn {
+    -fx-background-color: rgba(255,255,255,0.07);
+    -fx-text-fill: #ffffff;
+    -fx-font-family: 'Inter', 'Segoe UI', sans-serif;
+    -fx-font-weight: 600;
+    -fx-font-size: 12.5px;
+    -fx-padding: 9 16;
+    -fx-background-radius: 10;
+    -fx-border-color: rgba(255,255,255,0.12);
+    -fx-border-radius: 10;
+    -fx-cursor: hand;
+}
+.launcher-update-browse-btn:hover {
+    -fx-background-color: rgba(255,138,0,0.15);
+    -fx-border-color: rgba(255,138,0,0.40);
+}
+
+/* ── Spinner ─────────────────────────────────────────────────────────── */
+.form-spinner {
+    -fx-background-color: rgba(255,255,255,0.05);
+    -fx-border-color: rgba(124,58,237,0.25);
+    -fx-border-radius: 8;
+    -fx-background-radius: 8;
+}
+.form-spinner .text-field { -fx-text-fill: #EEEEF4; -fx-background-color: transparent; }
