@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.shaurma.LauncherBase</id>
+  <name>Shaurma Base</name>
+  <summary>Minecraft launcher for Shaurma modpacks (base edition)</summary>
+  <summary xml:lang="uk">Лаунчер Minecraft для збірок Shaurma (базова редакція)</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="com.shaurma">
+    <name>Shaurma</name>
+  </developer>
+  <description>
+    <p>Shaurma Base is the base edition of the launcher for installing, updating and launching Minecraft modpacks. Components are updated automatically from the project CDN.</p>
+    <p xml:lang="uk">Shaurma Base — базова редакція лаунчера для встановлення, оновлення й запуску збірок Minecraft. Компоненти оновлюються автоматично з CDN проєкту.</p>
+  </description>
+  <categories>
+    <category>Game</category>
+  </categories>
+  <launchable type="desktop-id">com.shaurma.LauncherBase.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <!-- Додай перед релізом (дані мають збігатися з реальною версією):
+  <url type="homepage">https://…</url>
+  <screenshots>
+    <screenshot type="default"><image>https://…/main.png</image></screenshot>
+  </screenshots>
+  <releases>
+    <release version="X.Y.Z" date="YYYY-MM-DD" />
+  </releases>
+  -->
+</component>

@@ -1,0 +1,245 @@
+<script lang="ts">
+  // ── «Гравці» — жива смуга над консоллю сервера ─────────────────────────
+  // Реєстр веде бекенд (internal/servers/players.go): читає рядки логу java
+  // («Steve joined the game» / «left the game» / «lost connection») і тримає
+  // список з ніками. Сюди приходить і початковий знімок (GetServerPlayers),
+  // і кожна подія входу/виходу (server:player).
+  //
+  // «Реальний час»: список міняється миттєво по події, «час на сервері» тікає
+  // сам (раніше рахувався один раз при рендері і застигав), а тиха фонова
+  // синхронізація зі знімком бекенду підстраховує пропущену подію — окрема
+  // кнопка «оновити» більше не потрібна.
+  //
+  // Тости з ніком показує App.svelte (глобально, з будь-якої сторінки) —
+  // тут лише список, щоб не було подвійних повідомлень.
+  import { flip } from 'svelte/animate'
+  import { scale, fade } from 'svelte/transition'
+  import { App, on } from '../../wails'
+  import FriendAvatar from '../../friends/FriendAvatar.svelte'
+  import type { ServerPlayer, ServerPlayerPlaytime } from '../../types'
+
+  let { serverId = '', running = false }: { serverId?: string; running?: boolean } = $props()
+
+  const RESYNC_MS = 15000
+  const TICK_MS = 10000
+
+  let players = $state<ServerPlayer[]>([])
+  let loaded = $state(false)
+  let now = $state(Date.now())
+  // ── «Час гри» — накопичений час кожного гравця (stats світу) ───────────
+  // Окрема панель під смугою: показує й тих, хто зараз офлайн. Сервер
+  // скидає stats на диск при виході гравця та автозбереженні, тому після
+  // події leave перечитуємо з невеликою затримкою.
+  const PLAYTIME_MS = 30000
+  let showTime = $state(false)
+  let playtimes = $state<ServerPlayerPlaytime[]>([])
+  let timeLoaded = $state(false)
+  let timeSeq = 0
+
+  async function refreshTimes() {
+    if (!serverId) return
+    const seq = ++timeSeq
+    try {
+      const list = (await App.GetServerPlayerPlaytimes(serverId)) ?? []
+      if (seq === timeSeq) playtimes = list
+    } catch { /* лишаємо попередній список */ }
+    finally { timeLoaded = true }
+  }
+
+  // Лічильник подій: відповідь знімка, що вилетіла ДО останньої події, застаріла.
+  let evSeq = 0
+
+  async function refresh() {
+    if (!serverId) return
+    const seq = evSeq
+    try {
+      const list = (await App.GetServerPlayers(serverId)) ?? []
+      if (seq === evSeq) players = list
+    } catch { /* тиха синхронізація: лишаємо те, що є */ }
+    finally { loaded = true }
+  }
+
+  $effect(() => {
+    const id = serverId
+    if (!id) return
+    loaded = false
+    void refresh()
+    const off = on('server:player', (ev: any) => {
+      if (!ev || ev.serverId !== id) return
+      evSeq++
+      if (ev.action === 'reset') { players = []; if (showTime) void refreshTimes(); return }
+      if (showTime) setTimeout(() => { void refreshTimes() }, ev.action === 'leave' ? 2500 : 300)
+      // Повний список приходить у САМІЙ події — не збираємо стан локально
+      // інкрементами, інакше одна пропущена подія = розбіжність із реальністю.
+      const prev = new Map(players.map((p) => [p.name, p]))
+      players = ((ev.list ?? []) as string[]).map((n) => {
+        const old = prev.get(n)
+        if (old) return old
+        return ev.action === 'join' && n === ev.name ? { name: n, joinedAt: ev.at } : { name: n }
+      })
+    })
+    return off
+  })
+
+  // Тиха синхронізація, поки сервер працює, і при кожному його запуску.
+  $effect(() => {
+    if (!serverId || !running) return
+    void refresh()
+    const h = setInterval(() => { void refresh() }, RESYNC_MS)
+    return () => clearInterval(h)
+  })
+
+  // Панель «Час гри»: читаємо при відкритті й оновлюємо, поки вона відкрита.
+  $effect(() => {
+    if (!serverId || !showTime) return
+    timeLoaded = false
+    void refreshTimes()
+    const h = setInterval(() => { void refreshTimes() }, PLAYTIME_MS)
+    return () => clearInterval(h)
+  })
+
+  // Годинник для «N хв на сервері».
+  $effect(() => {
+    const h = setInterval(() => { now = Date.now() }, TICK_MS)
+    return () => clearInterval(h)
+  })
+
+  function fmtSince(at: number | undefined, nowMs: number): string {
+    if (!at) return ''
+    const mins = Math.max(0, Math.floor((nowMs - at) / 60000))
+    if (mins < 1) return 'щойно'
+    if (mins < 60) return `${mins} хв`
+    const h = Math.floor(mins / 60)
+    return `${h} год ${mins % 60} хв`
+  }
+
+  // Загальний час: «12 год 5 хв», «3 хв», «<1 хв»; від доби — «3 д 4 год».
+  function fmtTotal(sec: number): string {
+    const mins = Math.floor(sec / 60)
+    if (mins < 1) return '<1 хв'
+    if (mins < 60) return `${mins} хв`
+    const h = Math.floor(mins / 60)
+    if (h < 24) return `${h} год ${mins % 60} хв`
+    return `${Math.floor(h / 24)} д ${h % 24} год`
+  }
+
+  function fmtAgo(at: number | undefined, nowMs: number): string {
+    if (!at) return ''
+    const mins = Math.max(0, Math.floor((nowMs - at) / 60000))
+    if (mins < 2) return 'щойно'
+    if (mins < 60) return `${mins} хв тому`
+    const h = Math.floor(mins / 60)
+    if (h < 24) return `${h} год тому`
+    return `${Math.floor(h / 24)} д тому`
+  }
+
+  const maxSeconds = $derived(Math.max(1, ...playtimes.map((p) => p.seconds)))
+</script>
+
+<div class="sps">
+  <div class="sps-head">
+    <i class="ti ti-users"></i>
+    <span class="sps-title">Гравці</span>
+    <span class="sps-n">{players.length}</span>
+  </div>
+  <button class="sps-toggle" class:on={showTime} onclick={() => (showTime = !showTime)}
+          title="Скільки кожен гравець награв на сервері за весь час" aria-expanded={showTime}>
+    <i class="ti ti-clock-hour-4"></i> Час гри
+  </button>
+  {#if !loaded}
+    <span class="sps-hint"><i class="ti ti-loader spin"></i> завантаження…</span>
+  {:else if players.length === 0}
+    <span class="sps-hint">
+      {running
+        ? 'Нікого немає — тут зʼявляться ті, хто зайде'
+        : 'Сервер зупинено'}
+    </span>
+  {:else}
+    <div class="sps-list">
+      {#each players as p (p.name)}
+        <span class="sps-chip"
+              title={p.joinedAt ? `На сервері: ${fmtSince(p.joinedAt, now)}` : 'Час входу невідомий'}
+              in:scale={{ duration: 180, start: 0.85 }} out:fade={{ duration: 120 }}
+              animate:flip={{ duration: 200 }}>
+          <FriendAvatar nickname={p.name} status="online" size={22} />
+          <span class="sps-name">{p.name}</span>
+          {#if p.joinedAt}<span class="sps-time">{fmtSince(p.joinedAt, now)}</span>{/if}
+        </span>
+      {/each}
+    </div>
+  {/if}
+
+  {#if showTime}
+    <div class="sps-times" transition:fade={{ duration: 120 }}>
+      {#if !timeLoaded}
+        <span class="sps-hint"><i class="ti ti-loader spin"></i> читаю статистику світу…</span>
+      {:else if playtimes.length === 0}
+        <span class="sps-hint">Статистики ще немає — зʼявиться після першого збереження світу гравцем</span>
+      {:else}
+        {#each playtimes as p (p.uuid || p.name)}
+          <div class="sps-trow" class:online={p.online}>
+            <FriendAvatar nickname={p.name} status={p.online ? 'online' : 'offline'} size={20} />
+            <span class="sps-tname">{p.name}</span>
+            <span class="sps-bar"><span style:width="{Math.max(2, Math.round((p.seconds / maxSeconds) * 100))}%"></span></span>
+            <span class="sps-ttotal">{p.seconds > 0 ? fmtTotal(p.seconds) : '—'}</span>
+            <span class="sps-tnote">
+              {#if p.online}
+                {p.sessionStart ? `онлайн · ${fmtSince(p.sessionStart, now)}` : 'онлайн'}
+              {:else if p.lastSeen}
+                {fmtAgo(p.lastSeen, now)}
+              {/if}
+            </span>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  {/if}
+</div>
+
+<style>
+  .sps {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 14px; flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--bg-window) 92%, transparent);
+  }
+  .sps-head { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .sps-head i { color: var(--text-mute); font-size: 14px; }
+  .sps-title { font: 700 11px/1 var(--font-ui); color: var(--text-mute); text-transform: uppercase; letter-spacing: .5px; }
+  .sps-n {
+    font: 700 10px/1 var(--font-mono); color: var(--text);
+    background: var(--hover); padding: 3px 7px; border-radius: 999px;
+  }
+  .sps-hint { font: 400 11px/1.4 var(--font-ui); color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; }
+  .sps-list { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+  .sps-chip {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 3px 11px 3px 4px; border-radius: 999px;
+    background: var(--bg-input); border: 1px solid var(--border);
+    transition: border-color .15s, background .15s;
+  }
+  .sps-chip:hover { border-color: var(--border-hi); background: var(--hover); }
+  .sps-toggle {
+    display: inline-flex; align-items: center; gap: 5px; margin-left: auto;
+    padding: 4px 10px; border-radius: 999px; cursor: pointer;
+    font: 600 11px/1 var(--font-ui); color: var(--text-mute);
+    background: transparent; border: 1px solid var(--border);
+    transition: border-color .15s, background .15s, color .15s;
+  }
+  .sps-toggle:hover { border-color: var(--border-hi); background: var(--hover); color: var(--text); }
+  .sps-toggle.on { color: var(--text); background: var(--hover); border-color: var(--border-hi); }
+  .sps-times {
+    flex-basis: 100%; display: flex; flex-direction: column; gap: 4px;
+    max-height: 220px; overflow-y: auto; padding-top: 6px;
+    border-top: 1px dashed var(--border);
+  }
+  .sps-trow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .sps-tname { font: 650 12px/1 var(--font-ui); color: var(--text); width: 120px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sps-bar { flex: 1; min-width: 40px; height: 4px; border-radius: 999px; background: var(--bg-input); overflow: hidden; }
+  .sps-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--text-dim); }
+  .sps-trow.online .sps-bar > span { background: var(--accent, var(--text)); }
+  .sps-ttotal { font: 600 11px/1 var(--font-mono); color: var(--text); width: 84px; text-align: right; flex-shrink: 0; }
+  .sps-tnote { font: 400 10px/1 var(--font-ui); color: var(--text-dim); width: 110px; flex-shrink: 0; }
+  .sps-name { font: 650 12px/1 var(--font-ui); color: var(--text); }
+  .sps-time { font: 400 10px/1 var(--font-mono); color: var(--text-dim); }
+</style>

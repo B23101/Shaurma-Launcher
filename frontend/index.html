@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!--
+      Content-Security-Policy (оборона в глибину поруч із sanitizeHtml у
+      ModpackPage): сторінка проєкту рендерить {@html} з описів Modrinth
+      (markdown) і CurseForge (HTML) — навіть якщо санатор пропустить щось
+      шкідливе, CSP не дасть виконати зовнішні скрипти/iframe.
+        - script-src 'self': Wails runtime.js та бандл — same-origin.
+          Інлайн-скрипти дозволені лише для WebView2-моста (безпека від
+          ЗОВНІШНІХ скриптів лишається — https:// джерела заборонені).
+        - style-src 'unsafe-inline': Svelte інжектить стилі інлайн.
+        - img/media https: — CDN Modrinth/CurseForge; blob: — кеш аватарів.
+        - frame-src youtube.com: вкладка «Відео» вбудовує YouTube.
+        - object-src 'none' / form-action 'none' / base-uri 'self': блокуємо
+          плагіни, фішингові форми та <base> (викрадення відносних URL).
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; font-src 'self' data:; connect-src 'self' ws: wss: https: http:; frame-src https://www.youtube.com https://www.youtube-nocookie.com http://www.youtube.com; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <title>Shaurma Launcher</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

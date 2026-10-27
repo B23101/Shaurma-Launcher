@@ -1,0 +1,162 @@
+# com.shaurma.LauncherBase.yml
+#
+# Flatpak-маніфест редакції base (окремий app-id: обидві редакції співіснують). Збірка: flatpak/build-and-publish.sh.
+# Архітектура й пояснення — у flatpak/README.md; тут лише неочевидне.
+#
+# Рантайм ТІЛЬКИ org.gnome.Platform//50: shell зібрано під GTK4 + WebKitGTK 6.0
+# (build-linux-shell.sh), у freedesktop-рантаймі їх немає. Версія мусить
+# збігатися в обох .yml, у build-and-publish.sh та в
+# pack-manager/internal/launcherbuild/wsl.go (wslToolchainScript).
+#
+# Self-update з власного CDN суперечить правилам Flathub — публікуємо через
+# власний репозиторій (flatpak remote-add), а не через Flathub.
+
+app-id: com.shaurma.LauncherBase
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+
+# Імена команди = linuxExeNames[...] у pack-manager/internal/launcherbuild/
+# paths.go. З нього shell визначає канал редакції (currentChannel()) і теку
+# даних (linuxDataDirName()). Не перейменовувати без зміни paths.go.
+command: ShaurmLauncherBase
+
+# Байти backend.so/updater.so мусять лишитись НЕЗМІННИМИ: updater звіряє їх
+# sha256 з підписаним маніфестом, а flatpak-builder за замовчуванням
+# відокремлює debuginfo і може переписати ELF-файли в /app (включно з
+# /app/shaurma-seed). Інакше перший запуск вважатиме seed «пошкодженим» і
+# піде докачувати з CDN.
+build-options:
+  no-debuginfo: true
+  strip: false
+
+finish-args:
+  # Мережа — лише для updater.so (перевірка/докачка компонентів із CDN);
+  # перший запуск працює офлайн із запеченого /app/shaurma-seed.
+  - --share=network
+
+  # Рендеринг WebKitGTK + гра (Java — дочірній процес у цій самій пісочниці).
+  #
+  # --socket=x11, А НЕ fallback-x11. Вікно лаунчера (GTK4) іде через Wayland,
+  # коли він є, але ГРА — це Minecraft: його LWJGL/GLFW працює через X11
+  # (XWayland). fallback-x11 віддає X11-сокет ЛИШЕ коли Wayland-сокета нема,
+  # тож на Wayland-сесії (GNOME/KDE за замовчуванням) гра в пісочниці не
+  # мала б дисплея і не відкрила б вікно. Prism Launcher і решта
+  # Minecraft-лаунчерів у Flatpak роблять так само.
+  - --device=dri
+  - --share=ipc
+  - --socket=wayland
+  - --socket=x11
+
+  # ЗВУК ГРИ. Java/LWJGL(OpenAL) — дочірній процес цієї пісочниці; прямого
+  # /dev/snd у Flatpak немає, звук іде лише через PulseAudio-сокет (на
+  # PipeWire-системах це pipewire-pulse — окремий дозвіл не потрібен).
+  # libpulse/libasound/libpipewire уже є в org.gnome.Platform//50.
+  - --socket=pulseaudio
+
+  # D-Bus: ЗАМІСТЬ --socket=session-bus (повний доступ до сесійної шини)
+  # лише потрібні імена.
+  #  - org.wails.*: Wails v3 жорстко називає GTK application-id
+  #    «org.wails.<ім'я>» (див. shell/app_identity.go). Flatpak за
+  #    замовчуванням дозволяє власні імена лише під app-id, тож без цього
+  #    GApplication/SingleInstance не зареєструється на шині.
+  #  - org.kde.*: власник StatusNotifierItem для трея + watcher нижче.
+  #  - Notifications: системні сповіщення.
+  # Відкриття посилань іде через портал OpenURI (xdg-open/gio), додаткових
+  # прав не потребує.
+  - --own-name=org.wails.*
+  - --own-name=org.kde.*
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.freedesktop.Notifications
+
+  # Автозапуск: справжній ~/.config/autostart хоста (autostart_linux.go
+  # всередині Flatpak пише Exec=flatpak run <app-id>).
+  - --filesystem=xdg-config/autostart:create
+
+  # Discord Rich Presence: IPC-сокети нативного та Flatpak-Discord.
+  - --filesystem=xdg-run/discord-ipc-0
+  - --filesystem=xdg-run/app/com.discordapp.Discord
+
+modules:
+  # wl-copy/wl-paste для буфера обміну (backend/clipboard_other.go);
+  # у org.gnome.Platform їх немає.
+  - name: wl-clipboard
+    buildsystem: meson
+    config-opts:
+      - -Dzshcompletiondir=no
+      - -Dfishcompletiondir=no
+    sources:
+      - type: archive
+        url: https://github.com/bugaevc/wl-clipboard/archive/refs/tags/v2.3.0.tar.gz
+        sha256: b4dc560973f0cd74e02f817ffa2fd44ba645a4f1ea94b7b9614dacc9f895f402
+
+  - name: shaurma-shell
+    buildsystem: simple
+    build-commands:
+      # ── Запечений стартовий набір ────────────────────────────────────────
+      # frontend/ і updater-frontend/ приходять двома dir-джерелами з
+      # dest: (див. sources нижче), тож кожна тека гарантовано лежить у
+      # корені збірки під власним іменем. Перевіряємо це ЯВНО: якщо розкладка
+      # зламана, збірка падає тут із переліком файлів, а не незрозумілим
+      # "cp: cannot stat 'frontend/.'" посеред збірки.
+      - |
+        for f in shaurma-shell backend.so updater.so launcher-version.json \
+                 frontend/index.html updater-frontend/index.html; do
+          [ -e "$f" ] || { echo "ПОМИЛКА: у джерелах збірки немає $f; вміст:"; ls -la . frontend updater-frontend 2>&1; exit 1; }
+        done
+      - install -Dm755 shaurma-shell /app/bin/ShaurmLauncherBase
+
+      # launcher-version.json — локальний маніфест РІВНО тієї версії, що
+      # запечена в образ: updater порівнює з ним sha256/size і качає ЛИШЕ те,
+      # що справді новіше за збірку (без нього перший запуск перекачував би
+      # ~120 МБ, які вже лежать у /app). Байти .so мусять лишитись
+      # незмінними (див. build-options вище).
+      - install -Dm644 backend.so /app/shaurma-seed/backend.so
+      - install -Dm644 updater.so /app/shaurma-seed/updater.so
+      - install -Dm644 launcher-version.json /app/shaurma-seed/launcher-version.json
+      - cp -a frontend /app/shaurma-seed/frontend
+      - cp -a updater-frontend /app/shaurma-seed/updater-frontend
+
+      # Захист від «зібралось, а не стартує»: shell лінкується з GTK4/
+      # WebKitGTK 6.0 тієї машини, де його компілювали (WSL2/Ubuntu), а
+      # запускається проти org.gnome.Platform//50. Якщо якась бібліотека
+      # (soname) в рантаймі не знайдена, застосунок упаде вже у користувача —
+      # краще впасти тут, на збірці, з чітким переліком.
+      - |
+        missing=$(ldd /app/bin/ShaurmLauncherBase 2>&1 | grep 'not found' || true)
+        if [ -n "$missing" ]; then
+          echo "ПОМИЛКА: shell лінкується з бібліотеками, яких нема в org.gnome.Platform//50:"
+          echo "$missing"
+          echo "Перезбери shell у середовищі з GTK4/WebKitGTK 6.0 не новішими за рантайм."
+          exit 1
+        fi
+
+      # Кеші іконок/desktop-бази оновлює сам flatpak під час export/install.
+      - install -Dm644 com.shaurma.LauncherBase.desktop /app/share/applications/com.shaurma.LauncherBase.desktop
+      - install -Dm644 shaurma-base-icon.png /app/share/icons/hicolor/256x256/apps/com.shaurma.LauncherBase.png
+      - install -Dm644 com.shaurma.LauncherBase.metainfo.xml /app/share/metainfo/com.shaurma.LauncherBase.metainfo.xml
+    sources:
+      - type: file
+        path: shaurma-shell
+      - type: file
+        path: backend.so
+      - type: file
+        path: updater.so
+      - type: file
+        path: launcher-version.json
+      # Дві окремі dir-джерела з dest: — кожна тека потрапляє в корінь
+      # збірки під власним іменем і не зливається з іншою. (Один спільний
+      # dir "seed" теж працює, але залежить від того, як flatpak-builder
+      # мерджить вміст; dest: — явний і документований спосіб.)
+      - type: dir
+        path: seed/frontend
+        dest: frontend
+      - type: dir
+        path: seed/updater-frontend
+        dest: updater-frontend
+      - type: file
+        path: com.shaurma.LauncherBase.desktop
+      - type: file
+        path: shaurma-base-icon.png
+      - type: file
+        path: com.shaurma.LauncherBase.metainfo.xml

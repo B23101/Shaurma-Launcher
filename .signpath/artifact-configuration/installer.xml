@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath artifact configuration "installer"  (slug: installer)
+  Signs the two Inno Setup installers built from the already signed components.
+  installer/installer.iss sets VersionInfoProductName / VersionInfoProductVersion to the same
+  values that are enforced here.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file-set product-name="Shaurma Launcher" product-version="1.0.0">
+      <include path="ShaurmLauncher-setup.exe" />
+      <include path="ShaurmLauncherBase-setup.exe" />
+      <for-each>
+        <authenticode-sign />
+      </for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

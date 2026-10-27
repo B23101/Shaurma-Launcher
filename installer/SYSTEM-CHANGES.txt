@@ -1,0 +1,28 @@
+﻿SHAURMA LAUNCHER - what this installer does / що робить цей інсталятор
+=====================================================================
+
+ENGLISH
+-------
+Files: installs into the folder you choose (default: %LOCALAPPDATA%\ShaurmLauncher, no administrator rights needed). On first start the launcher downloads its remaining components (updater, backend, UI) from the Shaurma CDN and verifies them.
+
+System changes made by this installer:
+ - Start menu shortcut and an optional desktop shortcut (you can untick it).
+ - File associations for .shaurmpack and .shaurmbundle (current user only).
+ - The shaurma:// link scheme for friend invitations (Shaurma edition, current user only).
+ - A Windows Firewall rule that allows the launcher outbound access (private networks). It is created only when setup runs with administrator rights.
+ - An entry in "Apps & features" so you can uninstall at any time. Uninstalling removes the launcher and the firewall rule; your game data and settings are kept unless you choose to delete them.
+
+Privacy: the launcher contacts only the services it needs (Mojang/Microsoft login, Modrinth, CurseForge, mod-loader metadata, Shaurma servers for accounts, friends and updates). Anonymous usage statistics are OFF by default and are sent only if you opt in inside the launcher. AI helpers (translation, crash analysis) send the text you submit to the AI provider only when you use them. Full policy: https://github.com/B23101/Shaurma-Launcher/blob/main/PRIVACY.md
+
+УКРАЇНСЬКОЮ
+-----------
+Файли: встановлюється у вибрану вами теку (за замовчуванням %LOCALAPPDATA%\ShaurmLauncher, права адміністратора не потрібні). При першому запуску лаунчер докачує решту компонентів (апдейтер, backend, інтерфейс) з CDN Shaurma і перевіряє їх.
+
+Зміни в системі, які робить інсталятор:
+ - Ярлик у меню «Пуск» і необов'язковий ярлик на робочому столі (можна зняти позначку).
+ - Асоціації файлів .shaurmpack і .shaurmbundle (лише для поточного користувача).
+ - Схема посилань shaurma:// для запрошень у друзі (Shaurma-редакція, лише для поточного користувача).
+ - Правило брандмауера Windows, яке дозволяє лаунчеру вихідний доступ (приватні мережі). Створюється лише якщо інсталятор запущено з правами адміністратора.
+ - Запис у «Програми та компоненти» — видалити можна будь-коли. Видалення прибирає лаунчер і правило брандмауера; ігрові дані й налаштування лишаються, якщо ви не оберете їх видалити.
+
+Приватність: лаунчер звертається лише до потрібних сервісів (вхід Mojang/Microsoft, Modrinth, CurseForge, метадані завантажувачів модів, сервери Shaurma для акаунтів, друзів і оновлень). Анонімна статистика ВИМКНЕНА за замовчуванням і надсилається лише за вашою згодою в лаунчері. ШІ-помічники (переклад, аналіз крашів) надсилають текст постачальнику ШІ лише тоді, коли ви ними користуєтесь. Повна політика: https://github.com/B23101/Shaurma-Launcher/blob/main/PRIVACY.md

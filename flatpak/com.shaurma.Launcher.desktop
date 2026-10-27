@@ -1,0 +1,18 @@
+# Ім'я файлу МУСИТЬ дорівнювати flatpak app-id (вимога Flatpak: експортується
+# лише файл з таким іменем). Exec/StartupWMClass = command з маніфесту =
+# linuxExeNames[EditionShaurma] (pack-manager/internal/launcherbuild/paths.go).
+# StartupWMClass потрібен лише для X11-шляху (fallback-x11).
+[Desktop Entry]
+Type=Application
+Name=Shaurma Launcher
+Comment=Minecraft launcher for Shaurma modpacks
+Comment[uk]=Лаунчер Minecraft для збірок Shaurma
+Keywords=minecraft;launcher;modpack;mods;shaurma;
+Exec=ShaurmLauncher %U
+Icon=com.shaurma.Launcher
+Categories=Game;
+Terminal=false
+StartupNotify=true
+StartupWMClass=ShaurmLauncher
+# shaurma://friend/… — запрошення в друзі (shell/main.go: parseFriendLinkArg)
+MimeType=x-scheme-handler/shaurma;

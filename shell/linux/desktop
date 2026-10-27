@@ -1,0 +1,30 @@
+[Desktop Entry]
+Version=1.0
+Name={{APP_DISPLAY_NAME}}
+Comment=Minecraft launcher — {{APP_DISPLAY_NAME}}
+# Без %u — лаунчер не приймає URL-аргументи при відкритті з меню
+# застосунків (на відміну від Wails-шаблону за замовчуванням, звідки
+# взято цей файл: %u лишається порожнім рядком аргумента, якщо його не
+# прибрати, і деякі DE передають його дослівно як "%u" в CLI).
+Exec={{EXEC_NAME}} %U
+Terminal=false
+Type=Application
+# Icon= — ім'я файлу іконки (linuxdeploy кладе його в hicolor під іменем
+# бінарника), а НЕ ім'я цього .desktop-файлу.
+Icon={{EXEC_NAME}}
+Categories=Game;
+# StartupWMClass — ім'я БІНАРНИКА: на X11 GTK виставляє WM_CLASS з
+# g_get_prgname(), а shell додатково пінить його через
+# application.Options.Linux.ProgramName (= basename exe). Має дорівнювати
+# EXEC_NAME у цьому файлі, інакше оболонка не зіставить вікно з .desktop.
+#
+# ВАЖЛИВО: САМ ФАЙЛ при пакуванні має називатися application-id лаунчера —
+# org.wails.shaurma_launcher.desktop (повна редакція) або
+# org.wails.shaurma_base.desktop (base). На Wayland оболонка зіставляє вікно
+# саме за application-id (GTK4: xdg_toplevel.app_id = GApplication id =
+# "org.wails." + sanitizeAppName(Options.Name)), і під цим іменем linuxdeploy
+# встановлює файл у usr/share/applications/. Ім'я файлу формує не цей
+# шаблон, а launcherbuild (linuxAppID у
+# pack-manager/internal/launcherbuild/desktopid.go) — тут лишається лише
+# нагадування, щоб ніхто не "виправив" його назад на ім'я бінарника.
+StartupWMClass={{EXEC_NAME}}

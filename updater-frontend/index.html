@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<title>Shaurma Launcher — Оновлення</title>
+<style>
+  /* ═════════════════════════════════════════════════════════════════════
+     SHAURMA LAUNCHER — SPLASH / UPDATER  (вікно 280×340)
+     Легкий дизайн: акцентний відблиск, іконка з кільцем прогресу, назва, один
+     рядок статусу. Анімації — ЛИШЕ transform/opacity (виконуються на GPU),
+     жодних blur/drop-shadow/backdrop-filter — вони давали ривки. Вікно
+     неактивне → усе на паузі; prefers-reduced-motion → без анімацій.
+     ═════════════════════════════════════════════════════════════════════ */
+  @font-face { font-family:'Inter'; src:url('fonts/Inter-Regular.ttf');    font-weight:400; font-display:block; }
+  @font-face { font-family:'Inter'; src:url('fonts/Inter-SemiBold.ttf');   font-weight:600; font-display:block; }
+  @font-face { font-family:'Inter'; src:url('fonts/Inter-ExtraBold.ttf');  font-weight:800; font-display:block; }
+  @font-face { font-family:'JetBrains Mono'; src:url('fonts/JetBrainsMono-Regular.ttf');  font-weight:400; font-display:block; }
+  @font-face { font-family:'JetBrains Mono'; src:url('fonts/JetBrainsMono-SemiBold.ttf'); font-weight:700; font-display:block; }
+
+  :root {
+    --bg-0:      #0b0b0d;
+    --bg-1:      #121215;
+    --line:      rgba(255,255,255,.08);
+    --line-hi:   rgba(255,255,255,.14);
+    --text:      #f4f4f6;
+    --text-mute: #9c9ca6;
+    --text-dim:  #6a6a73;
+    --accent:    #ff8a00;
+    --accent-2:  #ff5e00;
+    --accent-rgb:255,138,0;
+    --ok:        #10b981;
+    --err:       #ff5566;
+  }
+  html[data-theme="light"] {
+    --bg-0:      #eef0f3;
+    --bg-1:      #f8f9fb;
+    --line:      rgba(0,0,0,.09);
+    --line-hi:   rgba(0,0,0,.16);
+    --text:      #17181c;
+    --text-mute: #55575e;
+    --text-dim:  #8d919a;
+    --err:       #e0324a;
+  }
+
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body {
+    width:100vw; height:100vh; overflow:hidden;
+    background:var(--bg-0);
+    color:var(--text);
+    font-family:'Inter','Segoe UI',sans-serif;
+    -webkit-font-smoothing:antialiased;
+    user-select:none;
+    -webkit-app-region:drag;      /* безрамкове вікно тягається за фон */
+  }
+
+  /* ─── СЦЕНА: плоский фон + один СТАТИЧНИЙ відблиск акценту зверху ─── */
+  .stage {
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+    align-items:center; justify-content:center;
+    padding:24px 22px;
+    background:
+      radial-gradient(120% 70% at 50% 0%, rgba(var(--accent-rgb),.16) 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  }
+  html[data-theme="light"] .stage {
+    background:
+      radial-gradient(120% 70% at 50% 0%, rgba(var(--accent-rgb),.12) 0%, transparent 60%),
+      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
+  }
+
+  /* ─── CONTENT ─────────────────────────────────────────────────────── */
+  .content {
+    -webkit-app-region:no-drag;
+    width:100%;
+    display:flex; flex-direction:column; align-items:center;
+    gap:14px;
+    animation:fade-in .45s ease-out both;
+  }
+  @keyframes fade-in { from { opacity:0; } to { opacity:1; } }
+
+  /* ─── ІКОНКА + КІЛЬЦЕ ─────────────────────────────────────────────── */
+  .icon-wrap {
+    position:relative;
+    width:96px; height:96px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .ring-svg {
+    position:absolute; inset:0;
+    width:100%; height:100%;
+    transform:rotate(-90deg);
+  }
+  .ring-track    { fill:none; stroke:var(--line); stroke-width:4; }
+  .ring-progress {
+    fill:none;
+    stroke:var(--accent);
+    stroke-width:4;
+    stroke-linecap:round;
+    /* stroke-dasharray/-dashoffset виставляє JS через style (CSS-правило
+       перебивало б SVG-атрибути і кільце завжди було б повним). */
+    transition:stroke-dashoffset .3s ease-out, stroke .25s ease;
+  }
+  .ring-progress.done { stroke:var(--ok); }
+  .ring-progress.err  { stroke:var(--err); }
+
+  .icon-img {
+    position:relative;
+    width:60px; height:60px;
+    border-radius:14px;
+    object-fit:cover;
+    z-index:2;
+  }
+
+  /* Галочка успіху — просто з'являється поверх іконки. */
+  .check-badge {
+    position:absolute; right:2px; bottom:2px;
+    width:26px; height:26px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    background:var(--ok);
+    opacity:0; transition:opacity .25s ease;
+    pointer-events:none; z-index:3;
+  }
+  .check-badge.visible { opacity:1; }
+  .check-badge svg { width:15px; height:15px; }
+  .check-badge svg path { stroke:#fff; stroke-width:3.2; fill:none; stroke-linecap:round; stroke-linejoin:round; }
+
+  /* ─── БРЕНД ───────────────────────────────────────────────────────── */
+  .brand { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .brand-title { font-size:22px; font-weight:800; letter-spacing:2px; line-height:1; color:var(--text); }
+  .brand-sub   { font-size:9px; font-weight:600; letter-spacing:5px; color:var(--text-mute); text-transform:uppercase; }
+
+  /* ─── VERSION PILL (лише коли реально є оновлення) ────────────────── */
+  .version-pill {
+    display:inline-flex; align-items:center; gap:6px;
+    padding:3px 10px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px;
+    color:var(--text-mute);
+    border:1px solid var(--line);
+    border-radius:999px;
+  }
+  .version-pill .arrow { color:var(--accent); font-weight:700; }
+  .version-pill .new   { color:var(--accent); font-weight:700; }
+
+  /* ─── СТАТУС ──────────────────────────────────────────────────────── */
+  .status-block {
+    width:100%;
+    display:flex; flex-direction:column; align-items:center;
+    gap:6px;
+    margin-top:2px;
+  }
+  .status-text {
+    font-size:12.5px; font-weight:600; color:var(--text);
+    text-align:center; line-height:1.35;
+    min-height:17px;
+  }
+  .meta-row {
+    display:flex; align-items:center; justify-content:center; gap:8px;
+    font-family:'JetBrains Mono',monospace;
+    font-size:10px; color:var(--text-dim);
+    min-height:14px;
+  }
+  .meta-row .pct { color:var(--accent); font-weight:700; }
+  .meta-row .sep { opacity:.5; }
+  .step-label { font-size:10.5px; color:var(--text-mute); min-height:14px; text-align:center; }
+  .update-info { font-size:10.5px; color:var(--text-mute); text-align:center; min-height:14px; line-height:1.4; }
+  .update-info .v { color:var(--accent); font-weight:700; font-family:'JetBrains Mono',monospace; }
+
+  /* ─── ПОМИЛКА ─────────────────────────────────────────────────────── */
+  .error-block { width:100%; display:flex; flex-direction:column; align-items:center; gap:12px; }
+  .error-card {
+    width:100%; padding:10px 12px; border-radius:10px;
+    background:rgba(255,85,102,.08); border:1px solid rgba(255,85,102,.28);
+    color:var(--err); font-size:11px; text-align:center; line-height:1.45;
+    max-height:90px; overflow-y:auto;
+  }
+  .error-title { font-weight:700; margin-bottom:4px; }
+  /* Текст помилки можна виділити мишею (body має user-select:none). */
+  .error-card { user-select:text; -webkit-user-select:text; cursor:text; }
+  .btn-copy { padding:5px 12px; font-size:10.5px; font-weight:600; }
+  .buttons { display:flex; gap:8px; -webkit-app-region:no-drag; }
+  .btn {
+    -webkit-app-region:no-drag;
+    font-family:inherit; font-weight:700; font-size:11.5px;
+    padding:8px 18px; border-radius:9px; cursor:pointer; border:none;
+    transition:background .15s ease, color .15s ease, border-color .15s ease;
+  }
+  .btn-primary { background:var(--accent); color:#1a0a00; }
+  .btn-primary:hover { background:var(--accent-2); }
+  .btn-ghost { background:transparent; color:var(--text-mute); border:1px solid var(--line-hi); }
+  .btn-ghost:hover { color:var(--text); border-color:var(--text-mute); }
+
+  /* ═══ АНІМАЦІЇ (transform/opacity only) ═══════════════════════════════
+     Стан для CSS: html[data-state="work|done|err"] (виставляє JS у
+     markDone/markError/resetToNormal — логіка оновлення не змінена). */
+  .content { position:relative; z-index:1; }
+
+  /* Фон: два великих відблиски повільно «пливуть» + іскри піднімаються. */
+  .fx { position:absolute; inset:0; overflow:hidden; pointer-events:none; transition:opacity .5s ease; }
+  .glow {
+    position:absolute; border-radius:50%; will-change:transform;
+    background:radial-gradient(closest-side, rgba(var(--accent-rgb),.22), transparent);
+  }
+  .glow.g1 { width:260px; height:260px; left:-90px; top:-70px; animation:drift-a 9s ease-in-out infinite alternate; }
+  .glow.g2 { width:240px; height:240px; right:-110px; bottom:-90px; opacity:.7; animation:drift-b 11s ease-in-out infinite alternate; }
+  @keyframes drift-a { from { transform:translate3d(0,0,0) scale(1); }    to { transform:translate3d(60px,40px,0) scale(1.15); } }
+  @keyframes drift-b { from { transform:translate3d(0,0,0) scale(1.1); }  to { transform:translate3d(-50px,-45px,0) scale(.95); } }
+  .spark {
+    position:absolute; bottom:-8px; left:var(--x);
+    width:var(--s); height:var(--s); border-radius:50%;
+    background:rgba(var(--accent-rgb),.75);
+    opacity:0; will-change:transform,opacity;
+    animation:spark var(--t) linear infinite; animation-delay:var(--dl);
+  }
+  @keyframes spark {
+    0%   { transform:translate3d(0,0,0); opacity:0; }
+    15%  { opacity:.75; }
+    85%  { opacity:.45; }
+    100% { transform:translate3d(var(--dx),-360px,0); opacity:0; }
+  }
+
+  /* Поява: іконка → назва → статус по черзі. */
+  .rise { animation:rise .55s cubic-bezier(.2,.7,.2,1) both; animation-delay:var(--d,0s); }
+  .error-block:not(.hidden) { animation:rise .4s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+
+  /* Іконка: «дихання», комета по кільцю. */
+  .icon-inner { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .icon-img { animation:breathe 3.2s ease-in-out infinite; will-change:transform; }
+  @keyframes breathe { 0%,100% { transform:scale(1); } 50% { transform:scale(1.045); } }
+  .ring-spin {
+    fill:none; stroke:rgba(255,255,255,.55); stroke-width:4; stroke-linecap:round;
+    stroke-dasharray:34 242.46;
+    transform-box:fill-box; transform-origin:center;
+    animation:spin 1.8s linear infinite;
+  }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* Успіх: галочка «вистрибує» і малюється, від іконки розходиться хвиля. */
+  .check-badge { transform:scale(.4); transition:opacity .25s ease, transform .4s cubic-bezier(.34,1.56,.64,1); }
+  .check-badge.visible { transform:scale(1); }
+  .check-badge svg path { stroke-dasharray:22; stroke-dashoffset:22; transition:stroke-dashoffset .4s ease-out .12s; }
+  .check-badge.visible svg path { stroke-dashoffset:0; }
+  .burst { position:absolute; inset:0; border-radius:50%; border:2px solid var(--ok); opacity:0; pointer-events:none; }
+  html[data-state="done"] .burst { animation:burst .8s ease-out; }
+  @keyframes burst { from { transform:scale(.92); opacity:.7; } to { transform:scale(1.35); opacity:0; } }
+    html[data-state="done"] .icon-img, html[data-state="err"] .icon-img { animation:none; }
+  html[data-state="done"] .ring-spin, html[data-state="err"] .ring-spin { animation:none; opacity:0; }
+
+  /* Помилка: іконка струшується, фон притухає. */
+  html[data-state="err"] .icon-inner { animation:shake .5s cubic-bezier(.36,.07,.19,.97); }
+  html[data-state="err"] .fx { opacity:.2; }
+  @keyframes shake {
+    10%,90% { transform:translateX(-1px); } 20%,80% { transform:translateX(3px); }
+    30%,50%,70% { transform:translateX(-5px); } 40%,60% { transform:translateX(5px); }
+  }
+
+  /* Тексти: нова фраза статусу виїжджає, pill/інфо про версію «виринають».
+     Класи .flip / .pop вже вішає JS (setStatus / updater:update). */
+  .status-text.flip { animation:flip .3s ease-out both; }
+  @keyframes flip { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:none; } }
+  .version-pill:not(.hidden), .update-info.pop { animation:pop .4s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes pop { from { opacity:0; transform:scale(.88); } to { opacity:1; transform:none; } }
+
+  /* Кнопки */
+  .btn { transition:background .15s ease, color .15s ease, border-color .15s ease, transform .12s ease; }
+  .btn:hover { transform:translateY(-1px); }
+  .btn:active { transform:scale(.97); }
+
+
+  /* ─── ДЕНЬ НАРОДЖЕННЯ (22.10): гірлянда, кульки, конфеті, ковпак ──────
+     Вмикається скриптом нижче лише 22 жовтня. Тільки transform/opacity. */
+  .bd { position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:5; }
+  .bd-flag {
+    position:absolute; top:var(--y); left:var(--x);
+    width:0; height:0; margin-left:-6px;
+    border-left:6px solid transparent; border-right:6px solid transparent;
+    border-top:14px solid var(--c);
+    transform-origin:50% 0;
+    animation:bd-wave 3.2s ease-in-out var(--d) infinite;
+  }
+  @keyframes bd-wave { 0%,100% { transform:rotate(-6deg); } 50% { transform:rotate(6deg); } }
+  .bd-string { position:absolute; left:0; top:0; width:100%; height:26px; opacity:.6; }
+  .bd-balloon {
+    position:absolute; bottom:-80px; left:var(--x);
+    width:var(--s); height:calc(var(--s)*1.2);
+    border-radius:50% 50% 48% 48% / 56% 56% 44% 44%;
+    background:radial-gradient(circle at 32% 28%, rgba(255,255,255,.7) 0 9%, transparent 24%), var(--c);
+    opacity:.9;
+    animation:bd-rise var(--t) linear var(--dl) infinite;
+  }
+  .bd-balloon::after {
+    content:''; position:absolute; left:50%; top:100%; width:1px; height:34px;
+    background:rgba(255,255,255,.4);
+  }
+  @keyframes bd-rise {
+    0%   { transform:translate(0,0); }
+    50%  { transform:translate(var(--dx),-210px); }
+    100% { transform:translate(0,-460px); }
+  }
+  .bd-conf {
+    position:absolute; top:-14px; left:var(--x);
+    width:5px; height:9px; border-radius:1px; background:var(--c);
+    animation:bd-fall var(--t) linear var(--dl) infinite;
+  }
+  @keyframes bd-fall {
+    from { transform:translate(0,0) rotate(0); }
+    to   { transform:translate(var(--dx),380px) rotate(540deg); }
+  }
+  .bd-hat {
+    position:absolute; left:50%; top:-20px; margin-left:-4px; z-index:4;
+    width:0; height:0;
+    border-left:15px solid transparent; border-right:15px solid transparent;
+    border-bottom:32px solid #ff5d73;
+    transform:rotate(14deg); transform-origin:50% 100%;
+    pointer-events:none;
+  }
+  .bd-hat::before { /* помпон */
+    content:''; position:absolute; left:-4px; top:-8px; width:8px; height:8px;
+    border-radius:50%; background:#ffd24a;
+  }
+  .bd-hat::after { /* смужка */
+    content:''; position:absolute; left:-9px; top:14px; width:18px; height:4px;
+    background:#ffd24a; transform:rotate(-3deg);
+  }
+
+  @media (prefers-reduced-motion:reduce) {
+    .content { animation:none; }
+    .ring-progress { transition:none; }
+    *, *::before, *::after { animation:none !important; transition:none !important; }
+  }
+  /* Вікно неактивне → пауза (shell шле window:active:updater-splash). */
+  html[data-window-active="off"] *, html[data-window-active="off"] *::before, html[data-window-active="off"] *::after {
+    animation-play-state:paused !important;
+  }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="fx" aria-hidden="true">
+      <div class="glow g1"></div>
+      <div class="glow g2"></div>
+      <span class="spark" style="--x:10%; --s:3px; --t:7s;   --dl:0s;   --dx:14px"></span>
+      <span class="spark" style="--x:24%; --s:2px; --t:9s;   --dl:2.2s; --dx:-10px"></span>
+      <span class="spark" style="--x:38%; --s:4px; --t:8s;   --dl:4.1s; --dx:18px"></span>
+      <span class="spark" style="--x:52%; --s:2px; --t:10s;  --dl:1.3s; --dx:-16px"></span>
+      <span class="spark" style="--x:66%; --s:3px; --t:7.5s; --dl:3.4s; --dx:12px"></span>
+      <span class="spark" style="--x:78%; --s:2px; --t:9.5s; --dl:0.8s; --dx:-14px"></span>
+      <span class="spark" style="--x:90%; --s:3px; --t:8.5s; --dl:5s;   --dx:10px"></span>
+    </div>
+    <div class="content" id="content">
+      <div class="icon-wrap rise" style="--d:0s">
+        <div class="icon-inner">
+          <svg class="ring-svg" viewBox="0 0 96 96" aria-hidden="true">
+            <circle class="ring-track"    cx="48" cy="48" r="44"/>
+            <circle class="ring-progress" id="ringProgress" cx="48" cy="48" r="44"/>
+            <circle class="ring-spin" cx="48" cy="48" r="44"/>
+          </svg>
+          <img class="icon-img" src="icon.png" alt="">
+          <div class="burst"></div>
+          <div class="check-badge" id="checkBadge">
+            <svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="brand rise" style="--d:.1s">
+        <div class="brand-title">SHAURMA</div>
+        <div class="brand-sub">LAUNCHER</div>
+      </div>
+
+      <!-- «з якої версії на яку»: показується лише коли є оновлення. -->
+      <div class="version-pill hidden" id="versionPill"></div>
+
+      <div class="status-block rise" id="normalState" style="--d:.2s">
+        <div class="status-text" id="statusText">Перевірка оновлень…</div>
+        <div class="meta-row" id="metaRow">
+          <span id="metaDetail"></span>
+          <span class="sep" id="metaSep" style="display:none">•</span>
+          <span class="pct" id="pctLabel">0%</span>
+        </div>
+        <div class="step-label" id="stepLabel"></div>
+        <div class="update-info" id="updateInfo">&nbsp;</div>
+      </div>
+
+      <div class="error-block hidden" id="errorState">
+        <div class="error-card" id="errorText"></div>
+        <button class="btn btn-ghost btn-copy" id="copyBtn">Копіювати помилку</button>
+        <div class="buttons">
+          <button class="btn btn-primary" id="retryBtn">Повторити</button>
+          <button class="btn btn-ghost"   id="closeBtn">Закрити</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ─── День народження 22.10 (локальна дата) ─────────────────────────────
+   Перевірка поза цією датою: у консолі localStorage.setItem('shaurma.birthday.preview','1') */
+(function () {
+  var on = false;
+  try { on = localStorage.getItem('shaurma.birthday.preview') === '1'; } catch (e) {}
+  var d = new Date();
+  if (!on && !(d.getMonth() === 9 && d.getDate() === 22)) return;
+  var C = ['#ff5d73','#ffb627','#4cd964','#3fa9f5','#b46bff','#ff8a00','#2ee6c5'];
+  var seed = 2210;
+  function rnd() { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; }
+  var h = '<svg class="bd-string" viewBox="0 0 100 6" preserveAspectRatio="none"><path d="M0 .4 Q25 5 50 .4 T100 .4" fill="none" stroke="#fff" stroke-width="1" vector-effect="non-scaling-stroke"/></svg>';
+  var i, n = 14;
+  for (i = 0; i < n; i++) {
+    var x = (i + 0.5) / n * 100;
+    var y = Math.sin(((x % 50) / 50) * Math.PI) * 16;
+    h += '<span class="bd-flag" style="--x:' + x.toFixed(1) + '%;--y:' + y.toFixed(1) + 'px;--c:' + C[i % 7] + ';--d:' + ((i % 5) * 0.35) + 's"></span>';
+  }
+  for (i = 0; i < 7; i++) {
+    h += '<span class="bd-balloon" style="--x:' + ((i % 2 ? 78 : 2) + Math.floor(i / 2) * 5 + rnd() * 4).toFixed(1) + '%;--s:' + (26 + Math.round(rnd() * 12)) + 'px;--c:' + C[i % 7] + ';--t:' + (11 + rnd() * 7).toFixed(1) + 's;--dl:-' + (rnd() * 14).toFixed(1) + 's;--dx:' + Math.round((rnd() - 0.5) * 36) + 'px"></span>';
+  }
+  for (i = 0; i < 22; i++) {
+    h += '<span class="bd-conf" style="--x:' + (rnd() * 100).toFixed(1) + '%;--c:' + C[(i * 3) % 7] + ';--t:' + (6 + rnd() * 6).toFixed(1) + 's;--dl:-' + (rnd() * 10).toFixed(1) + 's;--dx:' + Math.round((rnd() - 0.5) * 70) + 'px"></span>';
+  }
+  function mount() {
+    var el = document.createElement('div');
+    el.className = 'bd'; el.setAttribute('aria-hidden', 'true'); el.innerHTML = h;
+    document.body.appendChild(el);
+    var w = document.querySelector('.icon-wrap');
+    if (w) { var hat = document.createElement('i'); hat.className = 'bd-hat'; w.appendChild(hat); }
+  }
+  if (document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+})();
+</script>
+<script type="module">
+import { Call, Events } from '/wails/runtime.js';
+
+  /* ─── Пауза анімацій, коли вікно неактивне ──────────────────────────
+     Скопована подія від shell (window_exec.go): «window:active:updater-splash».
+     WM_ACTIVATE — джерело істини у WebView2 (focus/blur не завжди коректні). */
+  function applyWindowActive(active) {
+    document.documentElement.setAttribute('data-window-active', active ? 'on' : 'off');
+  }
+  try {
+    Events.On('window:active:updater-splash', (e) => {
+      if (e && e.data) applyWindowActive(e.data.active !== false);
+    });
+  } catch { /* dev: без runtime — fallback */ }
+  window.addEventListener('focus',  () => applyWindowActive(true));
+  window.addEventListener('blur',   () => applyWindowActive(false));
+  document.addEventListener('visibilitychange', () => applyWindowActive(!document.hidden));
+  applyWindowActive(!document.hidden);
+
+  /* ─── Bridge (той самий Wails-канал main.Bridge.Invoke) ───────────── */
+  async function call(method, ...args) {
+    const resultJson = await Call.ByName('main.Bridge.Invoke', method, JSON.stringify(args));
+    const parsed = JSON.parse(resultJson);
+    if (!parsed.ok) throw new Error(parsed.error || `Bridge.Invoke(${method}) failed`);
+    return parsed.result;
+  }
+
+  /* ─── i18n (тексти статусів приходять з Go вже локалізовані) ──────── */
+  const I18N = {
+    uk: { checking:'Питаємо сервер, чи є щось новеньке…', retry:'Повторити', close:'Закрити',
+          copy:'Копіювати помилку', copied:'Скопійовано ✓',
+          updateInfo:'Нова версія {v} • завантажити {size}', noUpdate:'Лаунчер актуальний',
+          files:'файл {n} із {m}',
+          steps:['Перевірка','Завантаження','Цілісність','Встановлення','Запуск'],
+          errIntegrity:'Файл не пройшов перевірку безпеки',
+          errIntegrityHint:'Завантажений файл не збігся з очікуваним — його НЕ встановлено. Натисни «Повторити»; якщо помилка лишається, завантаж лаунчер з офіційного сайту.' },
+    en: { checking:'Asking the server for anything new…',  retry:'Retry',    close:'Close',
+          copy:'Copy error', copied:'Copied ✓',
+          updateInfo:'New version {v} • download {size}',  noUpdate:'Launcher is up to date',
+          files:'file {n} of {m}',
+          steps:['Check','Download','Integrity','Install','Launch'],
+          errIntegrity:'File failed the security check',
+          errIntegrityHint:'The downloaded file did not match what was expected — it was NOT installed. Press Retry; if it keeps failing, download the launcher from the official site.' },
+  };
+  let lang = 'uk';
+
+  const $ = (id) => document.getElementById(id);
+
+  function fmtBytes(b) {
+    if (!b || b <= 0) return '';
+    if (b >= 1 << 30) return (b / (1 << 30)).toFixed(1) + ' ГБ';
+    if (b >= 1 << 20) return (b / (1 << 20)).toFixed(1) + ' МБ';
+    return Math.ceil(b / 1024) + ' КБ';
+  }
+
+  /* ─── Тема + акцент з prefs ───────────────────────────────────────── */
+  function applyPrefs(prefs) {
+    lang = (prefs && prefs.lang) || 'uk';
+    const dict = I18N[lang] || I18N.uk;
+
+    const theme = (prefs && prefs.theme) || 'dark';
+    document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+
+    const ACCENTS = {
+      orange: { main:'#ff8a00', deep:'#ff5e00', rgb:'255, 138, 0'   },
+      violet: { main:'#7b4dff', deep:'#5a2eff', rgb:'123, 77, 255'  },
+      green:  { main:'#10b981', deep:'#059669', rgb:'16, 185, 129'  },
+      blue:   { main:'#3b82f6', deep:'#2563eb', rgb:'59, 130, 246'  },
+      red:    { main:'#ef4444', deep:'#dc2626', rgb:'239, 68, 68'   },
+    };
+    // Власний акцент користувача (accent === 'custom' у лаунчері — пікер
+    // кольору в «Вигляд»): апдейтер має показати саме той hex, а не
+    // дефолтний помаранч. #hex → {main, deep (на 12% темніший), rgb}.
+    function customAccent(hex) {
+      const h = (hex || '').trim().replace(/^#/, '');
+      if (!/^[0-9a-fA-F]{6}$/.test(h)) return ACCENTS.orange;
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      const deep = (c) => Math.max(0, Math.round(c * 0.88));
+      return {
+        main: '#' + h.toLowerCase(),
+        deep: '#' + [deep(r), deep(g), deep(b)].map((c) => c.toString(16).padStart(2, '0')).join(''),
+        rgb: r + ', ' + g + ', ' + b,
+      };
+    }
+    let a = ACCENTS[(prefs && prefs.accent) || 'orange'] || ACCENTS.orange;
+    if ((prefs && prefs.accent) === 'custom') a = customAccent(prefs.accentCustom);
+    const rs = document.documentElement.style;
+    rs.setProperty('--accent', a.main);
+    rs.setProperty('--accent-2', a.deep);
+    rs.setProperty('--accent-rgb', a.rgb);
+
+    $('retryBtn').textContent = dict.retry;
+    $('closeBtn').textContent = dict.close;
+    $('copyBtn').textContent = dict.copy;
+    const st = $('statusText');
+    if (!st.textContent || st.textContent === I18N.uk.checking || st.textContent === I18N.en.checking) {
+      st.textContent = dict.checking;
+    }
+  }
+  try { call('GetPrefs').then(applyPrefs).catch(()=>{}); } catch { /* dev */ }
+
+  /* ─── SVG-кільце: керуємо через stroke-dashoffset ─────────────────── */
+  const ring = $('ringProgress');
+  const RING_R = 44;
+  const RING_CIRC = 2 * Math.PI * RING_R;
+  ring.style.strokeDasharray = String(RING_CIRC);
+  ring.style.strokeDashoffset = String(RING_CIRC);        /* стартуємо з 0% */
+  
+  function setRingPct(pct) {
+    pct = Math.max(0, Math.min(100, pct));
+    ring.style.strokeDashoffset = String(RING_CIRC * (1 - pct / 100));
+  }
+
+  /* ─── Прогрес: реальний + плавний «псевдо» до 90% поки нема байтів ── */
+  let animTimer = null;
+  let currentPct = 0;
+
+  function stopAnim() { if (animTimer) { clearInterval(animTimer); animTimer = null; } }
+
+  function animateTo(target, onDone) {
+    stopAnim();
+    animTimer = setInterval(() => {
+      currentPct += (target - currentPct) * 0.12;
+      if (Math.abs(target - currentPct) < 0.5) {
+        currentPct = target;
+        stopAnim();
+        if (onDone) onDone();
+      }
+      applyPct(currentPct);
+    }, 30);
+  }
+
+  function setRealProgress(pct) {
+    stopAnim();
+    currentPct = Math.max(0, Math.min(100, pct));
+    applyPct(currentPct);
+  }
+
+  function applyPct(pct) {
+    const p = Math.max(0, Math.min(100, pct));
+    $('pctLabel').textContent = Math.round(p) + '%';
+    setRingPct(p);
+  }
+
+  /* ─── Статус-фраза з cross-fade ──────────────────────────────────── */
+  function setStatus(text) {
+    const el = $('statusText');
+    if (el.textContent === text) return;
+    el.textContent = text;
+    el.classList.remove('flip');
+    void el.offsetWidth;
+    el.classList.add('flip');
+  }
+
+  /* ─── Стан «готово» (успіх): кільце зеленіє + галочка ─────────────── */
+  function setState(st) { document.documentElement.setAttribute('data-state', st); }
+  setState('work');
+
+  function markDone() {
+    setState('done');
+    ring.classList.remove('err');
+    ring.classList.add('done');
+    $('checkBadge').classList.add('visible');
+  }
+
+  /* ─── Стан помилки: кільце червоніє на поточному відсотку ─────────── */
+  function markError() {
+    setState('err');
+    stopAnim();
+    ring.classList.remove('done');
+    ring.classList.add('err');
+    $('checkBadge').classList.remove('visible');
+  }
+
+  function resetToNormal() {
+    setState('work');
+    ring.classList.remove('done','err');
+    $('checkBadge').classList.remove('visible');
+    // НЕ скидаємо remoteVersion/updateInfo: resetToNormal викликається на кожну
+    // статус-подію; скидання ховало б pill одразу після показу. Скидання — у Retry.
+  }
+
+
+  /* ─── Крок: один текстовий рядок «2/5 · Завантаження» ─────────────── */
+  function setStep(n) {
+    const dict = I18N[lang] || I18N.uk;
+    const k = Math.min(Math.max(n, 1), 5);
+    $('stepLabel').textContent = `${k}/5 · ${dict.steps[k - 1]}`;
+  }
+  setStep(1);
+
+  /* ─── Wails-події від Go-бекенду ─────────────────────────────────── */
+  Events.On('updater:status', (event) => {
+    const payload = event.data || {};
+    const { status, message } = payload;
+    if (message) setStatus(message);
+
+    if (status === 'error') {
+      $('normalState').classList.add('hidden');
+      $('errorState').classList.remove('hidden');
+      const dictE = I18N[lang] || I18N.uk;
+      const box = $('errorText');
+      lastErrorText = message || 'Unknown error';   /* ТОЧНИЙ текст для копіювання */
+      $('copyBtn').textContent = dictE.copy;
+      box.textContent = '';
+      if (/цілісності|integrity/i.test(message || '')) {
+        const t = document.createElement('div');
+        t.className = 'error-title';
+        t.textContent = dictE.errIntegrity;
+        const h = document.createElement('div');
+        h.textContent = dictE.errIntegrityHint;
+        box.append(t, h);
+      } else {
+        box.textContent = message || 'Unknown error';
+      }
+      markError();
+      return;
+    }
+    $('normalState').classList.remove('hidden');
+    $('errorState').classList.add('hidden');
+    resetToNormal();
+
+    if (status === 'downloading') {
+      setStep(2);
+      /* Реальні байти прийдуть у updater:progress */
+      return;
+    }
+    if (status === 'installing') {
+      setStep(4);
+      setRealProgress(100);
+      markDone();
+      return;
+    }
+    if (status === 'up_to_date') {
+      setStep(6);
+      // Оновлення немає — pill «з якої версії на яку» ховаємо, щоб не
+      // висів порожнім/зайвим (див. renderVersionPill).
+      $('versionPill').classList.add('hidden');
+      const dict = I18N[lang] || I18N.uk;
+      $('updateInfo').textContent = dict.noUpdate;
+      animateTo(100, markDone);
+      return;
+    }
+    if (status === 'launching') {
+      setStep(6);
+      animateTo(100, markDone);
+      return;
+    }
+    /* checking / update_available / інше — плавний рух до 90% */
+    setStep(1);
+    animateTo(90);
+  });
+
+  Events.On('updater:progress', (event) => {
+    const p = event.data || {};
+    const total = p.totalBytesTotal || p.bytesTotal || 0;
+    const done  = p.totalBytesDone  || p.bytesDone  || 0;
+    const pct = total > 0 ? (done / total) * 100 : 0;
+    setRealProgress(pct);
+    if (pct >= 100) setStep(3);
+    const dict = I18N[lang] || I18N.uk;
+    const filePart = (p.fileTotal > 1)
+      ? dict.files.replace('{n}', (p.fileIndex ?? 0) + 1).replace('{m}', p.fileTotal) + ' • '
+      : '';
+    /* Меташар: «файл N із M • X / Y МБ • NN%» */
+    const meta = `${filePart}${fmtBytes(done)} / ${fmtBytes(total)}`;
+    /* Оновлюємо тільки текстову частину — id="pctLabel" залишається
+       валідним референсом, applyPct() і далі оновлюватиме відсоток. */
+    $('metaDetail').textContent = meta;
+    $('metaSep').style.display = meta ? '' : 'none';
+  });
+
+  /* ─── Pill «з якої версії на яку» ───────────────────────────────────
+     Показується ТІЛЬКИ коли реально є оновлення (updater:update приніс
+     remote, і він відрізняється від поточного). Коли оновлення немає
+     (up_to_date / автооновлення вимкнене / CDN недоступний) — pill
+     ховається: раніше він висів порожнім («&nbsp;») і виглядав як
+     битий елемент. Поточна версія (updater:version) лише запам'ятовується,
+     remote приходить окремо у updater:update. */
+  let currentVersion = null;
+  let remoteVersion = null;
+
+  function renderVersionPill() {
+    const pill = $('versionPill');
+    if (remoteVersion && currentVersion && remoteVersion !== currentVersion) {
+      pill.innerHTML = `<span>${currentVersion}</span><span class="arrow">→</span><span class="new">${remoteVersion}</span>`;
+      pill.classList.remove('hidden');
+    } else {
+      pill.classList.add('hidden');
+    }
+  }
+
+  Events.On('updater:update', (event) => {
+    const payload = event.data || {};
+    const dict = I18N[lang] || I18N.uk;
+    if (payload.version) {
+      remoteVersion = payload.version;
+      renderVersionPill();
+      const info = $('updateInfo');
+      info.innerHTML = dict.updateInfo
+        .replace('{v}', `<span class="v">${payload.version}</span>`)
+        .replace('{size}', fmtBytes(payload.bytesTotal));
+      info.classList.remove('pop');
+      void info.offsetWidth;
+      info.classList.add('pop');
+    }
+  });
+
+  Events.On('updater:version', (event) => {
+    const payload = event.data || {};
+    if (payload && payload.current) {
+      currentVersion = payload.current;
+      renderVersionPill();
+    }
+  });
+
+  /* ─── Кнопки ─────────────────────────────────────────────────────── */
+  $('retryBtn').addEventListener('click', () => {
+    resetToNormal();
+    setStep(1);
+    // Новий цикл перевірки принесе свіжі updater:version/updater:update —
+    // скидаємо залишки попередньої спроби (pill сховається, поки remote
+    // не з'явиться знову). textContent НЕ декодує HTML-сутності, тому
+    // '&nbsp;' писати не можна — використовуємо справжній non-breaking space.
+    remoteVersion = null;
+    renderVersionPill();
+    $('updateInfo').textContent = '\u00a0';
+    $('metaDetail').textContent = '';
+    $('metaSep').style.display = 'none';
+    $('errorState').classList.add('hidden');
+    $('normalState').classList.remove('hidden');
+    animateTo(90);
+    call('Retry').catch(()=>{});
+  });
+  /* ─── Копіювання точної помилки ──────────────────────────────────── */
+  let lastErrorText = '';
+  async function copyText(t) {
+    try { await navigator.clipboard.writeText(t); return true; } catch { /* fallback нижче */ }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = t;
+      ta.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      ta.remove();
+      return ok;
+    } catch { return false; }
+  }
+  let copyTimer = null;
+  $('copyBtn').addEventListener('click', async () => {
+    const dict = I18N[lang] || I18N.uk;
+    const ok = await copyText(lastErrorText);
+    $('copyBtn').textContent = ok ? dict.copied : dict.copy;
+    clearTimeout(copyTimer);
+    copyTimer = setTimeout(() => { $('copyBtn').textContent = dict.copy; }, 1600);
+  });
+  $('closeBtn').addEventListener('click', () => { call('CloseUpdater').catch(()=>{}); });
+
+  /* Стартовий рух — щоб splash одразу «жив». */
+  applyPct(0);
+  animateTo(85);
+</script>
+</body>
+</html>

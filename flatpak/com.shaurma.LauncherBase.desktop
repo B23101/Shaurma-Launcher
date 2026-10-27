@@ -1,0 +1,15 @@
+# Ім'я файлу = flatpak app-id. Exec/StartupWMClass = linuxExeNames[EditionBase].
+# Схему shaurma:// навмисно НЕ реєструємо: її обробляє повна редакція, а два
+# обробники однієї схеми на одній машині конфліктували б.
+[Desktop Entry]
+Type=Application
+Name=Shaurma Base
+Comment=Minecraft launcher for Shaurma modpacks (base edition)
+Comment[uk]=Лаунчер Minecraft для збірок Shaurma (базова редакція)
+Keywords=minecraft;launcher;modpack;mods;shaurma;
+Exec=ShaurmLauncherBase %U
+Icon=com.shaurma.LauncherBase
+Categories=Game;
+Terminal=false
+StartupNotify=true
+StartupWMClass=ShaurmLauncherBase

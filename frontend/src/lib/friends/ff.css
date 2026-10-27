@@ -1,0 +1,48 @@
+/* ══════════════════════════════════════════════════════════════════════
+   Спільні токени й дрібні примітиви розділу «Друзі».
+   Підключається один раз у FriendsPage. Усе — на змінних лаунчера
+   (--orange, --bg-panel, --text…), тож працює в будь-якій темі й акценті.
+   Анімуємо ЛИШЕ transform / opacity — це не викликає перерахунку layout.
+   ══════════════════════════════════════════════════════════════════════ */
+:root {
+  --ff-ok: #22c55e;
+  --ff-warn: #eab308;
+  --ff-bad: var(--red, #ef4444);
+  --ff-ease: cubic-bezier(.2, .8, .2, 1);
+  --ff-spring: cubic-bezier(.34, 1.4, .64, 1);
+}
+
+/* Кнопка-іконка. Розмір фіксований, тож панелі не «стрибають». */
+.ff-ibtn {
+  position: relative; flex: 0 0 auto; width: 28px; height: 28px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 8px; background: transparent;
+  color: var(--text-mute); font-size: 14px; cursor: pointer;
+  transition: color .14s, background-color .14s, border-color .14s, transform .12s;
+}
+.ff-ibtn:hover:not(:disabled) { color: var(--text); background: var(--hover); }
+.ff-ibtn:active:not(:disabled) { transform: scale(.92); }
+.ff-ibtn:disabled { opacity: .45; cursor: default; }
+.ff-ibtn.on { color: var(--orange); background: rgba(var(--orange-rgb), .13); }
+.ff-ibtn:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 70%, transparent); outline-offset: 1px; }
+.ff-ibtn.bordered { border-color: var(--border); background: var(--bg-panel); }
+.ff-ibtn.bordered:hover:not(:disabled) { border-color: var(--border-hi); }
+.ff-ibtn.ok:hover:not(:disabled) { color: var(--ff-ok); border-color: color-mix(in srgb, var(--ff-ok) 55%, transparent); background: color-mix(in srgb, var(--ff-ok) 12%, transparent); }
+.ff-ibtn.bad:hover:not(:disabled) { color: var(--ff-bad); border-color: color-mix(in srgb, var(--ff-bad) 55%, transparent); background: color-mix(in srgb, var(--ff-bad) 12%, transparent); }
+.ff-ibtn .ti { display: block; line-height: 1; }
+
+/* Лічильник-«пігулка» (непрочитане, запити). Статичний: без нескінченних анімацій. */
+.ff-badge {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
+  background: var(--orange); color: #111; font: 800 10px/1 var(--font-ui);
+  animation: ff-pop .28s var(--ff-spring) both;
+}
+@keyframes ff-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ff-spin { to { transform: rotate(360deg); } }
+.ff-spin { animation: ff-spin .8s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ff-badge, .ff-spin { animation: none !important; }
+  .ff-ibtn { transition: none; }
+}
