@@ -1,1 +1,0 @@
-powershell -ExecutionPolicy Bypass -File .\rebuild-pm.ps1
