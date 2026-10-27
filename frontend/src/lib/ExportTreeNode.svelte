@@ -21,6 +21,10 @@
     // Локальний стан згортання папки. Створюється в buildTree як false
     // (згорнуто) для директорій і ніколи не змінюється для файлів.
     collapsed?: boolean
+    // Необов'язково: вузол завжди вибраний і не знімається (напр. файли, без яких сервер
+    // не запуститься); lockedTip — підказка, чому.
+    locked?: boolean
+    lockedTip?: string
   }
 
   let {
@@ -84,6 +88,7 @@
         type="checkbox"
         checked={node.state === 'checked'}
         indeterminate={node.state === 'indeterminate'}
+        disabled={node.locked}
         onclick={(e) => {
           // Клік по чекбоксу НЕ має розгортати/згортати папку — чекбокс
           // окрема зона від згортання.
@@ -99,6 +104,7 @@
         {/if}
       </span>
       <span class="ep-node-name" title={node.path}>{node.path.split('/').pop()}</span>
+      {#if node.locked}<span class="ep-node-lock" title={node.lockedTip ?? ''}><i class="ti ti-lock"></i></span>{/if}
       {#if node.size}<span class="ep-node-size">{fmtSize(node.size)}</span>{/if}
     </label>
   </div>
@@ -132,6 +138,7 @@
   }
   .ep-node-label:hover { background: var(--hover); }
   .ep-label-dir { font-weight: 600; }
+  .ep-node-lock { display: flex; align-items: center; color: var(--text-mute); font-size: 12px; flex-shrink: 0; }
   .ep-node-label.indeterminate { color: var(--text); }
   .ep-node-icon { display: flex; align-items: center; color: var(--text-mute); font-size: 14px; flex-shrink: 0; }
   .ep-dir > .ep-row .ep-node-icon { color: var(--orange); }

@@ -2,9 +2,11 @@ package share
 
 import (
 	"context"
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
 	"io/fs"
 	"os"
@@ -23,6 +25,10 @@ type BuildOptions struct {
 	Workers int
 	// OnProgress — скільки файлів уже захешовано з усіх.
 	OnProgress func(done, total int)
+	// WantSHA1 — для яких файлів додатково порахувати sha1 (за той самий прохід читання):
+	// за ним лаунчер шукає файл на Modrinth. Результат — у OnSHA1 (з різних горутин).
+	WantSHA1 func(rel string) bool
+	OnSHA1   func(rel, sha1hex string)
 }
 
 // skipNames — службове сміття, якого не передаємо ніколи.
@@ -119,7 +125,14 @@ func BuildManifest(ctx context.Context, root, kind, name string, meta map[string
 		go func() {
 			defer wg.Done()
 			for i := range jobs {
-				sum, size, herr := hashFile(ctx, items[i].abs)
+				var extra hash.Hash
+				if opt.WantSHA1 != nil && opt.OnSHA1 != nil && opt.WantSHA1(items[i].rel) {
+					extra = sha1.New()
+				}
+				sum, size, herr := hashFileWith(ctx, items[i].abs, extra)
+				if herr == nil && extra != nil {
+					opt.OnSHA1(items[i].rel, hex.EncodeToString(extra.Sum(nil)))
+				}
 				mu.Lock()
 				if herr != nil {
 					if firstErr == nil {
@@ -172,6 +185,11 @@ func skipEntry(d fs.DirEntry) error {
 }
 
 func hashFile(ctx context.Context, path string) (string, int64, error) {
+	return hashFileWith(ctx, path, nil)
+}
+
+// hashFileWith — sha256 файлу; extra (якщо не nil) отримує ті самі байти.
+func hashFileWith(ctx context.Context, path string, extra hash.Hash) (string, int64, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", 0, err
@@ -187,6 +205,9 @@ func hashFile(ctx context.Context, path string) (string, int64, error) {
 		k, rerr := f.Read(buf)
 		if k > 0 {
 			h.Write(buf[:k])
+			if extra != nil {
+				extra.Write(buf[:k])
+			}
 			n += int64(k)
 		}
 		if rerr == io.EOF {

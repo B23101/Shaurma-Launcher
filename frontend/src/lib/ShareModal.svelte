@@ -1,6 +1,7 @@
 <script lang="ts">
   // «Поділитися» збіркою або локальним сервером: (для збірки) що передавати → вибір до 3 друзів
   // → бекенд готує маніфест і шле друзям картки в чат. Файли їдуть напряму P2P (share_shaurma.go).
+  // Після «Надіслати» одразу відкривається вікно передачі (ShareTransferModal) з живим станом.
   //
   // Візуально — ті самі блоки, що в «Дублюванні збірки»: UiModal + дерево ExportTreeNode (каскадні
   // чекбокси, пошук, лічильник вибраного). Вибір друзів — спільний FriendPickerModal на тому ж z-index,
@@ -11,7 +12,9 @@
   import FriendPickerModal from './friends/FriendPickerModal.svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
+  import { t } from './i18n.svelte'
   import { fmtBytes } from './friends/shareMsg'
+  import { openTransfer } from './friends/shareStore.svelte'
   import type { SocialFriend, ExportCandidate } from './types'
 
   let { kind, refId, name, onClose = () => {} }: {
@@ -25,20 +28,25 @@
   // Над сторінкою збірки/сервера та її власними оверлеями.
   const Z = '2100000'
 
-  let step = $state<'files' | 'friends'>(kind === 'build' ? 'files' : 'friends')
+  // Обидва види починають з вибору файлів (у сервера теж бувають зайві паки, бекапи, світи).
+  let step = $state<'files' | 'friends'>('files')
   let candidates = $state<ExportCandidate[]>([])
   let tree = $state<ExportTreeNodeData[]>([])
   let included = $state<string[]>([])
   let excluded = $state<string[]>([])
   let filter = $state('')
-  let loading = $state(kind === 'build')
+  let loading = $state(true)
+  // Сервер: шляхи, без яких він у друга не запуститься (ядро, eula, server.properties…) —
+  // завжди вибрані й заблоковані в дереві.
+  let required = $state<string[]>([])
+  const isRequired = (p: string) => required.some(r => p === r || p.startsWith(r + '/'))
   let loadErr = $state('')
   let starting = $state(false)
   let alive = true
   let filterTimer: ReturnType<typeof setTimeout> | null = null
 
   onMount(() => {
-    if (kind === 'build') load()
+    load()
     return () => { alive = false; if (filterTimer) clearTimeout(filterTimer) }
   })
 
@@ -46,7 +54,14 @@
     loading = true
     loadErr = ''
     try {
-      const cands = (await App.GetDuplicatePackTree(refId)) ?? []
+      let cands: ExportCandidate[]
+      if (kind === 'server') {
+        const tr = await App.GetShareServerTree(refId)
+        cands = tr?.items ?? []
+        required = tr?.required ?? []
+      } else {
+        cands = (await App.GetDuplicatePackTree(refId)) ?? []
+      }
       if (!alive) return
       candidates = cands
       // Типовий вибір — як в експорті (mods, config…); якщо нічого не позначено — усе.
@@ -83,6 +98,7 @@
             size: isLeaf ? c.size : undefined,
             defaultSelected: isLeaf ? c.defaultSelected : false,
             children: [], state: 'unchecked', collapsed: type === 'directory',
+            locked: isRequired(cur), lockedTip: t('share.send.requiredTip'),
           }
           index.set(cur, node)
           level.push(node)
@@ -100,7 +116,7 @@
       for (const n of nodes) {
         walk(n.children)
         if (n.children.length === 0) {
-          n.state = !exc.has(n.path) && inc.has(n.path) ? 'checked' : 'unchecked'
+          n.state = isRequired(n.path) || (!exc.has(n.path) && inc.has(n.path)) ? 'checked' : 'unchecked'
         } else if (n.children.every(c => c.state === 'checked')) n.state = 'checked'
         else if (n.children.every(c => c.state === 'unchecked')) n.state = inc.has(n.path) ? 'checked' : 'unchecked'
         else n.state = 'indeterminate'
@@ -116,8 +132,10 @@
   }
 
   function toggleNode(n: ExportTreeNodeData) {
+    if (n.locked) return
     const on = n.state !== 'checked'
-    const paths = collect(n)
+    // Обов'язкове не знімається навіть разом із батьківською текою.
+    const paths = collect(n).filter(p => on || !isRequired(p))
     const set = new Set(paths)
     if (on) {
       included = [...new Set([...included, ...paths])]
@@ -129,7 +147,11 @@
     syncChecks()
   }
   function selectAll() { included = candidates.map(c => c.path); excluded = []; syncChecks() }
-  function clearAll() { included = []; excluded = candidates.map(c => c.path); syncChecks() }
+  function clearAll() {
+    included = candidates.map(c => c.path).filter(isRequired)
+    excluded = candidates.map(c => c.path).filter(p => !isRequired(p))
+    syncChecks()
+  }
   function onFilterInput() {
     if (filterTimer) clearTimeout(filterTimer)
     filterTimer = setTimeout(() => { buildTree(); syncChecks() }, 120)
@@ -145,7 +167,7 @@
     }
     let files = 0, bytes = 0
     for (const c of candidates) {
-      if (!inc.has(c.path)) continue
+      if (!inc.has(c.path) && !isRequired(c.path)) continue
       if (c.type === 'directory' && parents.has(c.path)) continue
       files++
       bytes += c.size || 0
@@ -157,19 +179,19 @@
   async function start(friends: SocialFriend[]) {
     if (starting) return
     if (friends.length === 0 || friends.length > MAX_FRIENDS) {
-      toast(`Оберіть від 1 до ${MAX_FRIENDS} друзів`, 'error')
+      toast(t('share.send.pickRange', { max: MAX_FRIENDS }), 'error')
       return
     }
     starting = true
     try {
-      await App.ShareStart({
+      const v = await App.ShareStart({
         kind, refId,
         friendIds: friends.map(f => f.accountId),
-        included: kind === 'build' ? included : [],
-        excluded: kind === 'build' ? excluded : [],
+        included: [...new Set([...included, ...candidates.map(c => c.path).filter(isRequired)])],
+        excluded: excluded.filter(p => !isRequired(p)),
       })
-      toast('Готуємо передачу — картки надійдуть друзям у чат', 'success')
       onClose()
+      if (v?.id) openTransfer('out', v.id)
     } catch (e: any) {
       // Вибір друзів лишається — можна виправити причину й натиснути ще раз.
       toast(String(e?.message ?? e), 'error')
@@ -185,35 +207,38 @@
     width="min(560px, 94vw)"
     maxHeight="calc(100vh - 48px)"
     icon="ti-share-3"
-    title="Поділитися збіркою"
-    subtitle={`«${name}» — що передати другові. Логи й крашдампи не передаються ніколи.`}
+    title={t(kind === 'server' ? 'share.send.titleServer' : 'share.send.title')}
+    subtitle={t(kind === 'server' ? 'share.send.subServer' : 'share.send.sub', { name })}
     onclose={onClose}
   >
     <div class="sm-wrap">
       <div class="sm-bar">
         <div class="sm-search">
           <i class="ti ti-search"></i>
-          <input type="text" bind:value={filter} oninput={onFilterInput} placeholder="Пошук файлів…" spellcheck="false" />
+          <input type="text" bind:value={filter} oninput={onFilterInput} placeholder={t('share.send.search')} spellcheck="false" />
           {#if filter}
-            <button class="sm-clear" aria-label="Очистити" onclick={() => { filter = ''; buildTree(); syncChecks() }}><i class="ti ti-x"></i></button>
+            <button class="sm-clear" aria-label={t('share.send.clear')} onclick={() => { filter = ''; buildTree(); syncChecks() }}><i class="ti ti-x"></i></button>
           {/if}
         </div>
-        <button class="sm-mini" onclick={selectAll} disabled={loading || !!loadErr}><i class="ti ti-select-all"></i> Усі</button>
-        <button class="sm-mini" onclick={clearAll} disabled={loading || !!loadErr}><i class="ti ti-square-x"></i> Жодного</button>
+        <button class="sm-mini" onclick={selectAll} disabled={loading || !!loadErr}><i class="ti ti-select-all"></i> {t('share.send.all')}</button>
+        <button class="sm-mini" onclick={clearAll} disabled={loading || !!loadErr}><i class="ti ti-square-x"></i> {t('share.send.none')}</button>
       </div>
 
+      {#if required.length > 0}
+        <div class="sm-req"><i class="ti ti-lock"></i><span>{t('share.send.required', { list: required.join(', ') })}</span></div>
+      {/if}
       <div class="sm-tree">
         {#if loading}
-          <div class="sm-state"><i class="ti ti-loader-2 spin"></i><span>Читаю вміст збірки…</span></div>
+          <div class="sm-state"><i class="ti ti-loader-2 spin"></i><span>{t('share.send.loading')}</span></div>
         {:else if loadErr}
           <div class="sm-state bad">
             <i class="ti ti-alert-triangle"></i><span>{loadErr}</span>
-            <button class="sm-mini" onclick={load}><i class="ti ti-refresh"></i> Спробувати знову</button>
+            <button class="sm-mini" onclick={load}><i class="ti ti-refresh"></i> {t('share.in.retry')}</button>
           </div>
         {:else if tree.length === 0}
           <div class="sm-state">
-            {#if filter}<i class="ti ti-search-off"></i><span>Нічого не знайдено за запитом</span>
-            {:else}<i class="ti ti-package-off"></i><span>У збірці немає файлів</span>{/if}
+            {#if filter}<i class="ti ti-search-off"></i><span>{t('share.send.notFound')}</span>
+            {:else}<i class="ti ti-package-off"></i><span>{t('share.send.empty')}</span>{/if}
           </div>
         {:else}
           {#each tree as node (node.path)}
@@ -223,28 +248,28 @@
       </div>
 
       <div class="sm-sum">
-        <span><i class="ti ti-file-check"></i> Вибрано файлів: {summary.files}</span>
+        <span><i class="ti ti-file-check"></i> {t('share.send.selected', { n: summary.files })}</span>
         <span class="sm-size">{summary.bytes > 0 ? fmtBytes(summary.bytes) : ''}</span>
       </div>
     </div>
 
     {#snippet footer()}
-      <button class="btn btn-ghost" onclick={onClose}>Скасувати</button>
+      <button class="btn btn-ghost" onclick={onClose}>{t('share.cancel')}</button>
       <button class="sm-cta" disabled={!canNext} onclick={() => step = 'friends'}>
-        Далі <i class="ti ti-arrow-right"></i>
+        {t('share.send.next')} <i class="ti ti-arrow-right"></i>
       </button>
     {/snippet}
   </UiModal>
 {:else}
   <FriendPickerModal
-    title={kind === 'build' ? `Надіслати збірку «${name}»` : `Надіслати сервер «${name}»`}
-    subtitle={`До ${MAX_FRIENDS} друзів одночасно. Друг сам прийме передачу в чаті.`}
+    title={t(kind === 'build' ? 'share.send.pickTitle' : 'share.send.pickTitleServer', { name })}
+    subtitle={t('share.send.pickSub', { max: MAX_FRIENDS })}
     multi={true}
     max={MAX_FRIENDS}
     busy={starting}
     zIndex={Number(Z)}
-    confirmLabel="Надіслати"
-    onback={kind === 'build' ? () => { if (!starting) step = 'files' } : null}
+    confirmLabel={t('share.send.send')}
+    onback={() => { if (!starting) step = 'files' }}
     onconfirm={start}
     onclose={() => { if (!starting) onClose() }}
   />
@@ -275,6 +300,8 @@
   .sm-mini:hover:not(:disabled) { color: var(--orange); border-color: var(--orange); }
   .sm-mini:disabled { opacity: .5; cursor: default; }
 
+  .sm-req { display: flex; gap: 7px; align-items: flex-start; font-size: 12px; color: var(--text-mute); line-height: 1.4; }
+  .sm-req > i { color: var(--text-mute); margin-top: 2px; flex: none; }
   .sm-tree {
     height: min(360px, 50vh); overflow-y: auto; overscroll-behavior: contain;
     background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px; padding: 6px;

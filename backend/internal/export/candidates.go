@@ -118,6 +118,12 @@ func isShallow(rel string) bool {
 // (папки першими, відсортовані за шляхом). Симлінки і never-exportable
 // пропускаються.
 func ScanCandidates(gameDir string) ([]ExportCandidate, error) {
+	return ScanCandidatesShallow(gameDir, isShallow)
+}
+
+// ScanCandidatesShallow — те саме, але shallow вирішує, які теки показати одним вузлом
+// без розкриття вмісту (у сервера світи лежать у корені, а не в saves/).
+func ScanCandidatesShallow(gameDir string, shallow func(rel string) bool) ([]ExportCandidate, error) {
 	var out []ExportCandidate
 	err := filepath.WalkDir(gameDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -156,7 +162,7 @@ func ScanCandidates(gameDir string) ([]ExportCandidate, error) {
 			c.Modified = info.ModTime().Unix()
 		}
 		out = append(out, c)
-		if d.IsDir() && isShallow(rel) {
+		if d.IsDir() && shallow(rel) {
 			// Сама тека потрапляє у список як один вузол (вибирається
 			// цілком), але не спускаємось у вміст — див. shallowPrefixes.
 			return filepath.SkipDir

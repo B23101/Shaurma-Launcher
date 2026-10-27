@@ -26,6 +26,7 @@ import (
 // Стани одержувача (Progress.State).
 const (
 	ProgConnecting  = "connecting"
+	ProgVerifying   = "verifying" // перевірка вже прийнятого після перезапуску
 	ProgDownloading = "downloading"
 	ProgPaused      = "paused"
 	ProgDone        = "done"
@@ -43,6 +44,13 @@ type Progress struct {
 	SpeedBPS   int64  `json:"speedBps"`
 	Current    string `json:"current,omitempty"`
 	Error      string `json:"error,omitempty"`
+	// Reason — код причини для State=error (див. Reason*).
+	Reason string `json:"reason,omitempty"`
+	// Reconnecting — зв'язок із відправником обірвався, пробуємо знову (ще не помилка).
+	Reconnecting bool `json:"reconnecting,omitempty"`
+	// CDNFiles / CDNBytes — скільки файлів уже взято напряму з Modrinth (а не від друга).
+	CDNFiles int   `json:"cdnFiles,omitempty"`
+	CDNBytes int64 `json:"cdnBytes,omitempty"`
 }
 
 // Options — параметри завантаження.
@@ -63,6 +71,20 @@ type Options struct {
 	StallTimeout time.Duration
 	// RetryBase — початкова затримка між спробами (за замовчуванням 1 с).
 	RetryBase time.Duration
+	// ExpectBytes / ExpectFiles — розмір і кількість файлів, які одержувач бачив, коли
+	// погоджувався (з картки). Якщо маніфест інший — відмова (0 = не перевіряти).
+	ExpectBytes int64
+	ExpectFiles int
+	// FreeSpace — вільне місце (байти) для теки; <0 = невідомо. nil = не перевіряти.
+	FreeSpace func(dir string) int64
+	// SenderGone — чи відправник точно офлайн (присутність друзів). Якщо так, після
+	// SenderGoneGrace без зв'язку здаємося одразу, не чекаючи StallTimeout.
+	SenderGone      func() bool
+	SenderGoneGrace time.Duration
+	// CDN — клієнт для файлів із src (Modrinth); nil = типовий. NoCDN — усе лише через P2P.
+	CDN         *http.Client
+	NoCDN       bool
+	CDNParallel int
 }
 
 // Помилки, після яких повторювати марно.
@@ -70,7 +92,43 @@ var (
 	ErrManifestMismatch = errors.New("відправник змінив вміст передачі — попросіть його надіслати збірку знову")
 	ErrAccessClosed     = errors.New("доступ закрито відправником")
 	ErrDeclined         = errors.New("ви відмовились від передачі")
+	ErrDiskFull         = errors.New("недостатньо місця на диску")
+	ErrSenderOffline    = errors.New("зв'язок із відправником втрачено")
+	ErrIntegrity        = errors.New("файл пошкоджено під час передачі")
 )
+
+// AccessError — відправник закрив доступ; Reason — код причини з X-Share-Reason.
+type AccessError struct{ Reason string }
+
+func (e *AccessError) Error() string { return ErrAccessClosed.Error() }
+func (e *AccessError) Unwrap() error { return ErrAccessClosed }
+
+// ReasonOf — код причини (Reason*) для помилки завантаження.
+func ReasonOf(err error) string {
+	var ae *AccessError
+	var hf hashFail
+	switch {
+	case err == nil:
+		return ""
+	case errors.As(err, &ae):
+		return CleanReason(ae.Reason)
+	case errors.Is(err, ErrAccessClosed):
+		return ReasonAccess
+	case errors.Is(err, ErrDeclined):
+		return ReasonDeclined
+	case errors.Is(err, ErrDiskFull) || isDiskFull(err):
+		return ReasonDiskFull
+	case errors.Is(err, ErrIntegrity) || errors.As(err, &hf):
+		return ReasonIntegrity
+	case errors.Is(err, ErrManifestMismatch):
+		return ReasonChanged
+	case errors.Is(err, ErrSenderOffline):
+		return ReasonSenderOffline
+	case errors.Is(err, context.Canceled):
+		return ReasonCancelledReceiver
+	}
+	return ReasonError
+}
 
 type fatalErr struct{ error }
 
@@ -100,6 +158,13 @@ type Downloader struct {
 
 	failMu    sync.Mutex
 	hashFails map[int]int
+
+	cdnFiles int   // під d.mu
+	cdnBytes int64 // під d.mu
+	cdn      *http.Client
+
+	stalled atomic.Bool  // зараз немає зв'язку з відправником (повторюємо)
+	fatal   atomic.Value // error: фатальна помилка, що вже зупинила Run (для звіту)
 }
 
 // NewDownloader створює завантажувач.
@@ -108,12 +173,21 @@ func NewDownloader(opt Options) *Downloader {
 		opt.Parallel = 3
 	}
 	if opt.StallTimeout <= 0 {
-		opt.StallTimeout = 10 * time.Minute
+		opt.StallTimeout = 4 * time.Minute
+	}
+	if opt.SenderGoneGrace <= 0 {
+		opt.SenderGoneGrace = 30 * time.Second
+	}
+	if opt.CDNParallel <= 0 {
+		opt.CDNParallel = 4
 	}
 	if opt.RetryBase <= 0 {
 		opt.RetryBase = time.Second
 	}
-	d := &Downloader{opt: opt, pauseCh: make(chan struct{})}
+	d := &Downloader{opt: opt, pauseCh: make(chan struct{}), cdn: opt.CDN}
+	if d.cdn == nil {
+		d.cdn = newCDNClient()
+	}
 	d.client = &http.Client{Transport: &http.Transport{
 		DialContext:         func(ctx context.Context, _, _ string) (net.Conn, error) { return opt.Dial(ctx) },
 		MaxIdleConnsPerHost: opt.Parallel,
@@ -187,8 +261,10 @@ func (d *Downloader) do(ctx context.Context, method, path string, body []byte, h
 // statusErr перетворює HTTP-статус на помилку з правильною «фатальністю».
 func (d *Downloader) statusErr(resp *http.Response) error {
 	switch resp.StatusCode {
-	case http.StatusForbidden, http.StatusGone:
-		return fatalErr{ErrAccessClosed}
+	case http.StatusGone:
+		return fatalErr{&AccessError{Reason: CleanReason(resp.Header.Get(HeaderReason))}}
+	case http.StatusForbidden:
+		return fatalErr{&AccessError{Reason: ReasonAccess}}
 	case http.StatusLocked:
 		d.senderHold.Store(true)
 		return errSenderPaused
@@ -217,34 +293,9 @@ func (d *Downloader) Manifest(ctx context.Context) (*Manifest, error) {
 	d.mu.Unlock()
 	var m *Manifest
 	err := d.retry(ctx, func() error {
-		resp, err := d.do(ctx, http.MethodGet, "/v1/manifest", nil, map[string]string{"Accept-Encoding": "gzip"})
-		if err != nil {
-			return err
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode != http.StatusOK {
-			return d.statusErr(resp)
-		}
-		var rd io.Reader = resp.Body
-		if resp.Header.Get("Content-Encoding") == "gzip" {
-			zr, zerr := gzipReader(resp.Body)
-			if zerr != nil {
-				return zerr
-			}
-			rd = zr
-		}
-		var mm Manifest
-		if err := json.NewDecoder(io.LimitReader(rd, 64<<20)).Decode(&mm); err != nil {
-			return err
-		}
-		if err := mm.Validate(); err != nil {
-			return fatalErr{err}
-		}
-		if d.opt.ExpectManifestID != "" && mm.ID() != d.opt.ExpectManifestID {
-			return fatalErr{ErrManifestMismatch}
-		}
-		m = &mm
-		return nil
+		mm, err := d.getManifest(ctx, "/v1/manifest")
+		m = mm
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -253,6 +304,61 @@ func (d *Downloader) Manifest(ctx context.Context) (*Manifest, error) {
 	d.m = m
 	d.mu.Unlock()
 	return m, nil
+}
+
+// ErrPreviewUnsupported — відправник зі старішою версією лаунчера не вміє показувати вміст.
+var ErrPreviewUnsupported = errors.New("відправник має старішу версію лаунчера — перегляд вмісту недоступний")
+
+// Preview — маніфест для перегляду вмісту ДО прийняття (одна спроба, без повторів):
+// відправник при цьому не вважає одержувача підключеним. Ті самі перевірки, що й у Manifest.
+func (d *Downloader) Preview(ctx context.Context) (*Manifest, error) {
+	m, err := d.getManifest(ctx, "/v1/preview")
+	var fe fatalErr
+	if errors.As(err, &fe) {
+		err = fe.error
+	}
+	return m, err
+}
+
+// getManifest — один запит маніфесту з повною перевіркою.
+func (d *Downloader) getManifest(ctx context.Context, path string) (*Manifest, error) {
+	m, err := func() (*Manifest, error) {
+		resp, err := d.do(ctx, http.MethodGet, path, nil, map[string]string{"Accept-Encoding": "gzip"})
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound && path == "/v1/preview" {
+			return nil, fatalErr{ErrPreviewUnsupported}
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, d.statusErr(resp)
+		}
+		var rd io.Reader = resp.Body
+		if resp.Header.Get("Content-Encoding") == "gzip" {
+			zr, zerr := gzipReader(resp.Body)
+			if zerr != nil {
+				return nil, zerr
+			}
+			rd = zr
+		}
+		var mm Manifest
+		if err := json.NewDecoder(io.LimitReader(rd, 64<<20)).Decode(&mm); err != nil {
+			return nil, err
+		}
+		if err := mm.Validate(); err != nil {
+			return nil, fatalErr{err}
+		}
+		if d.opt.ExpectManifestID != "" && mm.ID() != d.opt.ExpectManifestID {
+			return nil, fatalErr{ErrManifestMismatch}
+		}
+		// Погоджувались на конкретний розмір: маніфест не може бути більшим/іншим за картку.
+		if (d.opt.ExpectBytes > 0 && mm.TotalBytes != d.opt.ExpectBytes) || (d.opt.ExpectFiles > 0 && len(mm.Files) != d.opt.ExpectFiles) {
+			return nil, fatalErr{ErrManifestMismatch}
+		}
+		return &mm, nil
+	}()
+	return m, err
 }
 
 // retry повторює op з експоненційною паузою, доки є прогрес (або не вичерпано
@@ -270,6 +376,7 @@ func (d *Downloader) retry(ctx context.Context, op func() error) error {
 		before := d.lastProg.Load()
 		err := op()
 		if err == nil {
+			d.stalled.Store(false)
 			return nil
 		}
 		var fe fatalErr
@@ -287,14 +394,21 @@ func (d *Downloader) retry(ctx context.Context, op func() error) error {
 			delay = d.opt.RetryBase
 		}
 		if errors.Is(err, errSenderPaused) {
+			d.stalled.Store(false)
 			if serr := sleepCtx(ctx, 2*time.Second); serr != nil {
 				return serr
 			}
 			last = time.Now() // пауза відправника не «зависання»
 			continue
 		}
+		if !errors.Is(err, errBusy) && time.Since(last) > 2*d.opt.RetryBase {
+			d.stalled.Store(true)
+		}
 		if time.Since(last) > d.opt.StallTimeout {
-			return fmt.Errorf("зв'язок із відправником втрачено: %w", err)
+			return fmt.Errorf("%w: %v", ErrSenderOffline, err)
+		}
+		if d.opt.SenderGone != nil && time.Since(last) > d.opt.SenderGoneGrace && d.opt.SenderGone() {
+			return fmt.Errorf("%w: відправник офлайн", ErrSenderOffline)
 		}
 		if serr := sleepCtx(ctx, delay); serr != nil {
 			return serr
@@ -365,7 +479,8 @@ func (d *Downloader) isDone(i int) bool {
 func (d *Downloader) snapshot(state string) Progress {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	p := Progress{State: state, BytesDone: d.bytesDon, FilesDone: d.filesDon, Current: d.current, SpeedBPS: d.speedBps.Load()}
+	p := Progress{State: state, BytesDone: d.bytesDon, FilesDone: d.filesDon, Current: d.current, SpeedBPS: d.speedBps.Load(),
+		CDNFiles: d.cdnFiles, CDNBytes: d.cdnBytes}
 	if d.m != nil {
 		p.BytesTotal, p.FilesTotal = d.m.TotalBytes, len(d.m.Files)
 	}
@@ -374,6 +489,13 @@ func (d *Downloader) snapshot(state string) Progress {
 			p.State, p.PausedBy = ProgPaused, "receiver"
 		} else if d.senderHold.Load() {
 			p.State, p.PausedBy = ProgPaused, "sender"
+		} else if d.stalled.Load() {
+			p.Reconnecting, p.SpeedBPS = true, 0
+		}
+	}
+	if state == ProgError {
+		if e, ok := d.fatal.Load().(error); ok {
+			p.Error, p.Reason = e.Error(), ReasonOf(e)
 		}
 	}
 	return p
@@ -403,8 +525,20 @@ func (d *Downloader) persist(complete bool) {
 }
 
 func (d *Downloader) report(ctx context.Context, state, errText string) {
+	d.reportReason(ctx, state, errText, "")
+}
+
+// ReportCancelled — сказати відправнику, що одержувач сам зупинив прийом (best-effort,
+// коротко: тунель міг уже зникнути — тоді про це скаже повідомлення в чаті).
+func (d *Downloader) ReportCancelled(ctx context.Context) {
+	cctx, cancel := context.WithTimeout(ctx, 4*time.Second)
+	defer cancel()
+	d.reportReason(cctx, "cancelled", "", ReasonCancelledReceiver)
+}
+
+func (d *Downloader) reportReason(ctx context.Context, state, errText, reason string) {
 	d.mu.Lock()
-	r := ProgressReport{Bytes: d.bytesDon, Files: d.filesDon, State: state, Error: errText}
+	r := ProgressReport{Bytes: d.bytesDon, Files: d.filesDon, State: state, Error: errText, Reason: reason, Speed: d.speedBps.Load()}
 	d.mu.Unlock()
 	r.Paused, _ = d.isPaused()
 	body, _ := json.Marshal(r)
@@ -450,15 +584,21 @@ func (d *Downloader) Run(ctx context.Context) error {
 	d.emit(ProgConnecting)
 	m, err := d.Manifest(ctx)
 	if err != nil {
-		d.emit(ProgError)
-		return err
+		return d.failRun(err)
 	}
-	if err := d.prepare(m); err != nil {
-		d.emit(ProgError)
-		return err
+	if err := d.prepare(ctx, m); err != nil {
+		return d.failRun(err)
 	}
 	if raw, jerr := json.Marshal(m); jerr == nil {
 		_ = os.WriteFile(filepath.Join(d.opt.StageDir, "manifest.json"), raw, 0o644)
+	}
+	// Місце на диску — до першого байта: «закінчилось місце на 90 %» гірше за чесне «ні» одразу.
+	if d.opt.FreeSpace != nil {
+		need := m.TotalBytes - d.confirmedBytes()
+		if free := d.opt.FreeSpace(d.opt.StageDir); free >= 0 && free < need+diskMargin {
+			err := fmt.Errorf("%w: потрібно ще %d МБ, вільно %d МБ", ErrDiskFull, (need+diskMargin)>>20, free>>20)
+			return d.failRun(fatalErr{err})
+		}
 	}
 
 	parent := ctx
@@ -500,8 +640,9 @@ func (d *Downloader) Run(ctx context.Context) error {
 		}
 	}()
 
-	jobs := d.plan(m)
-	queue := make(chan job, len(jobs))
+	jobs, cdnIdx := d.plan(m)
+	// Черга P2P має вмістити й файли, що повернуться з CDN (відкат на P2P).
+	queue := make(chan job, len(jobs)+len(cdnIdx))
 	for _, j := range jobs {
 		queue <- j
 	}
@@ -517,7 +658,41 @@ func (d *Downloader) Run(ctx context.Context) error {
 		errMu.Unlock()
 	}
 	var pending atomic.Int64
-	pending.Store(int64(len(jobs)))
+	pending.Store(int64(len(jobs) + len(cdnIdx)))
+	// Файли, що є на Modrinth, — паралельно з P2P напряму з CDN. Невдача → той самий файл
+	// іде в чергу P2P (лічильник pending при цьому не зменшується: завдання переходить).
+	if len(cdnIdx) > 0 {
+		cdnQueue := make(chan int, len(cdnIdx))
+		for _, i := range cdnIdx {
+			cdnQueue <- i
+		}
+		close(cdnQueue)
+		workers := d.opt.CDNParallel
+		if workers > len(cdnIdx) {
+			workers = len(cdnIdx)
+		}
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range cdnQueue {
+					if ctx.Err() != nil {
+						return
+					}
+					err := d.fetchCDN(ctx, m, i)
+					switch {
+					case err == nil:
+						pending.Add(-1)
+					case errors.Is(err, errCDNFallback):
+						queue <- job{big: i}
+					default:
+						fail(err)
+						return
+					}
+				}
+			}()
+		}
+	}
 	for w := 0; w < d.opt.Parallel; w++ {
 		wg.Add(1)
 		go func() {
@@ -556,13 +731,9 @@ func (d *Downloader) Run(ctx context.Context) error {
 	if err != nil {
 		if errors.Is(err, context.Canceled) {
 			d.emit(ProgPaused)
-		} else {
-			d.emit(ProgError)
-			rctx, rc := context.WithTimeout(context.Background(), 5*time.Second)
-			d.report(rctx, "error", err.Error())
-			rc()
+			return err
 		}
-		return err
+		return d.failRun(err)
 	}
 	d.mu.Lock()
 	all := d.filesDon == len(m.Files)
@@ -578,8 +749,30 @@ func (d *Downloader) Run(ctx context.Context) error {
 	return nil
 }
 
+// diskMargin — запас вільного місця понад розмір передачі (журнал, тимчасові файли, ФС).
+const diskMargin = 64 << 20
+
+func (d *Downloader) confirmedBytes() int64 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return d.bytesDon
+}
+
+// failRun — фатальне завершення Run: стан error з кодом причини в UI і (якщо зв'язок
+// ще є) звіт відправнику. Закритий доступ відправник і так знає — йому не звітуємо.
+func (d *Downloader) failRun(err error) error {
+	d.fatal.Store(err)
+	d.emit(ProgError)
+	if !errors.Is(err, ErrAccessClosed) && !errors.Is(err, context.Canceled) {
+		rctx, rc := context.WithTimeout(context.Background(), 5*time.Second)
+		d.reportReason(rctx, "error", err.Error(), ReasonOf(err))
+		rc()
+	}
+	return err
+}
+
 // prepare ініціалізує стан: журнал, уже прийняті файли, часткові .part.
-func (d *Downloader) prepare(m *Manifest) error {
+func (d *Downloader) prepare(ctx context.Context, m *Manifest) error {
 	stage := d.opt.StageDir
 	files := FilesDir(stage)
 	if j, ok := loadJournal(stage); ok && j.ManifestID != m.ID() {
@@ -596,17 +789,32 @@ func (d *Downloader) prepare(m *Manifest) error {
 	d.done = make([]bool, len(m.Files))
 	d.counted = make([]int64, len(m.Files))
 	d.mu.Unlock()
-	if j, ok := loadJournal(stage); ok {
+	if j, ok := loadJournal(stage); ok && len(j.Done) > 0 {
+		// Після краху/вимкнення живлення файл із правильним розміром ще не означає правильний
+		// вміст (кеш ФС міг не дописатись) — тож прийняте раніше переперевіряємо sha256.
+		d.emit(ProgVerifying)
 		for _, i := range j.Done {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if i < 0 || i >= len(m.Files) {
 				continue
 			}
 			fe := m.Files[i]
-			// Журналу віримо лише якщо файл справді на місці з правильним розміром.
-			if st, err := os.Stat(d.finalPath(fe.Path)); err == nil && st.Mode().IsRegular() && st.Size() == fe.Size {
-				d.markDone(i)
-				d.setCounted(i, fe.Size)
+			p, perr := d.safePath(fe.Path)
+			if perr != nil {
+				continue
 			}
+			st, err := os.Stat(p)
+			if err != nil || !st.Mode().IsRegular() || st.Size() != fe.Size {
+				continue
+			}
+			if sum, _, herr := hashFile(ctx, p); herr != nil || sum != fe.SHA256 {
+				_ = os.Remove(p)
+				continue
+			}
+			d.markDone(i)
+			d.setCounted(i, fe.Size)
 		}
 	}
 	return nil
@@ -629,10 +837,14 @@ func (d *Downloader) safePath(rel string) (string, error) {
 var emptySHA = func() string { s := sha256.Sum256(nil); return hex.EncodeToString(s[:]) }()
 
 // plan розкладає недокачане на завдання: великі окремо, дрібні — партіями.
-func (d *Downloader) plan(m *Manifest) []job {
-	var big, small []int
+func (d *Downloader) plan(m *Manifest) ([]job, []int) {
+	var big, small, cdn []int
 	for i, f := range m.Files {
 		if d.isDone(i) {
+			continue
+		}
+		if !d.opt.NoCDN && f.Size > 0 && f.Src != nil && ValidCDNURL(f.Src.URL) {
+			cdn = append(cdn, i)
 			continue
 		}
 		if f.Size == 0 && f.SHA256 == emptySHA {
@@ -673,7 +885,7 @@ func (d *Downloader) plan(m *Manifest) []job {
 		curBytes += m.Files[i].Size
 	}
 	flush()
-	return jobs
+	return jobs, cdn
 }
 
 func (d *Downloader) runJob(ctx context.Context, m *Manifest, j job) error {
@@ -687,6 +899,16 @@ type hashFail struct{ path string }
 
 func (h hashFail) Error() string {
 	return "контрольна сума не збіглась: " + h.path
+}
+
+func (h hashFail) Unwrap() error { return ErrIntegrity }
+
+// diskErr — помилка запису: «диск заповнено» окремо (у UI — ReasonDiskFull).
+func diskErr(err error) error {
+	if isDiskFull(err) {
+		return fmt.Errorf("%w: %v", ErrDiskFull, err)
+	}
+	return fmt.Errorf("запис на диск: %w", err)
 }
 
 func (d *Downloader) setCurrent(s string) {
@@ -781,7 +1003,7 @@ func (d *Downloader) fetchBig(parent context.Context, m *Manifest, i int) error 
 					return d.dropBad(f, part, i, hashFail{fe.Path})
 				}
 				if _, werr := f.Write(buf[:n]); werr != nil {
-					return fatalErr{fmt.Errorf("запис на диск: %w", werr)}
+					return fatalErr{diskErr(werr)}
 				}
 				h.Write(buf[:n])
 				written += int64(n)
@@ -915,7 +1137,7 @@ func (d *Downloader) fetchBundle(parent context.Context, m *Manifest, idxs []int
 			if n > 0 {
 				if _, werr := f.Write(buf[:n]); werr != nil {
 					f.Close()
-					return fatalErr{fmt.Errorf("запис на диск: %w", werr)}
+					return fatalErr{diskErr(werr)}
 				}
 				h.Write(buf[:n])
 				d.addCounted(i, int64(n))

@@ -27,7 +27,7 @@
   import Toasts from './lib/Toasts.svelte'
   import NewScreenshotWidget from './lib/NewScreenshotWidget.svelte'
   import TransferWidget from './lib/TransferWidget.svelte'
-  import { initShareStore, shareRecoverable, removeRecoverable } from './lib/friends/shareStore.svelte'
+  import { initShareStore, shareRecoverable, shareUi } from './lib/friends/shareStore.svelte'
   import ConfirmModal from './lib/ConfirmModal.svelte'
   import ErrorPanel from './lib/ErrorPanel.svelte'
   import PackInstancePage from './lib/PackInstancePage.svelte'
@@ -3490,28 +3490,18 @@
   // ── «Поділитися»: закриття лаунчера під час передачі + продовження після краху ──
   async function confirmQuitWhileSharing() {
     const ok = await confirmDialog(
-      'Йде передача збірки',
-      'Закриття лаунчера зупинить передачу друзям. Те, що вже прийнято, збережеться на диску, але відправник закриє доступ. Закрити?',
-      { confirmLabel: 'Закрити', cancelLabel: 'Лишитись', danger: true }
+      t('share.quit.title'),
+      t('share.quit.body'),
+      { confirmLabel: t('share.quit.confirm'), cancelLabel: t('share.quit.stay'), danger: true }
     )
     if (ok) await App.ConfirmQuitWhileSyncing()
   }
 
-  // Недокачане з попереднього сеансу (краш, закриття): пропонуємо продовжити або стерти.
+  // Недокачане з попереднього сеансу (краш, закриття): вікно ShareRecoveryModal пропонує
+  // продовжити / встановити / стерти (нічого не робиться без кліку).
   async function offerShareRecovery() {
     await initShareStore()
-    for (const r of [...shareRecoverable.items]) {
-      const ok = await confirmDialog(
-        'Продовжити отримання?',
-        `«${r.name}» від ${r.from || 'друга'} недокачано (прийнято файлів: ${r.filesDone}). Продовжити з місця обриву?`,
-        { confirmLabel: 'Продовжити', cancelLabel: 'Видалити прийняте' }
-      )
-      try {
-        if (ok) await App.ShareResumeRecovered(r.mid)
-        else await App.ShareDiscardRecovered(r.mid)
-      } catch (e: any) { toast(String(e?.message ?? e), 'error') }
-      removeRecoverable(r.mid)
-    }
+    if (shareRecoverable.items.length > 0) shareUi.recoverOpen = true
   }
 
   // Акаунт за іменем — для голови скіна, на якому запущена збірка.
@@ -7168,7 +7158,7 @@
     </div>
   {/if}
   <NewScreenshotWidget onOpenGallery={openGalleryFor} />
-  <TransferWidget />
+  <TransferWidget onOpenMod={openModPageFromPack} />
 
 <!-- Скоуп-стилі, що лишились тільки для розмітки App (інші перенесені в
      style.css при рефакторингу SettingsPage — там вони глобальні й діють

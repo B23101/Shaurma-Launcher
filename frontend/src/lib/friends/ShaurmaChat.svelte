@@ -42,7 +42,8 @@ import { windowActive } from '../windowActive.svelte'
   import { confirmDialog } from '../toast.svelte'
   import ModCard from './ModCard.svelte'
   import ShareCard from './ShareCard.svelte'
-  import { parseShareMessage } from './shareMsg'
+  import { parseShareMessage, parseShareCtl, ctlText, type ShareCtl } from './shareMsg'
+  import { shareIn, shareOut, openTransfer } from './shareStore.svelte'
   import InviteCard from './InviteCard.svelte'
   import TempInviteModal from './TempInviteModal.svelte'
   import P2PJoinModal from '../servers/components/P2PJoinModal.svelte'
@@ -112,6 +113,8 @@ import { windowActive } from '../windowActive.svelte'
     | { kind: 'day'; key: string; ts: number }
     | { kind: 'new'; key: string }
     | { kind: 'msg'; key: string; m: Msg; groupEnd: boolean; groupStart: boolean }
+    // Подія передачі збірки (службове повідомлення) — окремою «пігулкою» по центру, не бульбашкою.
+    | { kind: 'share'; key: string; m: Msg; c: ShareCtl }
 
   const ACK_POLL_MS = 5000
 
@@ -449,14 +452,23 @@ import { windowActive } from '../windowActive.svelte'
   const visible = $derived(messages.filter(m => !(m.id > 0 && hidden.has(m.id))))
   const selectedMsgs = $derived(visible.filter(m => selected.has(m.key)))
   const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}.${d.getMonth()}.${d.getDate()}` }
+  const ctlOf = (m: Msg) => (m.bodyType === 'text' && !m.decryptFailed ? parseShareCtl(m.text) : null)
   const rows = $derived.by<Row[]>(() => {
     const out: Row[] = []
     const v = visible
+    // Однакові події передачі (повтор після перезапуску лаунчера) показуємо один раз.
+    const seenCtl = new Set<string>()
     for (let i = 0; i < v.length; i++) {
       const m = v[i], prev = v[i - 1], next = v[i + 1]
       const newDay = !prev || dayKey(prev.ts) !== dayKey(m.ts)
       if (newDay) out.push({ kind: 'day', key: 'd' + dayKey(m.ts), ts: m.ts })
       if (firstUnreadKey && m.key === firstUnreadKey) out.push({ kind: 'new', key: 'new-divider' })
+      const c = ctlOf(m)
+      if (c) {
+        const k = `${c.sid}|${c.e}|${c.r ?? ''}|${m.from}`
+        if (!seenCtl.has(k)) { seenCtl.add(k); out.push({ kind: 'share', key: m.key, m, c }) }
+        continue
+      }
       const near = (a: Msg, b: Msg) => a.from === b.from && Math.abs(b.ts - a.ts) < 120000 && dayKey(a.ts) === dayKey(b.ts)
       out.push({
         kind: 'msg', key: m.key, m,
@@ -1599,6 +1611,17 @@ import { windowActive } from '../windowActive.svelte'
           <div class="sc-day"><span>{dayLabel(row.ts)}</span></div>
         {:else if row.kind === 'new'}
           <div class="sc-newdiv"><span>{t('social.chat.newMessages')}</span></div>
+        {:else if row.kind === 'share'}
+          {@const c = row.c}
+          {@const own = isOwn(row.m)}
+          {@const tone = c.e === 'failed' ? 'bad' : c.e === 'declined' || c.r === 'cancelled_receiver' ? 'warn' : 'mute'}
+          {@const dir = shareOut[c.sid] ? 'out' : shareIn[c.sid] ? 'in' : null}
+          <button class="sc-evt {tone}" disabled={!dir} onclick={() => dir && openTransfer(dir, c.sid)}
+                  title={fullTime(row.m.ts)} oncontextmenu={(e) => openMenu(e, row.m)}>
+            <span class="sc-evt-ic"><i class="ti {c.e === 'failed' ? 'ti-alert-triangle' : c.e === 'declined' ? 'ti-circle-x' : c.r === 'timeout' ? 'ti-clock-x' : c.r === 'sender_offline' ? 'ti-plug-connected-x' : 'ti-player-stop'}"></i></span>
+            <span class="sc-evt-t">{ctlText(c, own, peer?.nickname ?? '')}</span>
+            <span class="sc-evt-tm">{timeOf(row.m.ts)}</span>
+          </button>
         {:else}
           {@const m = row.m}
           {@const own = isOwn(m)}
@@ -2086,6 +2109,20 @@ import { windowActive } from '../windowActive.svelte'
   .sc-bub.modmsg .sc-meta { padding: 0 6px; }
   .sc-txt { font: 500 13px/1.45 var(--font-ui); color: var(--text); white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere; }
   .sc-modc { margin: 3px 7px 8px; }
+  /* Подія передачі збірки — пігулка по центру, як роздільник дня, але з кольоровою іконкою. */
+  .sc-evt { align-self: center; display: inline-flex; align-items: center; gap: 8px; max-width: min(460px, 92%); margin: 6px auto;
+    padding: 4px 12px 4px 4px; border-radius: 99px; border: 1px solid var(--border); cursor: pointer;
+    background: color-mix(in srgb, var(--bg-input) 80%, transparent); backdrop-filter: blur(6px);
+    font: 600 11.5px/1.35 var(--font-ui); color: var(--text); text-align: left;
+    transition: border-color .15s, background .15s, transform .15s; animation: sc-fade-up .38s ease both; }
+  .sc-evt:not(:disabled):hover { border-color: var(--border-hi); background: var(--bg-input); transform: translateY(-1px); }
+  .sc-evt:disabled { cursor: default; }
+  .sc-evt-ic { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 13px;
+    color: var(--text-mute); background: var(--hover); }
+  .sc-evt.warn .sc-evt-ic { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 16%, transparent); }
+  .sc-evt.bad .sc-evt-ic { color: var(--red); background: color-mix(in srgb, var(--red) 15%, transparent); }
+  .sc-evt-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
+  .sc-evt-tm { flex: none; font-size: 10px; font-weight: 600; color: var(--text-mute); }
   .sc-bad { color: var(--text-dim); font-style: italic; display: inline-flex; align-items: center; gap: 5px; }
   .sc-meta { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 3px; font: 500 10px/1 var(--font-ui); color: var(--text-dim); }
 

@@ -27,9 +27,43 @@ const (
 	StatePaused       = "paused"       // пауза (хто саме — PausedBy)
 	StateDone         = "done"         // одержувач підтвердив, що все прийняв і перевірив
 	StateDeclined     = "declined"     // відмовився
-	StateFailed       = "failed"       // одержувач повідомив про помилку
+	StateFailed       = "failed"       // одержувач повідомив про помилку (Reason — код)
 	StateRevoked      = "revoked"      // відправник скасував доступ
+	StateCancelled    = "cancelled"    // одержувач сам зупинив прийом
+	StateTimeout      = "timeout"      // не прийняв вчасно / зник посеред передачі й не повернувся
 )
+
+// IsFinalState — чи стан одержувача остаточний (передача з ним вирішена).
+func IsFinalState(s string) bool {
+	switch s {
+	case StateDone, StateDeclined, StateFailed, StateRevoked, StateCancelled, StateTimeout:
+		return true
+	}
+	return false
+}
+
+// Timeouts — ліміти очікування на боці відправника (нуль = значення за замовчуванням).
+type Timeouts struct {
+	// Accept — скільки чекати, поки одержувач узагалі підключиться (типово 1 год).
+	Accept time.Duration
+	// OfflineAfter — без жодного запиту стільки часу → «друг офлайн» (типово 30 с).
+	OfflineAfter time.Duration
+	// Offline — скільки чекати повернення зниклого одержувача (типово 15 хв).
+	Offline time.Duration
+}
+
+func (t Timeouts) withDefaults() Timeouts {
+	if t.Accept <= 0 {
+		t.Accept = time.Hour
+	}
+	if t.OfflineAfter <= 0 {
+		t.OfflineAfter = 30 * time.Second
+	}
+	if t.Offline <= 0 {
+		t.Offline = 15 * time.Minute
+	}
+	return t
+}
 
 // RecipientState — знімок стану одного одержувача (для UI відправника).
 type RecipientState struct {
@@ -42,6 +76,12 @@ type RecipientState struct {
 	FilesTotal int    `json:"filesTotal"`
 	LastSeenMs int64  `json:"lastSeenMs"`
 	Error      string `json:"error,omitempty"`
+	// Reason — код причини для фінальних станів, крім done (див. Reason*).
+	Reason string `json:"reason,omitempty"`
+	// SpeedBPS — швидкість прийому, яку повідомив одержувач.
+	SpeedBPS int64 `json:"speedBps"`
+	// Offline — одержувач давно не виходив на зв'язок (ще не фінал, чекаємо повернення).
+	Offline bool `json:"offline,omitempty"`
 }
 
 type recipient struct {
@@ -55,6 +95,10 @@ type recipient struct {
 	filesDone  int
 	lastSeen   int64
 	errText    string
+	reason     string
+	speed      int64
+	created    time.Time
+	offline    bool // останній стан «офлайн», про який уже сповістили
 
 	sendPaused atomic.Bool
 	revoked    atomic.Bool
@@ -76,6 +120,7 @@ type Host struct {
 
 	onChange func(RecipientState)
 	srv      *http.Server
+	limits   Timeouts
 }
 
 // NewHost готує хост для root і маніфесту. onChange (необов'язковий) викликається
@@ -95,6 +140,7 @@ func NewHost(root string, m *Manifest, onChange func(RecipientState)) (*Host, er
 	h := &Host{
 		root: root, m: m, manifestJSON: raw, manifestGz: []byte(gz.String()),
 		recips: map[string]*recipient{}, byKey: map[string]*recipient{}, onChange: onChange,
+		limits: Timeouts{}.withDefaults(),
 	}
 	h.srv = &http.Server{
 		Handler:           h,
@@ -104,6 +150,13 @@ func NewHost(root string, m *Manifest, onChange func(RecipientState)) (*Host, er
 	return h, nil
 }
 
+// SetTimeouts змінює ліміти очікування (до або під час роздачі).
+func (h *Host) SetTimeouts(t Timeouts) {
+	h.mu.Lock()
+	h.limits = t.withDefaults()
+	h.mu.Unlock()
+}
+
 // Manifest — маніфест, що роздається.
 func (h *Host) Manifest() *Manifest { return h.m }
 
@@ -111,23 +164,28 @@ func (h *Host) Manifest() *Manifest { return h.m }
 var ErrTooManyRecipients = errors.New("одну збірку можна передавати не більше ніж трьом друзям одночасно")
 
 // AddRecipient видає ключ одержувачу (id — акаунт друга). Повторний виклик для
-// того самого id повертає той самий ключ.
+// того самого id повертає той самий ключ. Новий одержувач одразу потрапляє в onChange
+// (стан waiting), щоб відправник бачив його ще до першого підключення.
 func (h *Host) AddRecipient(id string) (string, error) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	if r, ok := h.recips[id]; ok {
+		h.mu.Unlock()
 		return r.key, nil
 	}
 	if len(h.recips) >= MaxRecipients {
+		h.mu.Unlock()
 		return "", ErrTooManyRecipients
 	}
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
+		h.mu.Unlock()
 		return "", err
 	}
-	r := &recipient{id: id, key: hex.EncodeToString(b), state: StateWaiting, sem: make(chan struct{}, 4)}
+	r := &recipient{id: id, key: hex.EncodeToString(b), state: StateWaiting, sem: make(chan struct{}, 4), created: time.Now()}
 	h.recips[id] = r
 	h.byKey[r.key] = r
+	h.mu.Unlock()
+	h.notify(r)
 	return r.key, nil
 }
 
@@ -167,19 +225,127 @@ func (h *Host) SetPaused(id string, paused bool) bool {
 }
 
 // Revoke закриває доступ одному одержувачу (його активні потоки обриваються).
-func (h *Host) Revoke(id string) bool {
+// Повертає true, якщо одержувач існував і ще не мав фінального стану.
+func (h *Host) Revoke(id string) bool { return h.revokeWith(id, ReasonCancelledSender) }
+
+func (h *Host) revokeWith(id, reason string) bool {
 	r := h.get(id)
 	if r == nil {
 		return false
 	}
 	r.revoked.Store(true)
 	r.mu.Lock()
-	if r.state != StateDone && r.state != StateDeclined {
-		r.state = StateRevoked
+	changed := !IsFinalState(r.state)
+	if changed {
+		r.state, r.reason = StateRevoked, CleanReason(reason)
 	}
 	r.mu.Unlock()
 	h.notify(r)
-	return true
+	return changed
+}
+
+// RevokeAll — передача закривається: усім, хто ще не завершив, доступ закрито з причиною
+// reason (ReasonCancelledSender, ReasonTimeout…). Повертає id тих, кого це зачепило.
+func (h *Host) RevokeAll(reason string) []string {
+	var hit []string
+	for _, id := range h.ids() {
+		if h.revokeWith(id, reason) {
+			hit = append(hit, id)
+		}
+	}
+	return hit
+}
+
+// Pending — id одержувачів, що ще не мають фінального стану.
+func (h *Host) Pending() []string {
+	var out []string
+	for _, s := range h.Snapshot() {
+		if !IsFinalState(s.State) {
+			out = append(out, s.ID)
+		}
+	}
+	return out
+}
+
+// ApplyControl — фінальна подія від одержувача, що прийшла НЕ через P2P (зашифрований
+// чат: друг відмовився чи зупинив прийом, коли тунель до нас не працює).
+// event: "declined" | "cancelled" | "failed". Повертає true, якщо стан змінився.
+func (h *Host) ApplyControl(id, event, reason string) bool {
+	r := h.get(id)
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	changed := false
+	if r.state != StateDone && !r.revoked.Load() {
+		switch event {
+		case "declined":
+			changed = r.state != StateDeclined
+			r.state, r.reason = StateDeclined, ReasonDeclined
+		case "cancelled":
+			changed = !IsFinalState(r.state)
+			if changed {
+				r.state, r.reason = StateCancelled, ReasonCancelledReceiver
+			}
+		case "failed":
+			changed = !IsFinalState(r.state)
+			if changed {
+				r.state, r.reason = StateFailed, CleanReason(reason)
+			}
+		}
+	}
+	r.mu.Unlock()
+	if changed {
+		h.notify(r)
+	}
+	return changed
+}
+
+// Sweep — періодична перевірка тайм-аутів (власник хоста викликає раз на кілька секунд):
+// хто не підключився за Timeouts.Accept → StateTimeout/ReasonTimeout; хто зник посеред
+// передачі — спершу Offline=true (видно в UI), а після Timeouts.Offline → StateTimeout/
+// ReasonReceiverOffline.
+func (h *Host) Sweep(now time.Time) {
+	h.mu.Lock()
+	lim := h.limits
+	h.mu.Unlock()
+	for _, id := range h.ids() {
+		r := h.get(id)
+		if r == nil {
+			continue
+		}
+		r.mu.Lock()
+		changed := false
+		if !IsFinalState(r.state) {
+			seen := time.UnixMilli(r.lastSeen)
+			switch {
+			case r.lastSeen == 0 && now.Sub(r.created) > lim.Accept:
+				r.state, r.reason, changed = StateTimeout, ReasonTimeout, true
+			case r.lastSeen != 0 && now.Sub(seen) > lim.Offline:
+				r.state, r.reason, changed = StateTimeout, ReasonReceiverOffline, true
+				r.revoked.Store(true) // активні потоки (якщо зависли) обриваємо
+			default:
+				off := r.lastSeen != 0 && now.Sub(seen) > lim.OfflineAfter
+				if off != r.offline {
+					r.offline, changed = off, true
+				}
+			}
+		}
+		r.mu.Unlock()
+		if changed {
+			h.notify(r)
+		}
+	}
+}
+
+func (h *Host) ids() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]string, 0, len(h.recips))
+	for id := range h.recips {
+		out = append(out, id)
+	}
+	return out
 }
 
 // Snapshot — стани всіх одержувачів.
@@ -201,9 +367,7 @@ func (h *Host) Snapshot() []RecipientState {
 // (план: «передача завершена, коли кожен завершив або відмовився»).
 func (h *Host) AllSettled() bool {
 	for _, s := range h.Snapshot() {
-		switch s.State {
-		case StateDone, StateDeclined, StateFailed, StateRevoked:
-		default:
+		if !IsFinalState(s.State) {
 			return false
 		}
 	}
@@ -222,6 +386,15 @@ func (h *Host) stateOf(r *recipient) RecipientState {
 	s := RecipientState{
 		ID: r.id, State: r.state, BytesSent: r.bytesSent.Load(), BytesDone: r.bytesDone,
 		FilesDone: r.filesDone, FilesTotal: len(h.m.Files), LastSeenMs: r.lastSeen, Error: r.errText,
+	}
+	switch {
+	case !IsFinalState(s.State):
+		s.Offline = r.offline
+		if !r.offline {
+			s.SpeedBPS = r.speed
+		}
+	case s.State != StateDone:
+		s.Reason = CleanReason(r.reason)
 	}
 	switch s.State {
 	case StateWaiting, StateTransferring, StatePaused:
@@ -261,13 +434,29 @@ func (h *Host) auth(w http.ResponseWriter, req *http.Request) *recipient {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return nil
 	}
-	if found.revoked.Load() {
+	// Перегляд вмісту до прийняття — ще не «одержувач на зв'язку»: не чіпаємо ні стан,
+	// ні lastSeen (інакше тайм-аут прийняття перетворився б на «зник посеред передачі»).
+	preview := req.Method == http.MethodGet && req.URL.Path == "/v1/preview"
+	found.mu.Lock()
+	reason := found.reason
+	gone := found.revoked.Load() || found.state == StateDeclined || found.state == StateTimeout
+	back := false
+	if !gone && !preview {
+		found.lastSeen = time.Now().UnixMilli()
+		back, found.offline = found.offline, false
+	}
+	found.mu.Unlock()
+	if gone {
+		if reason == "" {
+			reason = ReasonCancelledSender
+		}
+		w.Header().Set(HeaderReason, CleanReason(reason))
 		http.Error(w, "gone", http.StatusGone)
 		return nil
 	}
-	found.mu.Lock()
-	found.lastSeen = time.Now().UnixMilli()
-	found.mu.Unlock()
+	if back {
+		h.notify(found) // повернувся після «офлайн»
+	}
 	return found
 }
 
@@ -280,6 +469,8 @@ func (h *Host) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	switch {
 	case req.Method == http.MethodGet && req.URL.Path == "/v1/manifest":
 		h.serveManifest(w, req, r)
+	case req.Method == http.MethodGet && req.URL.Path == "/v1/preview":
+		h.writeManifest(w, req)
 	case req.Method == http.MethodGet && req.URL.Path == "/v1/file":
 		h.serveFile(w, req, r)
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/bundle":
@@ -289,7 +480,7 @@ func (h *Host) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	case req.Method == http.MethodPost && req.URL.Path == "/v1/decline":
 		r.mu.Lock()
 		if r.state != StateDone {
-			r.state = StateDeclined
+			r.state, r.reason = StateDeclined, ReasonDeclined
 		}
 		r.mu.Unlock()
 		h.notify(r)
@@ -301,11 +492,16 @@ func (h *Host) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 func (h *Host) serveManifest(w http.ResponseWriter, req *http.Request, r *recipient) {
 	r.mu.Lock()
-	if r.state == StateWaiting {
-		r.state = StateTransferring
+	// Одержувач (знову) підключився: чекання, власна зупинка чи збій — уже не фінал.
+	if r.state == StateWaiting || r.state == StateCancelled || r.state == StateFailed {
+		r.state, r.reason, r.errText = StateTransferring, "", ""
 	}
 	r.mu.Unlock()
 	h.notify(r)
+	h.writeManifest(w, req)
+}
+
+func (h *Host) writeManifest(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if strings.Contains(req.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
@@ -452,9 +648,13 @@ func (h *Host) serveBundle(w http.ResponseWriter, req *http.Request, r *recipien
 type ProgressReport struct {
 	Bytes  int64  `json:"bytes"`
 	Files  int    `json:"files"`
-	State  string `json:"state"` // downloading | paused | done | error
+	State  string `json:"state"` // downloading | paused | done | error | cancelled
 	Paused bool   `json:"paused"`
 	Error  string `json:"error,omitempty"`
+	// Reason — код причини для state=error (старі версії шлють лише Error).
+	Reason string `json:"reason,omitempty"`
+	// Speed — поточна швидкість прийому, байт/с (для ETA у відправника).
+	Speed int64 `json:"speed,omitempty"`
 }
 
 func (h *Host) serveProgress(w http.ResponseWriter, req *http.Request, r *recipient) {
@@ -471,19 +671,29 @@ func (h *Host) serveProgress(w http.ResponseWriter, req *http.Request, r *recipi
 		r.filesDone = p.Files
 	}
 	r.recvPaused = p.Paused
+	if p.Speed >= 0 && p.Speed < 1<<40 {
+		r.speed = p.Speed
+	}
 	switch p.State {
 	case "done":
 		// «Готово» приймаємо лише якщо підтверджено ВСЕ — інакше це брехня або гонка.
 		if r.bytesDone == h.m.TotalBytes && r.filesDone == len(h.m.Files) {
-			r.state = StateDone
+			r.state, r.reason = StateDone, ""
 		}
 	case "error":
-		r.state = StateFailed
-		r.errText = truncate(p.Error, 200)
+		if r.state != StateDone {
+			r.state = StateFailed
+			r.errText = truncate(p.Error, 200)
+			r.reason = CleanReason(p.Reason)
+		}
+	case "cancelled":
+		if r.state != StateDone {
+			r.state, r.reason = StateCancelled, ReasonCancelledReceiver
+		}
 	default:
-		if r.state == StateFailed || r.state == StateWaiting {
+		if r.state == StateFailed || r.state == StateWaiting || r.state == StateCancelled {
 			r.state = StateTransferring
-			r.errText = ""
+			r.errText, r.reason = "", ""
 		}
 	}
 	r.mu.Unlock()

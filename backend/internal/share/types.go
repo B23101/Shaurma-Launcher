@@ -15,8 +15,20 @@
 //	GET  /v1/file?i=N          один файл, підтримує Range (докачування)
 //	POST /v1/bundle {"i":[…]}  партія дрібних файлів одним tar-потоком (без
 //	                           тимчасових файлів на диску відправника)
-//	POST /v1/progress          одержувач повідомляє, скільки ПІДТВЕРДЖЕНО
+//	POST /v1/progress          одержувач повідомляє, скільки ПІДТВЕРДЖЕНО, швидкість
+//	                           і фінальний стан (done | error + reason | cancelled)
 //	POST /v1/decline           одержувач відмовився
+//	GET  /v1/preview           той самий маніфест для перегляду ДО прийняття: стан
+//	                           одержувача не змінює (новіші відправники; старі — 404)
+//
+// Файл маніфесту може мати src — ту саму річ на CDN Modrinth (знайдено відправником за
+// sha1). Одержувач качає такі файли напряму з cdn.modrinth.com паралельно з P2P і звіряє
+// з sha256 маніфесту; будь-який збій — той самий файл через P2P. Старі одержувачі src
+// ігнорують. src не входить у Manifest.ID (вміст від нього не залежить).
+//
+// Закритий доступ — 410 Gone із заголовком X-Share-Reason (код Reason*), щоб
+// одержувач показав точну причину, а не загальне «доступ закрито». Старі
+// відправники заголовка не шлють — тоді причина ReasonAccess.
 package share
 
 import (
@@ -24,6 +36,8 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -48,13 +62,87 @@ const (
 	MaxTotalBytes = int64(256) << 30
 	MaxPathLen    = 400
 	MaxRecipients = 3
+
+	// HeaderReason — причина 410 Gone (див. Reason*).
+	HeaderReason = "X-Share-Reason"
 )
+
+// Коди причин завершення передачі. Їх бачать обидві сторони (RecipientState.Reason,
+// Progress.Reason), а UI перекладає код у текст, тож це стабільний контракт між
+// версіями лаунчера (невідомий код показується як ReasonError).
+const (
+	ReasonDeclined          = "declined"           // одержувач відмовився
+	ReasonCancelledSender   = "cancelled_sender"   // відправник скасував (усім або одному)
+	ReasonCancelledReceiver = "cancelled_receiver" // одержувач зупинив прийом
+	ReasonSenderOffline     = "sender_offline"     // відправник зник із мережі / закрив лаунчер
+	ReasonReceiverOffline   = "receiver_offline"   // одержувач зник посеред передачі й не повернувся
+	ReasonTimeout           = "timeout"            // одержувач так і не прийняв вчасно
+	ReasonIntegrity         = "integrity"          // файл не пройшов перевірку sha256
+	ReasonDiskFull          = "disk_full"          // бракує місця на диску одержувача
+	ReasonChanged           = "changed"            // збірку змінили після надсилання
+	ReasonAccess            = "access_closed"      // доступ закрито (причина невідома)
+	ReasonError             = "error"              // інша помилка
+	ReasonInterrupted       = "interrupted"        // лаунчер цієї сторони закрився/впав посеред передачі
+)
+
+// KnownReason — чи код причини відомий цій версії.
+func KnownReason(r string) bool {
+	switch r {
+	case ReasonDeclined, ReasonCancelledSender, ReasonCancelledReceiver, ReasonSenderOffline,
+		ReasonReceiverOffline, ReasonTimeout, ReasonIntegrity, ReasonDiskFull, ReasonChanged,
+		ReasonAccess, ReasonError, ReasonInterrupted:
+		return true
+	}
+	return false
+}
+
+// CleanReason — код причини з мережі: невідоме перетворюється на ReasonError.
+func CleanReason(r string) string {
+	if KnownReason(r) {
+		return r
+	}
+	return ReasonError
+}
 
 // FileEntry — один файл передачі. Шлях завжди з '/' і відносний.
 type FileEntry struct {
 	Path   string `json:"p"`
 	Size   int64  `json:"s"`
 	SHA256 string `json:"h"`
+	// Src — де ще лежить цей самий файл (необов'язково, див. опис пакета).
+	Src *FileSource `json:"src,omitempty"`
+}
+
+// FileSource — публічне джерело файлу (зараз лише Modrinth).
+type FileSource struct {
+	// Modrinth — id проєкту, Version — id версії (для переходу в браузер контенту й іконки).
+	Modrinth string `json:"mr"`
+	Version  string `json:"mv,omitempty"`
+	// URL — пряме посилання на файл; дозволено лише https://cdn.modrinth.com/…
+	URL string `json:"u"`
+}
+
+// CDNHost — єдиний хост, з якого одержувач качає файли напряму. Обмеження важливе:
+// інакше ворожий маніфест змусив би лаунчер ходити на довільні адреси (витік IP, SSRF).
+const CDNHost = "cdn.modrinth.com"
+
+var modrinthIDRe = regexp.MustCompile(`^[A-Za-z0-9]{1,24}$`)
+
+// ValidCDNURL — https://cdn.modrinth.com/… без порту, логіна й фрагмента.
+func ValidCDNURL(raw string) bool {
+	if len(raw) == 0 || len(raw) > 1000 {
+		return false
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host != CDNHost || u.User != nil || u.Fragment != "" || u.Opaque != "" {
+		return false
+	}
+	return strings.HasPrefix(u.Path, "/")
+}
+
+// Valid — коректний id проєкту/версії і дозволений URL CDN.
+func (s *FileSource) Valid() bool {
+	return s != nil && modrinthIDRe.MatchString(s.Modrinth) && (s.Version == "" || modrinthIDRe.MatchString(s.Version)) && ValidCDNURL(s.URL)
 }
 
 // Manifest — повний опис того, що передається.
@@ -103,6 +191,22 @@ func IsBlockedName(rel string) bool {
 	return blockedExt[strings.ToLower(rel[i:])]
 }
 
+// reservedNames — імена пристроїв Windows: файл «con.txt» чи «nul» не можна ні створити,
+// ні видалити звичайними засобами, а «com1» відкриває порт. Порівнюємо без розширення.
+var reservedNames = map[string]bool{
+	"con": true, "prn": true, "aux": true, "nul": true, "conin$": true, "conout$": true,
+	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true, "com6": true, "com7": true, "com8": true, "com9": true,
+	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true, "lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
+}
+
+func isReservedName(part string) bool {
+	base := strings.ToLower(part)
+	if i := strings.IndexByte(base, '.'); i >= 0 {
+		base = base[:i]
+	}
+	return reservedNames[strings.TrimRight(base, " ")]
+}
+
 // ErrUnsafePath — шлях із маніфесту небезпечний.
 var ErrUnsafePath = errors.New("небезпечний шлях у передачі")
 
@@ -112,7 +216,8 @@ func ValidateRelPath(rel string) error {
 	if rel == "" || len(rel) > MaxPathLen {
 		return fmt.Errorf("%w: порожній або задовгий шлях", ErrUnsafePath)
 	}
-	if strings.ContainsRune(rel, 0) || strings.ContainsRune(rel, '\\') {
+	// Керівні символи та <>:"|?* Windows не дозволяє в іменах (':' ловимо нижче окремо).
+	if strings.ContainsAny(rel, "\\<>\"|?*") || strings.IndexFunc(rel, func(r rune) bool { return r < 0x20 || r == 0x7f }) >= 0 {
 		return fmt.Errorf("%w: недозволений символ у %q", ErrUnsafePath, rel)
 	}
 	if strings.HasPrefix(rel, "/") {
@@ -126,6 +231,8 @@ func ValidateRelPath(rel string) error {
 			return fmt.Errorf("%w: двокрапка в %q", ErrUnsafePath, rel)
 		case strings.HasSuffix(part, ".") || strings.HasSuffix(part, " "):
 			return fmt.Errorf("%w: кінцева крапка/пробіл у %q", ErrUnsafePath, rel)
+		case isReservedName(part):
+			return fmt.Errorf("%w: зарезервоване ім'я %q", ErrUnsafePath, rel)
 		}
 	}
 	if IsBlockedName(rel) {
@@ -176,6 +283,9 @@ func (m *Manifest) Validate() error {
 		}
 		if f.Size < 0 || !isHex64(f.SHA256) {
 			return fmt.Errorf("некоректний запис файлу %q", f.Path)
+		}
+		if f.Src != nil && !f.Src.Valid() {
+			return fmt.Errorf("некоректне джерело файлу %q", f.Path)
 		}
 		// Нечутливо до регістру: на Windows два шляхи, що різняться регістром, — один файл.
 		k := strings.ToLower(f.Path)

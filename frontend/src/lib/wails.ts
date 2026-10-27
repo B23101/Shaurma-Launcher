@@ -18,7 +18,7 @@
 // Application / Window — аналог window.runtime.* методів v2.
 
 import { Call, Events as RtEvents, Application as RtApp, Window as RtWindow } from '/wails/runtime.js'
-import type { ShareStartRequest, ShareOutView, ShareInView, ShareRecoverable } from './friends/shareMsg'
+import type { ShareStartRequest, ShareOutView, ShareInView, ShareRecoverable, SharePreviewView } from './friends/shareMsg'
 import type {
   FontFile, RepairReport, RepairFix, RepairFixResult, RepairIssueKind, ModDependencyGraph, ModRemovalImpact, PackMetrics,
   Account, BrowserEntry, AIDiagnosis, AIFixResult, AIRecommendedAction, ConsoleContext, ConsoleLine,
@@ -766,7 +766,9 @@ export const App = {
   ShareResume: (sid: string): Promise<void> => call('ShareResume', sid),
   ShareCancelIn: (sid: string): Promise<void> => call('ShareCancelIn', sid),
   ShareDeviceTag: (): Promise<string> => call('ShareDeviceTag'),
-  ShareDiscard: (sid: string, encoded: string): Promise<void> => call('ShareDiscard', sid, encoded),
+  GetShareServerTree: (serverId: string): Promise<{ items: ExportCandidate[]; required: string[] }> => call('GetShareServerTree', serverId),
+  SharePreview: (encoded: string, fromAccountId: string): Promise<SharePreviewView> => call('SharePreview', encoded, fromAccountId),
+  ShareDiscard: (sid: string, encoded: string, fromAccountId: string): Promise<void> => call('ShareDiscard', sid, encoded, fromAccountId),
   ListShareIn: (): Promise<ShareInView[]> => call('ListShareIn'),
   ListShareRecoverable: (): Promise<ShareRecoverable[]> => call('ListShareRecoverable'),
   ShareResumeRecovered: (mid: string): Promise<ShareInView> => call('ShareResumeRecovered', mid),

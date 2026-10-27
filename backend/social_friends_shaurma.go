@@ -77,6 +77,8 @@ func (a *App) socialService() *social.Service {
 			if ev, ok := payload.(social.P2PHostRevokedEvent); ok && event == "p2p:host_revoked" && a.p2pAPI != nil {
 				a.p2pAPI.RevokeHostByAddress(ev.Address, ev.Reason)
 			}
+			// Службові повідомлення передач збірок (відмова/скасування) — share_shaurma.go.
+			a.shareOnSocial(event, payload)
 			a.notifyFromSocial(event, payload)
 		},
 		// Віддалене керування серверами друзів: усі кадри rs_* йдуть у remote_control_shaurma.go.
@@ -400,6 +402,10 @@ func (a *App) notifyFromSocial(event string, payload any) {
 			return
 		}
 		if ev.DecryptFailed || ev.Plaintext == "" {
+			return
+		}
+		// Службовий рядок передачі збірки — UI показує власний статус, тост зайвий.
+		if shareIsControlText(ev.Plaintext) {
 			return
 		}
 		if socialViewCovers(ev.From) {
