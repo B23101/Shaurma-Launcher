@@ -13,6 +13,7 @@
   import { t } from '../../i18n.svelte'
   import { toast } from '../../toast.svelte'
   import { serverVisual } from '../serverTargets'
+  import { packAsset } from '../../packAssets.svelte'
   import type { MigrationPack, PackServerLink, ServerView } from '../../types'
 
   let { packId = '', serverId = '' }: { packId?: string; serverId?: string } = $props()
@@ -54,7 +55,9 @@
     }
     const p = packById.get(l.packId)
     if (!p) return { name: l.packName || l.packId, sub: '', ti: 'ti-package-off', color: 'var(--text-dim)', mc: '', missing: true }
-    return { name: p.name, sub: [p.loader, p.mcVersion].filter(Boolean).join(' · '), src: p.iconUrl || undefined, ti: p.icon || 'ti-package', color: p.color || 'var(--orange)', mc: p.mcVersion, missing: false }
+    // iconUrl — шлях/URL збірки, а не готова картинка: як у сайдбарі, беремо через packAsset
+    // (до завантаження — undefined, тоді показується іконка-заглушка).
+    return { name: p.name, sub: [p.loader, p.mcVersion].filter(Boolean).join(' · '), src: packAsset(p.iconUrl), ti: p.icon || 'ti-package', color: p.color || 'var(--orange)', mc: p.mcVersion, missing: false }
   }
 
   // Версія гри другого боку — для попередження «інша версія».

@@ -1093,15 +1093,30 @@ type ModrinthCategory struct {
 }
 
 // GetCategories повертає теги-категорії для типу контенту (mod/modpack/
-// resourcepack/shader/datapack) — з іконками для сайдбара браузера.
+// resourcepack/shader/datapack/plugin) — з іконками для сайдбара браузера.
+//
+// Modrinth віддає ЄДИНИЙ список /tag/category з полем project_type —
+// шляху /tag/category/{type} не існує (404), через що фільтр категорій
+// Modrinth раніше був завжди порожній. Фільтруємо самі. Плагіни й датапаки
+// власних категорій не мають — Modrinth використовує для них категорії модів.
 func (c *ModrinthClient) GetCategories(projectType string) ([]ModrinthCategory, error) {
-	data, err := c.fetch("/tag/category/"+url.PathEscape(projectType), nil)
+	data, err := c.fetch("/tag/category", nil)
 	if err != nil {
 		return nil, err
 	}
-	var out []ModrinthCategory
-	if err := json.Unmarshal(data, &out); err != nil {
+	var all []ModrinthCategory
+	if err := json.Unmarshal(data, &all); err != nil {
 		return nil, err
+	}
+	want := projectType
+	if want == "plugin" || want == "datapack" {
+		want = "mod"
+	}
+	out := make([]ModrinthCategory, 0, len(all))
+	for _, cat := range all {
+		if cat.ProjectType == want {
+			out = append(out, cat)
+		}
 	}
 	return out, nil
 }

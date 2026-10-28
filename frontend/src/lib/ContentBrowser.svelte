@@ -11,7 +11,7 @@
   //     контенту), встановлення — зі сторінки (з прогресом і позначкою
   //     «вже встановлено», як у Modrinth app).
   import { t } from './i18n.svelte'
-  import { projectTags, tagLabel } from './browserTags'
+  import { tagLabel } from './browserTags'
   import { tick } from 'svelte'
   import { fly } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
@@ -1996,21 +1996,6 @@
     return selectedCategories.some(c => c.source === cat.source && c.name === cat.name)
   }
 
-  // Теги картки (як Categories у GDLauncher): без лоадерів; клік по тегу
-  // вмикає фільтр за ним, якщо такий тег є серед категорій вкладки.
-  function cardTags(item: BrowserEntry): string[] {
-    return projectTags(item.categories)
-  }
-  function tagCategory(item: BrowserEntry, name: string): BrowserCategory | undefined {
-    return categories.find(c => c.source === item.source && c.name.toLowerCase() === name.toLowerCase())
-  }
-  function filterByTag(item: BrowserEntry, name: string, ev: Event) {
-    ev.stopPropagation()
-    const cat = tagCategory(item, name)
-    if (!cat) return
-    if (!isCategorySelected(cat)) toggleCategory(cat)
-    doSearch(1)
-  }
 
   function categoryIcon(c: BrowserCategory): string {
     return c.icon || ''
@@ -2160,26 +2145,9 @@
           {/if}
         </div>
       {/if}
+      <!-- Теги (категорії) на картці не показуємо: вони розтягували картку на
+           кілька рядків, а вибираються у фільтрах збоку. -->
       <div class="cb-card-desc">{item.description}</div>
-      {#if mode !== 'compact'}
-        {@const tags = cardTags(item)}
-        {#if tags.length > 0}
-          {@const shown = tags.slice(0, mode === 'grid' ? 2 : 4)}
-          <div class="cb-card-cats">
-            {#each shown as tag (tag)}
-              {@const cat = tagCategory(item, tag)}
-              <button type="button" class="cb-card-cat" class:on={!!cat && isCategorySelected(cat)} disabled={!cat}
-                      title={cat ? t('browser.tagFilterHint', { tag: tagLabel(tag) }) : tagLabel(tag)}
-                      onclick={(ev) => filterByTag(item, tag, ev)}>
-                <i class="ti ti-tag"></i>{tagLabel(tag)}
-              </button>
-            {/each}
-            {#if tags.length > shown.length}
-              <span class="cb-card-cat more" title={tags.slice(shown.length).map(tagLabel).join(', ')}>+{tags.length - shown.length}</span>
-            {/if}
-          </div>
-        {/if}
-      {/if}
       {#if mode === 'detailed'}
         <div class="cb-card-meta">
           {#if item.loader}<span class="chip chip-l"><i class="ti ti-brand-git"></i> {item.loader}</span>{/if}
@@ -3700,21 +3668,6 @@
     font: 500 12px/1.4 var(--font-ui); color: var(--text-mute);
   }
   .cb-side-note.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
-  .cb-card-cats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; min-width: 0; }
-  .cb-card-cat {
-    all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
-    font: 600 var(--fs-min)/1 var(--font-ui); color: var(--text-mute);
-    padding: 3px 7px; border-radius: 999px; border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--hover) 50%, transparent);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    transition: color .15s, border-color .15s, background .15s;
-  }
-  .cb-card-cat i { font-size: 11px; opacity: .7; }
-  .cb-card-cat:not(:disabled):not(.more) { cursor: pointer; }
-  .cb-card-cat:not(:disabled):not(.more):hover { color: var(--text); border-color: var(--tacc, var(--orange)); }
-  .cb-card-cat.on { color: var(--tacc, var(--orange)); border-color: var(--tacc, var(--orange)); }
-  .cb-card-cat:disabled { cursor: default; }
-  .cb-card-cat.more { cursor: default; }
   .cb-card-desc {
     font-size: 11.5px; line-height: 1.5;
     color: var(--text-mute);
