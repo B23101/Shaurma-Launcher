@@ -680,12 +680,12 @@
   .am-floor { position: absolute; left: 50%; bottom: 6px; width: 70%; height: 22px; transform: translateX(-50%); border-radius: 50%; z-index: -1;
     background: radial-gradient(closest-side, color-mix(in srgb, var(--aura) 55%, transparent), transparent); animation: am-pulse 3.2s ease-in-out infinite; }
   @keyframes am-pulse { 0%, 100% { opacity: .6; transform: translateX(-50%) scaleX(.9); } 50% { opacity: 1; transform: translateX(-50%) scaleX(1.05); } }
-  .am-hint { font: 500 10.5px/1 var(--font-ui); color: var(--text-mute); display: inline-flex; gap: 5px; align-items: center; }
+  .am-hint { font: 500 var(--fs-min)/1 var(--font-ui); color: var(--text-mute); display: inline-flex; gap: 5px; align-items: center; }
 
   .am-id { display: grid; gap: 8px; justify-items: center; width: 100%; margin-top: 2px; }
   .am-name { font: 800 19px/1.1 var(--font-ui); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .am-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
-  .am-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font: 650 10.5px/1 var(--font-ui); color: var(--text-dim); background: var(--hover); border: 1px solid var(--border); }
+  .am-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font: 650 var(--fs-min)/1 var(--font-ui); color: var(--text-dim); background: var(--hover); border: 1px solid var(--border); }
   .am-badge i { font-size: 13px; }
   .am-badge.st { color: var(--text); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); background: color-mix(in srgb, var(--c) 12%, transparent); }
   .am-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 0 var(--c); animation: am-ping 2.2s ease-out infinite; }
@@ -717,7 +717,7 @@
   .am-lbl { display: inline-flex; align-items: center; gap: 6px; font: 700 12px/1 var(--font-ui); color: var(--text-dim); }
   .am-bio { width: 100%; box-sizing: border-box; resize: none; padding: 10px 12px; border-radius: 12px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); font: 450 13px/1.45 var(--font-ui); outline: 0; transition: border-color .15s, box-shadow .15s; }
   .am-bio:focus { border-color: var(--aura); box-shadow: 0 0 0 3px color-mix(in srgb, var(--aura) 22%, transparent); }
-  .am-bio-foot { display: flex; justify-content: flex-end; font: 600 10.5px/1 var(--font-ui); color: var(--text-mute); }
+  .am-bio-foot { display: flex; justify-content: flex-end; font: 600 var(--fs-min)/1 var(--font-ui); color: var(--text-mute); }
   .am-bio-foot .bad { color: var(--red); }
   .am-colors { display: flex; flex-wrap: wrap; gap: 8px; }
   .am-sw { width: 28px; height: 28px; border-radius: 50%; cursor: pointer; border: 2px solid transparent; background: var(--c); outline: 2px solid transparent; outline-offset: 2px; transition: transform .16s cubic-bezier(.34, 1.56, .64, 1), outline-color .16s; }
@@ -795,4 +795,9 @@
   .am-dbtn i { font-size: 14px; }
 
   @media (max-width: 860px) { .am { grid-template-columns: minmax(0, 1fr); } .am-looks { grid-template-columns: minmax(0, 1fr); } }
+  /* Низьке вікно ноутбука: модалка вміщається у висоту вікна без зайвого скролу. */
+  @media (max-height: 760px) {
+    .am { min-height: 0; }
+    .am-stage-wrap { height: 260px; }
+  }
 </style>

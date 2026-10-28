@@ -334,7 +334,7 @@
 
   .st-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
   .st-grid > div { background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .st-grid span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--text-mute); }
+  .st-grid span { font-size: var(--fs-min); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--text-mute); }
   .st-grid b { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st-cdn { color: var(--green) !important; }
   .st-cur { font-size: 11px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-mono, monospace); }

@@ -114,9 +114,9 @@
   .of-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 11.5px; color: var(--text-mute); margin-top: 3px; }
   .of-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
   .of-grid > div { background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .of-grid span { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--text-mute); }
+  .of-grid span { font-size: var(--fs-min); font-weight: 700; text-transform: uppercase; letter-spacing: .3px; color: var(--text-mute); }
   .of-grid b { font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .of-sec { margin: 12px 0 6px; font-size: 10.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-mute); }
+  .of-sec { margin: 12px 0 6px; font-size: var(--fs-min); font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-mute); }
   .of-grid > .of-from { flex-direction: row; align-items: center; gap: 8px; }
   .of-fromt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .of-safe { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

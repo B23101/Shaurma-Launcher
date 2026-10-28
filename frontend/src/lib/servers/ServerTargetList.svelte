@@ -7,6 +7,7 @@
   //   • показуємо ЛИШЕ сервери, що підтримують поточний вид контенту
   //     (моди → мод-ядра, плагіни → плагін-ядра).
   import { t } from '../i18n.svelte'
+  import type { BrowserServerCompatEntry } from '../types'
   import {
     kindForTab, serversForTab, serverVisual, coreName,
     type BrowserServer,
@@ -28,6 +29,11 @@
     // allKinds — сервер підходить, якщо тримає БУДЬ-ЩО (моди АБО плагіни):
     // для колекцій, де змішано різні типи. Тоді `tab` ігнорується.
     allKinds = false,
+    // compat — результат перевірки сумісності (GetBrowserServerCompat):
+    // несумісні сервери показуються вимкненими з причиною. null — без перевірки.
+    compat = null as BrowserServerCompatEntry[] | null,
+    // checking — перевірка ще йде (рядки з індикатором, клік недоступний).
+    checking = false,
   }: {
     servers?: BrowserServer[]
     tab?: string
@@ -36,14 +42,30 @@
     variant?: 'radio' | 'row'
     name?: string
     allKinds?: boolean
+    compat?: BrowserServerCompatEntry[] | null
+    checking?: boolean
   } = $props()
 
+  const compatById = $derived(new Map((compat ?? []).map(c => [c.serverId, c])))
+  // Несумісний сервер — лише коли перевірка завершилась і сказала «ні».
+  const blocked = (id: string) => !!compat && compatById.get(id)?.compatible === false
+  function reasonText(id: string): string {
+    const c = compatById.get(id)
+    if (!c) return ''
+    if (c.reason === 'clientOnly') return t('browser.target.clientOnly')
+    if (c.reason === 'noVersion') return t('browser.target.noVersion')
+    if (c.reason === 'unsupportedCore') return t('browser.target.unsupportedCore')
+    return ''
+  }
+
   // Сервери, придатні для поточної вкладки (решту НЕ показуємо взагалі).
-  const shown = $derived(
-    allKinds
+  const shown = $derived.by(() => {
+    const list = allKinds
       ? servers.filter(s => serversForTab([s], 'mod').length > 0 || serversForTab([s], 'plugin').length > 0)
       : serversForTab(servers, tab)
-  )
+    // Сумісні — першими (стабільне сортування зберігає порядок усередині груп).
+    return compat ? list.slice().sort((a, b) => Number(blocked(a.id)) - Number(blocked(b.id))) : list
+  })
   const kind = $derived(kindForTab(tab))
 
 </script>
@@ -58,15 +80,20 @@
 {:else}
   {#each shown as s (s.id)}
     {@const vis = serverVisual(s)}
+    {@const off = blocked(s.id) || checking}
+    {@const cs = compatById.get(s.id)}
       <div
         class="pp-row"
         class:compact={variant === 'radio'}
         class:sel={selectedId === s.id}
+        class:off={blocked(s.id)}
         style="--pcol:{vis.color}"
         role="button"
-        tabindex="0"
-        onclick={() => onpick(s)}
-        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onpick(s) } }}
+        tabindex={off ? -1 : 0}
+        aria-disabled={off}
+        title={blocked(s.id) ? reasonText(s.id) : undefined}
+        onclick={() => { if (!off) onpick(s) }}
+        onkeydown={(e) => { if (!off && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onpick(s) } }}
       >
         <span class="pp-ic" class:has-icon={!!vis.src}>
           {#if vis.src}<img src={vis.src} alt="" />{:else}<i class="ti {vis.ti || 'ti-server-2'}"></i>{/if}
@@ -74,6 +101,15 @@
         <span class="pp-info">
           <span class="pp-name">{s.name}</span>
           <span class="pp-sub">{coreName(s)} · {s.mcVersion}</span>
+          {#if checking}
+            <span class="pp-note"><i class="ti ti-loader spin"></i> {t('browser.compatChecking')}</span>
+          {:else if blocked(s.id)}
+            <span class="pp-note bad"><i class="ti ti-ban"></i> {reasonText(s.id)}</span>
+          {:else if cs?.alreadyInstalled}
+            <span class="pp-note warn"><i class="ti ti-alert-triangle"></i> {t('browser.alreadyInstalled', { file: cs.installedFileName ?? '' })}</span>
+          {:else if cs?.unconfirmed}
+            <span class="pp-note warn"><i class="ti ti-help-circle"></i> {t('browser.target.unconfirmed')}</span>
+          {/if}
         </span>
         {#if selectedId === s.id}
           <i class="ti ti-check pp-check"></i>
@@ -127,6 +163,11 @@
     font-size: 12.5px; font-weight: 700; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .pp-sub { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pp-sub { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pp-check { color: var(--pcol, var(--orange)); font-size: 15px; flex-shrink: 0; }
+  .pp-row.off { cursor: not-allowed; opacity: .55; }
+  .pp-row.off:hover { background: transparent; }
+  .pp-note { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-min); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pp-note.bad { color: var(--red); }
+  .pp-note.warn { color: var(--orange); }
 </style>

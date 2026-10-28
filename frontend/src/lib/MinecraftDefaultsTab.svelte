@@ -582,5 +582,5 @@
   .cp-ic.has-icon { background: transparent; }
   .cp-ic img { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; }
   .cp-name { font-size: 12.5px; font-weight: 700; flex: 1; text-align: left; }
-  .cp-meta { font-size: 10.5px; }
+  .cp-meta { font-size: var(--fs-min); }
 </style>

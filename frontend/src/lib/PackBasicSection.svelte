@@ -660,8 +660,8 @@
      місця порівняно з рештою розділу (великі PNG 30px + паддинги). */
   :global(.loader-opt) { padding:9px 6px; }
   :global(.loader-opt .loader-ic) { width:24px; height:24px; }
-  :global(.loader-opt .ln) { font-size:10.5px; }
-  :global(.loader-opt .lt) { font-size:8.5px; }
+  :global(.loader-opt .ln) { font-size:var(--fs-min); }
+  :global(.loader-opt .lt) { font-size:var(--fs-min); }
 
   .field-hint {
     font-size: 12px;

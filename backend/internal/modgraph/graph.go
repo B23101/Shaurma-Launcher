@@ -95,6 +95,8 @@ type Node struct {
 	Dependencies []Dependency `json:"dependencies"`
 	// Dependents — скільки увімкнених модів вимагають цей (для швидкого огляду).
 	Dependents int `json:"dependents"`
+	// ViaConnector — Fabric/Quilt-мод, який у цій збірці запускає Sinytra Connector.
+	ViaConnector bool `json:"viaConnector,omitempty"`
 }
 
 // Edge — залежність «From потребує To».
@@ -123,6 +125,8 @@ type Graph struct {
 	Missing []Missing `json:"missing"`
 	// Cycles — кола обов'язкових залежностей (рідкість, але лоадер їх не любить).
 	Cycles [][]string `json:"cycles"`
+	// Connector — у збірці увімкнено Sinytra Connector (Fabric-моди на Forge/NeoForge).
+	Connector bool `json:"connector"`
 }
 
 // BuildGraph будує граф за текою mods/.
@@ -254,15 +258,34 @@ func FromMods(mods []ModFile) Graph {
 			g.Missing = append(g.Missing, miss)
 		}
 	}
+	_, hasConnector := enabled.Lookup("connector")
+	if _, ok := enabled.Lookup("connectormod"); ok {
+		hasConnector = true
+	}
+	g.Connector = hasConnector
 	for _, m := range mods {
 		g.Nodes = append(g.Nodes, Node{
 			ID: nodeID(m), File: m.File, DisplayName: firstNonEmpty(m.Name, nodeID(m)),
 			Version: m.Version, Enabled: m.Enabled, Loader: m.Loader, Corrupted: m.Corrupted, Description: m.Description,
 			Dependencies: nonNilDeps(m.Dependencies), Dependents: dependents[nodeID(m)],
+			ViaConnector: hasConnector && fabricOnly(m.Loaders),
 		})
 	}
 	g.Cycles = findCycles(g.Edges)
 	return g
+}
+
+// fabricOnly — jar має лише Fabric/Quilt-метадані (без Forge/NeoForge).
+func fabricOnly(loaders []string) bool {
+	if len(loaders) == 0 {
+		return false
+	}
+	for _, l := range loaders {
+		if l != "fabric" && l != "quilt" {
+			return false
+		}
+	}
+	return true
 }
 
 func nonNilDeps(d []Dependency) []Dependency {

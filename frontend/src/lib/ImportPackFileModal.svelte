@@ -191,6 +191,6 @@
   }
   .ipf-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; }
   .ipf-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ipf-sub { margin-left: auto; font: 500 10.5px/1 var(--font-mono); color: var(--text-dim); white-space: nowrap; }
+  .ipf-sub { margin-left: auto; font: 500 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); white-space: nowrap; }
   .ipf-hint { margin-top: 13px; font: 400 11.5px/1.55 var(--font-ui); color: var(--text-dim); }
 </style>

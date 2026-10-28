@@ -35,7 +35,7 @@
 .ff-badge {
   display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
   min-width: 16px; height: 16px; padding: 0 5px; border-radius: 8px;
-  background: var(--orange); color: #111; font: 800 10px/1 var(--font-ui);
+  background: var(--orange); color: #111; font: 800 var(--fs-min)/1 var(--font-ui);
   animation: ff-pop .28s var(--ff-spring) both;
 }
 @keyframes ff-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }

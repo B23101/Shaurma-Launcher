@@ -105,13 +105,13 @@
 
   <div class="sc-chips">
     {#if remote}
-      <span class="sc-chip sc-chip-feat"><i class="ti ti-user"></i>{remote.nick}</span>
+      <span class="sc-chip sc-chip-feat" use:tip={t('servers.remote.sharedTip', { nick: remote.nick })}><i class="ti ti-users"></i>{t('servers.remote.shared')}</span>
       {#if remote.canStart}<span class="sc-chip"><i class="ti ti-player-play"></i>{t('servers.remote.can.start')}</span>{/if}
       {#if remote.canStop}<span class="sc-chip"><i class="ti ti-player-stop"></i>{t('servers.remote.can.stop')}</span>{/if}
       {#if remote.canConsole}<span class="sc-chip"><i class="ti ti-terminal-2"></i>{t('servers.remote.can.console')}</span>{/if}
     {:else}
     {#if srv.port}<span class="sc-chip"><i class="ti ti-plug"></i>:{srv.port}</span>{/if}
-    <span class="sc-chip"><i class="ti ti-coffee"></i>Java {srv.javaMajor}</span>
+    {#if srv.javaMajor}<span class="sc-chip"><i class="ti ti-coffee"></i>Java {srv.javaMajor}</span>{/if}
     <span class="sc-chip"><i class="ti ti-device-desktop"></i>{ramLabel}</span>
     {#if srv.hasMods}<span class="sc-chip sc-chip-feat"><i class="ti ti-puzzle"></i>{t('servers.tabs.mods')}</span>{/if}
     {#if srv.hasPlugins}<span class="sc-chip sc-chip-feat"><i class="ti ti-plug-connected"></i>{t('servers.tabs.plugins')}</span>{/if}
@@ -221,7 +221,7 @@
   .sc-chips { display: flex; flex-wrap: wrap; gap: 5px; }
   .sc-chip {
     display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 7px;
-    font: 600 10px/1 var(--font-mono); color: var(--text-mute); background: var(--hover); border: 1px solid var(--border);
+    font: 600 var(--fs-min)/1 var(--font-mono); color: var(--text-mute); background: var(--hover); border: 1px solid var(--border);
   }
   .sc-chip i { font-size: 11px; color: var(--text-dim); }
   .sc-chip-feat { font-family: var(--font-ui); color: var(--pcol); background: color-mix(in srgb, var(--pcol) 10%, transparent); border-color: color-mix(in srgb, var(--pcol) 30%, transparent); }
@@ -230,9 +230,9 @@
   .sc-body { min-height: 66px; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
   .sc-metrics { display: flex; flex-direction: column; gap: 7px; }
   .sc-m-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }
-  .sc-m-h span { display: inline-flex; align-items: center; gap: 5px; font: 700 9.5px/1 var(--font-ui); letter-spacing: .5px; text-transform: uppercase; color: var(--text-dim); }
+  .sc-m-h span { display: inline-flex; align-items: center; gap: 5px; font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .5px; text-transform: uppercase; color: var(--text-dim); }
   .sc-m-h span i { font-size: 12px; color: var(--pcol); }
-  .sc-m-h b { font: 700 10.5px/1 var(--font-mono); color: var(--text); }
+  .sc-m-h b { font: 700 var(--fs-min)/1 var(--font-mono); color: var(--text); }
   .sc-bar { height: 5px; border-radius: 3px; background: color-mix(in srgb, var(--text) 10%, transparent); overflow: hidden; }
   .sc-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--pcol), color-mix(in srgb, var(--pcol) 60%, #fff)); transition: width .45s cubic-bezier(.22, 1, .36, 1); }
   .sc-fill.ok { background: linear-gradient(90deg, #22c55e, #86efac); }
@@ -240,7 +240,7 @@
   .sc-m.hot .sc-fill { background: linear-gradient(90deg, #ef4444, #ff7a45); }
   .sc-m.hot .sc-m-h b { color: #ff7a7a; }
   @keyframes sc-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(360%); } }
-  .sc-uptime { display: flex; align-items: center; gap: 5px; font: 600 10.5px/1 var(--font-ui); color: var(--text-mute); }
+  .sc-uptime { display: flex; align-items: center; gap: 5px; font: 600 var(--fs-min)/1 var(--font-ui); color: var(--text-mute); }
   .sc-uptime i { font-size: 12px; color: var(--green); }
 
   .sc-install-msg { display: flex; align-items: center; gap: 6px; font: 500 11px/1.3 var(--font-ui); color: var(--text-mute); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -276,7 +276,7 @@
   @media (prefers-reduced-motion: reduce) { .sc-fill.indet { animation: none !important; } .sc { transition: border-color .2s; } .sc:hover { transform: none; } }
   .sc-offpill {
     display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; border-radius: 999px;
-    font: 700 10px/1 var(--font-ui); white-space: nowrap; color: var(--text-dim);
+    font: 700 var(--fs-min)/1 var(--font-ui); white-space: nowrap; color: var(--text-dim);
     border: 1px solid var(--border); background: rgba(0, 0, 0, .35);
   }
 </style>

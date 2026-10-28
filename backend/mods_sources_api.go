@@ -18,6 +18,11 @@ import (
 // синхронізує й видаляє моди), тому джерела для них не підтримуються.
 
 func (a *App) packSourceStore(packID string) modsource.Store {
+	if t, ok := a.serverForModTarget(packID); ok {
+		// Те саме сховище, що й у servers.sourceStoreFor — джерела сервера
+		// спільні для старого і нового UI.
+		return modsource.Store{Root: t.srv.Dir, Name: t.contentDir}
+	}
 	return modsource.Store{Root: a.packDir(packID, ""), Name: modsource.NameMods}
 }
 
@@ -47,12 +52,8 @@ func (a *App) PickModSourceFolder() (string, error) {
 // синхронізує mods/. Прогрес іде подією "mods:sources:progress".
 func (a *App) AddModSource(packID, kind, path string) (modsource.View, error) {
 	empty := modsource.View{Sources: []modsource.SourceView{}}
-	build, err := a.resolveLaunchBuild(packID)
-	if err != nil {
+	if err := a.modSourcesAllowedErr(packID); err != nil {
 		return empty, err
-	}
-	if build.IsShaurma {
-		return empty, fmt.Errorf("для офіційних Shaurma-збірок джерела модів недоступні")
 	}
 	if err := a.modsBusyErr(packID); err != nil {
 		return empty, err
@@ -77,6 +78,22 @@ func (a *App) AddModSource(packID, kind, path string) (modsource.View, error) {
 		return empty, fmt.Errorf("не вдалося скопіювати: %s", res.Errors[0])
 	}
 	return st.View()
+}
+
+// modSourcesAllowedErr — чи може таргет мати «єдині джерела»: сервер і
+// кастомна збірка — так, офіційна Shaurma-збірка — ні.
+func (a *App) modSourcesAllowedErr(packID string) error {
+	if isServerModTarget(packID) {
+		return nil
+	}
+	build, err := a.resolveLaunchBuild(packID)
+	if err != nil {
+		return err
+	}
+	if build.IsShaurma {
+		return fmt.Errorf("для офіційних Shaurma-збірок джерела модів недоступні")
+	}
+	return nil
 }
 
 // RemoveModSource відкріплює джерело. Уже скопійовані моди ЛИШАЮТЬСЯ у
@@ -111,7 +128,7 @@ func (a *App) SyncModSources(packID string) (modsource.Result, error) {
 // синхронізації. Для збірок без джерел (і для Shaurma-збірок) — no-op.
 func (a *App) syncPackSources(packID string, progress func(modsource.Progress)) modsource.Result {
 	res := modsource.Result{Missing: []modsource.Missing{}, Errors: []string{}}
-	if b, err := a.resolveLaunchBuild(packID); err != nil || b.IsShaurma {
+	if a.modSourcesAllowedErr(packID) != nil {
 		return res
 	}
 	r, err := a.packSourceStore(packID).Sync(a.instanceModsDir(packID), progress)
@@ -234,18 +251,4 @@ func (a *App) annotatePackMods(packID string, mods []model.ModEntry) {
 			mods[i].SourceMissing = an.Missing
 		}
 	}
-}
-
-// ── Сервери: тонкі обгортки над servers.API ────────────────────────────
-
-func (a *App) GetServerModSources(serverID, name string) (modsource.View, error) {
-	return a.srvAPI.GetServerModSources(serverID, name)
-}
-
-func (a *App) AddServerModSource(serverID, name, kind, path string) (modsource.View, error) {
-	return a.srvAPI.AddServerModSource(serverID, name, kind, path)
-}
-
-func (a *App) RemoveServerModSource(serverID, name, sourceID string) (modsource.View, error) {
-	return a.srvAPI.RemoveServerModSource(serverID, name, sourceID)
 }

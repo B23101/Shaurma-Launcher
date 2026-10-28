@@ -129,6 +129,9 @@ export function isGifAsset(url: string | undefined | null): boolean {
 
 export function packAsset(url: string | undefined | null): string | undefined {
   if (!url) return undefined
+  // Уже готова картинка (іконка сервера в списках міграції/порівняння) —
+  // бекенд для неї не потрібен.
+  if (url.startsWith('data:')) return url
   const hit = packAssets[url]
   if (hit !== undefined) return hit || undefined
   if (!inflight.has(url)) {

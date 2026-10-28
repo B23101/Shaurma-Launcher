@@ -212,7 +212,7 @@
     box-shadow: inset 2px 0 0 0 var(--violet);
   }
   .vpm-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .vpm-item-sub { font-size: 10.5px; color: var(--text-mute); flex-shrink: 0; }
+  .vpm-item-sub { font-size: var(--fs-min); color: var(--text-mute); flex-shrink: 0; }
   .vpm-item-badge { color: var(--yellow); font-size: 14px; flex-shrink: 0; }
   .vpm-item-check { color: var(--violet); font-size: 15px; flex-shrink: 0; }
 

@@ -117,8 +117,8 @@
   .sc-ic img { width: 100%; height: 100%; object-fit: cover; }
   .sc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
   .sc-main b { font-size: 12.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sc-main span { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .sc-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 700; color: var(--green); flex: none;
+  .sc-main span { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sc-badge { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-min); font-weight: 700; color: var(--green); flex: none;
     background: color-mix(in srgb, var(--green) 12%, transparent); border-radius: 99px; padding: 2px 7px; }
   .sc-open { width: 26px; height: 26px; flex: none; border-radius: 7px; border: 1px solid var(--border); background: var(--bg-panel); color: var(--text-mute);
     cursor: pointer; display: grid; place-items: center; }

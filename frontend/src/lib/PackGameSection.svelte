@@ -9,6 +9,7 @@
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
   import StSelect, { type StOption } from './StSelect.svelte'
+  import PackServerLinkCard from './servers/components/PackServerLinkCard.svelte'
   import steveHead from '../assets/images/steve-head.png'
   import { toast } from './toast.svelte'
   import type { Account, BuildView, InstanceConfig, InstanceServer, KeyBindLabel, PackOptionsView, ServerPing, Settings, SkinPreset } from './types'
@@ -914,13 +915,13 @@
       <div class="st-row sub" bind:this={autoJoinRef}>
         <div class="st-row-text"><div class="st-row-name">{t('pack.game.autoJoinType')}</div></div>
         <div class="st-row-ctl">
-          <div class="st-seg">
+          <div class="st-seg labeled" role="radiogroup" aria-label={t('pack.game.autoJoinType')}>
             {#if supportsWorldJoin}
-              <button type="button" class:on={cfg.autoJoinType === 'world'} onclick={() => onUpdate('autoJoinType', 'world')}>
+              <button type="button" role="radio" aria-checked={cfg.autoJoinType === 'world'} class:on={cfg.autoJoinType === 'world'} onclick={() => onUpdate('autoJoinType', 'world')}>
                 <i class="ti ti-world"></i> {t('pack.game.autoJoinTypeWorld')}
               </button>
             {/if}
-            <button type="button" class:on={cfg.autoJoinType === 'server'} onclick={() => onUpdate('autoJoinType', 'server')}>
+            <button type="button" role="radio" aria-checked={cfg.autoJoinType === 'server'} class:on={cfg.autoJoinType === 'server'} onclick={() => onUpdate('autoJoinType', 'server')}>
               <i class="ti ti-server-2"></i> {t('pack.game.autoJoinTypeServer')}
             </button>
           </div>
@@ -951,8 +952,8 @@
       {:else}
         <div class="st-row sub">
           <div class="st-row-text"><div class="st-row-name">{t('pack.game.autoJoinServer')}</div></div>
-          <div class="st-row-ctl">
-            <StSelect editable minWidth="260px" value={cfg.autoJoinServer} options={serverOptions}
+          <div class="st-row-ctl wrap">
+            <StSelect editable minWidth="220px" value={cfg.autoJoinServer} options={serverOptions}
                       placeholder={t('pack.game.autoJoinServerPlaceholder')}
                       emptyText={t('pack.game.autoJoinServerNoMatch')}
                       ariaLabel={t('pack.game.autoJoinServer')}
@@ -991,6 +992,9 @@
       </div>
     {/if}
   </SCard>
+
+  <!-- ═══ Сервер разом зі збіркою (та сама картка, що й на сторінці сервера) ═══ -->
+  {#if packId}<PackServerLinkCard {packId} />{/if}
 
   <!-- ═══ options.txt ═══ -->
   <SCard icon="ti-settings" tone="green" title={t('pack.game.options')} desc={t('pack.game.optionsHint')}>
@@ -1347,5 +1351,5 @@
     color: var(--pcol, var(--orange)); display: flex; align-items: center; justify-content: center; font-size: 15px;
   }
   .cp-name { font-size: 12.5px; font-weight: 700; flex: 1; text-align: left; }
-  .cp-meta { font-size: 10.5px; color: var(--text-mute); }
+  .cp-meta { font-size: var(--fs-min); color: var(--text-mute); }
 </style>

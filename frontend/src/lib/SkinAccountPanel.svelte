@@ -245,8 +245,8 @@
   }
   .sap-title { display: flex; align-items: center; gap: 7px; font: 700 12.5px/1 var(--font-ui); color: var(--text); }
   .sap-title i { color: var(--orange); font-size: 15px; }
-  .sap-sub { font: 400 10.5px/1.5 var(--font-ui); color: var(--text-mute); }
-  .sap-warn { display: flex; align-items: center; gap: 6px; font: 500 10.5px/1.4 var(--font-ui); color: var(--yellow); }
+  .sap-sub { font: 400 var(--fs-min)/1.5 var(--font-ui); color: var(--text-mute); }
+  .sap-warn { display: flex; align-items: center; gap: 6px; font: 500 var(--fs-min)/1.4 var(--font-ui); color: var(--yellow); }
   .sap-wait {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     font: 500 11px/1.4 var(--font-ui); color: var(--orange);
@@ -270,7 +270,7 @@
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
     padding: 6px 11px; border-radius: 8px;
     background: var(--bg-input); border: 1px solid var(--border); color: var(--text-mute);
-    font: 600 10.5px/1 var(--font-ui); transition: border-color .14s, color .14s, background .14s;
+    font: 600 var(--fs-min)/1 var(--font-ui); transition: border-color .14s, color .14s, background .14s;
   }
   .sap-model:hover { color: var(--text); border-color: var(--border-hi); }
   .sap-model.on { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 45%, transparent); background: color-mix(in srgb, var(--orange) 10%, transparent); }

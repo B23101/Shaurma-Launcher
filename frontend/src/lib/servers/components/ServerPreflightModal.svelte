@@ -13,6 +13,7 @@
   import { App } from '../../wails'
   import { toast } from '../../toast.svelte'
   import { t } from '../../i18n.svelte'
+  import UiModal from '../../UiModal.svelte'
   import type { ServerPreflight } from '../../types'
 
   let {
@@ -62,60 +63,39 @@
   }
 </script>
 
-<div
-  class="modal-overlay"
-  role="presentation"
-  onclick={(e) => { if (e.target === e.currentTarget) onclose() }}
-  onkeydown={(e) => { if (e.key === 'Escape') onclose() }}
->
-  <div class="modal smp" role="dialog" aria-modal="true" aria-label={t('servers.preflight.title')} onclick={(e) => e.stopPropagation()}>
-    <div class="modal-head">
-      <h3>
-        <i class="ti ti-stethoscope" style="color:var(--orange);margin-right:8px"></i>
-        {t('servers.preflight.title')}
-      </h3>
-      <button class="md-close" onclick={onclose} aria-label={t('servers.preflight.close')}><i class="ti ti-x"></i></button>
-    </div>
-
-    <div class="modal-body">
-      <div class="smp-sub">{t('servers.preflight.sub', { name: serverName })}</div>
-
-      {#each visible as w (w.kind)}
-        <div class="smp-w {w.level}" class:fatal={w.fatal}>
-          <i class="ti {iconFor(w.level)}"></i>
-          <div class="smp-w-body">
-            <div class="smp-w-msg">{w.message}</div>
-            {#if w.hint}<div class="smp-w-hint">{w.hint}</div>{/if}
-          </div>
-          {#if w.ignorable && KIND_TO_SETTING[w.kind]}
-            <button class="smp-ignore" onclick={() => ignoreKind(w.kind)} title={t('servers.preflight.ignoreHint')}>
-              <i class="ti ti-eye-off"></i> {t('servers.preflight.ignore')}
-            </button>
-          {:else if w.kind === 'port'}
-            <span class="smp-lock" title={t('servers.preflight.portLock')}><i class="ti ti-lock"></i></span>
-          {/if}
-        </div>
-      {/each}
-
-      {#if visible.length === 0}
-        <div class="smp-ok"><i class="ti ti-circle-check"></i> {t('servers.preflight.allOk')}</div>
+<UiModal open={true} {onclose} icon="ti-stethoscope" width="560px" title={t('servers.preflight.title')}>
+  <div class="smp-sub">{t('servers.preflight.sub', { name: serverName })}</div>
+  {#each visible as w (w.kind)}
+    <div class="smp-w {w.level}" class:fatal={w.fatal}>
+      <i class="ti {iconFor(w.level)}"></i>
+      <div class="smp-w-body">
+        <div class="smp-w-msg">{w.message}</div>
+        {#if w.hint}<div class="smp-w-hint">{w.hint}</div>{/if}
+      </div>
+      {#if w.ignorable && KIND_TO_SETTING[w.kind]}
+        <button class="btn btn-ghost btn-sm" onclick={() => ignoreKind(w.kind)} title={t('servers.preflight.ignoreHint')}>
+          <i class="ti ti-eye-off"></i> {t('servers.preflight.ignore')}
+        </button>
+      {:else if w.kind === 'port'}
+        <span class="smp-lock" title={t('servers.preflight.portLock')}><i class="ti ti-lock"></i></span>
       {/if}
     </div>
-
-    <div class="modal-foot">
-      <button class="btn btn-ghost" onclick={onclose}>{t('servers.preflight.cancel')}</button>
-      <button class="btn btn-primary" disabled={!canStart} onclick={onstart}>
-        <i class="ti ti-player-play"></i> {t('servers.preflight.start')}
-      </button>
-    </div>
+  {/each}
+  {#if visible.length === 0}
+    <div class="smp-ok"><i class="ti ti-circle-check"></i> {t('servers.preflight.allOk')}</div>
+  {/if}
+  {#snippet footer()}
     {#if !canStart}
       <div class="smp-blocked"><i class="ti ti-lock"></i> {t('servers.preflight.blocked')}</div>
     {/if}
-  </div>
-</div>
+    <button class="btn btn-ghost" onclick={onclose}>{t('servers.preflight.cancel')}</button>
+    <button class="btn btn-primary" disabled={!canStart} onclick={onstart}>
+      <i class="ti ti-player-play"></i> {t('servers.preflight.start')}
+    </button>
+  {/snippet}
+</UiModal>
 
 <style>
-  .smp { max-width: 560px; }
   .smp-sub { font: 500 12px/1.5 var(--font-ui); color: var(--text-mute); margin-bottom: 12px; }
 
   .smp-w {
@@ -135,20 +115,11 @@
   .smp-w-msg { font: 600 12.5px/1.4 var(--font-ui); color: var(--text); }
   .smp-w-hint { font: 400 11px/1.45 var(--font-ui); color: var(--text-mute); }
 
-  .smp-ignore {
-    display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0;
-    padding: 5px 9px; border-radius: 8px; cursor: pointer;
-    background: transparent; border: 1px solid var(--border);
-    color: var(--text-dim); font: 600 10.5px/1 var(--font-ui);
-    transition: color .14s, border-color .14s, background .14s;
-  }
-  .smp-ignore:hover { color: var(--text); border-color: var(--border-hi); background: var(--hover); }
   .smp-lock { flex-shrink: 0; color: var(--text-dim); font-size: 13px; }
 
   .smp-ok { display: flex; align-items: center; gap: 8px; color: var(--green); font: 600 13px/1 var(--font-ui); padding: 8px 0; }
   .smp-blocked {
-    display: flex; align-items: center; justify-content: center; gap: 6px;
-    font: 600 11px/1 var(--font-ui); color: var(--red);
-    padding: 0 16px 12px;
+    flex: 1; display: flex; align-items: center; gap: 6px;
+    font: 600 11px/1.3 var(--font-ui); color: var(--red);
   }
 </style>

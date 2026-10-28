@@ -155,7 +155,7 @@
   .sh-ic { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; font-size: 22px; color: var(--orange);
     background: rgba(var(--orange-rgb), .14); flex: none; }
   .sh-titles { min-width: 0; flex: 1; }
-  .sh-kind { font-size: 10px; font-weight: 700; letter-spacing: .3px; color: var(--text-mute); text-transform: uppercase; }
+  .sh-kind { font-size: var(--fs-min); font-weight: 700; letter-spacing: .3px; color: var(--text-mute); text-transform: uppercase; }
   .sh-name { font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .sh-meta { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 11px; color: var(--text-mute); }
   .sh-more { width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border-hi); background: var(--bg-panel); color: var(--text-mute);

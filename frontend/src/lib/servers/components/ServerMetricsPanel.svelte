@@ -144,7 +144,7 @@
   .sm-head { display: flex; align-items: center; gap: 7px; }
   .sm-label {
     display: inline-flex; align-items: center; gap: 5px;
-    font: 700 10px/1 var(--font-ui); letter-spacing: .4px; text-transform: uppercase;
+    font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .4px; text-transform: uppercase;
     color: rgba(255, 255, 255, .85);
   }
   .sm-label i { font-size: 12px; color: var(--pcol, var(--orange)); }
@@ -170,7 +170,7 @@
   .sm-idle i { font-size: 15px; color: var(--pcol, var(--orange)); }
   .sm-warn {
     display: flex; align-items: center; gap: 4px;
-    font: 700 9px/1 var(--font-ui); color: #ff8080;
+    font: 700 var(--fs-min)/1 var(--font-ui); color: #ff8080;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .sm-warn.dim { color: rgba(255, 255, 255, .55); font-weight: 600; }

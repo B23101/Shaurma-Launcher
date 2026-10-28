@@ -86,8 +86,8 @@ func TestDirectChannelEndToEnd(t *testing.T) {
 		t.Fatalf("accept=%v dial=%v", aerr, derr)
 	}
 	go r.host.ServeChannel(srvConn, who, gotMd)
-	go r.client.UseChannel(ownerID, cliConn)
-	eventually(t, "канал зареєстровано", func() bool { return r.client.HasChannel(ownerID) })
+	go r.client.UseChannel(ownerID, srvID, cliConn)
+	eventually(t, "канал зареєстровано", func() bool { return r.client.HasChannel(ownerID, srvID) })
 
 	sid, _, err := r.client.OpenConsole(ownerID, srvID)
 	if err != nil {
@@ -121,5 +121,5 @@ func TestDirectChannelEndToEnd(t *testing.T) {
 
 	// Порушення протоколу рве канал: сміття замість конверта.
 	_ = cliConn.Send([]byte("not json"))
-	eventually(t, "канал закрито", func() bool { return !r.client.HasChannel(ownerID) })
+	eventually(t, "канал закрито", func() bool { return !r.client.HasChannel(ownerID, srvID) })
 }

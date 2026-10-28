@@ -19,12 +19,9 @@
   import { highlightCode } from './highlight'
   import type { ModListExportOptions } from './types'
 
-  let { packId = '', serverId = '', open, onClose, selectedFileNames = [] as string[] } = $props<{
+  let { packId = '', open, onClose, selectedFileNames = [] as string[] } = $props<{
+    // packId — ID таргету менеджера модів: збірка або сервер ("srv:<id>").
     packId?: string
-    // serverId — експорт модів СЕРВЕРА, а не збірки (той самий діалог,
-    // той самий набір форматів і полів; бекенд-метод ExportServerModList
-    // сканує mods/ сервера й додає справжні посилання на проєкти).
-    serverId?: string
     open: boolean
     onClose: () => void
     // Поточне виділення менеджера модів — джерело для режиму «лише вибрані».
@@ -120,9 +117,7 @@
   async function doExport() {
     busy = true; error = ''
     try {
-      result = serverId
-        ? await App.ExportServerModList(serverId, opts)
-        : await App.ExportModList(packId, opts)
+      result = await App.ExportModList(packId, opts)
       if (!result.trim()) toast(t('mods.export.empty'), 'error')
     } catch (e: any) {
       error = String(e?.message ?? e)

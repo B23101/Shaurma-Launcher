@@ -31,7 +31,9 @@
   }: Props = $props()
 
   const HEX = /^#[0-9a-fA-F]{6}$/
-  const THEMES = ['system', 'light', 'dark', 'oled'] as const
+  // 'custom' обов'язковий: лише з ним у налаштуваннях з'являється картка
+  // «Власна тема» (кольори фону/карток/тексту, SettingsPage).
+  const THEMES = ['system', 'light', 'dark', 'oled', 'custom'] as const
   type Pal = { bg: string; card: string; text: string }
   const PAL: Record<string, Pal> = {
     dark:  { bg: '#0f0f0f', card: '#161616', text: '#ffffff' },
@@ -47,7 +49,12 @@
   }
   // Палітра теми для міні-прев'ю в рядку «Тема».
   function palette(v: string): Pal {
-    if (v === 'custom') return { bg: themeCustomBg, card: themeCustomCard, text: themeCustomText }
+    if (v === 'custom') return {
+      // Кольори ще не задано — прев'ю як у темної, а не порожній кружок.
+      bg: HEX.test(themeCustomBg || '') ? themeCustomBg : PAL.dark.bg,
+      card: HEX.test(themeCustomCard || '') ? themeCustomCard : PAL.dark.card,
+      text: HEX.test(themeCustomText || '') ? themeCustomText : PAL.dark.text,
+    }
     if (v === 'system') return PAL[systemIsLight() ? 'light' : 'dark']
     return PAL[v] ?? PAL.dark
   }

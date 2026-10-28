@@ -156,7 +156,7 @@
   .osw-ic img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
   .osw-info { flex: 1; min-width: 0; }
   .osw-name { font-size: 12.5px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
-  .osw-addr { font-size: 10.5px; color: var(--text-mute); margin-top: 1px; }
+  .osw-addr { font-size: var(--fs-min); color: var(--text-mute); margin-top: 1px; }
   .osw-motd {
     margin-top: 3px; font-size: 11px; color: var(--text-mute); line-height: 1.35;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px;

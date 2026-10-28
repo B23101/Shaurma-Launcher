@@ -1,22 +1,11 @@
-<script lang="ts">
-  // Міні-3D превʼю картки Гардероба. Рендерить СПРАВЖНЮ модель
-  // (skin-model-launcher.glb / -slim.glb) з текстурою скіна через
-  // renderSkinThumbnail (wardrobe3d.ts) — результат один статичний кадр
-  // як data URL, без живого WebGL-контексту на кожній картці.
-
-  // ОПТИМІЗАЦІЯ (розділ 2 плану): three.js (vendor-three чанк, ~619 КБ)
-  // імпортується ДИНАМІЧНО — тільки коли ця картка реально починає
-  // рендеритись. Стартовий завантаження лаунчера і сторінка «Мої збірки»
-  // більше не парсять/не виконують three.js, якщо Гардероб ніхто не
-  // відкриває.
-
-  let { slim, textureUrl, capeTextureUrl }: { slim: boolean; textureUrl?: string; capeTextureUrl?: string } = $props()
-
-  let imgSrc = $state<string | null>(null)
+<script lang="ts" module>
+  // Спільне для ВСІХ карток: модуль three.js, черга рендеру і кеш готових прев'ю.
+  // Раніше це жило в кожному екземплярі — кеш зникав разом із карткою, і кожне
+  // відкриття гардероба рендерило всі скіни заново.
   // Динамичний імпорт wardrobe3d — завантажується один раз на перший рендер.
   let thumbRenderer: ((opts: { slim: boolean; textureUrl?: string; capeTextureUrl?: string }) => Promise<string>) | null = null
 
-  // Готові прев'ю переживають закриття гардероба: при повторному відкритті
+  // Готові прев'ю переживають закриття гардероба (рівень модуля — спільні для всіх карток): при повторному відкритті
   // картки показуються одразу, без повторного рендера кожного скіна.
   const thumbCache = new Map<string, string>()
   const THUMB_CACHE_MAX = 80
@@ -46,6 +35,23 @@
     }
     return thumbModulePromise
   }
+</script>
+
+<script lang="ts">
+  // Міні-3D превʼю картки Гардероба. Рендерить СПРАВЖНЮ модель
+  // (skin-model-launcher.glb / -slim.glb) з текстурою скіна через
+  // renderSkinThumbnail (wardrobe3d.ts) — результат один статичний кадр
+  // як data URL, без живого WebGL-контексту на кожній картці.
+
+  // ОПТИМІЗАЦІЯ (розділ 2 плану): three.js (vendor-three чанк, ~619 КБ)
+  // імпортується ДИНАМІЧНО — тільки коли ця картка реально починає
+  // рендеритись. Стартовий завантаження лаунчера і сторінка «Мої збірки»
+  // більше не парсять/не виконують three.js, якщо Гардероб ніхто не
+  // відкриває.
+
+  let { slim, textureUrl, capeTextureUrl }: { slim: boolean; textureUrl?: string; capeTextureUrl?: string } = $props()
+
+  let imgSrc = $state<string | null>(null)
 
   $effect(() => {
     const url = textureUrl

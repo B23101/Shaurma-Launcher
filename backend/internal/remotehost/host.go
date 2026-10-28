@@ -35,6 +35,8 @@ type Servers interface {
 	Stop(id string) error
 	SendCommand(id, cmd string) error
 	Tail(id string, n int) []Line
+	// P2P вмикає/вимикає публічну P2P-адресу сервера.
+	P2P(id string, on bool) error
 }
 
 // Friends — актуальний список друзів лаунчера.
@@ -105,9 +107,9 @@ func NewHost(d HostDeps) *Host {
 
 func capFor(op string) []byte {
 	switch op {
-	case social.RemoteOpStart:
+	case social.RemoteOpStart, social.RemoteOpP2POn:
 		return []byte{'s'}
-	case social.RemoteOpStop:
+	case social.RemoteOpStop, social.RemoteOpP2POff:
 		return []byte{'x'}
 	case social.RemoteOpConsoleExec:
 		return []byte{'c', 'e'}
@@ -256,7 +258,30 @@ func (h *Host) execute(from string, md *social.RemoteMandate, env envelope, cd c
 		h.closeSession(c.sid, from)
 		h.audit(from, srv, op, "ok", "")
 		c.reply(envelope{OK: true, Code: "closed", Final: true})
+	case social.RemoteOpP2POn, social.RemoteOpP2POff:
+		h.doP2P(c, op == social.RemoteOpP2POn)
 	}
+}
+
+// doP2P вмикає/вимикає публічну P2P-адресу сервера (у фоні: тунель піднімається кілька секунд).
+func (h *Host) doP2P(c *call, on bool) {
+	srv := c.srv
+	if on && h.d.Servers.State(srv) != "running" {
+		h.audit(c.from, srv, c.op, "not_running", "")
+		c.reply(envelope{Code: "not_running", State: h.d.Servers.State(srv), Final: true})
+		return
+	}
+	h.audit(c.from, srv, c.op, "accepted", "")
+	c.reply(envelope{OK: true, Code: "accepted", State: h.d.Servers.State(srv)})
+	h.d.Async(func() {
+		if err := h.d.Servers.P2P(srv, on); err != nil {
+			h.audit(c.from, srv, c.op, "p2p_failed", "")
+			c.reply(envelope{Code: "p2p_failed", State: h.d.Servers.State(srv), Final: true})
+			return
+		}
+		h.audit(c.from, srv, c.op, "ok", "")
+		c.reply(envelope{OK: true, Code: "ok", State: h.d.Servers.State(srv), Final: true})
+	})
 }
 
 func (h *Host) doStart(c *call) {
@@ -402,6 +427,14 @@ func (h *Host) EndAll() {
 	for _, s := range list {
 		h.sendEnd(s)
 	}
+}
+
+// ForgetAll мовчки забуває всі сесії, нікому нічого не надсилаючи (змінився акаунт: сесії належали
+// іншій особі, а відправка «кінця» пішла б уже від імені нового акаунта).
+func (h *Host) ForgetAll() {
+	h.mu.Lock()
+	h.sessions = map[string]*session{}
+	h.mu.Unlock()
 }
 
 func sanitizeLine(l Line) (Line, bool) {

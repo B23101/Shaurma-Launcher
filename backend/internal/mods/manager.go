@@ -2,6 +2,7 @@ package mods
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
@@ -101,15 +102,16 @@ var (
 )
 
 // scanWorkers — скільки jar-ів обробляти паралельно під час скану (SHA1 +
-// розбір метаданих). Modrinth App хешує по 64 файли одночасно; 32 дає
-// близький до нього час на типовій SSD-збірці й лишає запас на HDD.
+// розбір метаданих). Modrinth App хешує по 64 файли одночасно; робота
+// здебільшого чекає на диск, тож беремо 2×CPU, але в межах 8–16 — швидко
+// на SSD і без «забивання» HDD.
 var scanWorkers = func() int {
-	n := runtime.NumCPU()
-	if n < 4 {
-		n = 4
-	}
-	if n > 8 {
+	n := runtime.NumCPU() * 2
+	if n < 8 {
 		n = 8
+	}
+	if n > 16 {
+		n = 16
 	}
 	return n
 }()
@@ -339,6 +341,9 @@ func (m *Manager) scanModsFull(modsDir string) ([]model.ModEntry, error) {
 	// перехешування файлів, які не змінювались (sha1cache_persist.go).
 	// Файл кешу лежить у службовій CacheDir лаунчера, НЕ в modsDir.
 	m.FlushSha1Cache(modsDir)
+	// Те саме для розібраних метаданих jar (metacache_persist.go): після
+	// перезапуску лаунчера незмінені jar взагалі не відкриваються.
+	m.FlushMetaCache(modsDir)
 	sort.Slice(mods, func(i, j int) bool {
 		return mods[i].InstalledDate < mods[j].InstalledDate
 	})
@@ -362,6 +367,9 @@ func (m *Manager) readJarCached(path string) *jarMeta {
 	if !ok {
 		return nil
 	}
+	// Розібрані метадані з минулих запусків (metacache_persist.go) — один
+	// раз за сесію на теку.
+	m.loadDiskMetaCache(filepath.Dir(path))
 	jarMetaCacheMu.Lock()
 	if c, hit := jarMetaCache[key]; hit {
 		jarMetaCacheMu.Unlock()
@@ -370,6 +378,7 @@ func (m *Manager) readJarCached(path string) *jarMeta {
 	jarMetaCacheMu.Unlock()
 
 	meta := parseJar(path)
+	markMetaCacheDirty(filepath.Dir(path))
 	jarMetaCacheMu.Lock()
 	// ВАЖЛИВО: зберігаємо ПОВНИЙ meta (з Loaders/Depends/IconData), а не
 	// зрізану копію лише з ID/Name/Version/LoaderType. Раніше в кеш клали
@@ -500,12 +509,15 @@ func PruneModSha1Cache(cutoff time.Time) {
 // очисток лаунчера (див. startModsCachePruner).
 func PruneJarMetaCache(cutoff time.Time) {
 	jarMetaCacheMu.Lock()
-	defer jarMetaCacheMu.Unlock()
 	for k, e := range jarMetaCache {
 		if e.at.Before(cutoff) {
 			delete(jarMetaCache, k)
 		}
 	}
+	jarMetaCacheMu.Unlock()
+	// Вичищені записи лежать у файлі кешу на диску — наступний скан
+	// підтягне їх звідти, а не розбиратиме jar заново.
+	resetDiskMetaCacheLoadedFlags()
 }
 
 // jarMetaCacheMaxBytes — бюджет пам'яті кешу метаданих за ВАГОЮ, а не за
@@ -678,6 +690,33 @@ func parseJar(jarPath string) *jarMeta {
 	}
 	defer zr.Close()
 
+	primary := parseZipMeta(zr.File, jarPath)
+	if primary == nil {
+		// Мод-обгортка без власних метаданих: сам мод лежить вкладеним jar,
+		// на який вказує Embedded-Dependencies-Mod у MANIFEST.MF. Так
+		// поширюється Sinytra Connector — зовнішній jar є лише сервісом
+		// modlauncher, а mods.toml з modId "connector" — у META-INF/jarjar/.
+		if nested := embeddedModFiles(zr.File); nested != nil {
+			primary = parseZipMeta(nested, jarPath)
+		}
+	}
+	// Не мод — може бути плагіном сервера (plugin.yml, velocity-plugin.json…).
+	if primary == nil {
+		if pm := parsePluginMeta(zr); pm != nil {
+			attachIcon(zr.File, pm)
+			return pm
+		}
+	}
+	if primary == nil {
+		return &jarMeta{ID: baseNameNoExt(jarPath), Name: baseNameNoExt(jarPath), Version: "unknown", LoaderType: "unknown"}
+	}
+	return primary
+}
+
+// parseZipMeta розбирає всі формати метаданих мода серед files (вміст jar)
+// і повертає primary-мета з повним списком Loaders та іконкою; nil — у
+// архіві немає жодного відомого файлу метаданих мода.
+func parseZipMeta(files []*zip.File, jarPath string) *jarMeta {
 	// Розпарсити ВСІ присутні формати метаданих (не зупинятись на
 	// першому знайденому) — кожен успішно розпарсений формат додає свій
 	// лоадер(и) у loaderSet. primary — перший УСПІШНО розпарсений мета-
@@ -704,36 +743,100 @@ func parseJar(jarPath string) *jarMeta {
 		}
 	}
 
-	for _, f := range zr.File {
+	for _, f := range files {
 		if f.Name == "META-INF/neoforge.mods.toml" || f.Name == "META-INF/mods.toml" {
 			setPrimary(parseModsToml(f, jarPath))
 		}
 	}
-	for _, f := range zr.File {
+	for _, f := range files {
 		if f.Name == "fabric.mod.json" {
 			setPrimary(parseFabricJSON(f, jarPath))
 		}
 	}
-	for _, f := range zr.File {
+	for _, f := range files {
 		if f.Name == "quilt.mod.json" {
 			setPrimary(parseQuiltJSON(f, jarPath))
 		}
 	}
-	for _, f := range zr.File {
+	for _, f := range files {
 		if f.Name == "mcmod.info" {
 			setPrimary(parseMcmodInfo(f, jarPath))
 		}
 	}
-
 	if primary == nil {
-		return &jarMeta{ID: baseNameNoExt(jarPath), Name: baseNameNoExt(jarPath), Version: "unknown", LoaderType: "unknown"}
+		return nil
 	}
 	// LoaderType лишається основним (з primary) — використовується лише
 	// для відображення бейджа лоадера на картці мода. Loaders — повний
 	// список, за яким рахується РЕАЛЬНА сумісність (attachLoaderCompat).
 	primary.Loaders = loaderOrder
-	attachIcon(zr, primary)
+	attachIcon(files, primary)
 	return primary
+}
+
+// maxEmbeddedModJar — межа розміру вкладеного jar, який читаємо в пам'ять.
+const maxEmbeddedModJar = 32 << 20
+
+// embeddedModFiles повертає вміст вкладеного jar з MANIFEST.MF
+// (Embedded-Dependencies-Mod) або nil, якщо його немає чи він не читається.
+func embeddedModFiles(files []*zip.File) []*zip.File {
+	var manifest *zip.File
+	for _, f := range files {
+		if f.Name == "META-INF/MANIFEST.MF" {
+			manifest = f
+			break
+		}
+	}
+	if manifest == nil {
+		return nil
+	}
+	rc, err := manifest.Open()
+	if err != nil {
+		return nil
+	}
+	raw, err := io.ReadAll(io.LimitReader(rc, 64<<10))
+	rc.Close()
+	if err != nil {
+		return nil
+	}
+	nestedPath := manifestValue(string(raw), "Embedded-Dependencies-Mod")
+	if nestedPath == "" {
+		return nil
+	}
+	for _, f := range files {
+		if f.Name != nestedPath || f.UncompressedSize64 > maxEmbeddedModJar {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil
+		}
+		data, err := io.ReadAll(io.LimitReader(rc, maxEmbeddedModJar))
+		rc.Close()
+		if err != nil {
+			return nil
+		}
+		zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+		if err != nil {
+			return nil
+		}
+		return zr.File
+	}
+	return nil
+}
+
+// manifestValue читає значення ключа з MANIFEST.MF з урахуванням
+// перенесення довгих рядків (продовження починається з пробілу).
+func manifestValue(manifest, key string) string {
+	manifest = strings.ReplaceAll(manifest, "\r\n", "\n")
+	manifest = strings.ReplaceAll(manifest, "\n ", "")
+	prefix := key + ":"
+	for _, line := range strings.Split(manifest, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
 }
 
 func baseNameNoExt(path string) string {
@@ -1192,11 +1295,11 @@ func parseMcmodInfo(f *zip.File, jarPath string) *jarMeta {
 // модів з іконкою в assets/) не знаходило нічого, хоча іконка в jar
 // фізично була. Шлях з мета-даних (logoFile/icon) пробуємо і як є, і
 // без ведучого "/" (деякі автори пишуть з ним, zip-записи — без).
-func attachIcon(zr *zip.ReadCloser, meta *jarMeta) {
+func attachIcon(files []*zip.File, meta *jarMeta) {
 	if meta.IconPath != "" {
 		want := strings.TrimPrefix(meta.IconPath, "/")
 		// 1) Точний шлях (як у метаданих, і без ведучого "/").
-		for _, f := range zr.File {
+		for _, f := range files {
 			if f.Name == want || f.Name == meta.IconPath {
 				if data := readZipFileDataURL(f); data != "" {
 					meta.IconData = data
@@ -1207,7 +1310,7 @@ func attachIcon(zr *zip.ReadCloser, meta *jarMeta) {
 		// 2) Той самий шлях без урахування регістру (трапляється розбіжність
 		// між "icon.PNG"/"Icon.png" у файловій системі автора і полем у toml).
 		wantLower := strings.ToLower(want)
-		for _, f := range zr.File {
+		for _, f := range files {
 			if strings.ToLower(f.Name) == wantLower {
 				if data := readZipFileDataURL(f); data != "" {
 					meta.IconData = data
@@ -1220,7 +1323,7 @@ func attachIcon(zr *zip.ReadCloser, meta *jarMeta) {
 		// — шукаємо файл з такою самою НАЗВОЮ будь-де в архіві.
 		if base := filepath.Base(want); base != "" && !strings.Contains(want, "/") {
 			baseLower := strings.ToLower(base)
-			for _, f := range zr.File {
+			for _, f := range files {
 				if strings.ToLower(filepath.Base(f.Name)) == baseLower {
 					if data := readZipFileDataURL(f); data != "" {
 						meta.IconData = data
@@ -1230,7 +1333,7 @@ func attachIcon(zr *zip.ReadCloser, meta *jarMeta) {
 			}
 		}
 	}
-	for _, f := range zr.File {
+	for _, f := range files {
 		if f.Name == "pack.png" || f.Name == "icon.png" {
 			if data := readZipFileDataURL(f); data != "" {
 				meta.IconData = data
@@ -1243,7 +1346,7 @@ func attachIcon(zr *zip.ReadCloser, meta *jarMeta) {
 	// лежить саме там (Forge-конвенція для іконок ресурспаку мода).
 	if meta.ID != "" {
 		want := "assets/" + strings.ToLower(meta.ID) + "/icon.png"
-		for _, f := range zr.File {
+		for _, f := range files {
 			if strings.ToLower(f.Name) == want {
 				if data := readZipFileDataURL(f); data != "" {
 					meta.IconData = data

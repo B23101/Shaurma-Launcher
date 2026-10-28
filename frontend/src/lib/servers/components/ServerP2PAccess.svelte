@@ -336,13 +336,13 @@
   .spa-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .spa-list { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 13px; background: var(--bg-card); border: 1px solid var(--border); min-height: 130px; }
   .spa-list-h { display: flex; flex-direction: column; gap: 3px; font: 700 13px/1.2 var(--font-ui); color: var(--text); }
-  .spa-list-h small { font: 400 10.5px/1.3 var(--font-ui); color: var(--text-dim); }
+  .spa-list-h small { font: 400 var(--fs-min)/1.3 var(--font-ui); color: var(--text-dim); }
   .spa-list-b { flex: 1; display: flex; flex-direction: column; gap: 4px; }
   .spa-row { display: flex; align-items: center; gap: 9px; padding: 5px 6px; border-radius: 9px; }
   .spa-row:hover { background: var(--hover); }
   .spa-who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .spa-nick { font: 700 12px/1.2 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .spa-who small { font: 400 10.5px/1.2 var(--font-mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spa-who small { font: 400 var(--fs-min)/1.2 var(--font-mono); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .spa-x { width: 24px; height: 24px; border-radius: 7px; cursor: pointer; background: transparent; border: 1px solid transparent; color: var(--text-dim); }
   .spa-x:hover { color: #ef4444; border-color: rgba(239, 68, 68, .4); background: rgba(239, 68, 68, .08); }
   .spa-empty { flex: 1; display: grid; place-items: center; min-height: 56px; border: 1px dashed var(--border); border-radius: 9px; font: 500 12px/1 var(--font-mono); color: var(--text-dim); }

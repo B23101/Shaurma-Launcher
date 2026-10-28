@@ -44,6 +44,9 @@ const (
 	OpConsoleOpen  = "console_open"
 	OpConsoleExec  = "console_exec"
 	OpConsoleClose = "console_close"
+	// P2P-тунель сервера: увімкнути — за правом запуску, вимкнути — за правом зупинки.
+	OpP2POn  = "p2p_on"
+	OpP2POff = "p2p_off"
 )
 
 // Коди відмов (стабільні — фронтенд перекладає за ними).
@@ -67,8 +70,11 @@ type Grant struct {
 	Start bool `json:"start"`
 	Stop  bool `json:"stop"`
 	// Console — дивитись консоль; Exec — виконувати в ній команди (діє лише разом з Console).
-	Console bool  `json:"console,omitempty"`
-	Exec    bool  `json:"exec,omitempty"`
+	Console bool `json:"console,omitempty"`
+	Exec    bool `json:"exec,omitempty"`
+	// Network — лише для проксі: запуск/зупинка (як Start/Stop вище) діє й
+	// на кожен сервер його мережі. Консоль серверів мережі не успадковується.
+	Network bool  `json:"network,omitempty"`
 	Added   int64 `json:"added"` // unix ms, коли власник видав право
 }
 
@@ -110,6 +116,8 @@ type Store struct {
 	// Лише в пам'яті: частота дозволених команд.
 	lastOK map[string]time.Time // friend|server → час
 	perMin map[string][]time.Time
+	// nets — мережі проксі (SetNetworks): право Network на проксі діє на сервери мережі.
+	nets NetworkResolver
 }
 
 // Open відкриває (або створює порожнє) сховище в <dataDir>/.shaurma/remote_access.json.
@@ -156,7 +164,24 @@ type GrantView struct {
 	Stop      bool   `json:"stop"`
 	Console   bool   `json:"console"`
 	Exec      bool   `json:"exec"`
+	Network   bool   `json:"network"`
 	Added     int64  `json:"added"`
+	// Via — ID проксі, через мережу якого успадковано право (у Shared).
+	Via string `json:"via,omitempty"`
+}
+
+// NetworkResolver — мережі проксі (servers): ними право Network на проксі
+// поширюється на його сервери.
+type NetworkResolver interface {
+	Parents(serverID string) []string // проксі, у мережах яких є сервер
+	Members(proxyID string) []string  // сервери мережі проксі
+}
+
+// SetNetworks підключає мережі проксі (nil — без успадкування).
+func (s *Store) SetNetworks(r NetworkResolver) {
+	s.mu.Lock()
+	s.nets = r
+	s.mu.Unlock()
 }
 
 type ServerView struct {
@@ -183,7 +208,7 @@ func (s *Store) View(owner string) View {
 	for id, p := range o.Servers {
 		sv := ServerView{ServerID: id, AllowStopWithPlayers: p.AllowStopWithPlayers, AllowPrivileged: p.AllowPrivileged, Grants: []GrantView{}}
 		for a, g := range p.Grants {
-			sv.Grants = append(sv.Grants, GrantView{AccountID: a, Start: g.Start, Stop: g.Stop, Console: g.Console, Exec: g.Exec, Added: g.Added})
+			sv.Grants = append(sv.Grants, GrantView{AccountID: a, Start: g.Start, Stop: g.Stop, Console: g.Console, Exec: g.Exec, Network: g.Network, Added: g.Added})
 		}
 		sort.Slice(sv.Grants, func(i, j int) bool { return sv.Grants[i].AccountID < sv.Grants[j].AccountID })
 		v.Servers = append(v.Servers, sv)
@@ -193,15 +218,52 @@ func (s *Store) View(owner string) View {
 }
 
 // Shared — що публікувати на VPS: сервери, де є хоч одне право. Порожньо, якщо призупинено.
+// Право Network на проксі додає його сервери мережі з успадкованими запуском/зупинкою
+// (власне право друга на такому сервері має пріоритет).
 func (s *Store) Shared(owner string) []ServerView {
 	v := s.View(owner)
 	if v.Paused {
 		return nil
 	}
+	s.mu.Lock()
+	nets := s.nets
+	s.mu.Unlock()
 	out := make([]ServerView, 0, len(v.Servers))
+	idx := map[string]int{}
 	for _, sv := range v.Servers {
 		if len(sv.Grants) > 0 {
+			idx[sv.ServerID] = len(out)
 			out = append(out, sv)
+		}
+	}
+	if nets == nil {
+		return out
+	}
+	for _, proxy := range v.Servers {
+		for _, g := range proxy.Grants {
+			if !g.Network || (!g.Start && !g.Stop) {
+				continue
+			}
+			for _, member := range nets.Members(proxy.ServerID) {
+				i, ok := idx[member]
+				if !ok {
+					idx[member] = len(out)
+					out = append(out, ServerView{ServerID: member, Grants: []GrantView{}})
+					i = len(out) - 1
+				}
+				own := false
+				for _, mg := range out[i].Grants {
+					if mg.AccountID == g.AccountID {
+						own = true
+						break
+					}
+				}
+				if !own {
+					out[i].Grants = append(out[i].Grants, GrantView{
+						AccountID: g.AccountID, Start: g.Start, Stop: g.Stop, Added: g.Added, Via: proxy.ServerID,
+					})
+				}
+			}
 		}
 	}
 	return out
@@ -217,7 +279,7 @@ func (s *Store) SetGrant(owner, serverID, friendID string, start, stop bool, now
 }
 
 // Rights — повний набір прав друга на сервері.
-type Rights struct{ Start, Stop, Console, Exec bool }
+type Rights struct{ Start, Stop, Console, Exec, Network bool }
 
 // SetGrantFull задає всі права друга. Exec без Console скидається (команди «наосліп» заборонені).
 func (s *Store) SetGrantFull(owner, serverID, friendID string, r Rights, nowMs int64) error {
@@ -258,6 +320,7 @@ func (s *Store) SetGrantFull(owner, serverID, friendID string, r Rights, nowMs i
 		g.Added = nowMs
 	}
 	g.Start, g.Stop, g.Console, g.Exec = start, stop, r.Console, r.Exec
+	g.Network = r.Network && (start || stop)
 	p.Grants[friendID] = g
 	return s.save()
 }
@@ -330,6 +393,63 @@ func (s *Store) RemoveServer(owner, serverID string) error {
 	return s.save()
 }
 
+// ForgetServer забуває сервер у ВСІХ акаунтів цього лаунчера (сервер видалено: він спільний для
+// всіх акаунтів). Повертає true, якщо щось прибрано.
+func (s *Store) ForgetServer(serverID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for _, o := range s.data.Owners {
+		if o != nil && o.Servers[serverID] != nil {
+			delete(o.Servers, serverID)
+			changed = true
+		}
+	}
+	if changed {
+		_ = s.save()
+	}
+	return changed
+}
+
+// RenameServer переносить права на новий id сервера (id = ім'я теки, його можна змінити).
+// Якщо новий id уже має запис — його не перезаписуємо (старий просто зникає).
+func (s *Store) RenameServer(oldID, newID string) bool {
+	if !validID(oldID) || !validID(newID) || oldID == newID {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for _, o := range s.data.Owners {
+		if o == nil || o.Servers[oldID] == nil {
+			continue
+		}
+		if o.Servers[newID] == nil {
+			o.Servers[newID] = o.Servers[oldID]
+		}
+		delete(o.Servers, oldID)
+		changed = true
+	}
+	if changed {
+		_ = s.save()
+	}
+	return changed
+}
+
+// GrantedOnThisLauncher — чи цей лаунчер (акаунт owner на ньому) видав friendID доступ до serverID.
+// Так буває, коли в одному лаунчері кілька акаунтів Shaurma: «сервер друга» — це насправді
+// локальний сервер, і показувати його як віддалений не треба.
+func (s *Store) GrantedOnThisLauncher(owner, friendID, serverID string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	o := s.data.Owners[owner]
+	if o == nil || o.Servers[serverID] == nil {
+		return false
+	}
+	_, ok := o.Servers[serverID].Grants[friendID]
+	return ok
+}
+
 // ── Авторизація ───────────────────────────────────────────────────────────
 
 type Decision struct {
@@ -345,10 +465,13 @@ type Decision struct {
 func (s *Store) Authorize(owner, friendID, serverID, op string, isFriend bool, friendSince int64, now time.Time) Decision {
 	deny := func(code string) Decision { return Decision{Code: code} }
 	switch op {
-	case OpStart, OpStop, OpConsoleOpen, OpConsoleExec, OpConsoleClose:
+	case OpStart, OpStop, OpConsoleOpen, OpConsoleExec, OpConsoleClose, OpP2POn, OpP2POff:
 	default:
 		return deny(CodeNotAllowed)
 	}
+	// p2p_on/p2p_off — те саме право, що запуск/зупинка (і так само успадковується з проксі).
+	needStart := op == OpStart || op == OpP2POn
+	needStop := op == OpStop || op == OpP2POff
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	o := s.data.Owners[owner]
@@ -362,15 +485,33 @@ func (s *Store) Authorize(owner, friendID, serverID, op string, isFriend bool, f
 		return deny(CodeNotFriend)
 	}
 	p := o.Servers[serverID]
-	if p == nil {
-		return deny(CodeNotAllowed)
+	var g Grant
+	ok := false
+	if p != nil {
+		g, ok = p.Grants[friendID]
 	}
-	g, ok := p.Grants[friendID]
+	inherited := false
+	if !ok && (needStart || needStop) && s.nets != nil {
+		// Сервер мережі проксі: запуск/зупинка за правом Network на проксі.
+		for _, proxyID := range s.nets.Parents(serverID) {
+			pp := o.Servers[proxyID]
+			if pp == nil {
+				continue
+			}
+			if pg, has := pp.Grants[friendID]; has && pg.Network {
+				g, p, ok, inherited = Grant{Start: pg.Start, Stop: pg.Stop, Added: pg.Added}, pp, true, true
+				break
+			}
+		}
+	}
 	if !ok {
 		return deny(CodeNotAllowed)
 	}
 	// Дозвіл старіший за теперішню дружбу = друга видаляли й додали знову: право недійсне.
 	if friendSince > 0 && g.Added+staleSkewMs < friendSince {
+		if inherited {
+			return deny(CodeNotAllowed) // чистить саме право на проксі, при його перевірці
+		}
 		delete(p.Grants, friendID)
 		if len(p.Grants) == 0 && !p.AllowStopWithPlayers {
 			delete(o.Servers, serverID)
@@ -378,7 +519,7 @@ func (s *Store) Authorize(owner, friendID, serverID, op string, isFriend bool, f
 		_ = s.save()
 		return deny(CodeNotAllowed)
 	}
-	if (op == OpStart && !g.Start) || (op == OpStop && !g.Stop) ||
+	if (needStart && !g.Start) || (needStop && !g.Stop) ||
 		((op == OpConsoleOpen || op == OpConsoleClose) && !g.Console) ||
 		(op == OpConsoleExec && !(g.Console && g.Exec)) {
 		return deny(CodeNotAllowed)
@@ -483,7 +624,16 @@ func (s *Store) SetAllowPrivileged(owner, serverID string, v bool) error {
 	return s.save()
 }
 
-var privilegedCommands = map[string]bool{"op": true, "deop": true, "whitelist": true, "save-off": true}
+// privilegedCommands — видача прав і керування доступом: op/deop/whitelist, вимкнення автозбереження,
+// плагіни прав (LuckPerms, PermissionsEx…) і «sudo» (команда від імені гравця, який може бути оператором).
+var privilegedCommands = map[string]bool{
+	"op": true, "deop": true, "whitelist": true, "save-off": true,
+	"lp": true, "luckperms": true, "perm": true, "perms": true, "permissions": true, "pex": true,
+	"sudo": true, "esudo": true,
+}
+
+// stopCommands — зупиняють сервер (end/shutdown — проксі Velocity/BungeeCord).
+var stopCommands = map[string]bool{"stop": true, "restart": true, "end": true, "shutdown": true}
 
 // Command — розібрана команда консолі.
 type Command struct {
@@ -495,7 +645,9 @@ type Command struct {
 }
 
 // CheckCommand очищує й класифікує команду друга. Відхиляє порожні, задовгі й такі, що містять
-// керуючі символи (\n, \r, NUL…): через них в один рядок можна було б «заховати» кілька команд.
+// керуючі символи (LF, CR, NUL…): через них в один рядок можна було б «заховати» кілька команд.
+// Обгортка «execute … run <команда>» класифікується за вкладеною командою: інакше
+// «execute run stop» обходив би право Stop, а «execute run op X» — заборону привілейованих.
 func CheckCommand(raw string, allowPrivileged bool) (Command, string) {
 	t := raw
 	for _, r := range t {
@@ -510,23 +662,64 @@ func CheckCommand(raw string, allowPrivileged bool) (Command, string) {
 	if t == "" || len(t) > MaxCommandLen {
 		return Command{}, CodeBadCommand
 	}
-	verb := t
-	for i := 0; i < len(t); i++ {
-		if t[i] == ' ' {
-			verb = t[:i]
-			break
+	words := fields(t)
+	c := Command{Text: t, Verb: verbOf(words[0])}
+	privileged := false
+	classify := func(v string) {
+		if stopCommands[v] {
+			c.IsStop = true
+		}
+		if privilegedCommands[v] {
+			privileged = true
 		}
 	}
-	verb = lower(verb)
-	// Мод-префікс простору імен: «minecraft:stop», «minecraft:op» — те саме.
-	if i := indexByte(verb, ':'); i >= 0 {
-		verb = verb[i+1:]
+	classify(c.Verb)
+	// Кожне слово після «run» у ланцюжку execute може бути вкладеною командою. Перевіряємо ВСІ
+	// такі місця (а не лише перше): хибна тривога лише суворіша, пропуск — дірка.
+	if c.Verb == "execute" {
+		for i := 1; i+1 < len(words); i++ {
+			if lower(words[i]) == "run" {
+				classify(verbOf(trimSlash(words[i+1])))
+			}
+		}
 	}
-	c := Command{Text: t, Verb: verb, IsStop: verb == "stop" || verb == "restart"}
-	if privilegedCommands[verb] && !allowPrivileged {
+	if privileged && !allowPrivileged {
 		return c, CodePrivileged
 	}
 	return c, ""
+}
+
+// verbOf — слово команди в нижньому регістрі без мод-префікса: «minecraft:stop» → «stop».
+func verbOf(w string) string {
+	v := lower(w)
+	if i := indexByte(v, ':'); i >= 0 {
+		v = v[i+1:]
+	}
+	return v
+}
+
+func trimSlash(s string) string {
+	for len(s) > 0 && s[0] == '/' {
+		s = s[1:]
+	}
+	return s
+}
+
+// fields ділить рядок за пробілами (кілька пробілів поспіль — один роздільник).
+func fields(s string) []string {
+	var out []string
+	start := -1
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == ' ' {
+			if start >= 0 {
+				out = append(out, s[start:i])
+				start = -1
+			}
+		} else if start < 0 {
+			start = i
+		}
+	}
+	return out
 }
 
 func trimSpace(s string) string {

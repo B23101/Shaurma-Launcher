@@ -121,6 +121,8 @@ type Host struct {
 	onChange func(RecipientState)
 	srv      *http.Server
 	limits   Timeouts
+	// extra — файли поза root (BuildOptions.Extra): шлях у маніфесті → шлях на диску.
+	extra map[string]string
 }
 
 // NewHost готує хост для root і маніфесту. onChange (необов'язковий) викликається
@@ -148,6 +150,14 @@ func NewHost(root string, m *Manifest, onChange func(RecipientState)) (*Host, er
 		IdleTimeout:       2 * time.Minute,
 	}
 	return h, nil
+}
+
+// SetExtraFiles задає файли поза root (те саме відображення, що BuildOptions.Extra).
+// Викликати до Serve.
+func (h *Host) SetExtraFiles(extra map[string]string) {
+	h.mu.Lock()
+	h.extra = extra
+	h.mu.Unlock()
 }
 
 // SetTimeouts змінює ліміти очікування (до або під час роздачі).
@@ -552,7 +562,13 @@ func (h *Host) openEntry(i int) (*os.File, FileEntry, error) {
 		return nil, FileEntry{}, errors.New("bad index")
 	}
 	fe := h.m.Files[i]
-	f, err := os.Open(filepath.Join(h.root, filepath.FromSlash(fe.Path)))
+	path := filepath.Join(h.root, filepath.FromSlash(fe.Path))
+	h.mu.Lock()
+	if abs, ok := h.extra[fe.Path]; ok {
+		path = abs
+	}
+	h.mu.Unlock()
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, fe, err
 	}

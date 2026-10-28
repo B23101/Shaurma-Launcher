@@ -84,12 +84,14 @@
 </script>
 
 <div class="jvm-editor">
-  <div class="jvm-header">
-    <button class="btn btn-ghost jvm-edit-as-text" onclick={() => textMode = !textMode}>
+  <!-- Перемикач «список ⇄ текст» — іконка в рядку дій, а не окремий рядок над редактором. -->
+  {#snippet modeBtn()}
+    <button class="btn-icon jvm-mode" onclick={() => textMode = !textMode}
+            title={textMode ? t('settings.javaArgs.list') : t('settings.javaArgs.editAsText')}
+            aria-label={textMode ? t('settings.javaArgs.list') : t('settings.javaArgs.editAsText')}>
       <i class="ti {textMode ? 'ti-list' : 'ti-pencil'}"></i>
-      {textMode ? t('settings.javaArgs.list') : t('settings.javaArgs.editAsText')}
     </button>
-  </div>
+  {/snippet}
 
   {#if textMode}
     <textarea
@@ -99,6 +101,7 @@
       {placeholder}
       onchange={(e: any) => onchange(e.target.value)}
     ></textarea>
+    <div class="jvm-actions jvm-actions-end">{@render modeBtn()}</div>
   {:else}
     <div class="jvm-list">
       {#each jvmList as arg, i (i)}
@@ -116,19 +119,26 @@
           </button>
         </div>
       {/each}
-      <button class="btn btn-ghost jvm-add" onclick={addRow}>
-        <i class="ti ti-plus"></i> {t('settings.javaArgs.add')}
-      </button>
+      <div class="jvm-actions">
+        <button class="btn btn-ghost jvm-add" onclick={addRow}>
+          <i class="ti ti-plus"></i> {t('settings.javaArgs.add')}
+        </button>
+        {@render modeBtn()}
+      </div>
     </div>
   {/if}
 </div>
 
 <style>
   .jvm-editor { flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-  .jvm-header { display: flex; justify-content: flex-end; }
-  .jvm-edit-as-text {
-    font-size: 12px; padding: 4px 10px; gap: 5px; color: var(--text-mute);
+  .jvm-actions { display: flex; gap: 6px; align-items: stretch; margin-top: 2px; }
+  .jvm-actions-end { justify-content: flex-end; margin-top: 0; }
+  .jvm-mode {
+    flex-shrink: 0; width: 36px; min-height: 34px; border-radius: var(--r-md); border: 1px solid var(--border);
+    background: var(--hover); color: var(--text-mute); cursor: pointer; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; transition: color .12s, background .12s;
   }
+  .jvm-mode:hover { color: var(--text); background: var(--hover-strong); }
   .jvm-list { display: flex; flex-direction: column; gap: 6px; }
   .jvm-row { display: flex; align-items: center; gap: 8px; }
   .jvm-num {
@@ -145,7 +155,7 @@
   }
   .jvm-del:hover { color: var(--red, #ff6b6b); background: rgba(255,107,107,.1); }
   .jvm-add {
-    margin-top: 2px; width: 100%; justify-content: center;
+    flex: 1; justify-content: center;
     border-style: dashed; font-size: 12px; gap: 6px; color: var(--text-mute);
   }
   .jvm-add:hover { color: var(--text); }

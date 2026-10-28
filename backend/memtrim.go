@@ -75,12 +75,19 @@ func (a *App) startMemoryTrimmer() {
 		defer crashguard.Recover("memtrim.go:72")
 		ticker := time.NewTicker(memoryTrimInterval)
 		defer ticker.Stop()
+		lastReport := time.Time{}
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
 				maybeReleaseMemory()
+				// Звіт пам'яті (memreport.go) — після прибирання, щоб цифри
+				// показували реально зайняте, а не сміття перед GC.
+				if time.Since(lastReport) >= memReportInterval {
+					lastReport = time.Now()
+					a.reportMemory()
+				}
 			}
 		}
 	}()

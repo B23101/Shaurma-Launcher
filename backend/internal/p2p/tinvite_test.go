@@ -77,3 +77,18 @@ func TestPreambleGate(t *testing.T) {
 		t.Fatal("без квитка хендшейк не змінюється")
 	}
 }
+
+// Квиток з VPS приходить під повною адресою, а гість шукає його за адресою з хендшейка без суфікса.
+func TestPreambleForFullAddress(t *testing.T) {
+	g := &GuestService{}
+	pre := Preamble(strings.Repeat("a", 32), strings.Repeat("b", 64))
+	g.tickets.Store(tinviteKey("TMP1-123456."+PlaySuffix+"."), pre)
+	for _, addr := range []string{"tmp1-123456", "tmp1-123456." + PlaySuffix} {
+		if got := g.preambleFor(addr); !bytes.Equal(got, pre) {
+			t.Fatalf("%q: квиток не знайдено", addr)
+		}
+	}
+	if got := g.preambleFor("tmp2-123456"); got != nil {
+		t.Fatalf("чужа адреса отримала квиток: %q", got)
+	}
+}

@@ -4,6 +4,10 @@
   // на server:line/server:status/server:install-progress живуть у хуку
   // useServerConsole — цей файл лише малює toolbar/термінал/інпут і
   // тримає локальний UI-стан (фільтр, пошук, ШІ-аналіз крашу).
+  //
+  // remoteServer — ця сама вкладка для сервера друга: рядки й команди йдуть
+  // через віддалений канал (remoteServers.svelte.ts), а дії, яких у друга
+  // нема (окреме вікно, ШІ-аналіз, гравці), приховано.
   import { App } from '../../wails'
   import { toast } from '../../toast.svelte'
   import { t } from '../../i18n.svelte'
@@ -11,6 +15,10 @@
   import ConsoleInput from '../components/ConsoleInput.svelte'
   import ServerPlayersStrip from '../components/ServerPlayersStrip.svelte'
   import { useServerConsole } from '../hooks/useServerConsole.svelte'
+  import { onDestroy, untrack } from 'svelte'
+  import { remote, remoteOpenConsole, remoteCloseConsole, remoteSend } from '../remoteServers.svelte'
+  import type { RemoteServer } from '../../types'
+  import type { LogLine } from '../components/ConsoleView.svelte'
 
   let {
     serverId = '',
@@ -27,15 +35,43 @@
     // або аналізатор знайшов блокер. Пусто/null = стартувати одразу
     // (окреме вікно консолі працює без модалки — там її ніде показати).
     preflight = null,
+    remoteServer = null,
   }: {
     serverId?: string
     serverColor?: string
     autoStart?: boolean
     standalone?: boolean
     preflight?: (() => Promise<boolean>) | null
+    remoteServer?: RemoteServer | null
   } = $props()
 
-  const console_ = useServerConsole(() => serverId)
+  // Режим фіксований на час монтування (сторінка перемонтовує вкладку за ключем).
+  const isRemote = !!untrack(() => remoteServer)
+  const console_ = isRemote ? null : useServerConsole(() => serverId)
+
+  // ── Віддалена консоль (сервер друга) ──
+  const remoteMine = $derived(!!remoteServer && remote.consoleFor?.ownerId === remoteServer.ownerId && remote.consoleFor?.id === remoteServer.id)
+  let remoteCleared = $state(0) // «Очистити» в друга — локально ховаємо вже показане
+  const remoteLines = $derived<LogLine[]>(remoteMine
+    ? remote.lines.slice(remoteCleared).map(l => ({ id: l.i, time: l.t, level: l.l, text: l.x }))
+    : [])
+  $effect(() => {
+    if (!isRemote) return
+    const r = remoteServer
+    if (r?.ownerOnline && r.canConsole) untrack(() => { if (!remoteMine) void remoteOpenConsole(r) })
+    else untrack(() => { if (remoteMine) void remoteCloseConsole() })
+  })
+  onDestroy(() => { if (isRemote) void remoteCloseConsole() })
+
+  const lines = $derived(isRemote ? remoteLines : console_!.lines)
+  const status = $derived(isRemote ? (remoteServer?.state || 'stopped') : console_!.status)
+  const installProgress = $derived(console_?.installProgress ?? null)
+  const canSend = $derived(!isRemote || (!!remoteServer?.canExec && !remote.ended))
+  function addLine(level: string, text: string) { console_?.addLine(level, text) }
+  function clearLines() {
+    if (isRemote) remoteCleared = remote.lines.length
+    else console_!.clear()
+  }
 
   let filter = $state<'all' | 'info' | 'warn' | 'error'>('all')
   let search = $state('')
@@ -43,10 +79,10 @@
   let aiState = $state<'idle' | 'thinking' | 'done'>('idle')
   let aiText = $state('')
 
-  const installing = $derived(console_.status === 'installing')
-  const running = $derived(console_.status === 'running')
-  const errorCount = $derived(console_.lines.filter(l => l.level === 'error').length)
-  const warnCount = $derived(console_.lines.filter(l => l.level === 'warn').length)
+  const installing = $derived(status === 'installing')
+  const running = $derived(status === 'running')
+  const errorCount = $derived(lines.filter(l => l.level === 'error').length)
+  const warnCount = $derived(lines.filter(l => l.level === 'warn').length)
 
   // Автоскрол живе всередині ConsoleView (він сам знає, чи користувач
   // унизу, і сам тримає «прилипання» до дна). Тут лише передаємо розмір
@@ -65,7 +101,7 @@
   // триває) — бекенд тоді відповідає помилкою "сервер вже запущено".
   let autoStartFired = false
   $effect(() => {
-    if (autoStart && !autoStartFired && serverId && console_.statusLoaded && console_.status === 'stopped') {
+    if (autoStart && !autoStartFired && serverId && console_?.statusLoaded && status === 'stopped') {
       autoStartFired = true
       startServer()
     }
@@ -86,19 +122,19 @@
       if (!ok) return
     }
     starting = true
-    try { console_.addLine('system', t('servers.console.sysStarting')); await App.StartServer(serverId) }
-    catch (e: any) { console_.addLine('error', `[ERROR] ${e}`); toast(String(e), 'error') }
+    try { addLine('system', t('servers.console.sysStarting')); await App.StartServer(serverId) }
+    catch (e: any) { addLine('error', `[ERROR] ${e}`); toast(String(e), 'error') }
     finally { starting = false }
   }
   async function stopServer() {
-    try { console_.addLine('system', t('servers.console.sysStopping')); await App.StopServer(serverId, true) }
-    catch (e: any) { console_.addLine('error', `[ERROR] ${e}`) }
+    try { addLine('system', t('servers.console.sysStopping')); await App.StopServer(serverId, true) }
+    catch (e: any) { addLine('error', `[ERROR] ${e}`) }
   }
   async function killServer() {
     // Kill доступний і під час starting/installing (саме тоді він єдиний
     // спосіб зупинити сервер, що «завис» на встановленні ядра/Java).
     try { await App.StopServer(serverId, false) }
-    catch (e: any) { console_.addLine('error', `[ERROR] ${e}`) }
+    catch (e: any) { addLine('error', `[ERROR] ${e}`) }
   }
 
   // Кнопка «у вікні»: у вбудованій вкладці відкриває/фокусує окреме
@@ -109,9 +145,10 @@
   }
 
   function sendCmd(cmd: string) {
-    if (!running) return
-    console_.addLine('system', `> ${cmd}`)
-    App.SendServerCommand(serverId, cmd).catch((e: any) => console_.addLine('error', `[ERROR] ${e}`))
+    if (!running || !canSend) return
+    if (isRemote) { void remoteSend(cmd); return }
+    addLine('system', `> ${cmd}`)
+    App.SendServerCommand(serverId, cmd).catch((e: any) => addLine('error', `[ERROR] ${e}`))
   }
 
   async function analyzeCrash() {
@@ -126,14 +163,14 @@
   }
 
   function copyAll() {
-    const text = console_.lines.map(l => `[${l.time}] [${l.level.toUpperCase()}] ${l.text}`).join('\n')
+    const text = lines.map(l => `[${l.time}] [${l.level.toUpperCase()}] ${l.text}`).join('\n')
     navigator.clipboard.writeText(text).catch(() => {})
     toast(t('servers.console.copied'), 'success')
   }
 
   // Очищення буфера перегляду — та сама дія, що «Кошик» у консолі збірок.
   function clearLog() {
-    console_.clear()
+    clearLines()
     filter = 'all'
     search = ''
   }
@@ -146,7 +183,7 @@
   <div class="sct-tools">
     <!-- Фільтри-пігулки як .fchip у GameConsole: нейтральні, без кольорових точок (OLED). -->
     <div class="gc-seg" role="tablist">
-      <button class="fchip" class:active={filter === 'all'} onclick={() => filter = 'all'}>{t('servers.console.all')} <span class="fchip-n">{console_.lines.length}</span></button>
+      <button class="fchip" class:active={filter === 'all'} onclick={() => filter = 'all'}>{t('servers.console.all')} <span class="fchip-n">{lines.length}</span></button>
       <button class="fchip" class:active={filter === 'info'} onclick={() => filter = 'info'}>Info</button>
       <button class="fchip fc-warn" class:active={filter === 'warn'} onclick={() => filter = 'warn'}>Warn <span class="fchip-n">{warnCount}</span></button>
       <button class="fchip fc-err" class:active={filter === 'error'} onclick={() => filter = 'error'}>Errors <span class="fchip-n">{errorCount}</span></button>
@@ -168,8 +205,17 @@
         {:else if !installing}
           <button class="btn btn-primary btn-sm" onclick={startServer}><i class="ti ti-player-play"></i> {t('servers.console.start')}</button>
         {/if}
-        {#if running || installing || console_.status === 'starting'}
+        {#if running || installing || status === 'starting'}
           <button class="btn btn-ghost btn-sm sct-danger" onclick={killServer} title={t('servers.console.kill')}><i class="ti ti-x"></i> Kill</button>
+        {/if}
+      {:else if isRemote}
+        {#if remote.secure === true}
+          <span class="st-tag ok" title={t('servers.remote.encryptedTip')}><i class="ti ti-lock"></i> {t('servers.remote.encrypted')}</span>
+        {:else if remote.secure === false}
+          <span class="st-tag" title={t('servers.remote.viaVpsTip')}><i class="ti ti-lock-open"></i> {t('servers.remote.viaVps')}</span>
+        {/if}
+        {#if remote.ended && remoteServer}
+          <button class="tbtn" onclick={() => remoteServer && remoteOpenConsole(remoteServer)} title={t('servers.remote.reconnect')} aria-label={t('servers.remote.reconnect')}><i class="ti ti-refresh"></i></button>
         {/if}
       {:else}
         <button class="tbtn" onclick={toggleWindow} title={t('servers.console.separateWindow')} aria-label={t('servers.console.separateWindow')}>
@@ -178,7 +224,7 @@
       {/if}
       <button class="tbtn" onclick={copyAll} title={t('servers.console.copyLogs')} aria-label={t('servers.console.copyLogs')}><i class="ti ti-copy"></i></button>
       <button class="tbtn" onclick={clearLog} title={t('servers.console.clearView')} aria-label={t('servers.console.clearView')}><i class="ti ti-trash"></i></button>
-      {#if console_.status === 'crashed'}
+      {#if status === 'crashed' && !isRemote}
         <button class="btn btn-ghost btn-sm" onclick={analyzeCrash} disabled={aiState === 'thinking'}>
           {#if aiState === 'thinking'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-sparkles"></i>{/if}
           {t('servers.console.aiAnalysis')}
@@ -189,19 +235,19 @@
 
   <!-- Хто зараз на сервері (ніки). Сповіщення про вхід/вихід показує
        App.svelte глобально — тут лише живий список. -->
-  <ServerPlayersStrip {serverId} running={running} />
+  {#if !isRemote}<ServerPlayersStrip {serverId} running={running} />{/if}
 
-  {#if installing && console_.installProgress}
+  {#if installing && installProgress}
     <div class="sct-install">
       <div class="sct-install-head">
         <i class="ti ti-server" style="color:var(--pcol, var(--orange))"></i>
-        <span class="sct-install-stage">{console_.installProgress.stage === 'java' ? 'Java' : t('servers.metrics.core')}</span>
-        <span class="sct-install-msg">{console_.installProgress.message}</span>
-        {#if console_.installProgress.percent >= 0}<span class="sct-install-pct">{console_.installProgress.percent}%</span>{/if}
+        <span class="sct-install-stage">{installProgress.stage === 'java' ? 'Java' : t('servers.metrics.core')}</span>
+        <span class="sct-install-msg">{installProgress.message}</span>
+        {#if installProgress.percent >= 0}<span class="sct-install-pct">{installProgress.percent}%</span>{/if}
       </div>
       <div class="sct-install-bar">
-        {#if console_.installProgress.percent >= 0}
-          <div class="sct-install-fill" style="width:{console_.installProgress.percent}%"></div>
+        {#if installProgress.percent >= 0}
+          <div class="sct-install-fill" style="width:{installProgress.percent}%"></div>
         {:else}
           <div class="sct-install-fill sct-install-indet"></div>
         {/if}
@@ -210,7 +256,7 @@
   {/if}
 
   <ConsoleView
-    lines={console_.lines}
+    {lines}
     {filter}
     {search}
     emptyIcon={running ? 'ti-terminal' : 'ti-server-off'}
@@ -226,8 +272,9 @@
 
   <ConsoleInput
     bind:value={command}
-    disabled={!running}
-    placeholder={running ? t('servers.console.commandPlaceholder') : t('servers.console.empty')}
+    disabled={!running || !canSend}
+    placeholder={isRemote && !remoteServer?.canExec ? t('servers.remote.readOnly')
+      : running ? t('servers.console.commandPlaceholder') : t('servers.console.empty')}
     onsubmit={sendCmd}
   />
 </div>
@@ -263,7 +310,7 @@
     background: var(--bg-input); border: 1px solid var(--border);
   }
   .fchip {
-    padding: 5px 12px; border-radius: 9px; font-size: 10.5px; font-weight: 700;
+    padding: 5px 12px; border-radius: 9px; font-size: var(--fs-min); font-weight: 700;
     background: transparent; border: none; color: var(--text-mute);
     cursor: pointer; transition: background-color .15s, color .15s, box-shadow .15s; display: flex; align-items: center; gap: 6px;
   }
@@ -271,7 +318,7 @@
   .fchip.active { background: var(--hover-strong); color: var(--text); box-shadow: 0 1px 6px rgba(0,0,0,.28), inset 0 0 0 1px var(--border-hi); }
   .fchip.fc-warn.active { color: #ffd166; }
   .fchip.fc-err.active { color: #ff6b6b; }
-  .fchip-n { font-family: var(--font-mono); font-size: 9.5px; opacity: .8; }
+  .fchip-n { font-family: var(--font-mono); font-size: var(--fs-min); opacity: .8; }
   .gc-search {
     display: flex; align-items: center; gap: 6px;
     background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
@@ -302,7 +349,7 @@
   .sct-install-head i { font-size: 14px; }
   .sct-install-stage { font: 700 11px/1 var(--font-ui); color: var(--pcol, var(--orange)); padding: 2px 6px; border-radius: 4px; background: color-mix(in srgb, var(--pcol, var(--orange)) 12%, transparent); }
   .sct-install-msg { font: 500 11px/1 var(--font-ui); color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sct-install-pct { font: 600 10px var(--font-mono); color: var(--pcol, var(--orange)); }
+  .sct-install-pct { font: 600 var(--fs-min) var(--font-mono); color: var(--pcol, var(--orange)); }
   .sct-install-bar { width: 100%; height: 4px; border-radius: 2px; background: var(--hover); overflow: hidden; }
   .sct-install-fill { height: 100%; border-radius: 2px; background: var(--pcol, var(--orange)); transition: width .3s ease; }
   .sct-install-fill.sct-install-indet { width: 40%; animation: sct-install-slide 1.8s ease-in-out infinite; }

@@ -11,7 +11,7 @@
   // Публічний контракт: open + onClose. Сканування і стан — усередині
   // (самодостатній компонент), тож App.svelte лише відкриває/закриває.
 
-  import Portal from './Portal.svelte'
+  import UiModal from './UiModal.svelte'
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
   import { packAsset } from './packAssets.svelte'
@@ -199,19 +199,9 @@
   }
 </script>
 
-{#if open}
-<Portal>
-<div class="modal-overlay" onclick={(e) => { if (e.target === e.currentTarget && !importing) close() }}>
-  <div class="modal lm-modal" onclick={(e: any) => e.stopPropagation()}>
-    <div class="lm-head">
-      <div class="lm-title">
-        <span class="lm-ico"><i class="ti ti-arrows-shuffle"></i></span>
-        <div class="lm-ttw">
-          <div class="lm-tt">{t('migrate.title')}</div>
-        </div>
-      </div>
-      <button class="modal-x" onclick={close} disabled={importing} title={t('win.close')}><i class="ti ti-x"></i></button>
-    </div>
+<UiModal {open} onclose={close} locked={importing} icon="ti-arrows-shuffle" title={t('migrate.title')}
+         width="min(560px, 94vw)" maxHeight="84vh" bodyClass="no-pad"
+         footer={!loading && !scanError && activeLauncher ? foot : null}>
 
     {#if loading}
       <div class="lm-empty"><i class="ti ti-loader spin"></i> {t('migrate.scanning')}</div>
@@ -308,54 +298,27 @@
           {/each}
         </div>
 
-        <div class="lm-footer">
-          {#if done}
-            <span class="lm-done"><i class="ti ti-circle-check"></i> {t('migrate.done')}</span>
-            <button class="btn btn-primary" onclick={close}><i class="ti ti-check"></i> {t('migrate.finish')}</button>
-          {:else}
-            <span class="lm-foot-hint"><i class="ti ti-shield-check"></i> {t('migrate.copyHint')}</span>
-            <div class="lm-actions">
-              <button class="btn btn-ghost" onclick={close} disabled={importing}>{t('migrate.cancel')}</button>
-              <button class="btn btn-primary" onclick={doImport} disabled={importing || selectedCount(activeTab) === 0}>
-                {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-download"></i>{/if}
-                {importing ? t('migrate.importing') : t('migrate.import', { n: selectedCount(activeTab) })}
-              </button>
-            </div>
-          {/if}
-        </div>
       {/if}
     {/if}
-  </div>
-</div>
-</Portal>
-{/if}
+</UiModal>
+
+{#snippet foot()}
+  {#if done}
+    <span class="lm-done"><i class="ti ti-circle-check"></i> {t('migrate.done')}</span>
+    <button class="btn btn-primary" onclick={close}><i class="ti ti-check"></i> {t('migrate.finish')}</button>
+  {:else}
+    <span class="lm-foot-hint"><i class="ti ti-shield-check"></i> {t('migrate.copyHint')}</span>
+    <button class="btn btn-ghost" onclick={close} disabled={importing}>{t('migrate.cancel')}</button>
+    <button class="btn btn-primary" onclick={doImport} disabled={importing || selectedCount(activeTab) === 0}>
+      {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-download"></i>{/if}
+      {importing ? t('migrate.importing') : t('migrate.import', { n: selectedCount(activeTab) })}
+    </button>
+  {/if}
+{/snippet}
 
 <style>
-  .lm-modal { width: 560px; max-width: 94vw; max-height: 84vh; display: flex; flex-direction: column; overflow: hidden; padding: 0; }
 
-  .lm-head { display: flex; align-items: flex-start; justify-content: space-between; padding: 18px 20px 10px; }
-  .modal-x {
-    width: 30px; height: 30px; flex-shrink: 0;
-    background: transparent; border: 1px solid transparent;
-    color: var(--text-mute); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; font-size: 16px;
-    transition: color .15s, background .15s, transform .18s;
-  }
-  .modal-x:hover { color: var(--text); background: var(--hover); transform: rotate(90deg); }
-  .modal-x:disabled { opacity: .5; cursor: default; }
-  .lm-title { display: flex; gap: 11px; align-items: center; }
-  .lm-ico {
-    width: 38px; height: 38px; border-radius: 10px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, rgba(255,138,0,.16), rgba(157,124,255,.16));
-    color: var(--orange); font-size: 19px;
-  }
-  .lm-ttw { display: flex; flex-direction: column; gap: 2px; }
-  .lm-tt { font-size: 15px; font-weight: 800; color: var(--text); }
-  .lm-td { font-size: 11.5px; color: var(--text-mute); max-width: 400px; }
-
-  .lm-tabs { display: flex; gap: 7px; padding: 12px 20px 8px; border-bottom: 1px solid var(--border); }
+  .lm-tabs { display: flex; gap: 7px; padding: 12px 20px 10px; border-bottom: 1px solid var(--border); }
   .lm-tab {
     display: inline-flex; align-items: center; gap: 7px;
     padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border);
@@ -366,7 +329,7 @@
   .lm-tab.active { background: rgba(157,124,255,.12); border-color: rgba(157,124,255,.45); color: var(--violet-l); }
   .lm-tab:disabled { opacity: .55; cursor: default; }
   .lm-tab-count {
-    font-size: 10px; font-weight: 800; padding: 1px 7px; border-radius: 999px;
+    font-size: var(--fs-min); font-weight: 800; padding: 1px 7px; border-radius: 999px;
     background: var(--bg-panel); color: var(--text-dim);
   }
   .lm-tab-ic {
@@ -380,7 +343,7 @@
   .lm-toolbar-hint { font-size: 11.5px; color: var(--text-mute); }
 
   .lm-grid {
-    flex: 1; overflow-y: auto; padding: 4px 20px 10px;
+    padding: 4px 20px 14px;
     display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 10px; min-height: 160px; align-content: start;
   }
@@ -440,7 +403,7 @@
   .lm-card-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
   .chip {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; font-size: var(--fs-min); font-weight: 700;
     background: var(--bg-input); color: var(--text-mute); border: 1px solid var(--border);
     white-space: nowrap;
   }
@@ -454,7 +417,7 @@
   .lm-imported-badge {
     display: inline-flex; align-items: center; gap: 4px;
     padding: 2px 9px; border-radius: 999px;
-    font-size: 10px; font-weight: 800; letter-spacing: .2px;
+    font-size: var(--fs-min); font-weight: 800; letter-spacing: .2px;
     color: var(--green); background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.32);
     white-space: nowrap;
   }
@@ -463,14 +426,9 @@
   .lm-bar { height: 3px; border-radius: 2px; background: var(--bg-input-hi); overflow: hidden; position: absolute; left: 12px; right: 12px; bottom: 6px; }
   .lm-bar-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--orange), var(--violet)); transition: width .25s ease; }
 
-  .lm-footer {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
-    padding: 12px 20px 16px; border-top: 1px solid var(--border);
-  }
-  .lm-foot-hint { font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+  .lm-foot-hint { flex: 1; font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
   .lm-foot-hint i { color: var(--green); }
-  .lm-actions { display: flex; gap: 8px; }
-  .lm-done { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--green); }
+  .lm-done { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--green); }
 
   .lm-empty {
     display: flex; align-items: center; justify-content: center; gap: 9px;

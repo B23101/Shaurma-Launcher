@@ -52,11 +52,17 @@ func (a *App) fixModFileNames(packID string) {
 }
 
 func (a *App) instanceModsDir(packID string) string {
+	if t, ok := a.serverForModTarget(packID); ok {
+		return t.modsDir()
+	}
 	return filepath.Join(a.gameDir(packID), "mods")
 }
 
+// modsBackupsDir — <тека контенту>-backup поруч із нею: mods-backup, а
+// для плагінів сервера — plugins-backup (свій manifest, не змішується).
 func (a *App) modsBackupsDir(packID string) string {
-	return filepath.Join(filepath.Dir(a.instanceModsDir(packID)), "mods-backup")
+	dir := a.instanceModsDir(packID)
+	return filepath.Join(filepath.Dir(dir), filepath.Base(dir)+"-backup")
 }
 
 // OpenModsFolder відкриває теку mods/ збірки в системному файловому
@@ -171,8 +177,14 @@ func (a *App) GetModIcons(packID string, fileNames []string) map[string]string {
 // транслятор/шар сумісності, що дозволяє запускати Fabric-моди на
 // Forge/NeoForge: фізично лежить у тій самій теці mods/, як звичайний
 // jar, тож його присутність визначаємо тим самим скануванням, що й
-// решту модів збірки.
+// решту модів збірки. Новіші збірки Connector (1.0.0-beta.4x+) мають modId
+// "connectormod" у вкладеному jar (META-INF/jarjar/...-mod.jar).
 const sinytraConnectorModID = "connector"
+
+// isSinytraConnectorID — modId належить Sinytra Connector (стара і нова назва).
+func isSinytraConnectorID(id string) bool {
+	return id == sinytraConnectorModID || id == "connectormod"
+}
 
 // hasSinytraConnector перевіряє, чи серед УВІМКНЕНИХ модів збірки є
 // Sinytra Connector. Вимкнений (.disabled) Connector не рахуємо —
@@ -181,7 +193,7 @@ const sinytraConnectorModID = "connector"
 // позначені несумісними.
 func hasSinytraConnector(mods []model.ModEntry) bool {
 	for i := range mods {
-		if mods[i].ID == sinytraConnectorModID && mods[i].Enabled {
+		if isSinytraConnectorID(mods[i].ID) && mods[i].Enabled {
 			return true
 		}
 	}
@@ -244,21 +256,27 @@ func attachLoaderCompat(mods []model.ModEntry, loader string, connectorPresent b
 			}
 			modLoaders = []string{mods[i].Loader}
 		}
-		compatible := false
+		compatible, native := false, false
 		for _, ml := range modLoaders {
 			ml = strings.ToLower(ml)
 			if ml == "" || ml == "unknown" {
 				continue
 			}
+			if loadersCompatible(buildLoader, ml, false) {
+				compatible, native = true, true
+				break
+			}
 			if loadersCompatible(buildLoader, ml, connectorPresent) {
 				compatible = true
-				break
 			}
 		}
 		if !compatible {
 			mods[i].Incompatible = true
 			mods[i].IncompatibleReason = strings.ToLower(mods[i].Loader)
 		}
+		// ViaConnector — мод запускається лише завдяки Sinytra Connector
+		// (Fabric/Quilt-мод у Forge/NeoForge-збірці), UI показує це міткою.
+		mods[i].ViaConnector = compatible && !native
 	}
 }
 
@@ -345,6 +363,7 @@ func (a *App) verifyIncompatibleModsOnline(packID string, mods []model.ModEntry,
 			if loadersCompatible(buildLoader, strings.ToLower(l), connectorPresent) {
 				mods[tg.idx].Incompatible = false
 				mods[tg.idx].IncompatibleReason = ""
+				mods[tg.idx].ViaConnector = !loadersCompatible(buildLoader, strings.ToLower(l), false)
 				// Онлайн-джерело знає лоадери краще за локальний парсер —
 				// підмішуємо їх у Loaders, щоб наступний локальний скан
 				// (без мережі, ScanModsWithCachedUpdates) теж бачив повний
@@ -1888,6 +1907,37 @@ func (a *App) GetModPageLink(packID, fileName, mcVersion, loader string) string 
 		}
 	}
 	return ""
+}
+
+// ModProjectRef — джерело і ID проєкту мода (для переходу на його сторінку
+// в Браузері контенту). Порожні поля — мод не знайдено на жодному джерелі.
+type ModProjectRef struct {
+	Source    string `json:"source"`
+	ProjectID string `json:"projectId"`
+}
+
+// GetModProjectRef знаходить проєкт мода за файлом збірки: спершу вже
+// відомий з перевірки оновлень, інакше — за хешем/назвою на Modrinth і
+// CurseForge (той самий пошук, що GetModPageLink).
+func (a *App) GetModProjectRef(packID, fileName, mcVersion, loader string) ModProjectRef {
+	mods := a.mergeCachedUpdateInfo(packID, mcVersion, loader, a.ScanModsFull(packID))
+	for i := range mods {
+		m := &mods[i]
+		if m.FileName != fileName {
+			continue
+		}
+		if m.ProjectID != "" && m.Source != "" && m.Source != "unknown" {
+			return ModProjectRef{Source: m.Source, ProjectID: m.ProjectID}
+		}
+		if projID, ok := a.findModOnModrinth(m, mcVersion, loader); ok {
+			return ModProjectRef{Source: "modrinth", ProjectID: projID}
+		}
+		if cf, err := a.findModOnCurseForge(m, mcVersion, loader); err == nil && cf != nil && cf.ID > 0 {
+			return ModProjectRef{Source: "curseforge", ProjectID: fmt.Sprintf("%d", cf.ID)}
+		}
+		break
+	}
+	return ModProjectRef{}
 }
 
 // curseForgeTypePath повертає шлях CurseForge для типу контенту.

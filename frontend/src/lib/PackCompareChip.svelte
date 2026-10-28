@@ -2,8 +2,7 @@
   // PackCompareChip — обгортка над СПІЛЬНИМ CompareChip для порівняння
   // ЗБІРОК. Історично цей компонент і був шаблоном; тепер сама верстка/
   // стилі живуть у CompareChip.svelte, а тут лишилась лише типізація
-  // ModComparePack → (src/ti/color/name/meta). Так порівняння серверів
-  // (ServerCompareDialog) і збірок фізично не можуть розійтись у вигляді.
+  // ModComparePack → (src/ti/color/name/meta).
   import CompareChip from './CompareChip.svelte'
   import { packAsset } from './packAssets.svelte'
   import type { ModComparePack } from './types'

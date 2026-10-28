@@ -1,5 +1,6 @@
 <script lang="ts">
-  import Portal from './Portal.svelte'
+  import UiModal from './UiModal.svelte'
+  import './settings/settings.css'
   // Перейменування Шаурма-акаунта (неліцензійного): змінює ID/UUID акаунта
   // (вони рахуються з ніка), переносить прив'язки збірок і пресетів
   // гардероба та, якщо активна Google-сесія скін-системи мала той самий
@@ -62,41 +63,30 @@
   })
 </script>
 
-{#if open}
-  <Portal>
-    <div class="modal-overlay" onclick={() => !busy && oncancel?.()}>
-      <div class="modal" style="max-width:420px" onclick={(e: any) => e.stopPropagation()}>
-        <div class="modal-head">
-          <h3>{t('acc.renameTitle')}</h3>
-        </div>
-        <div class="modal-body">
-          <div class="rename-hint"><i class="ti ti-info-circle"></i>
-            <span>{t('acc.renameHint')}</span>
-          </div>
-          <div class="wiz-field-row" style="margin-top:12px">
-            <!-- svelte-ignore a11y_autofocus -->
-            <input class="input mono {nickErr && touched ? 'input-err' : ''}" style="flex:1"
-                   placeholder={t('nickname')} value={nick} maxlength="16" autofocus
-                   oninput={(e: any) => { nick = sanitizeNick(e.target.value); touched = true; serverErr = '' }}
-                   onkeydown={(e: any) => e.key === 'Enter' && submit()}
-                   aria-invalid={!!(nickErr && touched)} />
-          </div>
-          {#if nickErr && touched}
-            <div class="field-err"><i class="ti ti-alert-triangle"></i> {nickErr}</div>
-          {:else if serverErr}
-            <div class="field-err"><i class="ti ti-alert-triangle"></i> {serverErr}</div>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-ghost" onclick={oncancel} disabled={busy}>{t('cancel')}</button>
-          <button class="btn btn-primary" disabled={busy || !nick.trim() || !!nickErr} onclick={submit}>
-            <i class="ti {busy ? 'ti-loader-2 spin' : 'ti-check'}"></i> {t('save')}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Portal>
-{/if}
+<UiModal {open} onclose={() => oncancel?.()} locked={busy} size="sm" icon="ti-pencil" title={t('acc.renameTitle')}>
+  <div class="rename-hint"><i class="ti ti-info-circle"></i>
+    <span>{t('acc.renameHint')}</span>
+  </div>
+  <div class="wiz-field-row" style="margin-top:12px">
+    <!-- svelte-ignore a11y_autofocus -->
+    <input class="st-input mono grow {nickErr && touched ? 'input-err' : ''}"
+           placeholder={t('nickname')} value={nick} maxlength="16" autofocus
+           oninput={(e: any) => { nick = sanitizeNick(e.target.value); touched = true; serverErr = '' }}
+           onkeydown={(e: any) => e.key === 'Enter' && submit()}
+           aria-invalid={!!(nickErr && touched)} />
+  </div>
+  {#if nickErr && touched}
+    <div class="field-err"><i class="ti ti-alert-triangle"></i> {nickErr}</div>
+  {:else if serverErr}
+    <div class="field-err"><i class="ti ti-alert-triangle"></i> {serverErr}</div>
+  {/if}
+  {#snippet footer()}
+    <button class="btn btn-ghost" onclick={oncancel} disabled={busy}>{t('cancel')}</button>
+    <button class="btn btn-primary" disabled={busy || !nick.trim() || !!nickErr} onclick={submit}>
+      <i class="ti {busy ? 'ti-loader-2 spin' : 'ti-check'}"></i> {t('save')}
+    </button>
+  {/snippet}
+</UiModal>
 
 <style>
   .rename-hint {

@@ -1,5 +1,6 @@
 <script lang="ts">
-  // «Єдине джерело» модів: діалог керування джерелами збірки або сервера.
+  // «Єдине джерело» модів: діалог керування джерелами збірки або сервера
+  // (packId — ID таргету менеджера модів, для сервера "srv:<id>"/"srvp:<id>").
   // Джерело — окремий .jar або ціла тека модів; лаунчер сам звіряє хеші й
   // копіює змінене в mods перед запуском гри/сервера та пакуванням.
   import { onMount, onDestroy } from 'svelte'
@@ -11,21 +12,14 @@
 
   let {
     packId = '',
-    serverId = '',
-    kind = 'mods',
     onclose,
     onchanged,
   }: {
     packId?: string
-    serverId?: string
-    // Для серверів: яку теку обслуговуємо — mods або plugins.
-    kind?: 'mods' | 'plugins'
     onclose: () => void
     // Викликається після зміни джерел — батько перезавантажує список.
     onchanged?: () => void
   } = $props()
-
-  const isServer = $derived(!!serverId)
 
   let view = $state<ModSourcesView>({ sources: [], locked: false })
   let loading = $state(true)
@@ -36,9 +30,7 @@
   async function load() {
     loading = true
     try {
-      view = (isServer
-        ? await App.GetServerModSources(serverId, kind)
-        : await App.GetModSources(packId)) ?? { sources: [], locked: false }
+      view = (await App.GetModSources(packId)) ?? { sources: [], locked: false }
     } catch (e: any) { toast(String(e), 'error') }
     finally { loading = false }
   }
@@ -51,9 +43,7 @@
     busy = true
     progress = { percent: 0, file: '', action: 'check', done: 0, total: 0 }
     try {
-      view = isServer
-        ? await App.AddServerModSource(serverId, kind, k, path)
-        : await App.AddModSource(packId, k, path)
+      view = await App.AddModSource(packId, k, path)
       toast(t('modsrc.added'), 'success')
       onchanged?.()
     } catch (e: any) { toast(String(e), 'error') }
@@ -65,9 +55,7 @@
     if (!ok) return
     busy = true
     try {
-      view = isServer
-        ? await App.RemoveServerModSource(serverId, kind, id)
-        : await App.RemoveModSource(packId, id)
+      view = await App.RemoveModSource(packId, id)
       onchanged?.()
     } catch (e: any) { toast(String(e), 'error') }
     finally { busy = false }
@@ -95,18 +83,10 @@
 
   onMount(() => {
     load()
-    if (isServer) {
-      offs.push(on('server:install-progress', (d: any) => {
-        if (d?.serverId !== serverId || d?.stage !== 'mod_sources') return
-        progress = { percent: d.percent ?? 0, file: '', action: 'copy', done: 0, total: 0 }
-        if (d.message) progress.file = d.message
-      }))
-    } else {
-      offs.push(on('mods:sources:progress', (d: ModSourcesProgress) => {
-        if (d?.packId !== packId) return
-        progress = { percent: d.percent, file: d.file, action: d.action, done: d.done, total: d.total }
-      }))
-    }
+    offs.push(on('mods:sources:progress', (d: ModSourcesProgress) => {
+      if (d?.packId !== packId) return
+      progress = { percent: d.percent, file: d.file, action: d.action, done: d.done, total: d.total }
+    }))
   })
   onDestroy(() => { offs.forEach(f => f()); offs = [] })
 
@@ -171,7 +151,7 @@
     <button class="btn btn-ghost" onclick={() => add('folder')} disabled={busy || hasFolder || hasFiles} title={hasFiles ? t('modsrc.detachFirst') : ''}>
       <i class="ti ti-folder-plus"></i> {t('modsrc.addFolder')}
     </button>
-    {#if !isServer && view.sources.length > 0}
+    {#if view.sources.length > 0}
       <button class="btn btn-ghost" onclick={syncNow} disabled={busy}><i class="ti ti-refresh"></i> {t('modsrc.syncNow')}</button>
     {/if}
     <button class="btn btn-primary" onclick={onclose} disabled={busy}>{t('modsrc.close')}</button>

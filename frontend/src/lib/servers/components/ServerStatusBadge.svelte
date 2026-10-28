@@ -25,7 +25,7 @@
     backdrop-filter: blur(4px);
     white-space: nowrap;
   }
-  .ssb-sm { padding: 2px 7px; font-size: 10px; gap: 4px; }
+  .ssb-sm { padding: 2px 7px; font-size: var(--fs-min); gap: 4px; }
   .ssb-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
   .ssb-sm .ssb-dot { width: 6px; height: 6px; }
   .ssb-dot.pulse { animation: ssb-pulse 1.3s ease-in-out infinite; }

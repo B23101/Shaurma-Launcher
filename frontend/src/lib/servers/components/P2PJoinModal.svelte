@@ -10,11 +10,11 @@
   //
   // Навіщо кнопка запуску: раніше, щоб зайти в чужу P2P-кімнату, треба було
   // вручну скопіювати адресу і вставити її в «Пряме підключення» в грі.
-  import { fade, scale } from 'svelte/transition'
   import { App } from '../../wails'
   import { t } from '../../i18n.svelte'
   import { toast } from '../../toast.svelte'
-  import Portal from '../../Portal.svelte'
+  import UiModal from '../../UiModal.svelte'
+  import '../../settings/settings.css'
   import PackPicker, { type PackPickerItem, type PackRow, type PackFolderRow } from '../../PackPicker.svelte'
   import type { Build, PackFolder } from '../../types'
 
@@ -116,73 +116,48 @@
   }
 </script>
 
-<Portal>
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-  <div class="pjm-back" transition:fade={{ duration: 140 }} onclick={onclose}>
-    <div class="pjm" transition:scale={{ duration: 170, start: 0.96 }} onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={t('servers.p2p.play.title')}>
-      <div class="pjm-h">
-        <i class="ti ti-device-gamepad-2"></i>
-        <div class="pjm-ht">
-          <b>{t('servers.p2p.play.title')}</b>
-          <code title={address}>{address}</code>
-        </div>
-        <button class="pjm-x" onclick={onclose} aria-label={t('cancel')}><i class="ti ti-x"></i></button>
-      </div>
+<UiModal open={true} {onclose} icon="ti-device-gamepad-2" title={t('servers.p2p.play.title')} subtitle={address}
+         width="min(560px, 94vw)" maxHeight="84vh" bodyClass="pjm-body">
+  <div class="pjm-sub">{mode === 'play' ? t('servers.p2p.play.sub') : t('servers.p2p.play.subAdd')}</div>
 
-      <div class="pjm-sub">{mode === 'play' ? t('servers.p2p.play.sub') : t('servers.p2p.play.subAdd')}</div>
-
-      <div class="pjm-modes">
-        <button class:on={mode === 'play'} onclick={() => (mode = 'play')}>
-          <i class="ti ti-player-play"></i> {t('servers.p2p.play.modePlay')}
-        </button>
-        <button class:on={mode === 'add'} onclick={() => (mode = 'add')}>
-          <i class="ti ti-playlist-add"></i> {t('servers.p2p.play.modeAdd')}
-        </button>
-      </div>
-
-      <div class="pjm-search">
-        <i class="ti ti-search"></i>
-        <input bind:value={query} placeholder={t('servers.p2p.play.search')} spellcheck="false" />
-      </div>
-
-      <div class="pjm-list">
-        {#if loading}
-          <div class="pjm-empty"><i class="ti ti-loader spin"></i></div>
-        {:else}
-          <PackPicker
-            items={picker.items}
-            rowById={picker.rowById}
-            folderById={picker.folderById}
-            {query}
-            selectable={!busy}
-            onselect={pick}
-            emptyText={t('servers.p2p.play.noPacks')}
-          />
-        {/if}
-      </div>
-    </div>
+  <div class="pjm-modes">
+    <button class:on={mode === 'play'} onclick={() => (mode = 'play')}>
+      <i class="ti ti-player-play"></i> {t('servers.p2p.play.modePlay')}
+    </button>
+    <button class:on={mode === 'add'} onclick={() => (mode = 'add')}>
+      <i class="ti ti-playlist-add"></i> {t('servers.p2p.play.modeAdd')}
+    </button>
   </div>
-</Portal>
+
+  <div class="st-search pjm-search">
+    <i class="ti ti-search st-search-ic"></i>
+    <input bind:value={query} placeholder={t('servers.p2p.play.search')} spellcheck="false" />
+  </div>
+
+  <div class="pjm-list">
+    {#if loading}
+      <div class="pjm-empty"><i class="ti ti-loader spin"></i></div>
+    {:else}
+      <PackPicker
+        items={picker.items}
+        rowById={picker.rowById}
+        folderById={picker.folderById}
+        {query}
+        selectable={!busy}
+        onselect={pick}
+        emptyText={t('servers.p2p.play.noPacks')}
+      />
+    {/if}
+  </div>
+</UiModal>
 
 <style>
-  .pjm-back { position: fixed; inset: 0; z-index: 460; display: grid; place-items: center; background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); }
-  .pjm { width: min(560px, 94vw); max-height: 84vh; display: flex; flex-direction: column; gap: 12px; padding: 18px; border-radius: 16px; background: var(--bg-panel); border: 1px solid var(--border); box-shadow: 0 20px 60px rgba(0, 0, 0, .55); }
-  .pjm-h { display: flex; align-items: center; gap: 10px; }
-  .pjm-h > i { font-size: 20px; color: var(--pcol, var(--orange)); }
-  .pjm-ht { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-  .pjm-ht b { font: 700 14.5px/1.2 var(--font-ui); color: var(--text); }
-  .pjm-ht code { font: 500 11.5px/1.2 var(--font-mono); color: var(--text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pjm-x { width: 28px; height: 28px; border-radius: 8px; cursor: pointer; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-mute); }
-  .pjm-x:hover { color: var(--text); background: var(--hover-strong); }
-  .pjm-sub { font: 400 11.5px/1.45 var(--font-ui); color: var(--text-mute); }
-  .pjm-modes { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border); }
-  .pjm-modes button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 8px; border: 0; border-radius: 9px; cursor: pointer; background: transparent; color: var(--text-mute); font: 600 12.5px/1 var(--font-ui); }
+  .pjm-sub { font: 400 12px/1.45 var(--font-ui); color: var(--text-mute); }
+  .pjm-modes { display: flex; gap: 3px; margin-top: 12px; padding: 3px; border-radius: 12px; background: var(--bg-input); border: 1px solid var(--border-hi); }
+  .pjm-modes button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 8px; border: 1px solid transparent; border-radius: 9px; cursor: pointer; background: transparent; color: var(--text-mute); font: 600 12.5px/1 var(--font-ui); }
   .pjm-modes button:hover { color: var(--text); }
-  .pjm-modes button.on { background: color-mix(in srgb, var(--pcol, var(--orange)) 14%, transparent); color: var(--text); font-weight: 700; }
-  .pjm-search { position: relative; display: flex; align-items: center; }
-  .pjm-search > i { position: absolute; left: 11px; color: var(--text-dim); font-size: 14px; }
-  .pjm-search input { width: 100%; padding: 9px 12px 9px 32px; border-radius: 11px; background: var(--bg-input); border: 1px solid var(--border); color: var(--text); font: 500 12.5px/1 var(--font-ui); outline: none; }
-  .pjm-search input:focus { border-color: var(--border-hi); }
-  .pjm-list { flex: 1; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+  .pjm-modes button.on { background: var(--bg-card); color: var(--orange); border-color: rgba(var(--orange-rgb), .5); }
+  .pjm-search { max-width: none; margin: 12px 0; }
+  .pjm-list { min-height: 120px; display: flex; flex-direction: column; gap: 3px; }
   .pjm-empty { display: grid; place-items: center; padding: 26px; font: 500 12px/1.3 var(--font-ui); color: var(--text-dim); }
 </style>

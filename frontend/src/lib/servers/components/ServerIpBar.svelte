@@ -64,9 +64,9 @@
     font: 500 11px/1 var(--font-mono); color: var(--text-mute);
   }
   .sip-chip i { color: var(--pcol, var(--orange)); font-size: 12px; }
-  .sip-lbl { font-size: 10px; color: var(--text-dim); }
+  .sip-lbl { font-size: var(--fs-min); color: var(--text-dim); }
   .sip-addr { color: var(--text); font-weight: 600; }
-  .sip-note { color: var(--text-dim); font-size: 10px; font-style: italic; }
+  .sip-note { color: var(--text-dim); font-size: var(--fs-min); font-style: italic; }
   .sip-copy {
     border: none; background: transparent; color: var(--text-dim);
     font-size: 11px; cursor: pointer; padding: 2px; border-radius: 4px;

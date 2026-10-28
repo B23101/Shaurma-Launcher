@@ -123,7 +123,9 @@
     // Переповнення: витісняємо найстарші активні картки (з кінця стосу).
     const active = cards.filter(c => !c.leaving)
     for (let i = active.length - 1; i >= MAX; i--) dismiss(active[i].key)
-    wantHead(title)
+    // Службове сповіщення (kind "info") — заголовок не нік, а «Shaurma
+    // Launcher»: запит голови за ним повертав дефолтного Стіва.
+    if (fresh.kind !== 'info') wantHead(title)
     armAll()
     void sync()
   }
@@ -229,7 +231,7 @@
       onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(c) } }}
     >
       <span class="np-av">
-        {#if heads[c.title]}<img src={heads[c.title]} alt="" />{:else}<i class="ti ti-flame"></i>{/if}
+        {#if c.kind !== 'info' && heads[c.title]}<img src={heads[c.title]} alt="" />{:else}<i class="ti ti-flame"></i>{/if}
       </span>
       <span class="np-text">
         <span class="np-title">{c.title}</span>

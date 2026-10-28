@@ -3,7 +3,7 @@
   // Відкривається, коли лаунчер побачив посилання-запрошення (у буфері
   // обміну або вставлене вручну). Показує іконку (голову скіна) та ім'я
   // акаунта, а кнопка надсилає запит у друзі через наявний SendFriendInvite.
-  import Portal from '../Portal.svelte'
+  import UiModal from '../UiModal.svelte'
   import { App } from '../wails'
   import { toast } from '../toast.svelte'
   import { t } from '../i18n.svelte'
@@ -109,76 +109,50 @@
   }
 </script>
 
-{#if link}
-  <Portal>
-    <div class="af-overlay" onclick={onclose} role="presentation">
-      <div class="af-modal" onclick={(e: any) => e.stopPropagation()} role="dialog" aria-modal="true">
-        <div class="af-head">
-          <div class="af-ic"><i class="ti ti-user-plus"></i></div>
-          <div class="af-title">{t('friends.invite.title')}</div>
-        </div>
-
-        <div class="af-body">
-          <div class="af-ava">
-            {#if head}
-              <img src={head} alt="" />
-            {:else}
-              <span>{(link.nickname || '?').charAt(0).toUpperCase()}</span>
-            {/if}
-          </div>
-          <div class="af-meta">
-            <div class="af-nick">{link.nickname || t('friends.invite.unknown')}</div>
-            {#if self}
-              <span class="af-badge me"><i class="ti ti-user-check"></i> {t('friends.invite.badgeSelf')}</span>
-            {:else if already}
-              <span class="af-badge ok"><i class="ti ti-users"></i> {t('friends.invite.badgeFriend')}</span>
-            {/if}
-            <button class="af-id" onclick={copyId} title={t('social.copyId')}>
-              <i class="ti ti-copy"></i> <code>{label}</code>
-            </button>
-          </div>
-        </div>
-
-        {#if self}
-          <div class="af-note warn"><i class="ti ti-info-circle"></i> {t('friends.invite.self')}</div>
-        {:else if already}
-          <div class="af-note ok"><i class="ti ti-users"></i> {t('friends.invite.already')}</div>
-        {:else if incoming}
-          <div class="af-note warn"><i class="ti ti-mail"></i> {t('friends.invite.incoming')}</div>
-        {:else if !loggedIn && !checking}
-          <div class="af-note warn"><i class="ti ti-user-question"></i> {t('friends.invite.loginNeeded')}</div>
+<UiModal open={!!link} {onclose} icon="ti-user-plus" title={t('friends.invite.title')} size="sm" zIndex={1000001}>
+  {#if link}
+    <div class="af-body">
+      <div class="af-ava">
+        {#if head}
+          <img src={head} alt="" />
+        {:else}
+          <span>{(link.nickname || '?').charAt(0).toUpperCase()}</span>
         {/if}
       </div>
-
-      <div class="af-actions">
-        <button class="btn btn-ghost" onclick={onclose}>{t('cancel')}</button>
-        <button class="btn btn-primary" onclick={add}
-                disabled={busy || checking || self || already || incoming || !loggedIn}>
-          {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-user-plus"></i>{/if}
-          {t('friends.invite.add')}
+      <div class="af-meta">
+        <div class="af-nick">{link.nickname || t('friends.invite.unknown')}</div>
+        {#if self}
+          <span class="af-badge me"><i class="ti ti-user-check"></i> {t('friends.invite.badgeSelf')}</span>
+        {:else if already}
+          <span class="af-badge ok"><i class="ti ti-users"></i> {t('friends.invite.badgeFriend')}</span>
+        {/if}
+        <button class="af-id" onclick={copyId} title={t('social.copyId')}>
+          <i class="ti ti-copy"></i> <code>{label}</code>
         </button>
       </div>
     </div>
-  </Portal>
-{/if}
+
+    {#if self}
+      <div class="af-note warn"><i class="ti ti-info-circle"></i> {t('friends.invite.self')}</div>
+    {:else if already}
+      <div class="af-note ok"><i class="ti ti-users"></i> {t('friends.invite.already')}</div>
+    {:else if incoming}
+      <div class="af-note warn"><i class="ti ti-mail"></i> {t('friends.invite.incoming')}</div>
+    {:else if !loggedIn && !checking}
+      <div class="af-note warn"><i class="ti ti-user-question"></i> {t('friends.invite.loginNeeded')}</div>
+    {/if}
+  {/if}
+  {#snippet footer()}
+    <button class="btn btn-ghost" onclick={onclose}>{t('cancel')}</button>
+    <button class="btn btn-primary" onclick={add}
+            disabled={busy || checking || self || already || incoming || !loggedIn}>
+      {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-user-plus"></i>{/if}
+      {t('friends.invite.add')}
+    </button>
+  {/snippet}
+</UiModal>
 
 <style>
-  .af-overlay {
-    position: fixed; inset: 0; z-index: 400;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
-    background: rgba(0, 0, 0, .55);
-  }
-  .af-modal {
-    width: min(380px, 92vw);
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 16px;
-    padding: 20px; box-shadow: 0 18px 60px rgba(0, 0, 0, .5);
-  }
-  .af-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
-  .af-ic {
-    width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center;
-    background: rgba(var(--orange-rgb), .12); color: var(--orange); font-size: 18px;
-  }
-  .af-title { font-size: 16px; font-weight: 700; color: var(--text); }
   .af-body { display: flex; align-items: center; gap: 14px; }
   .af-ava {
     width: 72px; height: 72px; border-radius: 14px; overflow: hidden; flex-shrink: 0;
@@ -208,5 +182,4 @@
   .af-note.warn { color: var(--text-mute); background: rgba(var(--orange-rgb), .08); border: 1px solid rgba(var(--orange-rgb), .22); }
   .af-note.warn i { color: var(--orange); }
   .af-note.ok { color: #2ecc71; background: rgba(46, 204, 113, .08); border: 1px solid rgba(46, 204, 113, .25); }
-  .af-actions { width: min(380px, 92vw); display: flex; justify-content: flex-end; gap: 10px; }
 </style>

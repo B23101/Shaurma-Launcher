@@ -99,6 +99,12 @@ select option { background:var(--bg-panel); color:var(--text); }
   --red:         #ef4444;
   --yellow:      #f59e0b;
   --r-sm: 8px;  --r-md: 10px;  --r-lg: 16px;  --r-xl: 24px;
+  /* Найменший розмір тексту в інтерфейсі. Нижче 11px текст нечитабельний на
+     ноутбуках зі шкалою Windows 100% (дрібні підписи, бейджі, kbd-підказки). */
+  --fs-min: 11px;
+  /* Відступ модалок від країв вікна (оверлей + max-height). На низьких
+     вікнах ноутбука зменшується в блоці «Ноутбуки» в кінці файлу. */
+  --modal-gap: 30px;
   --font-ui:  'Inter','Segoe UI',sans-serif;
   --font-mono: 'JetBrains Mono','Consolas',monospace;
 }
@@ -213,7 +219,7 @@ body {
 /* Голови — не «справжні» іконки пункту: гасимо загальні правила .nav-item i
    (ширина 17px, pop-анімація) для крапки статусу всередині голови. */
 .nav-item .nav-heads i { width:auto; font-size:12px; transform:none !important; }
-.nav-item .nav-heads-more { font:800 9.5px/1 var(--font-ui); color:var(--text-dim); }
+.nav-item .nav-heads-more { font:800 var(--fs-min)/1 var(--font-ui); color:var(--text-dim); }
 /* ── Іконки запущених серверів на пункті «Сервери» ──
    Квадратики 22px у кольорі сервера (PNG або пресет-іконка) із зеленим
    кільцем «працює» — за аналогією з головами друзів. */
@@ -278,7 +284,7 @@ body {
    сторінках, доки інтернет не відновиться. */
 .logo-offline {
   display:inline-flex; align-items:center; gap:4px; margin-top:3px;
-  font-size:9px; font-weight:700; letter-spacing:.4px; color:var(--orange);
+  font-size:var(--fs-min); font-weight:700; letter-spacing:.4px; color:var(--orange);
   background:rgba(var(--orange-rgb), .12); border:1px solid rgba(var(--orange-rgb), .35);
   border-radius:999px; padding:1px 7px; width:fit-content;
   animation:logo-offline-pulse 2s ease-in-out infinite;
@@ -626,7 +632,7 @@ html[data-window-active="off"] *::after {
 }
 .sf-meta { flex:1; min-width:0; }
 .sf-name { font-size:12px; font-weight:700; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.sf-count { font-size:10.5px; color:var(--text-mute); }
+.sf-count { font-size:var(--fs-min); color:var(--text-mute); }
 /* Стрілка папки ПРИКЛІПЛЕНА до правого краю рядка (з відступом 7px) і не
    залежить від довжини назви/лічильника: позиціюємо її абсолютно в .sf-row
    (position:relative задано нижче для drop-ліній), а назва обрізається за
@@ -710,10 +716,11 @@ html[data-window-active="off"] *::after {
   border-color:color-mix(in srgb, var(--pcol, var(--orange)) 35%, var(--border-hi));
 }
 .ft-more {
-  position:absolute; right:-2px; bottom:-2px; min-width:16px; height:16px;
-  border-radius:8px; background:var(--pcol, var(--orange)); color:#fff;
-  font-size:9px; font-weight:800; display:flex; align-items:center; justify-content:center;
-  padding:0 3px; box-shadow:0 2px 5px rgba(0,0,0,.4);
+  position:absolute; right:-4px; bottom:-3px; min-width:18px; height:16px;
+  border-radius:999px; background:var(--bg-input-hi); color:var(--text);
+  border:1.5px solid var(--bg-card);
+  font-size:var(--fs-min); font-weight:700; display:flex; align-items:center; justify-content:center;
+  padding:0 4px;
 }
 .inst-tile.folder-tile .ft-info {
   flex:1; min-width:0; display:flex; flex-direction:column; gap:3px;
@@ -721,13 +728,13 @@ html[data-window-active="off"] *::after {
 }
 .inst-tile.folder-tile .ft-name {
   font-size:13px; font-weight:700;
-  color:var(--pcol, var(--orange));
+  color:var(--text);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .ft-live { color:var(--green); }
 .ft-live i { font-size:7px; vertical-align:middle; }
 .inst-tile.folder-tile .ft-sub {
-  font-size:10.5px; color:var(--text-mute); font-family:var(--font-mono);
+  font-size:11.5px; color:var(--text-mute);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
@@ -736,44 +743,22 @@ html[data-window-active="off"] *::after {
    рахують ширину САМОГО вікна, а не екрана: вікно може бути вузьким і на
    великому моніторі. Без підтримки @container діє flex-wrap — текст усе
    одно не обрізається, кнопки просто переносяться на другий рядок. */
-.folder-modal {
-  width:min(780px, 100%); max-width:none; max-height:min(84vh, 800px);
-  display:flex; flex-direction:column; container-type:inline-size; container-name:foldermodal;
-}
-.folder-modal .modal-body { overflow-y:auto; flex:1; min-height:0; scrollbar-width:thin; }
-.fm-icon { display:flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:9px; background:var(--bg); flex:none; }
-.fm-icon i { font-size:20px; }
-.fm-icon.fm-icon-lg { width:40px; height:40px; border-radius:12px; }
-.fm-icon.fm-icon-lg i { font-size:22px; }
-.fm-count { display:inline-flex; align-items:center; gap:5px; font-size:12px; color:var(--text-mute); background:var(--bg); padding:3px 10px; border-radius:12px; white-space:nowrap; }
-.fm-count b { font-family:var(--font-mono); color:var(--text); font-weight:700; }
-.modal-actions { display:flex; gap:6px; margin-left:10px; }
-
-.folder-modal .fm-head { flex-wrap:wrap; gap:10px 12px; position:relative; padding-right:56px; }
-.fm-titlebox { flex:1 1 160px; min-width:0; display:flex; flex-direction:column; gap:5px; }
-.fm-titlebox h3 {
-  flex:none; margin:0; font-size:15px; font-weight:800; line-height:1.25;
-  overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-}
-.fm-meta { display:flex; gap:6px; flex-wrap:wrap; }
-.fm-actions { display:flex; flex-wrap:wrap; gap:6px; margin-left:auto; justify-content:flex-end; }
+.folder-modal { container-type:inline-size; container-name:foldermodal; }
+.folder-modal .ui-head { flex-wrap:wrap; }
+/* Хрестик завжди справа вгорі в рядку з назвою; кнопки дій — окремим рядком під нею.
+   Раніше при переносі хрестик опускався вниз до кнопок. */
+.folder-modal .ui-title-row { order:1; }
+.folder-modal .ui-x { order:2; }
+.folder-modal .ui-acts { order:3; flex:1 0 100%; justify-content:flex-start; }
 .fm-btn { white-space:nowrap; flex:none; }
 .fm-btn.danger { color:var(--red); }
 .fm-btn.danger:hover { background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.5); }
-.fm-close { position:absolute; top:14px; right:16px; }
 /* Вузьке вікно: кнопки — іконки (підпис лишається в title/aria-label),
    лишаються в одному рядку з назвою. */
 @container foldermodal (max-width: 600px) {
   .fm-btn { padding:8px; }
   .fm-btn span { display:none; }
-  .folder-modal .modal-head { padding:14px 54px 12px 16px; }
-  .fm-close { top:12px; right:12px; }
-  .folder-modal .modal-body { padding:14px 16px; }
 }
-@container foldermodal (max-width: 360px) {
-  .fm-icon.fm-icon-lg { display:none; }
-}
-@media (max-width:640px) { .modal-overlay:has(> .folder-modal) { padding:12px; } }
 
 .fm-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap:12px; padding:2px; }
 .fm-tile { animation:rise-in .3s cubic-bezier(.34,1.56,.64,1) both; }
@@ -783,10 +768,10 @@ html[data-window-active="off"] *::after {
 }
 .fm-empty i { font-size:30px; }
 .fm-hint {
-  flex:0 0 auto; padding:9px 18px; border-top:1px solid var(--border); color:var(--text-mute);
+  flex:1 1 auto; color:var(--text-mute);
   font-size:11.5px; display:flex; align-items:center; gap:7px; line-height:1.35;
 }
-.fm-hint-top { border-top:none; border-bottom:1px solid var(--border); }
+.fm-hint-top { margin:-4px 0 14px; padding-bottom:12px; border-bottom:1px solid var(--border); }
 .fm-hint i { font-size:14px; flex:none; }
 /* Назва збірки в папці переноситься на 2 рядки замість «Снайпера Індуст…» */
 .fm-tile .it-name { white-space:normal; display:-webkit-box; -webkit-line-clamp:2; line-clamp:2; -webkit-box-orient:vertical; overflow-wrap:anywhere; }
@@ -799,7 +784,7 @@ html[data-window-active="off"] *::after {
 .fm-tile .it-info { padding-right:38px; }
 .fm-status {
   position:absolute; right:-4px; top:-4px; width:20px; height:20px; border-radius:50%;
-  display:flex; align-items:center; justify-content:center; font-size:10px;
+  display:flex; align-items:center; justify-content:center; font-size:var(--fs-min);
   background:var(--bg-card); border:1.5px solid var(--border-hi);
   box-shadow:0 2px 6px rgba(0,0,0,.35); z-index:2;
 }
@@ -906,7 +891,7 @@ html[data-window-active="off"] *::after {
 .fe-pack-row.sel i { color:var(--orange); }
 .fe-pack-dot { width:10px; height:10px; border-radius:3px; flex-shrink:0; }
 .fe-pack-name { font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.fe-pack-meta { margin-left:auto; font-size:10.5px; color:var(--text-dim); flex-shrink:0; }
+.fe-pack-meta { margin-left:auto; font-size:var(--fs-min); color:var(--text-dim); flex-shrink:0; }
 .fm-color-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .fm-color-row input[type="color"] { width:38px; height:30px; padding:2px; border:none; background:transparent; cursor:pointer; }
 .fm-color-presets { display:flex; gap:6px; }
@@ -1023,7 +1008,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .sb-pack .sp-name .sp-name-txt { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .sb-pack .sp-auto-badge {
   flex-shrink:0; display:inline-flex; align-items:center; gap:3px;
-  font-size:8.5px; font-weight:800; letter-spacing:.4px; text-transform:uppercase;
+  font-size:var(--fs-min); font-weight:800; letter-spacing:.4px; text-transform:uppercase;
   color:var(--violet, #9b7bff);
   background:color-mix(in srgb, var(--violet, #9b7bff) 14%, transparent);
   border:1px solid color-mix(in srgb, var(--violet, #9b7bff) 38%, transparent);
@@ -1031,7 +1016,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   white-space:nowrap;
 }
 .sb-pack .sp-auto-badge::before { content:''; width:4px; height:4px; border-radius:50%; background:currentColor; opacity:.9; }
-.sb-pack .sp-sub  { font-size:10px; color:var(--text-mute); font-family:var(--font-mono); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sb-pack .sp-sub  { font-size:var(--fs-min); color:var(--text-mute); font-family:var(--font-mono); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 /* «Живий» підпис (качка/запуск): оранжевий, з іконкою, файл/стадія
    замість «лоадер · версія» — юзер бачить, ЩО зараз відбувається. */
 .sb-pack .sp-sub.live { color:var(--orange); display:flex; align-items:center; gap:4px; }
@@ -1039,13 +1024,13 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .sb-pack .sp-sub.live i { flex-shrink:0; font-size:10px; }
 .sb-pack .sp-run {
   display:flex; align-items:center; gap:4px; margin-top:2px;
-  font-size:9.5px; color:var(--text-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-size:var(--fs-min); color:var(--text-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .sb-pack .sp-run img { width:13px; height:13px; border-radius:50%; flex-shrink:0; image-rendering:auto; }
 .sb-pack .sp-prog { height:3px; background:var(--bg-input-hi); border-radius:2px; margin-top:2px; overflow:hidden; width:100%; }
 .sb-pack .sp-prog-fill { height:100%; border-radius:2px; background:var(--pcol, var(--orange)); transition:width .2s ease, background .2s ease; }
 .sb-pack .sp-stage {
-  margin-top:3px; font-size:9.5px; color:var(--text-mute);
+  margin-top:3px; font-size:var(--fs-min); color:var(--text-mute);
   font-family:var(--font-mono); display:flex; align-items:center; gap:4px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
@@ -1108,7 +1093,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   font-size:12px; font-weight:700; color:var(--text);
 }
 .pl-group-count {
-  font-size:10.5px; font-weight:800; color:#ef4444;
+  font-size:var(--fs-min); font-weight:800; color:#ef4444;
   background:rgba(239,68,68,.12); border-radius:999px; padding:2px 8px;
   flex-shrink:0;
 }
@@ -1152,7 +1137,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 /* ── Секція «Закріплені» у sidebar ── */
 .sb-pin-label {
   display:flex; align-items:center; gap:6px;
-  padding:6px 8px 2px; font-size:9.5px; font-weight:700;
+  padding:6px 8px 2px; font-size:var(--fs-min); font-weight:700;
   color:var(--text-dim); letter-spacing:.8px; text-transform:uppercase;
 }
 .sb-pin-label i { font-size:11px; color:var(--orange); }
@@ -1163,7 +1148,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   display:flex; align-items:center; gap:7px;
   padding:8px 10px; border-radius:var(--r-md);
   border:1px dashed var(--border-hi);
-  font-size:10.5px; color:var(--text-mute); line-height:1.45;
+  font-size:var(--fs-min); color:var(--text-mute); line-height:1.45;
 }
 .sb-empty-hint i { color:var(--text-dim); font-size:12px; flex-shrink:0; }
 
@@ -1523,7 +1508,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .user-avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 .user-meta { flex:1; min-width:0; }
 .user-meta .un { font-size:13px; font-weight:700; }
-.user-meta .ue { font-size:10px; color:var(--text-mute); font-family:var(--font-mono); display:flex; align-items:center; gap:4px; }
+.user-meta .ue { font-size:var(--fs-min); color:var(--text-mute); font-family:var(--font-mono); display:flex; align-items:center; gap:4px; }
 .user-meta .ue .ue-k { display:inline-flex; align-items:center; gap:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .user-meta .ue .ue-k i { font-size:12px; }
 .user-meta .ue .ue-k.licensed { color:var(--green); }
@@ -1534,10 +1519,10 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .um-dot.off { background:var(--orange); box-shadow:0 0 0 2px rgba(var(--orange-rgb),.2); }
 .dot-btn { width:28px; height:28px; border-radius:8px; background:transparent; border:none; color:var(--text-mute); cursor:pointer; display:flex; align-items:center; justify-content:center; transition:background .15s, color .15s; }
 .dot-btn:hover { background:var(--hover-strong); color:var(--text); }
-.nav-item .nav-badge { margin-left:auto; min-width:17px; height:17px; padding:0 5px; border-radius:20px; background:var(--orange); color:#111; font:800 9.5px/17px var(--font-ui); text-align:center; animation:nav-badge-in .34s cubic-bezier(.2,1.7,.4,1), nav-badge-pulse 2.4s ease-out .4s infinite; }
+.nav-item .nav-badge { margin-left:auto; min-width:17px; height:17px; padding:0 5px; border-radius:20px; background:var(--orange); color:#111; font:800 var(--fs-min)/17px var(--font-ui); text-align:center; animation:nav-badge-in .34s cubic-bezier(.2,1.7,.4,1), nav-badge-pulse 2.4s ease-out .4s infinite; }
 @keyframes nav-badge-in { from { transform:scale(.2); opacity:0; } to { transform:none; opacity:1; } }
 @keyframes nav-badge-pulse { 0% { box-shadow:0 0 0 0 rgba(var(--orange-rgb),.55); } 70%,100% { box-shadow:0 0 0 7px rgba(var(--orange-rgb),0); } }
-.sidebar.collapsed .nav-item .nav-badge { position:absolute; top:3px; right:5px; margin:0; min-width:14px; height:14px; font-size:8.5px; line-height:14px; padding:0 3px; }
+.sidebar.collapsed .nav-item .nav-badge { position:absolute; top:3px; right:5px; margin:0; min-width:14px; height:14px; font-size:var(--fs-min); line-height:14px; padding:0 3px; }
 .sidebar.collapsed .nav-item { position:relative; }
 .dot-btn.on { color:var(--orange); background:rgba(var(--orange-rgb),.12); }
 .dot-btn i { transition:transform .22s cubic-bezier(.4,0,.2,1); display:inline-block; }
@@ -1613,7 +1598,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   display:inline-flex; align-items:center; gap:6px; max-width:100%;
   padding:2px 8px 2px 6px; border-radius:999px; cursor:pointer;
   border:1px solid var(--border); background:var(--hover); color:var(--text-mute);
-  font:600 10.5px/1.35 var(--font-ui);
+  font:600 var(--fs-min)/1.35 var(--font-ui);
   transition:background .14s, border-color .14s, color .14s;
 }
 .um-chip:hover { background:var(--hover-strong); border-color:var(--border-hi); color:var(--text); }
@@ -1651,13 +1636,13 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   background:var(--bg-window); border:1px solid var(--border-hi);
   box-shadow:0 20px 50px rgba(0,0,0,.6); display:grid; gap:2px;
 }
-.um-menu-t { padding:4px 9px 6px; font:700 10px/1 var(--font-ui); text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); }
+.um-menu-t { padding:4px 9px 6px; font:700 var(--fs-min)/1 var(--font-ui); text-transform:uppercase; letter-spacing:.06em; color:var(--text-dim); }
 .um-it { display:flex; align-items:flex-start; gap:9px; padding:8px 9px; border-radius:9px; border:0; background:transparent; color:var(--text); cursor:pointer; text-align:left; font:600 12px/1.2 var(--font-ui); }
 .um-it .um-dot { margin-top:3px; }
-.um-it small { display:block; margin-top:3px; color:var(--text-mute); font:400 10.5px/1.3 var(--font-ui); }
+.um-it small { display:block; margin-top:3px; color:var(--text-mute); font:400 var(--fs-min)/1.3 var(--font-ui); }
 .um-it:hover { background:var(--hover); }
 .um-it.sel { background:rgba(var(--orange-rgb),.1); }
-.um-note { padding:6px 9px 3px; color:var(--text-dim); font:400 10.5px/1.35 var(--font-ui); border-top:1px solid var(--border); margin-top:4px; }
+.um-note { padding:6px 9px 3px; color:var(--text-dim); font:400 var(--fs-min)/1.35 var(--font-ui); border-top:1px solid var(--border); margin-top:4px; }
 
 .sidebar-footer.open .user-avatar { animation:acc-avatar-open .24s cubic-bezier(.34,1.56,.64,1); }
 @keyframes acc-avatar-open {
@@ -1673,7 +1658,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   padding:6px;
   transform-origin:bottom left;
 }
-.acc-dd-label { font-size:9.5px; font-weight:700; color:var(--text-mute); letter-spacing:.8px; text-transform:uppercase; padding:8px 8px 5px; }
+.acc-dd-label { font-size:var(--fs-min); font-weight:700; color:var(--text-mute); letter-spacing:.8px; text-transform:uppercase; padding:8px 8px 5px; }
 .acc-dd-item {
   display:flex; align-items:center; gap:9px; padding:7px 8px; border-radius:9px;
   cursor:pointer; transition:background .15s, transform .12s ease;
@@ -1694,7 +1679,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 /* Бейдж «нік зайнятий ліцензійним акаунтом»: скіном під цим ніком керує
    ліцензійний акаунт (у грі — скін з Mojang), тож редактор скіна закритий. */
 .acc-dd-item .adi-lock { display:inline-flex; align-items:center; font-size:11px; color:#f59e0b; }
-.acc-dd-item .adi-sub { font-size:10px; color:var(--text-mute); margin-top:1px; display:flex; align-items:center; gap:4px; }
+.acc-dd-item .adi-sub { font-size:var(--fs-min); color:var(--text-mute); margin-top:1px; display:flex; align-items:center; gap:4px; }
 .acc-dd-item .adi-sub.licensed { color:var(--green); }
 .acc-dd-item .adi-sub.pirated { color:var(--orange); }
 .acc-dd-item .adi-sub.shaurma { color:var(--blue); }
@@ -1763,7 +1748,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   cursor:text; min-width:200px;
 }
 .search-top i { font-size:14px; }
-.search-top kbd { margin-left:auto; padding:1px 6px; border-radius:4px; background:var(--hover-strong); font-size:9px; }
+.search-top kbd { margin-left:auto; padding:1px 6px; border-radius:4px; background:var(--hover-strong); font-size:var(--fs-min); }
 
 .ctrl-box { display:flex; align-items:center; background:var(--hover); border:1px solid var(--border); border-radius:12px; padding:4px; }
 .ctrl-btn { width:30px; height:30px; border-radius:7px; background:transparent; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text-mute); font-size:15px; transition:background .15s, color .15s; }
@@ -1786,7 +1771,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .content.content-pack-open { padding-top: 0; }
 /* Сторінка «Друзі»: без внутрішніх відступів — список друзів стикується з
    головним sidebar (як другий sidebar), чат займає решту на всю висоту. */
-.content.content-friends { padding: 0; }
 /* Сторінки без власного скролу не резервують смугу під скролбар. */
 .content.content-no-scroll { scrollbar-gutter: auto; }
 .content.content-no-scroll > .page-hero { flex:0 0 auto; }
@@ -1822,7 +1806,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .create-footer {
   position: sticky; bottom: -30px; z-index: 45;
   display:flex; align-items:center; justify-content:flex-end; gap:8px;
-  margin: 20px -30px -30px; padding: 14px 30px;
+  margin: auto -30px -30px; padding: 14px 30px;
   background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--hover);
@@ -1875,7 +1859,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 }
 .tab-btn.active.violet { background:var(--violet); box-shadow:0 4px 12px rgba(123,77,255,.35); }
 .tab-btn.active i { animation:tab-icon-pop .28s cubic-bezier(.34,1.56,.64,1); }
-.tab-btn .num { font-family:var(--font-mono); font-size:10px; opacity:.7; }
+.tab-btn .num { font-family:var(--font-mono); font-size:var(--fs-min); opacity:.7; }
 /* Переключення типу/режиму (вкладки «Вручну»/«Імпортувати» на створенні
    збірки, і будь-де ще, де використовується .tabbar/.tab-btn) — коротка
    пружна поява активної вкладки замість миттєвої зміни кольору. */
@@ -1888,6 +1872,107 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   0%   { transform:scale(.6) rotate(-10deg); }
   55%  { transform:scale(1.2) rotate(5deg); }
   100% { transform:scale(1) rotate(0deg); }
+}
+
+/* ── Блок інструментів (.tool-cluster) ──────────────────────────────────
+   Рідкісні дії тулбара (тека, джерела, резервні копії…) — одним компактним
+   «пеналом» іконок із підказками замість ряду великих підписаних кнопок,
+   що розповзались на кілька рядків. Головні дії лишаються підписаними. */
+.tool-cluster {
+  display:inline-flex; align-items:center; gap:2px; flex:0 0 auto;
+  height:36px; padding:3px; box-sizing:border-box; border-radius:12px;
+  background:var(--bg-input); border:1px solid var(--border);
+}
+.tool-cluster > button {
+  width:32px; height:28px; padding:0; border:0; border-radius:9px;
+  display:grid; place-items:center; flex:0 0 auto;
+  background:transparent; color:var(--text-mute); font-size:16px; cursor:pointer;
+  transition:background .15s, color .15s, transform .12s;
+}
+.tool-cluster > button:hover:not(:disabled) { background:var(--hover-strong); color:var(--text); }
+.tool-cluster > button:active:not(:disabled) { transform:scale(.9); }
+.tool-cluster > button:disabled { opacity:.45; cursor:default; }
+.tool-cluster > button:focus-visible { outline:2px solid var(--orange); outline-offset:-2px; }
+.tool-cluster > .tc-sep { width:1px; height:18px; margin:0 3px; background:var(--border); flex:0 0 auto; }
+
+/* ── Ковзний таббар (.tabbar.tb-slide): сторінки збірки й сервера ──────────
+   Скляна доріжка з внутрішнім відблиском; під активною вкладкою ковзає
+   напівпрозора «лінза» акцентного кольору з рамкою, а під нею — неонова
+   смужка, що світиться. Позицію дають --tb-ind-l/--tb-ind-w (PackInstancePage
+   міряє сам, решта — дія slideTabs). Акцент — --tb-acc (за замовчуванням
+   помаранчевий лаунчера; сторінка сервера ставить колір сервера).
+   Одна лінія без переносу: у вузькому вікні бар гортається, а лінза їде
+   разом із вкладками (absolute усередині контейнера прокрутки). */
+.tabbar.tb-slide {
+  --tb-acc: var(--orange);
+  position:relative; isolation:isolate;
+  flex-wrap:nowrap; max-width:100%;
+  overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:none; overscroll-behavior-x:contain;
+  gap:2px; padding:5px; border-radius:15px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text) 4%, transparent), transparent 70%),
+    color-mix(in srgb, var(--bg-input) 88%, transparent);
+  border:1px solid var(--border);
+  box-shadow:inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent), 0 10px 26px -18px rgba(0,0,0,.7);
+}
+.tabbar.tb-slide::-webkit-scrollbar { display:none; }
+.tabbar.tb-slide:not(.tb-full) { margin-left:auto; margin-right:auto; }
+/* Лінза активної вкладки */
+.tabbar.tb-slide::before {
+  content:''; position:absolute; z-index:0; pointer-events:none;
+  top:5px; bottom:5px;
+  left:var(--tb-ind-l, 0px); width:var(--tb-ind-w, 0px);
+  border-radius:11px;
+  background:
+    radial-gradient(120% 140% at 50% 120%, color-mix(in srgb, var(--tb-acc) 38%, transparent), transparent 70%),
+    linear-gradient(180deg, color-mix(in srgb, var(--tb-acc) 22%, transparent), color-mix(in srgb, var(--tb-acc) 10%, transparent));
+  border:1px solid color-mix(in srgb, var(--tb-acc) 55%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 18%, transparent),
+    0 6px 18px -6px color-mix(in srgb, var(--tb-acc) 60%, transparent);
+  transition:left .32s cubic-bezier(.22,1,.36,1), width .32s cubic-bezier(.22,1,.36,1);
+}
+/* Неонова смужка під активною вкладкою */
+.tabbar.tb-slide::after {
+  content:''; position:absolute; z-index:0; pointer-events:none;
+  bottom:5px; height:2px; border-radius:2px;
+  left:calc(var(--tb-ind-l, 0px) + var(--tb-ind-w, 0px) * .22);
+  width:calc(var(--tb-ind-w, 0px) * .56);
+  background:linear-gradient(90deg, transparent, var(--tb-acc), transparent);
+  box-shadow:0 0 10px 1px var(--tb-acc);
+  transition:left .38s cubic-bezier(.22,1,.36,1), width .38s cubic-bezier(.22,1,.36,1);
+}
+.tabbar.tb-slide .tab-btn {
+  position:relative; z-index:1; flex:0 0 auto; white-space:nowrap;
+  padding:9px 16px; border-radius:11px;
+  background:transparent !important; box-shadow:none !important;
+  animation:none;
+}
+.tabbar.tb-slide .tab-btn i { opacity:.8; transition:transform .2s cubic-bezier(.34,1.56,.64,1), color .2s, opacity .2s; }
+.tabbar.tb-slide .tab-btn:not(.active):hover {
+  color:var(--text);
+  background:color-mix(in srgb, var(--text) 5%, transparent) !important;
+}
+.tabbar.tb-slide .tab-btn:not(.active):hover i { transform:translateY(-1px); opacity:1; }
+.tabbar.tb-slide .tab-btn.active { color:var(--text); }
+.tabbar.tb-slide .tab-btn.active i {
+  opacity:1; color:var(--tb-acc);
+  filter:drop-shadow(0 0 6px color-mix(in srgb, var(--tb-acc) 70%, transparent));
+}
+.tabbar.tb-slide .tab-btn .num {
+  min-width:18px; padding:2px 6px; border-radius:999px; text-align:center;
+  background:color-mix(in srgb, var(--text) 8%, transparent); opacity:1; color:var(--text-mute);
+  transition:background .2s, color .2s;
+}
+.tabbar.tb-slide .tab-btn.active .num { background:color-mix(in srgb, var(--tb-acc) 26%, transparent); color:var(--text); }
+.tabbar.tb-slide .tab-btn:focus-visible:not(.active) { outline:2px solid color-mix(in srgb, var(--tb-acc) 55%, transparent); outline-offset:-2px; }
+/* На арт-банері (повноширинна збірка) текст завжди світлий */
+.pack-hero-full > .tabbar.tb-slide .tab-btn { color:rgba(255,255,255,.72); }
+.pack-hero-full > .tabbar.tb-slide .tab-btn.active,
+.pack-hero-full > .tabbar.tb-slide .tab-btn:not(.active):hover { color:#fff; }
+@media (prefers-reduced-motion: reduce) {
+  .tabbar.tb-slide::before, .tabbar.tb-slide::after { transition:none; }
 }
 
 .tile-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(240px, 1fr)); gap:10px; }
@@ -1958,7 +2043,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .inst-tile .it-info { grid-column:2; grid-row:1; min-width:0; display:flex; flex-direction:column; gap:3px; align-self:center; }
 .inst-tile .it-name { font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .inst-tile .it-sub {
-  font-size:10.5px; color:var(--text-mute); font-family:var(--font-mono);
+  font-size:var(--fs-min); color:var(--text-mute); font-family:var(--font-mono);
   display:flex; align-items:center; gap:5px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
@@ -1970,13 +2055,13 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .inst-tile .it-heads img { width:14px; height:14px; border-radius:50%; border:1px solid rgba(16,185,129,.5); flex-shrink:0; }
 .inst-tile .it-heads img:not(:first-child) { margin-left:-4px; }
 .inst-tile .it-stage {
-  font-size:10px; color:var(--text-mute);
+  font-size:var(--fs-min); color:var(--text-mute);
   display:flex; align-items:center; gap:4px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .inst-tile .it-stage i { color:var(--orange); font-size:10px; }
 .inst-tile .it-time {
-  font-size:10px; color:var(--text-mute);
+  font-size:var(--fs-min); color:var(--text-mute);
   display:flex; align-items:center; gap:4px;
 }
 .inst-tile .it-time i { font-size:11px; }
@@ -2286,9 +2371,9 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 }
 .bw-card .bw-info { flex:1; min-width:0; }
 .bw-card .bw-name { font-size:13.5px; font-weight:800; display:flex; align-items:center; gap:6px; }
-.bw-card .bw-meta { font-size:10.5px; color:var(--text-mute); font-family:var(--font-mono); margin-top:3px; }
+.bw-card .bw-meta { font-size:var(--fs-min); color:var(--text-mute); font-family:var(--font-mono); margin-top:3px; }
 .bw-card .bw-desc { font-size:11px; color:var(--text-mute); margin-top:6px; line-height:1.5; }
-.bw-card .bw-stats { display:flex; gap:10px; margin-top:8px; font-size:10.5px; color:var(--text-dim); }
+.bw-card .bw-stats { display:flex; gap:10px; margin-top:8px; font-size:var(--fs-min); color:var(--text-dim); }
 .bw-card .bw-stats span { display:inline-flex; align-items:center; gap:4px; }
 .bw-card .bw-acts { display:flex; flex-direction:column; gap:6px; }
 
@@ -2311,11 +2396,11 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .wd-stage .gnd { position:absolute; bottom:24px; width:160px; height:14px; border-radius:50%; background:radial-gradient(closest-side, rgba(var(--orange-rgb),.4), transparent 70%); filter:blur(2px); }
 .wd-info { width:100%; padding:10px 4px 0; }
 .wd-info .nick { font-size:18px; font-weight:800; }
-.wd-info .uuid { font-size:10px; color:var(--text-dim); font-family:var(--font-mono); margin-top:2px; }
+.wd-info .uuid { font-size:var(--fs-min); color:var(--text-dim); font-family:var(--font-mono); margin-top:2px; }
 .wd-info .stats { display:flex; gap:10px; margin-top:10px; }
 .wd-info .stat { flex:1; padding:8px; background:var(--bg-input); border-radius:var(--r-sm); text-align:center; }
 .wd-info .stat .v { font-size:14px; font-weight:800; }
-.wd-info .stat .l { font-size:9px; color:var(--text-mute); letter-spacing:.5px; text-transform:uppercase; }
+.wd-info .stat .l { font-size:var(--fs-min); color:var(--text-mute); letter-spacing:.5px; text-transform:uppercase; }
 
 .wd-side .seg { display:flex; gap:4px; padding:4px; background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-md); margin-bottom:16px; width:fit-content; }
 .wd-side .seg .sb { padding:7px 14px; font-size:11.5px; font-weight:700; border-radius:var(--r-sm); cursor:pointer; color:var(--text-mute); }
@@ -2335,7 +2420,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .skin-tile .stp.c3 { background:linear-gradient(135deg,#10b981,#054a3a); }
 .skin-tile .stp.c4 { background:linear-gradient(135deg,#ef4444,#4a1a1a); }
 .skin-tile .sn { font-size:11px; font-weight:700; }
-.skin-tile .ss { font-size:9px; color:var(--text-mute); margin-top:2px; }
+.skin-tile .ss { font-size:var(--fs-min); color:var(--text-mute); margin-top:2px; }
 
 .sub-nav {
   display:flex; flex-direction:column; gap:4px;
@@ -2474,7 +2559,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .ssr-item > i { color: var(--text-mute); font-size: 15px; flex-shrink: 0; }
 .ssr-txt { min-width: 0; }
 .ssr-name { font: 600 12.5px/1.3 var(--font-ui); color: var(--text); }
-.ssr-meta { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; }
+.ssr-meta { font-size: var(--fs-min); color: var(--text-dim); margin-top: 1px; }
 .ssr-empty {
   display: flex; align-items: center; gap: 8px;
   padding: 10px; font-size: 12px; color: var(--text-dim);
@@ -2586,7 +2671,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 
 /* Заголовок-мітка над списком розділів у .sub-nav («РОЗДІЛИ») */
 .sub-nav-label {
-  padding:8px 12px 4px; font-size:10px; font-weight:800; letter-spacing:.08em;
+  padding:8px 12px 4px; font-size:var(--fs-min); font-weight:800; letter-spacing:.08em;
   text-transform:uppercase; color:var(--text-dim); user-select:none;
 }
 
@@ -2612,7 +2697,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .modal-overlay {
   position:fixed; inset:0; z-index:1000000;
   background:rgba(0,0,0,.65); backdrop-filter:blur(6px);
-  display:flex; align-items:center; justify-content:center; padding:30px;
+  display:flex; align-items:center; justify-content:center; padding:var(--modal-gap);
   /* Поява модалки: оверлей плавно «проявляється», а сама модалка
      виростає з легким пружним ефектом + blur. Одна анімація на обидва
      — щоб фон і картка не розривались у часі. */
@@ -2631,7 +2716,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
      (наприклад, велика сітка плащів у редакторі гардеробу) — висота
      обмежена висотою viewport-у мінус відступи .modal-overlay, а скрол
      тепер живе в .modal-body, не в самій модалці. */
-  max-height:calc(100vh - 60px);
+  max-height:calc(100vh - 2 * var(--modal-gap));
   display:flex; flex-direction:column;
   animation:modal-in .26s cubic-bezier(.22,1.2,.36,1) both;
 }
@@ -2721,7 +2806,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .launch-prog .lp-stages { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
 .launch-prog .lp-stage {
   display:flex; align-items:center; gap:5px;
-  font-size:10.5px; font-weight:700; color:var(--text-dim);
+  font-size:var(--fs-min); font-weight:700; color:var(--text-dim);
   padding:4px 9px; border-radius:20px;
   background:var(--bg-input); border:1px solid var(--border);
   opacity:.55; transition:opacity .25s, color .25s, border-color .25s;
@@ -2845,13 +2930,13 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   background:#fff; transform:translate(-50%,-50%);
   box-shadow:0 2px 6px rgba(0,0,0,.5); cursor:grab;
 }
-.ram-ticks { display:flex; justify-content:space-between; font-size:9.5px; color:var(--text-dim); font-family:var(--font-mono); margin-top:2px; }
+.ram-ticks { display:flex; justify-content:space-between; font-size:var(--fs-min); color:var(--text-dim); font-family:var(--font-mono); margin-top:2px; }
 
 /* ── Готові теми (власна тема): стовпчик = фон/картка/текст ── */
 /* ── Візуальні картки теми (замість дропдауна у «Вигляді») ── */
 .set-subhead {
   display:flex; align-items:center; gap:8px; padding:15px 16px 5px;
-  font-size:10.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase;
+  font-size:var(--fs-min); font-weight:800; letter-spacing:.05em; text-transform:uppercase;
   color:var(--text-dim); user-select:none;
 }
 .set-subhead i { font-size:13px; color:var(--orange); }
@@ -2900,7 +2985,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .tp-swatches { display:flex; flex-direction:column; gap:3px; width:44px; }
 .tp-s { display:block; height:13px; border-radius:4px; border:1px solid rgba(255,255,255,.16); }
 .tp-s.tp-bg { height:20px; }
-.tp-name { font-size:10.5px; color:var(--text-mute); font-weight:600; white-space:nowrap; }
+.tp-name { font-size:var(--fs-min); color:var(--text-mute); font-weight:600; white-space:nowrap; }
 .tp-col.sel .tp-name { color:var(--orange); }
 
 /* ── Вкладка «Про лаунчер» ── */
@@ -2958,7 +3043,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .about-tile:nth-child(3) .at-ic { background:rgba(16,185,129,.12); color:#10b981; }
 .about-tile:nth-child(4) .at-ic { background:rgba(123,77,255,.12); color:#7b4dff; }
 .at-body { min-width:0; }
-.at-label { font-size:10.5px; color:var(--text-mute); font-weight:600; text-transform:uppercase; letter-spacing:.6px; }
+.at-label { font-size:var(--fs-min); color:var(--text-mute); font-weight:600; text-transform:uppercase; letter-spacing:.6px; }
 .at-value { font-size:13px; font-weight:700; color:var(--text); margin-top:3px; }
 .at-sub { font-size:11px; color:var(--text-mute); font-weight:500; }
 
@@ -2991,7 +3076,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .ab-text { font-size:12px; color:var(--text-mute); line-height:1.55; max-width:560px; }
 .ab-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:12px; }
 .ab-url {
-  font-family:var(--font-mono); font-size:10.5px; color:var(--text-dim);
+  font-family:var(--font-mono); font-size:var(--fs-min); color:var(--text-dim);
   background:var(--bg-input); border:1px solid var(--border);
   padding:4px 8px; border-radius:6px;
 }
@@ -3086,7 +3171,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 }
 .inst-banner .ib-tag,
 .pack-hero-full .ib-tag {
-  font-size:10.5px; font-weight:600; padding:3px 9px; border-radius:999px;
+  font-size:var(--fs-min); font-weight:600; padding:3px 9px; border-radius:999px;
   background:rgba(255,138,0,.16); border:1px solid rgba(255,138,0,.35); color:var(--orange);
 }
 .inst-banner .ib-title .ib-ic,
@@ -3235,10 +3320,14 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .srv-row .srv-name { font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:7px; }
 .srv-row .srv-addr { font-size:11px; color:var(--text-mute); font-family:var(--font-mono); margin-top:2px; }
 .srv-row .chip {
-  font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:6px;
+  font-size:var(--fs-min); font-weight:700; padding:2px 7px; border-radius:6px;
   background:rgba(16,185,129,.15); color:var(--green); text-transform:uppercase;
 }
 
+/* Примітка в низу картки: відступи як у .row, іконка окремою колонкою — текст не підлазить під неї. */
+.card-note { display:flex; align-items:flex-start; gap:10px; padding:12px 22px; font-size:11.5px; line-height:1.55; color:var(--text-dim); }
+.card-note > i { flex:none; margin-top:2px; font-size:14px; }
+.card-note > span { min-width:0; max-width:640px; }
 .field-hint { font-size:11px; color:var(--text-dim); margin-top:5px; line-height:1.5; }
 .field-locked { opacity:.55; pointer-events:none; }
 
@@ -3246,7 +3335,14 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
    Портовано 1:1 зі схеми 01-stvorennya-zbirky.html. .ram-track/.ram-fill/
    .ram-knob, .card, .toggle, .tabbar/.tab-btn, .select, .input, .chip
    вже визначені вище — тут лише те, чого бракувало. */
-.create-grid { display:grid; grid-template-columns:1fr 360px; gap:22px; align-items:start; }
+.create-grid { display:grid; grid-template-columns:1fr 360px; gap:22px; align-items:start; padding-bottom:20px; }
+/* Поки файл не обрано, праворуч нічого показувати: одна колонка по центру замість порожньої «дірки». */
+.create-grid.single { grid-template-columns:minmax(0, 720px); justify-content:center; }
+.dropzone.big { padding:56px 28px; }
+/* Сторінка створення збірки на всю висоту: нижня панель дій тримається внизу вікна, а не посеред екрана. */
+.content:has(> .page-view > .create-page) { display:flex; flex-direction:column; }
+.content:has(> .page-view > .create-page) > .page-view { flex:1; display:flex; flex-direction:column; min-height:0; }
+.content:has(> .page-view > .create-page) > .page-view > .create-page { flex:1; display:flex; flex-direction:column; }
 .preview-col { position:sticky; top:0; display:flex; flex-direction:column; gap:16px; }
 
 .pv-card { background:var(--bg-card); border:1px solid var(--border); border-radius:var(--r-lg); overflow:hidden; }
@@ -3263,7 +3359,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .icon-pick { width:84px; height:84px; min-width:84px; border-radius:16px; background:var(--bg-input); border:1.5px dashed var(--border-hi); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; color:var(--text-mute); transition:border-color .15s, color .15s; overflow:hidden; }
 .icon-pick:hover { border-color:var(--orange); color:var(--orange); }
 .icon-pick i { font-size:24px; }
-.icon-pick span { font-size:9px; font-weight:600; }
+.icon-pick span { font-size:var(--fs-min); font-weight:600; }
 .icon-pick img { width:100%; height:100%; object-fit:cover; border-radius:14px; }
 
 /* Пресет-іконка (використовується у PresetIconPicker та інших місцях):
@@ -3302,7 +3398,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
    картки (раніше жодного обмеження не було, і довгі "Форк Fabric" /
    "Класичний модлоадер" підписи перекривали сусідні картки). */
 .loader-opt .ln { font-size:11px; font-weight:700; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.loader-opt .lt { font-size:9px; color:var(--text-mute); text-align:center; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+.loader-opt .lt { font-size:var(--fs-min); color:var(--text-mute); text-align:center; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
 
 .color-swatches { display:flex; gap:8px; flex-wrap:wrap; }
 .color-swatches .sw { width:28px; height:28px; border-radius:8px; cursor:pointer; border:2px solid transparent; padding:0; }
@@ -3313,7 +3409,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .idea .ico { width:36px; height:36px; min-width:36px; border-radius:var(--r-sm); background:rgba(var(--orange-rgb),.13); color:var(--orange); display:flex; align-items:center; justify-content:center; font-size:18px; }
 .idea h4 { font-size:13px; font-weight:700; margin-bottom:4px; }
 .idea p { font-size:11.5px; color:var(--text-mute); line-height:1.6; }
-.idea code { font-family:var(--font-mono); background:var(--bg-input); padding:1px 5px; border-radius:4px; font-size:10.5px; }
+.idea code { font-family:var(--font-mono); background:var(--bg-input); padding:1px 5px; border-radius:4px; font-size:var(--fs-min); }
 
 /* Dropzone імпорту модпаку */
 .dropzone { border:1.5px dashed var(--border-hi); border-radius:var(--r-md); padding:28px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; cursor:pointer; text-align:center; transition:border-color .15s, background .15s; background:var(--bg-input); }
@@ -3346,7 +3442,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   font-size:12.5px; font-weight:700; white-space:nowrap;
   overflow:hidden; text-overflow:ellipsis;
 }
-.bundle-pack-row .rl-sub { font-size:10.5px; }
+.bundle-pack-row .rl-sub { font-size:var(--fs-min); }
 .bundle-pack-row:hover { border-color:var(--border-hi); background:var(--bg-input-hi); }
 /* Прогрес експорту папки у .shaurmbundle (модалка експорту) */
 .bundle-export-progress {
@@ -3367,7 +3463,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   display:inline-flex; align-items:center; gap:5px;
   padding:5px 10px; border-radius:999px; border:1px solid var(--border);
   background:var(--bg-input); color:var(--text-mute);
-  font-family:inherit; font-size:10.5px; font-weight:700; cursor:pointer;
+  font-family:inherit; font-size:var(--fs-min); font-weight:700; cursor:pointer;
   transition:background .15s, border-color .15s, color .15s;
 }
 .status-pills .pill:hover { color:var(--text); border-color:var(--border-hi); }
@@ -3407,8 +3503,8 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .sidebar .nav-item i { font-size: calc(16px * var(--sb-scale)); width: calc(17px * var(--sb-scale)); }
 .sidebar .sb-pack { padding-top: calc(6px * var(--sb-scale)); padding-bottom: calc(6px * var(--sb-scale)); gap: calc(8px * var(--sb-scale)); }
 .sidebar .sp-name { font-size: calc(12.5px * var(--sb-scale)); }
-.sidebar .sp-auto-badge { font-size: calc(8.5px * var(--sb-scale)); }
-.sidebar .sp-sub { font-size: calc(10px * var(--sb-scale)); }
+.sidebar .sp-auto-badge { font-size: max(var(--fs-min), calc(8.5px * var(--sb-scale))); }
+.sidebar .sp-sub { font-size: max(var(--fs-min), calc(10px * var(--sb-scale))); }
 .sidebar .sp-ic { width: calc(28px * var(--sb-scale)); height: calc(28px * var(--sb-scale)); min-width: calc(28px * var(--sb-scale)); border-radius: calc(7px * var(--sb-scale)); }
 .sidebar .sp-btn { width: calc(26px * var(--sb-scale)); height: calc(26px * var(--sb-scale)); min-width: calc(26px * var(--sb-scale)); }
 .sidebar .logo-icon-box { width: calc(36px * var(--sb-scale)); height: calc(36px * var(--sb-scale)); border-radius: calc(11px * var(--sb-scale)); }
@@ -3507,7 +3603,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
   width: 18px; height: 18px; border-radius: 50%;
   background: var(--blue); color: #fff;
   display: flex; align-items: center; justify-content: center;
-  font-size: 10px; box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  font-size: var(--fs-min); box-shadow: 0 2px 6px rgba(0,0,0,.45);
   pointer-events: none; z-index: 2;
   animation: mig-badge-pulse 1.6s ease-in-out infinite;
 }
@@ -3518,7 +3614,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 }
 .sp-ic, .it-ic { position: relative; }
 .it-btn.it-mig i, .sp-btn.sp-mig i { font-size: 13px; }
-.it-mig-name { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-mute); margin-top: 4px; min-width: 0; }
+.it-mig-name { display: flex; align-items: center; gap: 6px; font-size: var(--fs-min); color: var(--text-mute); margin-top: 4px; min-width: 0; }
 .it-mig-name img { width: 16px; height: 16px; border-radius: 5px; object-fit: cover; flex-shrink: 0; }
 .it-mig-name span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .it-prog-fill.mig-fill { background: linear-gradient(90deg, var(--violet), var(--orange)); }
@@ -3550,7 +3646,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
   color: var(--text-dim); font-size: 15px;
 }
 .mig-banner-name { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mig-banner-file { font-size: 10.5px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
+.mig-banner-file { font-size: var(--fs-min); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 45%; }
 .mig-banner-sub { font-size: 11px; color: var(--text-mute); margin-top: 8px; }
 
 /* ── Модалка конфлікту ID (створення збірки) ─────────────────────────── */
@@ -3562,7 +3658,6 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .id-conflict-preview b { color: var(--orange); font-size: 13px; }
 /* ── Модалка експорту збірки (.mrpack/.zip) ──────────────────────────── */
 .export-modal { max-width: 860px; }
-.export-progress-modal { max-width: 480px; }
 .ep-subtitle {
   font-size: 12.5px; color: var(--text-mute); line-height: 1.55;
   margin: 0 0 16px;
@@ -3579,7 +3674,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .ep-tree-actions { display: flex; gap: 4px; }
 .ep-hint { font-size: 11px; color: var(--text-mute); margin: 4px 0 10px; }
 .ep-tree {
-  flex: 1; min-height: 220px; max-height: 340px; overflow-y: auto;
+  flex: 1; min-height: 260px; max-height: 420px; overflow-y: auto;
   background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-md);
   padding: 8px;
 }
@@ -3589,6 +3684,12 @@ button.sw { appearance:none; -webkit-appearance:none; }
 }
 .ep-selected-count {
   margin-top: 8px; font-size: 11.5px; color: var(--text-dim); font-weight: 700;
+  display: flex; align-items: center; gap: 6px;
+}
+.ep-selected-count .ti { color: var(--violet); font-size: 13px; }
+.ep-selected-none, .ep-selected-none .ti { color: var(--orange); }
+.ep-selected-size {
+  margin-left: auto; font-family: var(--font-mono); font-weight: 600; color: var(--text-mute);
 }
 .ep-node-label {
   display: flex; align-items: center; gap: 7px; padding: 3px 6px;
@@ -3602,7 +3703,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .ep-node-name {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.ep-node-size { font-size: 10.5px; color: var(--text-dim); flex: 0 0 auto; }
+.ep-node-size { font-size: var(--fs-min); color: var(--text-dim); flex: 0 0 auto; }
 .ep-node-children { margin-left: 20px; border-left: 1px solid var(--border); padding-left: 4px; }
 .ep-field { display: flex; flex-direction: column; gap: 5px; }
 .ep-field > span { font-size: 11.5px; font-weight: 700; color: var(--text-dim); }
@@ -3614,15 +3715,18 @@ button.sw { appearance:none; -webkit-appearance:none; }
 }
 .ep-field input:focus, .ep-field textarea:focus { border-color: var(--violet); outline: none; }
 .ep-formats { display: flex; flex-direction: column; gap: 6px; }
-.ep-format-hint { font-size:10px; color:var(--text-dim); margin-top:4px; line-height:1.45; }
+.ep-format-hint { font-size:var(--fs-min); color:var(--text-dim); margin-top:4px; line-height:1.45; }
 .ep-check {
   display: flex; align-items: center; gap: 8px; cursor: pointer;
   padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-sm);
   transition: border-color .15s, background .15s;
 }
 .ep-check:hover { border-color: var(--violet); background: var(--bg-input); }
-.ep-check input[type=checkbox] { accent-color: var(--violet); cursor: pointer; }
-.ep-format-chip { font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
+.ep-check.on {
+  border-color: var(--violet);
+  background: color-mix(in srgb, var(--violet) 12%, transparent);
+}
+.ep-check input[type=checkbox] { accent-color: var(--violet); cursor: pointer; }.ep-format-chip { font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
 .chip-mrpack { color: var(--green); }
 .chip-zip { color: var(--orange); }
 .chip-cf { color: var(--red); }
@@ -3940,7 +4044,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .step-num {
   margin-left:auto; width:22px; height:22px; min-width:22px; border-radius:7px;
   display:inline-flex; align-items:center; justify-content:center;
-  font-size:10.5px; font-weight:800; font-family:var(--font-mono);
+  font-size:var(--fs-min); font-weight:800; font-family:var(--font-mono);
   background:var(--bg-input); border:1px solid var(--border-hi); color:var(--text-dim);
   transition:color .18s, border-color .18s, background .18s, transform .2s cubic-bezier(.34,1.56,.64,1);
 }
@@ -3966,7 +4070,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .loader-opt { position:relative; }
 .loader-opt .lo-check {
   position:absolute; top:6px; right:6px; width:16px; height:16px; border-radius:50%;
-  background:var(--orange); color:#fff; font-size:10px;
+  background:var(--orange); color:#fff; font-size:var(--fs-min);
   display:flex; align-items:center; justify-content:center;
   opacity:0; transform:scale(.4);
   transition:opacity .18s, transform .22s cubic-bezier(.34,1.56,.64,1);
@@ -4035,7 +4139,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .gs-input-row input::placeholder { color: var(--text-dim); font-weight: 500; }
 .gs-input-row kbd {
   padding: 3px 8px;
-  font-size: 10px; font-weight: 700; color: var(--text-mute);
+  font-size: var(--fs-min); font-weight: 700; color: var(--text-mute);
   background: var(--bg-input); border: 1px solid var(--border-hi);
   border-radius: 6px; letter-spacing: .5px;
   flex-shrink: 0;
@@ -4052,12 +4156,12 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .gs-group-title {
   display: flex; align-items: center; gap: 7px;
   padding: 8px 10px 6px;
-  font-size: 10px; font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase;
+  font-size: var(--fs-min); font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase;
   color: var(--text-dim);
 }
 .gs-group-title .ti { font-size: 12px; color: var(--orange); }
 .gs-group-title .gs-count {
-  margin-left: auto; font-size: 10px; font-weight: 700;
+  margin-left: auto; font-size: var(--fs-min); font-weight: 700;
   color: var(--text-dim); background: var(--hover);
   padding: 1px 7px; border-radius: 20px;
 }
@@ -4099,7 +4203,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
 }
 .gs-meta {
   flex-shrink: 0;
-  font-size: 10.5px; font-weight: 600; color: var(--text-dim);
+  font-size: var(--fs-min); font-weight: 600; color: var(--text-dim);
   display: flex; align-items: center; gap: 5px;
 }
 .gs-meta .dot {
@@ -4317,7 +4421,7 @@ html.beshanga .launcher-window {
 
   .it-time {
     display:flex; align-items:center; gap:5px;
-    font-size:10.5px; color:var(--text-dim); margin-top:4px; font-family:var(--font-mono);
+    font-size:var(--fs-min); color:var(--text-dim); margin-top:4px; font-family:var(--font-mono);
   }
   .it-time i { font-size:11px; color:var(--orange); }
 
@@ -4373,7 +4477,7 @@ html.beshanga .launcher-window {
   .storage-packs .sp-row:hover { border-color:var(--border-hi); }
   .sp-row .sp-name { flex:1; min-width:0; font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .sp-row .sp-size { font-family:var(--font-mono); font-size:11.5px; color:var(--text-mute); flex-shrink:0; }
-  .sp-row .sp-badge { flex-shrink:0; font-size:10.5px; color:var(--violet); background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.3); padding:2px 7px; border-radius:99px; white-space:nowrap; }
+  .sp-row .sp-badge { flex-shrink:0; font-size:var(--fs-min); color:var(--violet); background:rgba(139,92,246,.12); border:1px solid rgba(139,92,246,.3); padding:2px 7px; border-radius:99px; white-space:nowrap; }
   .sp-row .icon-btn { width:26px; height:26px; flex-shrink:0; }
   .sp-row .icon-btn.danger:hover { color:var(--red); border-color:rgba(239,68,68,.4); background:rgba(239,68,68,.1); }
   /* Іконка збірки в рядку «Пам'ять і кеш» — як картка sidebar: кольоровий
@@ -4425,7 +4529,7 @@ html.beshanga .launcher-window {
   .java-row .j-name { flex:1; min-width:0; font-size:12.5px; font-weight:700; }
   .java-row .j-size { font-family:var(--font-mono); font-size:11.5px; color:var(--text-mute); flex-shrink:0; }
   .java-row .j-badge {
-    display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:700;
+    display:inline-flex; align-items:center; gap:4px; font-size:var(--fs-min); font-weight:700;
     padding:3px 8px; border-radius:999px; flex-shrink:0;
   }
   .java-row .j-badge.used { background:rgba(16,185,129,.12); color:var(--green); border:1px solid rgba(16,185,129,.3); }
@@ -4474,7 +4578,7 @@ html.beshanga .launcher-window {
     gap:2px;
   }
   .sh-ring-total { font-size:16px; font-weight:800; font-family:var(--font-mono); color:var(--text); }
-  .sh-ring-label { font-size:10px; color:var(--text-mute); text-transform:uppercase; letter-spacing:.04em; }
+  .sh-ring-label { font-size:var(--fs-min); color:var(--text-mute); text-transform:uppercase; letter-spacing:.04em; }
   .sh-stats { flex:1; min-width:220px; display:grid; grid-template-columns:1fr 1fr; gap:10px; }
   .sh-stat {
     display:flex; align-items:center; gap:10px; padding:9px 11px;
@@ -4488,7 +4592,7 @@ html.beshanga .launcher-window {
   .ss-ic.packs { background:rgba(255,138,0,.14); color:var(--orange); }
   .ss-ic .ss-dot { width:10px; height:10px; border-radius:50%; display:block; }
   .ss-body { min-width:0; }
-  .ss-label { font-size:10.5px; color:var(--text-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px; }
+  .ss-label { font-size:var(--fs-min); color:var(--text-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:130px; }
   .ss-value { font-size:13px; font-weight:700; font-family:var(--font-mono); color:var(--text); }
 
   /* Сітка карток-дій для очищення (версії, Java, сироти, теки). */
@@ -4519,7 +4623,7 @@ html.beshanga .launcher-window {
   .ct-status { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--text-mute); }
   .ct-status.ok { color:var(--green); }
   .ct-status.warn { color:var(--red); font-weight:700; }
-  .ct-sub { font-size:10.5px; color:var(--text-mute); }
+  .ct-sub { font-size:var(--fs-min); color:var(--text-mute); }
 
   .ab-link {
     font-size:11.5px; color:var(--orange); cursor:pointer; text-decoration:underline; text-underline-offset:2px;
@@ -4527,7 +4631,7 @@ html.beshanga .launcher-window {
 
   .fp-path {
     margin-top:6px;
-    font-family: var(--font-mono); font-size:10.5px;
+    font-family: var(--font-mono); font-size:var(--fs-min);
     color: var(--text-dim);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     max-width: 480px;
@@ -4625,11 +4729,11 @@ html.beshanga .launcher-window {
   .fe-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; }
   .fe-field { display: flex; flex-direction: column; gap: 6px; }
   .fe-label {
-    font-size: 10.5px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
+    font-size: var(--fs-min); font-weight: 800; letter-spacing: .5px; text-transform: uppercase;
     color: var(--text-dim); display: flex; align-items: center; gap: 8px;
   }
   .fe-count {
-    font-size: 10px; font-weight: 800; color: var(--orange);
+    font-size: var(--fs-min); font-weight: 800; color: var(--orange);
     background: rgba(var(--orange-rgb), .12); padding: 1px 8px; border-radius: 20px;
   }
   .fe-input {
@@ -4695,7 +4799,7 @@ html.beshanga .launcher-window {
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .fe-pack-meta {
-    flex-shrink: 0; font-size: 10px; font-weight: 600; color: var(--text-dim);
+    flex-shrink: 0; font-size: var(--fs-min); font-weight: 600; color: var(--text-dim);
     font-family: var(--font-mono);
   }
 
@@ -4705,7 +4809,7 @@ html.beshanga .launcher-window {
    налаштуваннях, як у інших лаунчерах»). */
 .fs-card .card-head { gap:8px; }
 .fs-count {
-  font-size: 10px; font-weight: 800; color: var(--orange);
+  font-size: var(--fs-min); font-weight: 800; color: var(--orange);
   background: rgba(var(--orange-rgb), 0.12);
   padding: 1px 8px; border-radius: 20px;
 }
@@ -4715,12 +4819,12 @@ html.beshanga .launcher-window {
 .fs-section { display:flex; flex-direction:column; gap:4px; }
 .fs-section-head {
   display:flex; align-items:center; gap:6px;
-  font-size:10px; font-weight:800; letter-spacing:.8px; text-transform:uppercase;
+  font-size:var(--fs-min); font-weight:800; letter-spacing:.8px; text-transform:uppercase;
   color:var(--text-dim); padding:8px 4px 2px;
 }
 .fs-section-head .ti { color:var(--orange); font-size:13px; }
 .fs-badge {
-  font-size:10px; font-weight:800; color:var(--orange);
+  font-size:var(--fs-min); font-weight:800; color:var(--orange);
   background:rgba(var(--orange-rgb), .12); padding:0 7px; border-radius:20px;
 }
 .fs-section-empty { font-size:11px; color:var(--text-dim); padding:6px 8px; font-weight:600; }
@@ -4744,7 +4848,7 @@ html.beshanga .launcher-window {
 .fs-name { font-size:12.5px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .fs-sub {
   display:flex; align-items:center; gap:5px;
-  font-size:10.5px; color:var(--text-dim); font-weight:600;
+  font-size:var(--fs-min); color:var(--text-dim); font-weight:600;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .fs-pending .ti { color:var(--yellow); }
@@ -4824,7 +4928,7 @@ html.beshanga .launcher-window {
   outline: none; transition: border-color .15s, box-shadow .15s;
 }
 .fd-add-input:focus { border-color: color-mix(in srgb, var(--orange) 60%, transparent); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
-.fd-add-hint { font-size: 10.5px; color: var(--text-dim); line-height: 1.5; margin: 0; }
+.fd-add-hint { font-size: var(--fs-min); color: var(--text-dim); line-height: 1.5; margin: 0; }
 .fd-add-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
 .fd-close {
   width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;
@@ -4877,7 +4981,7 @@ html[data-theme="light"] .hl-f { color:#b91c1c; }
 .user-meta .ue-row { display:flex; flex-wrap:wrap; align-items:center; gap:3px 8px; min-width:0; }
 .user-meta .ue { font-family:var(--font-ui); font-size:11px; line-height:1.2; }
 .user-meta .ue .ue-k {
-  gap:4px; padding:2px 8px 2px 6px; border-radius:999px; font-weight:600; font-size:10.5px;
+  gap:4px; padding:2px 8px 2px 6px; border-radius:999px; font-weight:600; font-size:var(--fs-min);
   background:rgba(255,255,255,.06); color:var(--text-mute); max-width:100%;
 }
 .user-meta .ue .ue-k i { font-size:12px; }
@@ -4892,3 +4996,40 @@ html[data-theme="light"] .hl-f { color:#b91c1c; }
 .user-meta .ue-status.in_game, .user-meta .ue-status.off { color:var(--orange); }
 .sidebar-footer .dot-btn { width:30px; height:30px; border-radius:10px; background:rgba(255,255,255,.04); }
 .sidebar-footer:hover .dot-btn { background:var(--hover-strong); color:var(--text); }
+
+/* ═══ Ноутбуки та шкала Windows 100% / 125% ═══════════════════════════════
+   Спільні брейкпоінти лаунчера (у компонентах використовуйте ті самі числа,
+   а не власні):
+     • низьке вікно   — @media (max-height: 760px): 1366×768 і 1280×720 при
+       100%, 1536×864 при 125% з панеллю задач; вікно лаунчера ≈ 640–720px.
+     • вузьке вікно   — @media (max-width: 1280px): ноутбук 1366/1280 px або
+       1536 px при 125% з відкритим sidebar.
+   На низькому вікні ущільнюємо «хром» (topbar, банери, таббари, відступи
+   модалок), щоб під ним лишалось місце для вмісту вкладки. Горизонтальні
+   відступи .content НЕ змінюємо: від них залежать від'ємні margin
+   повноширинних банерів і прилиплих панелей. */
+@media (max-height: 760px) {
+  :root { --modal-gap: 16px; }
+  .modal-head { padding:14px 20px 10px; }
+  .modal-body { padding:14px 20px; }
+  .modal-foot { padding:10px 20px; }
+
+  .content { padding-top:18px; }
+  .page-hero { margin-bottom:14px; }
+  .pack-toolbar { margin-bottom:8px; padding-top:6px; padding-bottom:6px; }
+  .inst-banner { height:112px; padding:14px 18px; margin-bottom:12px; }
+  .inst-banner .ib-name { font-size:21px; }
+  .inst-banner .ib-title .ib-ic { width:46px; height:46px; border-radius:13px; font-size:22px; }
+  .tabbar { margin-bottom:14px; }
+  .tabbar.tb-slide .tab-btn { padding-top:7px; padding-bottom:7px; }
+  .console-tab-wrap { min-height:300px; }
+}
+/* Вузьке вікно: довгі ряди вкладок (8+ — сторінка сервера) більше не ховають
+   останні вкладки за межею без прокрутки. Спершу щільніші вкладки, а на
+   ~1100px — лише підписи без іконок. */
+@media (max-width: 1280px) {
+  .tabbar.tb-slide:has(> .tab-btn:nth-of-type(8)) > .tab-btn { padding-left:10px; padding-right:10px; }
+}
+@media (max-width: 1180px) {
+  .tabbar.tb-slide:has(> .tab-btn:nth-of-type(8)) > .tab-btn > i { display:none; }
+}

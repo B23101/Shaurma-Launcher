@@ -1734,7 +1734,7 @@
   }
   .pt-id-sub {
     display: flex; align-items: center; gap: 5px;
-    font-size: 10px; color: var(--text-mute); font-family: var(--font-mono);
+    font-size: var(--fs-min); color: var(--text-mute); font-family: var(--font-mono);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .pt-id-sub i { font-size: 11px; }
@@ -1753,56 +1753,7 @@
     box-shadow: 0 0 0 1px var(--border-hi);
   }
 
-  /* ── Сучасний таббар з ковзною пігулкою (сторінка збірки) ──
-     Активна вкладка більше не «перефарбовується» — під нею плавно ковзає
-     градієнтна пігулка (ті ж кольори, що в інших перемикачах лаунчера). */
-  /* Вузьке вікно: вкладки НЕ переносяться на другий рядок (пігулка має
-     висоту всього таббара й на двох рядках розтягувалась у «великий блок»),
-     а лишаються в одному рядку з горизонтальною прокруткою. Пігулка —
-     absolute всередині контейнера прокрутки, тож їде разом із вкладками. */
-  :global(.tabbar.tb-slide) {
-    position: relative;
-    flex-wrap: nowrap;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
-    overscroll-behavior-x: contain;
-  }
-  :global(.tabbar.tb-slide::-webkit-scrollbar) { display: none; }
-  /* Звичайний режим: компактний бар вкладок — по центру сторінки (не при лівому краї).
-     auto-відступи безпечні при переповненні: коли вкладки не влазять, бар займає всю
-     ширину (max-width:100%) і гортається, нічого не обрізається зліва. */
-  :global(.tabbar.tb-slide:not(.tb-full)) { margin-left: auto; margin-right: auto; }
-  :global(.tabbar.tb-slide .tab-btn) { flex: 0 0 auto; white-space: nowrap; }
-  :global(.tabbar.tb-slide::before) {
-    content: '';
-    position: absolute;
-    top: 4px; bottom: 4px;
-    left: var(--tb-ind-l, 0px);
-    width: var(--tb-ind-w, 0px);
-    border-radius: 9px;
-    background: linear-gradient(135deg, var(--orange), var(--orange-2));
-    box-shadow: 0 4px 14px rgba(var(--orange-rgb), .35);
-    transition: left .28s cubic-bezier(.22, 1, .36, 1), width .28s cubic-bezier(.22, 1, .36, 1);
-    z-index: 0;
-    pointer-events: none;
-  }
-  :global(.tabbar.tb-slide .tab-btn) {
-    position: relative;
-    z-index: 1;
-    background: transparent !important;
-    box-shadow: none !important;
-  }
-  :global(.tabbar.tb-slide .tab-btn.active) {
-    color: #fff;
-  }
-  :global(.tabbar.tb-slide .tab-btn:not(.active):hover) {
-    background: color-mix(in srgb, var(--text) 5%, transparent) !important;
-  }
-  :global(.tabbar.tb-slide .tab-btn.active i) {
-    filter: drop-shadow(0 0 6px rgba(255,255,255,.5));
-  }
+  /* Вигляд ковзного таббара (.tabbar.tb-slide) — спільний, у style.css. */
 
   /* ── Повноширинний режим (packBannerFull) — .pack-hero-full ──────────
      Один суцільний геро-блок: фон-арт збірки на весь блок, а тулбар
@@ -1902,7 +1853,6 @@
     justify-content: center;
     padding: 10px 18px;
   }
-  :global(.pack-hero-full > .tabbar.tb-full::before) { top: 5px; bottom: 5px; border-radius: 10px; }
 
   /* М'який «відблиск», що пробігає по банеру збірки при відкритті сторінки. */
   :global(.inst-banner .ib-shine) {
@@ -1963,11 +1913,16 @@
     display: flex; gap: 12px; flex-wrap: wrap;
     font: 500 11px var(--font-mono); color: var(--text-mute);
   }
-  .upd-chip { font: 700 9.5px var(--font-ui); padding: 2px 8px; border-radius: 999px; }
+  .upd-chip { font: 700 var(--fs-min) var(--font-ui); padding: 2px 8px; border-radius: 999px; }
   .upd-chip.release {
     background: rgba(16,185,129,.13); border: 1px solid rgba(16,185,129,.35); color: var(--green);
   }
   .upd-chip.cur {
     background: rgba(var(--orange-rgb), .14); border: 1px solid rgba(var(--orange-rgb), .4); color: var(--orange);
+  }
+  /* Низьке вікно ноутбука (спільний брейкпоінт, див. кінець style.css):
+     нижчий геро-блок, щоб вкладки й вміст починались вище. */
+  @media (max-height: 760px) {
+    :global(.pack-hero-full) { min-height: 236px; gap: 16px; padding-bottom: 16px; }
   }
 </style>

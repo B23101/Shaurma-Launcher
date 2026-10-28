@@ -2,9 +2,6 @@
 package main
 
 import (
-	"strings"
-
-	"shaurma-launcher-backend/internal/api"
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/model"
 	"shaurma-launcher-backend/internal/servers"
@@ -59,17 +56,29 @@ func (a *App) CheckServerFolder(name string) servers.ServerFolderCheck {
 
 // RenameServerFolder — змінити ID сервера (ім'я теки).
 func (a *App) RenameServerFolder(id, newFolder string) (servers.ServerView, error) {
-	return a.srvAPI.RenameServerFolder(id, newFolder)
+	v, err := a.srvAPI.RenameServerFolder(id, newFolder)
+	if err == nil && v.ID != id {
+		a.remoteOnServerRenamed(id, v.ID) // права друзів ідуть за сервером
+	}
+	return v, err
 }
 
 func (a *App) DeleteServer(id string) error {
-	return a.srvAPI.DeleteServer(id)
+	if err := a.srvAPI.DeleteServer(id); err != nil {
+		return err
+	}
+	a.remoteOnServerDeleted(id)
+	return nil
 }
 
 // DeleteServerWithFiles — те саме, що DeleteServer, але з фізичним
 // видаленням теки сервера на диску (незворотно).
 func (a *App) DeleteServerWithFiles(id string) error {
-	return a.srvAPI.DeleteServerWithFiles(id)
+	if err := a.srvAPI.DeleteServerWithFiles(id); err != nil {
+		return err
+	}
+	a.remoteOnServerDeleted(id)
+	return nil
 }
 
 func (a *App) SaveServerConfig(id string, patch servers.ServerConfigPatch) (servers.ServerView, error) {
@@ -215,114 +224,6 @@ func (a *App) DeleteWorldBackup(serverID, worldName, backupID string) error {
 func (a *App) ListServerMods(serverID string) ([]model.ModEntry, error) {
 	return a.srvAPI.ListServerMods(serverID)
 }
-func (a *App) ToggleServerMod(serverID, fileName string) error {
-	return a.srvAPI.ToggleServerMod(serverID, fileName)
-}
-func (a *App) DeleteServerMod(serverID, fileName string) error {
-	return a.srvAPI.DeleteServerMod(serverID, fileName)
-}
-
-// CheckServerModUpdates перевіряє оновлення модів сервера на Modrinth
-// (один batch-запит за SHA1 усіх увімкнених модів) — окремо від
-// ListServerMods, щоб відкриття вкладки не блокувалось на мережі:
-// фронтенд спершу показує список з диска (миттєво), тоді викликає цей
-// метод і патчить HasUpdate/LatestVersion/LatestURL в уже показаних
-// картках.
-//
-// Спрощено відносно CheckModUpdates (модпаки, вище в цьому файлі):
-// лише 1 network-прохід за SHA1, БЕЗ per-mod fallback-пошуку за назвою
-// і БЕЗ CurseForge — серверні mods/-теки типово на порядок менші за
-// модпаки, а моди, не знайдені за хешем (перейменований файл), просто
-// лишаються без бейджа оновлення замість повільного пошуку по імені на
-// кожне відкриття вкладки.
-func (a *App) CheckServerModUpdates(serverID string) ([]model.ModEntry, error) {
-	return a.serverModsWithSources(serverID)
-}
-
-// serverModsWithSources — скан mods/ сервера + збагачення з Modrinth
-// (source/projectId/projectSlug/iconUrl/hasUpdate). Виокремлено з
-// CheckServerModUpdates, бо те саме збагачення потрібне ще експорту
-// списку модів (ExportServerModList — щоб у файлі були справжні
-// посилання на проєкти) і порівнянню серверів (CompareServerMods).
-func (a *App) serverModsWithSources(serverID string) ([]model.ModEntry, error) {
-	srv, err := a.srvAPI.GetServer(serverID)
-	if err != nil {
-		return nil, err
-	}
-	mods := servers.ListServerMods(srv.Dir)
-	if len(mods) == 0 || a.modrinth == nil {
-		return mods, nil
-	}
-	loaderLow := strings.ToLower(srv.Core)
-
-	var hashes []string
-	seenHash := map[string]bool{}
-	// ВИМКНЕНІ моди теж перевіряємо: .jar.disabled — це той самий jar,
-	// лише з суфіксом у імені, тож SHA1 і метадані в нього ті самі.
-	// Раніше умова mods[i].Enabled відсіювала їх — через це у вимкненого
-	// мода не було ні версії з Modrinth, ні іконки проєкту, ні позначки
-	// оновлення (скарга «не перевіряє версію/картинку, коли він вимкнений»).
-	// Саме для вимкнених модів це найпотрібніше: їх часто тримають
-	// вимкненими, але хочуть бачити, яка версія вже встановлена і чи є
-	// новіша — щоб увімкнути саме актуальну.
-	for i := range mods {
-		h := mods[i].Sha1
-		if h != "" && !seenHash[h] {
-			seenHash[h] = true
-			hashes = append(hashes, h)
-		}
-	}
-	if len(hashes) == 0 {
-		return mods, nil
-	}
-
-	latestByHash, err := a.modrinth.GetLatestVersionsByHashes(hashes, []string{loaderLow}, []string{srv.MCVersion})
-	if err != nil || len(latestByHash) == 0 {
-		// Мережа впала — повертаємо список без позначок оновлень
-		// замість помилки: сторінка й так вже показала моди з диска.
-		return mods, nil
-	}
-
-	projIDs := []string{}
-	seenProj := map[string]bool{}
-	for _, fv := range latestByHash {
-		if fv != nil && fv.ProjectID != "" && !seenProj[fv.ProjectID] {
-			seenProj[fv.ProjectID] = true
-			projIDs = append(projIDs, fv.ProjectID)
-		}
-	}
-	projects := map[string]*api.ModrinthProjectInfo{}
-	if len(projIDs) > 0 {
-		projects, _ = a.modrinth.GetProjectsBatch(projIDs)
-	}
-
-	for i := range mods {
-		m := &mods[i]
-		fv, ok := latestByHash[m.Sha1]
-		if !ok || fv == nil || fv.ProjectID == "" {
-			continue
-		}
-		m.Source = "modrinth"
-		m.ProjectID = fv.ProjectID
-		if pr := projects[fv.ProjectID]; pr != nil {
-			m.IconURL = pr.IconURL
-			m.ProjectSlug = pr.Slug
-		}
-		if m.Version != "" && fv.VersionNumber != "" &&
-			!isSameModVersion(m.FileName, m.Version, primaryFile(fv).Filename, fv.VersionNumber) {
-			m.HasUpdate = true
-			m.LatestVersion = fv.VersionNumber
-			m.LatestURL = primaryFile(fv).URL
-		}
-	}
-	return mods, nil
-}
-
-// AddServerModFile зберігає jar-файл (base64 від input[type=file] UI)
-// у теку mods/ або plugins/ сервера. kind: "mods" | "plugins".
-func (a *App) AddServerModFile(serverID, kind, fileName, dataBase64 string) error {
-	return a.srvAPI.AddServerModFile(serverID, kind, fileName, dataBase64)
-}
 
 // ── Мережа Velocity ───────────────────────────────────────────────
 // UI "Мережа" на Velocity-сервері: склад мережі (проксі + backend-сервери),
@@ -332,7 +233,11 @@ func (a *App) NetworkGetView(proxyServerID string) (servers.NetworkView, error) 
 }
 
 func (a *App) NetworkSave(proxyServerID string, members []servers.NetworkMemberView) error {
-	return a.srvAPI.NetworkSave(proxyServerID, members)
+	if err := a.srvAPI.NetworkSave(proxyServerID, members); err != nil {
+		return err
+	}
+	a.remoteOnNetworkChanged() // друзі з правом на проксі бачать новий склад мережі
+	return nil
 }
 
 func (a *App) NetworkStart(proxyServerID string) error {
@@ -343,15 +248,49 @@ func (a *App) NetworkStop(proxyServerID string) error {
 	return a.srvAPI.NetworkStop(proxyServerID)
 }
 
+func (a *App) NetworkSaveSettings(proxyServerID string, s servers.NetworkSettings) error {
+	return a.srvAPI.NetworkSaveSettings(proxyServerID, s)
+}
+
+func (a *App) NetworkDiagnose(proxyServerID string) ([]servers.NetworkIssue, error) {
+	return a.srvAPI.NetworkDiagnose(proxyServerID)
+}
+
+func (a *App) NetworkRepair(proxyServerID string) error {
+	if err := a.srvAPI.NetworkRepair(proxyServerID); err != nil {
+		return err
+	}
+	a.remoteOnNetworkChanged() // друзі з правом на проксі бачать новий склад мережі
+	return nil
+}
+
+func (a *App) NetworkConfigText(proxyServerID string) (string, error) {
+	return a.srvAPI.NetworkConfigText(proxyServerID)
+}
+
+func (a *App) NetworkSaveExternal(proxyServerID string, list []servers.ExternalServer) error {
+	if err := a.srvAPI.NetworkSaveExternal(proxyServerID, list); err != nil {
+		return err
+	}
+	a.remoteOnNetworkChanged() // друзі з правом на проксі бачать новий склад мережі
+	return nil
+}
+
+// DetectNetworkFolder / ImportNetworkFolder — готова мережа з однієї теки
+// (проксі й сервери в підтеках) додається в лаунчер одним кроком.
+func (a *App) DetectNetworkFolder(dir string) (servers.NetworkFolderInfo, error) {
+	return a.srvAPI.DetectNetworkFolder(dir)
+}
+
+func (a *App) ImportNetworkFolder(dir string) (servers.NetworkImportResult, error) {
+	res, err := a.srvAPI.ImportNetworkFolder(dir)
+	a.remoteOnNetworkChanged()
+	return res, err
+}
+
 // ── Плагіни сервера ────────────────────────────────────────────────
 func (a *App) ListServerPlugins(serverID string) ([]servers.ServerPluginInfo, error) {
 	return a.srvAPI.ListServerPlugins(serverID)
-}
-func (a *App) ToggleServerPlugin(serverID, fileName string) error {
-	return a.srvAPI.ToggleServerPlugin(serverID, fileName)
-}
-func (a *App) DeleteServerPlugin(serverID, fileName string) error {
-	return a.srvAPI.DeleteServerPlugin(serverID, fileName)
 }
 
 // ── ШІ-аналіз крашів ───────────────────────────────────────────────
@@ -359,7 +298,6 @@ func (a *App) AnalyzeServerCrash(serverID string) (servers.CrashAnalysis, error)
 	return a.srvAPI.AnalyzeServerCrash(serverID)
 }
 func (a *App) HasCrashReport(serverID string) bool { return a.srvAPI.HasCrashReport(serverID) }
-
 
 // ── Консоль ─────────────────────────────────────────────────────────
 
@@ -376,6 +314,15 @@ func (a *App) GetPackServerLinks(packID string) []servers.PackServerLink {
 }
 func (a *App) SetPackServerLinks(packID string, links []servers.PackServerLink) error {
 	return a.srvAPI.SetPackServerLinks(packID, links)
+}
+func (a *App) GetServerPackLinks(serverID string) []servers.PackServerLink {
+	return a.srvAPI.GetServerPackLinks(serverID)
+}
+func (a *App) SavePackServerLink(link servers.PackServerLink) error {
+	return a.srvAPI.SavePackServerLink(link)
+}
+func (a *App) RemovePackServerLink(packID, serverID string) error {
+	return a.srvAPI.RemovePackServerLink(packID, serverID)
 }
 
 // ── Розумний аналізатор запуску сервера ───────────────────────────────

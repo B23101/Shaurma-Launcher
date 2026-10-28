@@ -1,6 +1,6 @@
 <script lang="ts">
   // ── Ліва панель: «Чати» / «Запити» ───────────────────────────────────────
-  // Вкладки з «пігулкою», що ковзає (transform), пошук, групи друзів за
+  // Вкладки — той самий ковзний таббар, що на сторінках збірки й сервера, пошук, групи друзів за
   // статусом, запити, «інші чати». Режим «лише іконки» (рейка 72px) — для тих,
   // кому потрібен максимум місця під чат.
   import { useFriendsStore, LIST_W_MIN, LIST_W_MAX } from './FriendsStore.svelte'
@@ -11,6 +11,7 @@
   import SentRow from './SentRow.svelte'
   import EmptyState from './EmptyState.svelte'
   import FriendsNotices from './FriendsNotices.svelte'
+  import { slideTabs } from '../slideTabs'
 
   let { activeId = '', onAdd }: { activeId?: string; onAdd: () => void } = $props()
   const s = useFriendsStore()
@@ -68,13 +69,12 @@
   {/if}
   <div class="fl-top">
     {#if !compact}
-      <div class="fl-tabs" role="tablist">
-        <span class="fl-pill" class:r={s.listTab === 'requests'} aria-hidden="true"></span>
-        <button class="fl-tab" role="tab" aria-selected={s.listTab === 'chats'} class:on={s.listTab === 'chats'} onclick={() => (s.listTab = 'chats')}>
+      <div class="tabbar tb-slide fl-tabs" role="tablist" use:slideTabs>
+        <button class="tab-btn fl-tab" role="tab" aria-selected={s.listTab === 'chats'} class:active={s.listTab === 'chats'} onclick={() => (s.listTab = 'chats')}>
           <i class="ti ti-message-circle-2"></i><span>{t('friends.tab.chats')}</span>
           {#if s.hasUnread}<i class="fl-dot"></i>{/if}
         </button>
-        <button class="fl-tab" role="tab" aria-selected={s.listTab === 'requests'} class:on={s.listTab === 'requests'} onclick={() => (s.listTab = 'requests')}>
+        <button class="tab-btn fl-tab" role="tab" aria-selected={s.listTab === 'requests'} class:active={s.listTab === 'requests'} onclick={() => (s.listTab = 'requests')}>
           <i class="ti ti-user-plus"></i><span>{t('friends.tab.requests')}</span>
           {#if s.st.invites.length > 0}<span class="ff-badge">{s.st.invites.length}</span>{/if}
         </button>
@@ -157,69 +157,67 @@
 </aside>
 
 <style>
-  /* Той самий каркас, що й .sidebar: фон вікна, права межа, position:relative
-     (для кнопки згортання й ресайз-хендла на краю). */
-  .fl { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--border);
-    background: var(--bg-window); }
+  /* Список — як бокове меню налаштувань (.st-nav): без власної картки, на
+     фоні сторінки; заголовки груп — дрібні великі літери, активний чат —
+     помаранчевий відтінок. position:relative — для кнопки згортання й
+     ресайз-хендла на правому краю (у проміжку між списком і діалогом). */
+  .fl { --fl-bg: var(--bg-app); position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .fl :global(.sb-resize) { right: -14px; border-radius: 3px; }
   .fl:hover :global(.sb-resize) { opacity: 1; }
+  .fl :global(.sidebar-collapse-btn) { top: 8px; right: -23px; }
   .fl.compact :global(.sidebar-collapse-btn) { transform: rotate(180deg); }
-  .fl-top { display: flex; align-items: center; gap: 5px; padding: 10px 10px 8px; flex: 0 0 auto; }
+  .fl-top { display: flex; align-items: center; gap: 5px; padding: 0 0 10px; flex: 0 0 auto; }
   .fl.compact .fl-top { display: none; }
   .fl.compact .fl-search-row, .fl.compact .fl-chips { display: none; }
-  .fl-collapse-badge { position: absolute; top: -9px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 9.5px; pointer-events: none; transform: rotate(0); }
+  .fl-collapse-badge { position: absolute; top: -9px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; font-size: var(--fs-min); pointer-events: none; transform: rotate(0); }
   .fl.compact .fl-collapse-badge { transform: rotate(180deg); }
 
-  .fl-tabs { position: relative; flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr; padding: 2px; border-radius: 9px; background: var(--bg-input); box-shadow: inset 0 0 0 1px var(--border); }
-  .fl-pill { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px); border-radius: 7px; pointer-events: none;
-    background: var(--bg-panel); box-shadow: 0 0 0 1px rgba(var(--orange-rgb), .35), 0 4px 12px rgba(0, 0, 0, .18);
-    transition: transform .3s var(--ff-spring); }
-  .fl-pill.r { transform: translateX(100%); }
-  .fl-tab { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 24px; padding: 0 5px;
-    border: 0; border-radius: 7px; background: transparent; color: var(--text-mute); cursor: pointer; font: 700 11.5px/1 var(--font-ui); transition: color .18s; }
+  /* Таббар «Чати / Запити» — дві рівні половини на всю ширину картки. */
+  .fl-tabs.tabbar { flex: 1; min-width: 0; width: auto; margin: 0; padding: 4px; border-radius: 12px; }
+  .fl-tabs.tabbar::before { top: 4px; bottom: 4px; border-radius: 10px; }
+  .fl-tabs.tabbar::after { bottom: 4px; }
+  .fl-tabs .fl-tab.tab-btn { flex: 1 1 0; min-width: 0; justify-content: center; gap: 6px; padding: 8px 6px; font-size: 11.5px; }
   .fl-tab span:not(.ff-badge) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fl-tab i.ti { font-size: 13px; flex: 0 0 auto; transition: color .18s; }
-  .fl-tab:hover, .fl-tab.on { color: var(--text); }
-  .fl-tab.on i.ti { color: var(--orange); }
-  .fl-tab:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 70%, transparent); outline-offset: -2px; }
+  .fl-tab i.ti { font-size: 14px; flex: 0 0 auto; }
   .fl-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--orange); flex: 0 0 auto; box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .22); }
 
-  .fl-search-row { display: flex; align-items: center; gap: 5px; padding: 0 8px 6px 8px; flex: 0 0 auto; }
-  .fl-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px; box-sizing: border-box; border-radius: 8px; background: var(--bg-input); box-shadow: inset 0 0 0 1px var(--border); transition: box-shadow .16s; }
-  .fl-search:focus-within { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orange) 65%, transparent), 0 0 0 4px rgba(var(--orange-rgb), .1); }
-  .fl-search i { color: var(--text-dim); font-size: 14px; }
-  .fl-search:focus-within > i { color: var(--orange); }
-  .fl-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text); font: 500 12px/1 var(--font-ui); }
-  .fl-clear { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 7px; background: none; color: var(--text-dim); cursor: pointer; }
-  .fl-clear:hover { color: var(--text); background: var(--hover); }
+  .fl-search-row { display: flex; align-items: center; gap: 5px; padding: 0 0 8px; flex: 0 0 auto; }
+  /* Поле пошуку — як пошук налаштувань (.st-search). */
+  .fl-search { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 12px; box-sizing: border-box;
+    border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border-hi); transition: border-color .15s, box-shadow .15s; }
+  .fl-search:focus-within { border-color: rgba(var(--orange-rgb), .7); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .15); }
+  .fl-search i { color: var(--text-mute); font-size: 15px; }
+  .fl-search input { flex: 1; min-width: 0; background: none; border: 0; outline: none; color: var(--text); font: 500 13px var(--font-ui); }
+  .fl-search input::placeholder { color: var(--text-dim); }
+  .fl-clear { display: grid; place-items: center; width: 24px; height: 24px; border: 0; border-radius: 8px; background: none; color: var(--text-mute); cursor: pointer; }
+  .fl-clear:hover { color: var(--text); background: var(--hover-strong); }
 
-  /* Чипи ділять ширину по вмісту й стискаються разом (мітка — з еліпсисом), нічого не вилазить за поля. */
-  .fl-chips { display: flex; gap: 4px; padding: 0 8px 7px 8px; flex: 0 0 auto; min-width: 0; }
-  .fl-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 7px; flex: 1 1 auto; justify-content: center; min-width: 0; border-radius: 12px; border: 1px solid var(--border); background: transparent; color: var(--text-mute); cursor: pointer; white-space: nowrap;
-    font: 650 10.5px/1 var(--font-ui); transition: background-color .16s, border-color .16s, color .16s, transform .12s; }
-  /* Мітка стискається з еліпсисом, а лічильник ніколи не обрізається. */
+  /* Фільтри — пігулки, як .st-pill у налаштуваннях. */
+  .fl-chips { display: flex; gap: 5px; padding: 0 0 6px; flex: 0 0 auto; min-width: 0; }
+  .fl-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px; flex: 1 1 auto; justify-content: center; min-width: 0; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--text-mute); cursor: pointer; white-space: nowrap;
+    font: 600 11.5px/1 var(--font-ui); transition: background-color .15s, border-color .15s, color .15s; }
   .fl-chip-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fl-chip i { flex: 0 0 auto; }
-  .fl-chip:hover { color: var(--text); background: var(--hover); }
-  .fl-chip:active { transform: scale(.95); }
-  .fl-chip b { flex: 0 0 auto; min-width: 16px; text-align: center; font: 700 10px/1 var(--font-mono); padding: 3px 5px; border-radius: 7px; background: var(--hover-strong); color: var(--text-mute); }
+  .fl-chip:hover { color: var(--text); border-color: var(--border-hi); }
+  .fl-chip b { flex: 0 0 auto; font: 700 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); }
   .fl-chip i { width: 7px; height: 7px; border-radius: 50%; flex: 0 0 auto; }
   .fl-chip.online i { background: var(--ff-ok); }
   .fl-chip.game i { background: var(--orange); }
-  .fl-chip.on { color: var(--text); background: rgba(var(--orange-rgb), .13); border-color: rgba(var(--orange-rgb), .5); }
-  .fl-chip.on b { background: var(--orange); color: #111; }
-  .fl-chip:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 70%, transparent); outline-offset: -2px; }
+  .fl-chip.on { color: var(--orange); background: rgba(var(--orange-rgb), .14); border-color: rgba(var(--orange-rgb), .45); }
+  .fl-chip.on b { color: var(--orange); }
+  .fl-chip:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
 
-  .fl-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding-bottom: 16px; scrollbar-gutter: stable; }
-  .fl.compact .fl-scroll { padding-top: 14px; scrollbar-gutter: auto; scrollbar-width: none; }
+  .fl-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 4px 16px 0; scrollbar-width: thin; }
+  .fl.compact .fl-scroll { padding-top: 4px; scrollbar-width: none; }
   .fl.compact .fl-scroll::-webkit-scrollbar { display: none; }
-  .fl-sec { padding-top: 4px; }
-  .fl.compact .fl-sec { padding-top: 0; }
+  .fl-sec + .fl-sec { margin-top: 12px; }
   .fl.compact .fl-sec + .fl-sec { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
-  .fl-sh { display: flex; align-items: center; gap: 7px; width: 100%; margin: 0; padding: 7px 12px 3px; box-sizing: border-box; font: 750 9.5px/1 var(--font-ui); letter-spacing: .7px; text-transform: uppercase; color: var(--text-dim); }
-  .fl-sh i { color: var(--orange); font-size: 13px; }
-  .fl-sh span { margin-left: auto; padding: 2px 6px; border-radius: 7px; background: var(--hover); font: 700 9.5px/1 var(--font-mono); letter-spacing: 0; }
+  /* Заголовок групи — як .st-nav-title. */
+  .fl-sh { display: flex; align-items: center; gap: 7px; width: 100%; margin: 0; padding: 6px 12px 6px; box-sizing: border-box;
+    font-size: var(--fs-min); font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: var(--text-dim); }
+  .fl-sh i { font-size: 13px; }
+  .fl-sh span { margin-left: auto; font: 700 var(--fs-min)/1 var(--font-mono); letter-spacing: 0; }
   .fl-toggle { background: none; border: 0; cursor: pointer; text-align: left; }
   .fl-toggle:hover { color: var(--text); }
 
-  @media (prefers-reduced-motion: reduce) { .fl-pill { transition: none; } }
 </style>

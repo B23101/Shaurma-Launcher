@@ -17,6 +17,10 @@ type PackServerLink struct {
 	ServerAddr    string `json:"serverAddr"`    // 127.0.0.1:port
 	LaunchWithPack bool  `json:"launchWithPack"` // запускати сервер при старті збірки
 	StopWithPack   bool  `json:"stopWithPack"`   // зупиняти сервер при зупинці збірки
+	// JoinOnLaunch — після входу в гру одразу підключитися до цього сервера
+	// (автоприєднання на один запуск, збережене автоприєднання збірки не
+	// змінюється).
+	JoinOnLaunch bool `json:"joinOnLaunch"`
 }
 
 // PackLinkStore — зберігання зв'язків.

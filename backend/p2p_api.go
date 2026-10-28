@@ -131,7 +131,9 @@ func (a *App) StartP2PHost(minecraftPort string, subdomain string, udpPort int) 
 	if err != nil {
 		return p2p.HostStatus{Error: err.Error()}, err
 	}
-	return a.p2pAPI.StartP2PHost(minecraftPort, subdomain, udpPort, accountID, ownerName)
+	st, err := a.p2pAPI.StartP2PHost(minecraftPort, subdomain, udpPort, accountID, ownerName)
+	a.remoteOnP2PChanged() // друзі з доступом бачать нову адресу
+	return st, err
 }
 
 // StopP2PHost зупиняє конкретну хост-сесію за її subdomain (адреса
@@ -139,7 +141,9 @@ func (a *App) StartP2PHost(minecraftPort string, subdomain string, udpPort int) 
 func (a *App) StopP2PHost(subdomain string) error {
 	// Зупинка НЕ заблокована ні вимикачем, ні акаунтом: якщо сесію підняли
 	// раніше, користувач все одно має мати змогу її коректно закрити.
-	return a.p2pAPI.StopP2PHost(subdomain)
+	err := a.p2pAPI.StopP2PHost(subdomain)
+	a.remoteOnP2PChanged()
+	return err
 }
 
 // GetP2PHostStatus повертає стан хостингу для конкретної адреси.

@@ -19,8 +19,9 @@
   import SelectField from './SelectField.svelte'
   import VersionPickerModal from './VersionPickerModal.svelte'
   import MigrationPanel from './MigrationPanel.svelte'
+  import { ModMigrationFlow } from './modMigrationFlow.svelte'
   import AppearanceEditor from './AppearanceEditor.svelte'
-  import type { CustomLoader, MCVersionEntry, LoaderVersionEntry, DetectedPack, Settings, LaunchProgress, ModMigrationReport, MigrationPack, MigrationItem, ShaurmbundlePreview } from './types'
+  import type { CustomLoader, MCVersionEntry, LoaderVersionEntry, DetectedPack, Settings, LaunchProgress, ShaurmbundlePreview } from './types'
   import { launchStageLabel, launchStagePct, launchStageColor, downloadStageLabel, downloadStageColor, downloadStageIcon, downloadStageGlow } from './launchStages'
   import vanillaIcon from '../assets/images/vanilla_icon.png'
   import fabricIcon from '../assets/images/fabric_icon.png'
@@ -42,10 +43,12 @@
 
   // initialTab — яку вкладку відкрити одразу ("Імпортувати" з кнопки
   // «Імпортувати» у розділі збірок, "Вручну" з кнопки «Створити збірку»).
-  let { settings, initialTab = 'manual', onCancel, onCreated, folders = [] } = $props<{
+  let { settings, initialTab = 'manual', onCancel, onCreated, onTabChange, folders = [] } = $props<{
     settings: Settings
     initialTab?: 'manual' | 'import'
     onCancel: () => void
+    // Повідомляє батька про активну вкладку — для крихт у верхній панелі.
+    onTabChange?: (tab: 'manual' | 'import') => void
     onCreated: (packId: string, folderId?: string) => void
     // Папки «Моїх збірок»: нова збірка може одразу потрапити в обрану папку
     // (або лишитись без папки, коли обрано «Без папки»).
@@ -53,6 +56,7 @@
   }>()
 
   let tab = $state<'manual' | 'import'>(initialTab)
+  $effect(() => { onTabChange?.(tab) })
   let submitting = $state(false)
   // Обрана папка для нової збірки ('' = без папки). Дефолт: остання папка,
   // в якій користувач уже створював збірку (зручно при серії збірок).
@@ -263,156 +267,25 @@
   // автоматично — лише по кнопці) і робить вирок: які моди можна
   // перенести, які вже є, які треба оновити. Після створення збірки
   // підтверджені моди качаються в неї.
-  let migrationPacks = $state<MigrationPack[]>([])
-  let migrationLoaded = $state(false)
-  let migrationSource = $state('')
-  let migrationAnalyzing = $state(false)
-  let migrationCancelling = $state(false)
-  let migrationReport = $state<ModMigrationReport | null>(null)
+  // Аналіз/вибір модів — спільний ModMigrationFlow (той самий, що в діалозі
+  // міграції й майстрі сервера). Ціль '' — збірки ще не існує.
+  const migration = new ModMigrationFlow({ target: () => '', mcVersion: () => mcVersion, loader: () => loader })
   // Переносимо вибрані моди ЗАВЖДИ, коли є хоч один позначений рядок:
-  // окремий чекбокс «перенести вибрані» прибраний як дублювання — сам
-  // вибір у списку є підтвердженням (не треба — зніми галочки).
+  // сам вибір у списку є підтвердженням (не треба — зніми галочки).
   let migratingAfter = $state(false)
-  // Живий прогрес аналізу (події mods:migrate-analyze) — рядки звіту
-  // з'являються по одному, поки аналіз ще йде.
-  let migrationAnalyzeDone = $state(0)
-  let migrationAnalyzeTotal = $state(0)
-  let migrationLive = $state<MigrationItem[]>([])
   // Розгорнути повний список звіту міграції (за замовчуванням — перші 6).
   let migrationExpanded = $state(false)
-  // Вибрані моди для перенесення (ключ — sourceFileName). Можна перенести
-  // ЛИШЕ обрані, а не все підряд: по замовчуванню після аналізу вибрані всі
-  // «можна перенести» (found/update), користувач знімає зайві галочки.
-  let migrationSelected = $state<Set<string>>(new Set())
   // Конфлікт ID збірки (така вже існує): модалка пропонує переназвати або
   // підставити цифру (slug-2, slug-3…) — як у Prism (InstanceName collision).
   let idConflict = $state<{ id: string; suggested: string } | null>(null)
 
-  // Підвантажуємо список збірок-джерел одразу (для селектора міграції).
-  App.GetMigrationPacks('').then(list => {
-    migrationPacks = list ?? []
-    migrationLoaded = true
-    const withMods = (list ?? []).find(p => p.modCount > 0)
-    if (withMods) migrationSource = withMods.packId
-  }).catch(() => { migrationLoaded = true })
-
-  async function runMigrationAnalysis() {
-    if (!migrationSource || migrationAnalyzing) return
-    migrationAnalyzing = true
-    migrationReport = null
-    migrationAnalyzeDone = 0
-    migrationAnalyzeTotal = 0
-    migrationLive = []
-    migrationExpanded = false
-    migrationSelected = new Set()
-    try {
-      migrationReport = await App.AnalyzeModMigration(migrationSource, '', mcVersion, loader)
-      // Після аналізу за замовчуванням обираємо всі «можна перенести»
-      // (found/update) — користувач знімає галочки з тих, що не треба.
-      migrationSelected = new Set(
-        (migrationReport?.items ?? [])
-          .filter(it => it.status === 'found' || it.status === 'update')
-          .map(it => it.sourceFileName)
-      )
-    } catch (e: any) {
-      toast(t('error.withMessage', { message: e }), 'error')
-    } finally {
-      migrationAnalyzing = false
-    }
-  }
-
-  // ── Скасування аналізу в міні-картці ──
-  // Аналіз тут іде з цільовою збіркою '' — скасовуємо саме його.
-  async function cancelMiniAnalysis() {
-    if (!migrationAnalyzing) return
-    migrationCancelling = true
-    try {
-      await App.CancelModMigrationAnalysis('')
-    } catch {
-      // Аналіз міг завершитись між кліком і запитом — це не помилка.
-    } finally {
-      migrationCancelling = false
-    }
-  }
-
-  // ── Живий прогрес аналізу міграції ──
-  // Міні-картка аналізує з цільовою збіркою '' (вона ще не створена) —
-  // бекенд шле події mods:migrate-analyze саме з packId ''. Фільтруємо по
-  // ньому, щоб не перехопити аналіз повноцінного діалогу міграції.
-  onMount(() => {
-    const off = on('mods:migrate-analyze', (p: any) => {
-      if (p?.packId !== '') return
-      if (p.total) migrationAnalyzeTotal = p.total
-      if (p.phase !== 'item' || !p.sourceFileName) return
-      // Події йдуть з 6 паралельних горутин — «current» може прийти не по
-      // порядку. Оновлюємо лічильник лише монотонно.
-      migrationAnalyzeDone = Math.max(p.current ?? 0, migrationAnalyzeDone + 1)
-      const item: MigrationItem = {
-        sourceName: p.sourceName ?? '',
-        sourceFileName: p.sourceFileName,
-        sourceSha1: '',
-        status: p.status ?? 'not-found',
-        projectId: '',
-        projectSlug: '',
-        // Іконка/джерело/назва приходять з batch-проєктів прямо в події.
-        resolvedName: p.resolvedName ?? '',
-        resolvedVersion: '',
-        resolvedFilename: '',
-        resolvedUrl: '',
-        resolvedSha1: '',
-        source: p.source ?? '',
-        iconUrl: p.iconUrl ?? '',
-        willReplace: false,
-      }
-      const idx = migrationLive.findIndex(it => it.sourceFileName === p.sourceFileName)
-      if (idx >= 0) {
-        migrationLive = migrationLive.map((it, i) => (i === idx ? item : it))
-      } else {
-        migrationLive = [...migrationLive, item]
-      }
-    })
-    return off
+  // Підвантажуємо список збірок-джерел одразу (для селектора міграції);
+  // першу збірку з модами підставляємо джерелом.
+  migration.loadPacks('').then(() => {
+    const withMods = migration.packs.find(p => p.modCount > 0)
+    if (withMods) migration.source = withMods.packId
   })
-
-  const migrationSourcePack = $derived(migrationPacks.find(p => p.packId === migrationSource))
-  // Живі чипи під час аналізу (з migrationLive, що оновлюється по подіях).
-  const migrationLiveCounts = $derived.by(() => {
-    const c = { found: 0, notFound: 0, already: 0, update: 0 }
-    for (const it of migrationLive) {
-      if (it.status === 'found') c.found++
-      else if (it.status === 'not-found') c.notFound++
-      else if (it.status === 'already') c.already++
-      else if (it.status === 'update') c.update++
-    }
-    return c
-  })
-
-  const migrationCounts = $derived.by(() => {
-    const c = { found: 0, notFound: 0, already: 0, update: 0 }
-    for (const it of migrationReport?.items ?? []) {
-      if (it.status === 'found') c.found++
-      else if (it.status === 'not-found') c.notFound++
-      else if (it.status === 'already') c.already++
-      else if (it.status === 'update') c.update++
-    }
-    return c
-  })
-
-  // Моди, які реально можна перенести (found/update) — для списку з галочками.
-  const migrationTransferable = $derived(
-    (migrationReport?.items ?? []).filter(it => it.status === 'found' || it.status === 'update')
-  )
-
-  function toggleMigrationSelect(key: string) {
-    const next = new Set(migrationSelected)
-    if (next.has(key)) next.delete(key)
-    else next.add(key)
-    migrationSelected = next
-  }
-  function toggleAllMigrationSelect() {
-    if (migrationSelected.size === migrationTransferable.length) migrationSelected = new Set()
-    else migrationSelected = new Set(migrationTransferable.map(it => it.sourceFileName))
-  }
+  onMount(() => migration.listen())
 
   // ── Створення (вкладка "Вручну") ──
   async function submitManual() {
@@ -462,8 +335,8 @@
       // (found/update; already/not-found пропускаються). StartModMigration
       // не блокує: сторінка збірки відкривається одразу, прогрес міграції
       // іде подіями mods:migrate-progress (назва + іконка поточного мода).
-      if (migrationReport && migrationSelected.size > 0) {
-        const todo = migrationTransferable.filter(it => migrationSelected.has(it.sourceFileName))
+      if (migration.report && migration.selected.size > 0) {
+        const todo = migration.selectedItems
         if (todo.length > 0) {
           migratingAfter = true
           try {
@@ -1038,24 +911,7 @@
       <!-- МІГРАЦІЯ МОДІВ (лише для модових лоадерів) — переписаний з нуля MigrationPanel -->
       {#if loader !== 'vanilla'}
         <MigrationPanel
-          packs={migrationPacks}
-          packsLoaded={migrationLoaded}
-          source={migrationSource}
-          onSourceChange={(v: string) => {
-            migrationSource = v
-            migrationReport = null; migrationLive = []; migrationAnalyzeDone = 0; migrationAnalyzeTotal = 0
-          }}
-          analyzing={migrationAnalyzing}
-          cancelling={migrationCancelling}
-          onAnalyze={runMigrationAnalysis}
-          onCancel={cancelMiniAnalysis}
-          analyzeDone={migrationAnalyzeDone}
-          analyzeTotal={migrationAnalyzeTotal}
-          live={migrationLive}
-          report={migrationReport}
-          selected={migrationSelected}
-          onToggleSelect={toggleMigrationSelect}
-          onToggleAll={toggleAllMigrationSelect}
+          flow={migration}
           bind:expanded={migrationExpanded}
           {submitting}
           {migratingAfter}
@@ -1132,17 +988,11 @@
     </div>
   </div>
 {:else}
-  <div class="create-grid">
+  <div class="create-grid" class:single={!detected}>
     <div>
-      <div class="idea">
-        <div class="ico"><i class="ti ti-download"></i></div>
-        <div><h4>{t('createPack.import.hintTitle')}</h4><p>{t('createPack.import.hintBody')}</p></div>
-      </div>
-
       <div class="card">
-        <div class="card-head"><div class="ci"><i class="ti ti-file-zip"></i></div><div class="ctw"><div class="ct">{t('createPack.tab.import').toUpperCase()}</div></div></div>
         <div class="row col">
-          <div class="dropzone" class:drag-over={dragOver}
+          <div class="dropzone" class:big={!importArchivePath} class:drag-over={dragOver}
             role="button" tabindex="0"
             onclick={pickArchive}
             ondragover={(e) => { e.preventDefault(); dragOver = true }}
@@ -1208,6 +1058,11 @@
             </div>
           </div>
         {/if}
+      </div>
+
+      <div class="idea">
+        <div class="ico"><i class="ti ti-download"></i></div>
+        <div><h4>{t('createPack.import.hintTitle')}</h4><p>{t('createPack.import.hintBody')}</p></div>
       </div>
 
       {#if detected}

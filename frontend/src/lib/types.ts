@@ -520,6 +520,19 @@ export interface BrowserProjectDetail {
   authorId?: string
   authorAvatar?: string
   authorUrl?: string
+  // creators — усі автори: організація-власник (якщо є), далі учасники
+  // команди (власник першим), як ProjectSidebarCreators у Modrinth app.
+  creators?: BrowserCreator[] | null
+}
+
+export interface BrowserCreator {
+  id: string
+  name: string
+  avatar: string
+  role: string
+  isOwner: boolean
+  isOrg: boolean
+  url: string
 }
 
 // BrowserTranslation — результат ШІ-перекладу сторінки проєкту (Groq).
@@ -600,6 +613,9 @@ export interface BrowserSearchResult {
   // результатів і чи є ще сторінки після поточного offset+limit.
   totalHits: number
   hasMore: boolean
+  // cfTotalHits/cfHasMore — те саме для CurseForge (окремий запит).
+  cfTotalHits?: number
+  cfHasMore?: boolean
   // smartSearchTerms — непорожньо, якщо запит розпізнано «розумним
   // пошуком» як тему (напр. «меблі») і розширено цими англійськими
   // термінами. UI показує підказку, чому видача відрізняється від
@@ -609,6 +625,26 @@ export interface BrowserSearchResult {
 
 // BrowserCompatiblePack — кастомна збірка, сумісна з контентом
 // (є версія під її mcVersion/loader). For діалогу встановлення.
+// BrowserServerCompat — сумісність контенту з серверами лаунчера
+// (GetBrowserServerCompat): версія під (mc, ядро) і сторона мода.
+export interface BrowserServerCompatEntry {
+  serverId: string
+  compatible: boolean
+  unconfirmed?: boolean
+  // reason — clientOnly | noVersion | unsupportedCore
+  reason?: string
+  alreadyInstalled?: boolean
+  installedFileName?: string
+}
+
+export interface BrowserServerCompat {
+  clientSide: string
+  serverSide: string
+  clientOnly: boolean
+  serverOnly: boolean
+  servers: BrowserServerCompatEntry[] | null
+}
+
 export interface BrowserCompatiblePack {
   packId: string
   name: string
@@ -970,6 +1006,8 @@ export interface ModEntry {
   isDuplicate?: boolean
   incompatible?: boolean
   incompatibleReason?: string
+  // viaConnector — Fabric/Quilt-мод, що працює у Forge/NeoForge-збірці через Sinytra Connector
+  viaConnector?: boolean
   // loaders — повний список лоадерів, під які jar реально придатний
   // (мультизавантажувальні jar-и, напр. AmbientSounds, містять
   // метадані одразу і Forge, і Fabric в одному файлі). loader (однина)
@@ -1180,6 +1218,8 @@ export interface MigrationPack {
   color: string
   // Кількість увімкнених .jar у теці модів (підказка в селекторі).
   modCount: number
+  // 'server' — таргет-сервер ("srv:<id>"/"srvp:<id>", modTarget.ts).
+  kind?: string
 }
 
 export interface MigrationItem {
@@ -1207,6 +1247,9 @@ export interface MigrationItem {
   // на диску, коли localCopy=true. Має бути переданий назад у
   // MigrateMods/StartModMigration разом з рештою полів item.
   sourcePackId?: string
+  // side: де працює мод — лише в звіті портування на сервер
+  // (AnalyzeModPort): 'server' | 'client' | 'unknown'.
+  side?: 'server' | 'client' | 'unknown'
 }
 
 export interface ModMigrationReport {
@@ -2711,40 +2754,6 @@ export interface ServerModInfo {
 
 export type ServerPluginInfo = ServerModInfo // той самий формат, що й моди
 
-// ── Порівняння модів двох серверів ──────────────────────────────────────
-// Дзеркало backend/server_mods_tools.go (CompareServerMods). На відміну від
-// порівняння ЗБІРОК (ModCompareReport — там ще й встановлення відсутніх
-// модів), тут мета — побачити розбіжності: чого немає на одному сервері й
-// де версії одного мода розійшлися (саме це ламає сумісність при переносі
-// світу/конфігів між серверами).
-export interface ServerModsCompareEntry {
-  name: string
-  fileName: string
-  version?: string
-  otherVersion?: string
-  enabled: boolean
-  otherEnabled: boolean
-  source?: string
-  slug?: string
-  versionMismatch?: boolean
-}
-
-export interface ServerModsCompareSide {
-  serverId: string
-  name: string
-  core: string
-  total: number
-}
-
-export interface ServerModsCompareResult {
-  a: ServerModsCompareSide
-  b: ServerModsCompareSide
-  onlyA: ServerModsCompareEntry[]
-  onlyB: ServerModsCompareEntry[]
-  both: ServerModsCompareEntry[]
-  mismatchCount: number
-}
-
 export interface WorldInfo {
   name: string
   path: string
@@ -2849,25 +2858,105 @@ export interface ServerInstallProgress {
 // Управління через Velocity-сервер: він є «центром» своєї мережі, а склад
 // мережі зберігається у <папка проксі>/.shaurma/network.json.
 
+// Мережа Velocity (backend/internal/servers/network*.go).
 export interface NetworkMemberView {
   serverId: string
   name: string
   core: string
   mcVersion: string
-  port: number
+  port: number         // актуальний порт (з server.properties)
   running: boolean
-  inNetwork: boolean   // включений у мережу?
-  order: number        // порядок запуску серед backend-серверів
-  delaySec: number     // пауза перед стартом цього сервера
+  status: string
+  inNetwork: boolean   // учасник мережі?
+  order: number        // порядок запуску й входу
+  delaySec: number     // пауза перед стартом
+  alias: string        // ім'я в мережі (/server <alias>)
+  autoStart: boolean   // стартує разом із проксі
+  startsNetwork: boolean // його запуск піднімає проксі
+  inTry: boolean       // приймає гравців при вході
+  forcedHost: string   // домен прямого входу на цей сервер
+  otherNetwork?: string // уже в мережі іншого проксі
+  forwarding: '' | 'paper' | 'fabric-proxy' | 'pcf'
+}
+
+export interface ProxySettings {
+  motd: string
+  showMaxPlayers: number
+  onlineMode: boolean
+  forceKeyAuthentication: boolean
+  preventClientProxyConnections: boolean
+  forwardingMode: 'modern' | 'legacy' | 'bungeeguard' | 'none'
+  announceForge: boolean
+  kickExistingPlayers: boolean
+  pingPassthrough: 'disabled' | 'mods' | 'description' | 'all'
+  failoverOnUnexpectedDisconnect: boolean
+  compressionThreshold: number
+  compressionLevel: number
+  loginRatelimit: number
+  connectionTimeout: number
+  readTimeout: number
+  haproxyProtocol: boolean
+  tcpFastOpen: boolean
+  logCommandExecutions: boolean
+  logPlayerConnections: boolean
+  queryEnabled: boolean
+  queryPort: number
+}
+
+export interface NetworkSettings {
+  proxyPort: number
+  proxy: ProxySettings
+  stopMembersWithProxy: boolean
+  lockBackends: boolean
 }
 
 export interface NetworkView {
   proxyServerId: string
   proxyName: string
-  proxyPort?: number
+  proxyPort: number
   proxyRunning: boolean
-  networkSaved: boolean  // network.json вже існує
-  members: NetworkMemberView[]  // інші сервери (кандидати + включені)
+  proxyStatus: string
+  networkSaved: boolean
+  members: NetworkMemberView[]  // інші сервери (кандидати + учасники)
+  external: ExternalServer[]    // сервери мережі поза лаунчером
+  settings: NetworkSettings
+}
+
+// Запис [servers] velocity.toml, якого немає в лаунчері (інша машина тощо).
+export interface ExternalServer {
+  alias: string
+  address: string // host:порт
+  inTry: boolean
+  forcedHost?: string
+}
+
+// Готова мережа в одній теці (проксі й сервери в підтеках).
+export interface NetworkFolderServer {
+  dir: string
+  name: string
+  core: string
+  mcVersion: string
+  port: number
+  known: boolean   // уже доданий у лаунчер
+  skip?: string    // чому не буде додано
+}
+export interface NetworkFolderInfo {
+  dir: string
+  hasProxy: boolean
+  servers: NetworkFolderServer[]
+}
+export interface NetworkImportResult {
+  proxyId: string
+  added: number
+  errors: string[]
+}
+
+export interface NetworkIssue {
+  level: 'error' | 'warn' | 'info' | 'ok'
+  serverId?: string
+  title: string
+  detail?: string
+  fixable?: boolean
 }
 
 // ── Друзі Shaurma (internal/social) ─────────────────────────────────────
@@ -2890,8 +2979,13 @@ export interface SocialPresence {
 export interface RemoteServer {
   ownerId: string; ownerOnline: boolean; id: string; name: string; state: string; color?: string; core?: string
   canStart: boolean; canStop: boolean; canConsole?: boolean; canExec?: boolean
+  // network — serverId проксі, до мережі якого входить сервер; p2p/p2pAddr — публічна P2P-адреса.
+  network?: string; p2p?: boolean; p2pAddr?: string
+  // icon — пресет-іконка власника ("ti-…"); img — data URL мініатюри його картинки.
+  icon?: string; img?: string
 }
-export interface RemoteGrant { accountId: string; start: boolean; stop: boolean; console: boolean; exec: boolean; added: number }
+// network — лише для проксі: запуск/зупинка діє й на сервери його мережі.
+export interface RemoteGrant { accountId: string; start: boolean; stop: boolean; console: boolean; exec: boolean; network?: boolean; added: number }
 export interface RemoteServerAccess { serverId: string; allowStopWithPlayers: boolean; allowPrivileged: boolean; grants: RemoteGrant[] }
 export interface RemoteAccessView { paused: boolean; servers: RemoteServerAccess[] }
 export interface RemoteAuditEntry { ts: number; friend: string; nick: string; server: string; name: string; op: string; result: string; cmd?: string }
@@ -3195,6 +3289,8 @@ export interface ModGraphNode {
   color?: string
   dependencies: ModGraphDependency[] | null
   dependents: number
+  /** Fabric/Quilt-мод, який у цій збірці запускає Sinytra Connector. */
+  viaConnector?: boolean
 }
 
 export interface ModGraphEdge {
@@ -3217,6 +3313,8 @@ export interface ModDependencyGraph {
   edges: ModGraphEdge[] | null
   missing: ModGraphMissing[] | null
   cycles: string[][] | null
+  /** У збірці увімкнено Sinytra Connector (Fabric-моди на Forge/NeoForge). */
+  connector?: boolean
 }
 
 export interface ModRemovalImpact {
@@ -3311,4 +3409,17 @@ export interface P2PVoiceState {
   checks: P2PCheck[]
   autoStart: boolean
   autoStartError?: string
+}
+
+// PackServerLink — сервер, що запускається разом зі збіркою
+// (backend/internal/servers/packlink.go).
+export interface PackServerLink {
+  packId: string
+  packName?: string
+  serverId: string
+  serverName?: string
+  serverAddr?: string
+  launchWithPack: boolean
+  stopWithPack: boolean
+  joinOnLaunch: boolean
 }

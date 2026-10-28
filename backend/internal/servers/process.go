@@ -610,7 +610,11 @@ func (m *Manager) StopAll() {
 func buildCommand(srv *Server) []string {
 	jvmArgs := parseArgs(srv.JvmArgs)
 	if srv.JvmArgs == "" {
-		jvmArgs = parseArgs(DefaultJVMArgs(srv.JavaMajor, srv.RAMMB))
+		if srv.Core == CoreVelocity {
+			jvmArgs = parseArgs(DefaultProxyJVMArgs(srv.RAMMB))
+		} else {
+			jvmArgs = parseArgs(DefaultJVMArgs(srv.JavaMajor, srv.RAMMB))
+		}
 	}
 
 	// Просимо JVM вести власний GC-звіт у файл — з нього сторінка сервера

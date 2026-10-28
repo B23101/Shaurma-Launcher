@@ -29,7 +29,15 @@ type BuildOptions struct {
 	// за ним лаунчер шукає файл на Modrinth. Результат — у OnSHA1 (з різних горутин).
 	WantSHA1 func(rel string) bool
 	OnSHA1   func(rel, sha1hex string)
+	// Extra — файли ПОЗА root, що теж ідуть у передачу: шлях у маніфесті → шлях на
+	// диску (напр. іконка збірки, що лежить поруч із .minecraft). Хост віддає їх
+	// через Host.SetExtraFiles з тим самим відображенням.
+	Extra map[string]string
 }
+
+// SharedIconDir — службова тека передачі з іконкою збірки ("<тека>/icon.<ext>").
+// Новий лаунчер переносить її на місце іконки збірки, старий лишає як звичайний файл.
+const SharedIconDir = ".shaurma-share"
 
 // skipNames — службове сміття, якого не передаємо ніколи.
 var skipNames = map[string]bool{
@@ -105,6 +113,16 @@ func BuildManifest(ctx context.Context, root, kind, name string, meta map[string
 	})
 	if err != nil {
 		return nil, nil, err
+	}
+	for rel, abs := range opt.Extra {
+		if ValidateRelPath(rel) != nil {
+			continue
+		}
+		info, serr := os.Stat(abs)
+		if serr != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		items = append(items, item{rel: rel, abs: abs, size: info.Size()})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].rel < items[j].rel })
 

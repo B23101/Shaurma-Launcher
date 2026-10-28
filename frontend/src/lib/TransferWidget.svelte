@@ -1,11 +1,16 @@
 <script lang="ts">
-  // Плаваючий віджет передач збірок (знизу по центру), видно з будь-якої сторінки. Компактний
-  // рядок на кожну передачу — клік відкриває повне вікно (ShareTransferModal). Щойно завершені
-  // передачі лишаються кілька секунд із підсумком, тож результат не губиться.
-  // Тут же змонтовані модалки: пропозиція від друга, вікно передачі, «недокачане з минулого разу».
+  // Індикатор активності у верхній панелі: одна кнопка з кільцем загального прогресу, клік —
+  // список усього, що зараз триває (завантаження збірок, передачі друзям, встановлення ядра
+  // сервера, міграції, експорт…). Передачі збірок показуються тут же розгорнутими рядками —
+  // клік відкриває повне вікно (ShareTransferModal); щойно завершені лишаються кілька секунд із
+  // підсумком. Тут же змонтовані модалки передач: пропозиція від друга, вікно передачі,
+  // «недокачане з минулого разу» (через Portal — поза областю перетягування вікна).
   import { App } from './wails'
   import { toast } from './toast.svelte'
   import { t } from './i18n.svelte'
+  import Portal from './Portal.svelte'
+  import './settings/settings.css'
+  import { activityState, initActivity, activityIcon, type ActivityItem } from './activityStore.svelte'
   import { shareIn, shareOut, shareUi, openTransfer, friendName, errText, setOpenMod } from './friends/shareStore.svelte'
   import { fmtBytes, fmtEta, pctOf, inReasonText, IN_ACTIVE, IN_FINAL, REC_FINAL } from './friends/shareMsg'
   import ShareTransferModal from './friends/ShareTransferModal.svelte'
@@ -19,6 +24,7 @@
     setOpenMod(onOpenMod)
     return () => setOpenMod(null)
   })
+  $effect(() => initActivity())
 
   // Підсумок щойно завершеної передачі тримаємо LINGER мс (оновлюємо «зараз» раз на секунду).
   const LINGER = 8000
@@ -33,7 +39,61 @@
   const outs = $derived(Object.values(shareOut).filter(v => v.phase === 'preparing' || v.phase === 'ready' || fresh(v.updatedAt)))
   // Пропозицію згорнули (перейшли в браузер подивитись мод) — рядок, щоб повернутись до неї.
   const hiddenOffer = $derived(shareUi.offersHidden ? shareUi.offers[0] : undefined)
-  const visible = $derived(ins.length + outs.length > 0 || !!hiddenOffer)
+  // Передачі друзям уже є розгорнутими рядками вище — з реєстру беремо решту.
+  const others = $derived(activityState.items.filter(a => a.kind !== 'share-in' && a.kind !== 'share-out'))
+  const count = $derived(ins.length + outs.length + others.length + (hiddenOffer ? 1 : 0))
+
+  // Кільце на кнопці — як прогрес у панелі завдань: найбільший % серед активних.
+  const summary = $derived.by(() => {
+    const items = activityState.items
+    const run = items.filter(a => a.state === 'running')
+    if (run.length) return { tone: 'run', pct: Math.max(...run.map(a => a.percent)) }
+    const paused = items.filter(a => a.state === 'paused')
+    if (paused.length) return { tone: 'pause', pct: Math.max(...paused.map(a => a.percent)) }
+    if (items.some(a => a.state === 'error')) return { tone: 'bad', pct: 100 }
+    if (hiddenOffer || items.some(a => a.state === 'waiting')) return { tone: 'wait', pct: -1 }
+    return { tone: 'ok', pct: 100 }
+  })
+
+  let open = $state(false)
+  let btn = $state<HTMLButtonElement | null>(null)
+  let pop = $state<HTMLDivElement | null>(null)
+  let pos = $state({ top: 0, right: 0 })
+  function place() {
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    pos = { top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) }
+  }
+  function toggle() {
+    open = !open
+    if (open) place()
+  }
+  // Нова передача від/для друга відкриває список сама (раніше вона одразу була видна в
+  // плаваючому віджеті); решта операцій запускається зі своїх сторінок і там же видна.
+  const seen = new Set<string>()
+  $effect(() => {
+    const ids = [...ins.map(v => 'in:' + v.id), ...outs.map(o => 'out:' + o.id), ...(hiddenOffer ? ['offer:' + hiddenOffer.card.sid] : [])]
+    let added = false
+    for (const id of ids) if (!seen.has(id)) { seen.add(id); added = true }
+    if (added && !open) { open = true; queueMicrotask(place) }
+  })
+  $effect(() => { if (count === 0) open = false })
+  $effect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as Node
+      if (!pop?.contains(el) && !btn?.contains(el)) open = false
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') open = false }
+    window.addEventListener('mousedown', onDown, true)
+    window.addEventListener('keydown', onKey)
+    window.addEventListener('resize', place)
+    return () => {
+      window.removeEventListener('mousedown', onDown, true)
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', place)
+    }
+  })
 
   const err = (e: any) => toast(errText(e), 'error')
 
@@ -77,96 +137,157 @@
   }
   const tone = (phase: string, reason?: string) =>
     phase === 'done' ? 'ok' : phase === 'error' ? 'bad' : phase === 'cancelled' ? (reason === 'cancelled_receiver' ? 'mute' : 'warn') : phase === 'paused' ? 'pause' : ''
+
+  // Рядок операції з реєстру: чип стану (.st-tag) і підпис «вид · деталь».
+  const actTone = (a: ActivityItem) => a.state === 'done' ? 'ok' : a.state === 'error' ? 'bad' : a.state === 'paused' ? 'pause' : ''
+  const actTagCls = (a: ActivityItem) => a.state === 'done' ? 'ok' : a.state === 'error' ? 'bad' : a.state === 'paused' ? 'warn' : a.state === 'running' ? 'on' : ''
+  const actTag = (a: ActivityItem) => a.state === 'running' && a.percent >= 0 ? a.percent + '%' : t('activity.state.' + a.state)
+  const kindLabel = (a: ActivityItem) => t('activity.kind.' + a.kind)
+  const actSub = (a: ActivityItem) => {
+    // Стадія завантаження — внутрішній код, підпис виду вже все каже.
+    const d = a.kind === 'download' ? '' : (a.detail ?? '')
+    return d && d !== a.title ? `${kindLabel(a)} · ${d}` : kindLabel(a)
+  }
+
+  // Кільце: довжина кола r=9 → 56.55.
+  const C = 2 * Math.PI * 9
 </script>
 
-{#if visible}
-  <div class="tw" role="region" aria-label={t('share.widget.title')}>
-    {#if hiddenOffer}
-      <div class="tw-item offer">
-        <button class="tw-open" onclick={() => (shareUi.offersHidden = false)} aria-label={t('share.details')}>
-          <span class="tw-ic in"><i class="ti ti-gift"></i></span>
-          <span class="tw-body">
-            <span class="tw-top"><b title={hiddenOffer.card.n}>{hiddenOffer.card.n}</b><span class="tw-from">{t('share.widget.from', { name: hiddenOffer.fromName })}</span></span>
-            <span class="tw-sub">{t('share.widget.offerWaiting')}{shareUi.offers.length > 1 ? ' · +' + (shareUi.offers.length - 1) : ''}</span>
-          </span>
-        </button>
-      </div>
-    {/if}
-    {#each ins as v (v.id)}
-      {@const pc = v.phase === 'done' ? 100 : pctOf(v.progress.bytesDone, v.progress.bytesTotal || v.bytes)}
-      <div class="tw-item {tone(v.phase, v.reason)}">
-        <button class="tw-open" onclick={() => openTransfer('in', v.id)} aria-label={t('share.details')}>
-          <span class="tw-ic in"><i class="ti {v.phase === 'done' ? 'ti-circle-check' : v.phase === 'error' ? 'ti-alert-triangle' : 'ti-download'}"></i></span>
-          <span class="tw-body">
-            <span class="tw-top"><b title={v.name}>{v.name}</b><span class="tw-from">{t('share.widget.from', { name: v.from })}</span></span>
-            {#if IN_ACTIVE.includes(v.phase) && v.phase !== 'connecting' && v.phase !== 'installing'}
-              <span class="tw-bar"><span class="tw-fill" class:paused={v.phase === 'paused' || v.progress.reconnecting} style="width:{pc}%"></span></span>
-            {/if}
-            <span class="tw-sub">{IN_ACTIVE.includes(v.phase) && v.phase === 'downloading' ? pc + '% · ' : ''}{inLine(v)}</span>
-          </span>
-        </button>
-        {#if v.phase === 'downloading' || v.phase === 'paused'}
-          <div class="tw-acts">
-            {#if v.phase === 'paused' && v.progress.pausedBy !== 'sender'}
-              <button aria-label={t('share.resume')} title={t('share.resume')} onclick={() => App.ShareResume(v.id).catch(err)}><i class="ti ti-player-play"></i></button>
-            {:else if v.phase === 'downloading'}
-              <button aria-label={t('share.pause')} title={t('share.pause')} onclick={() => App.SharePause(v.id).catch(err)}><i class="ti ti-player-pause"></i></button>
-            {/if}
-          </div>
-        {/if}
-      </div>
-    {/each}
-
-    {#each outs as o (o.id)}
-      {@const finished = o.phase === 'closed' || o.phase === 'error'}
-      <div class="tw-item" class:ok={finished && o.phase !== 'error'} class:bad={o.phase === 'error'}>
-        <button class="tw-open" onclick={() => openTransfer('out', o.id)} aria-label={t('share.details')}>
-          <span class="tw-ic out"><i class="ti {finished ? 'ti-flag-check' : 'ti-upload'}"></i></span>
-          <span class="tw-body">
-            <span class="tw-top"><b title={o.name}>{o.name}</b>
-              {#if (o.recipients?.length ?? 0) > 0}<span class="tw-from">{o.recipients.length === 1 ? t('share.widget.to', { name: friendName(o.recipients[0].id, o.names?.[o.recipients[0].id]) }) : t('share.widget.toN', { n: o.recipients.length })}</span>{/if}
-            </span>
-            {#if !finished}<span class="tw-bar"><span class="tw-fill" style="width:{outPct(o)}%"></span></span>{/if}
-            <span class="tw-sub">{outLine(o)}</span>
-          </span>
-        </button>
-      </div>
-    {/each}
-  </div>
+{#if count > 0}
+  <button bind:this={btn} class="act-btn {summary.tone}" class:open onclick={toggle}
+          title={t('activity.title')} aria-label={t('activity.title')} aria-expanded={open}>
+    <svg class="act-ring" class:spin={summary.tone === 'run' && summary.pct < 0} viewBox="0 0 24 24" aria-hidden="true">
+      <circle class="trk" cx="12" cy="12" r="9" />
+      <circle class="val" cx="12" cy="12" r="9" stroke-dasharray={C}
+              stroke-dashoffset={summary.pct < 0 ? C * 0.72 : C * (1 - summary.pct / 100)} />
+    </svg>
+    {#if summary.tone === 'run' && summary.pct >= 0}<span class="act-pct">{summary.pct}%</span>{/if}
+    {#if count > 1}<span class="st-tag">{count}</span>{/if}
+  </button>
 {/if}
 
-<ShareRecoveryModal />
-<ShareTransferModal />
-<ShareOfferModal />
-<ShareContentsModal />
+<Portal>
+  {#if open && count > 0}
+    <div bind:this={pop} class="st-menu act-pop" role="region" aria-label={t('activity.title')}
+         style="top:{pos.top}px;right:{pos.right}px">
+      <div class="act-head">{t('activity.title')}</div>
+      {#if hiddenOffer}
+        <div class="act-row offer">
+          <button class="act-open" onclick={() => { shareUi.offersHidden = false; open = false }} aria-label={t('share.details')}>
+            <span class="act-ic in"><i class="ti ti-gift"></i></span>
+            <span class="act-body">
+              <span class="act-top"><b title={hiddenOffer.card.n}>{hiddenOffer.card.n}</b><span class="act-from">{t('share.widget.from', { name: hiddenOffer.fromName })}</span></span>
+              <span class="act-sub">{t('share.widget.offerWaiting')}{shareUi.offers.length > 1 ? ' · +' + (shareUi.offers.length - 1) : ''}</span>
+            </span>
+          </button>
+        </div>
+      {/if}
+      {#each ins as v (v.id)}
+        {@const pc = v.phase === 'done' ? 100 : pctOf(v.progress.bytesDone, v.progress.bytesTotal || v.bytes)}
+        <div class="act-row {tone(v.phase, v.reason)}">
+          <button class="act-open" onclick={() => { openTransfer('in', v.id); open = false }} aria-label={t('share.details')}>
+            <span class="act-ic in"><i class="ti {v.phase === 'done' ? 'ti-circle-check' : v.phase === 'error' ? 'ti-alert-triangle' : 'ti-download'}"></i></span>
+            <span class="act-body">
+              <span class="act-top"><b title={v.name}>{v.name}</b><span class="act-from">{t('share.widget.from', { name: v.from })}</span></span>
+              {#if IN_ACTIVE.includes(v.phase) && v.phase !== 'connecting' && v.phase !== 'installing'}
+                <span class="act-bar"><span class="act-fill" class:paused={v.phase === 'paused' || v.progress.reconnecting} style="width:{pc}%"></span></span>
+              {/if}
+              <span class="act-sub">{IN_ACTIVE.includes(v.phase) && v.phase === 'downloading' ? pc + '% · ' : ''}{inLine(v)}</span>
+            </span>
+          </button>
+          {#if v.phase === 'downloading' || v.phase === 'paused'}
+            <div class="act-acts">
+              {#if v.phase === 'paused' && v.progress.pausedBy !== 'sender'}
+                <button aria-label={t('share.resume')} title={t('share.resume')} onclick={() => App.ShareResume(v.id).catch(err)}><i class="ti ti-player-play"></i></button>
+              {:else if v.phase === 'downloading'}
+                <button aria-label={t('share.pause')} title={t('share.pause')} onclick={() => App.SharePause(v.id).catch(err)}><i class="ti ti-player-pause"></i></button>
+              {/if}
+            </div>
+          {/if}
+        </div>
+      {/each}
+
+      {#each outs as o (o.id)}
+        {@const finished = o.phase === 'closed' || o.phase === 'error'}
+        <div class="act-row" class:ok={finished && o.phase !== 'error'} class:bad={o.phase === 'error'}>
+          <button class="act-open" onclick={() => { openTransfer('out', o.id); open = false }} aria-label={t('share.details')}>
+            <span class="act-ic out"><i class="ti {finished ? 'ti-flag-check' : 'ti-upload'}"></i></span>
+            <span class="act-body">
+              <span class="act-top"><b title={o.name}>{o.name}</b>
+                {#if (o.recipients?.length ?? 0) > 0}<span class="act-from">{o.recipients.length === 1 ? t('share.widget.to', { name: friendName(o.recipients[0].id, o.names?.[o.recipients[0].id]) }) : t('share.widget.toN', { n: o.recipients.length })}</span>{/if}
+              </span>
+              {#if !finished}<span class="act-bar"><span class="act-fill" style="width:{outPct(o)}%"></span></span>{/if}
+              <span class="act-sub">{outLine(o)}</span>
+            </span>
+          </button>
+        </div>
+      {/each}
+
+      {#each others as a (a.id)}
+        <div class="act-row {actTone(a)}">
+          <div class="act-open static">
+            <span class="act-ic out"><i class="ti {a.state === 'done' ? 'ti-circle-check' : a.state === 'error' ? 'ti-alert-triangle' : activityIcon(a.kind)}"></i></span>
+            <span class="act-body">
+              <span class="act-top"><b title={a.title || kindLabel(a)}>{a.title || kindLabel(a)}</b><span class="st-tag {actTagCls(a)}">{actTag(a)}</span></span>
+              {#if a.state === 'running' || a.state === 'paused'}
+                <span class="act-bar"><span class="act-fill" class:paused={a.state === 'paused'} class:ind={a.percent < 0}
+                      style="width:{a.percent < 0 ? 30 : a.percent}%"></span></span>
+              {/if}
+              <span class="act-sub" title={actSub(a)}>{actSub(a)}</span>
+            </span>
+          </div>
+        </div>
+      {/each}
+    </div>
+  {/if}
+
+  <ShareRecoveryModal />
+  <ShareTransferModal />
+  <ShareOfferModal />
+  <ShareContentsModal />
+</Portal>
 
 <style>
-  .tw { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 2000000; display: flex; flex-direction: column;
-    gap: 8px; width: min(420px, calc(100vw - 32px)); font-family: var(--font-ui); }
-  .tw-item { position: relative; display: flex; align-items: stretch; background: var(--bg-panel); border: 1px solid var(--border-hi); border-radius: 14px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.45); overflow: hidden; animation: tw-in .22s ease; }
-  .tw-item.ok { border-color: color-mix(in srgb, var(--green) 55%, var(--border-hi)); }
-  .tw-item.bad { border-color: color-mix(in srgb, var(--red) 55%, var(--border-hi)); }
-  .tw-item.warn { border-color: color-mix(in srgb, var(--yellow) 55%, var(--border-hi)); }
-  .tw-item.offer { border-color: color-mix(in srgb, var(--blue) 55%, var(--border-hi)); }
-  .tw-open { flex: 1; min-width: 0; display: flex; gap: 10px; align-items: center; padding: 10px 12px; background: transparent; border: 0; color: inherit;
-    text-align: left; cursor: pointer; font: inherit; }
-  .tw-open:hover { background: var(--hover); }
-  .tw-ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; font-size: 17px; flex: none; }
-  .tw-ic.in { color: var(--blue); background: color-mix(in srgb, var(--blue) 15%, transparent); }
-  .tw-ic.out { color: var(--orange); background: rgba(var(--orange-rgb), .14); }
-  .tw-item.ok .tw-ic { color: var(--green); background: color-mix(in srgb, var(--green) 15%, transparent); }
-  .tw-item.bad .tw-ic { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
-  .tw-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-  .tw-top { display: flex; gap: 8px; align-items: baseline; min-width: 0; color: var(--text); font-size: 12.5px; }
-  .tw-top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tw-from { color: var(--text-mute); font-size: 11px; margin-left: auto; white-space: nowrap; }
-  .tw-bar { display: block; height: 5px; border-radius: 99px; background: var(--bg-input); overflow: hidden; }
-  .tw-fill { display: block; height: 100%; background: var(--orange); transition: width .3s; }
-  .tw-fill.paused { background: var(--text-mute); }
-  .tw-sub { font-size: 11px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tw-acts { display: flex; align-items: center; padding-right: 8px; }
-  .tw-acts button { border: 0; background: var(--bg-input); color: var(--text); width: 28px; height: 28px; border-radius: 8px; cursor: pointer; }
-  .tw-acts button:hover { background: var(--hover-strong); }
-  @keyframes tw-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  /* Кнопка в рядку верхньої панелі — та сама «плашка», що й пошук і віконні кнопки. */
+  .act-btn { display: flex; align-items: center; gap: 7px; height: 40px; padding: 0 10px; border-radius: 12px;
+    background: var(--hover); border: 1px solid var(--border); color: var(--text); cursor: pointer; font: 600 12px var(--font-ui);
+    transition: border-color .15s, background .15s; flex: none; --wails-draggable: no-drag; }
+  .act-btn:hover, .act-btn.open { border-color: rgba(var(--orange-rgb), .6); background: var(--hover-strong); }
+  .act-ring { width: 22px; height: 22px; transform: rotate(-90deg); flex: none; }
+  .act-ring.spin { animation: act-spin 1s linear infinite; }
+  .act-ring circle { fill: none; stroke-width: 3; }
+  .act-ring .trk { stroke: var(--bg-input); }
+  .act-ring .val { stroke: var(--orange); stroke-linecap: round; transition: stroke-dashoffset .3s; }
+  .act-btn.pause .val, .act-btn.wait .val { stroke: var(--text-mute); }
+  .act-btn.bad .val { stroke: var(--red); }
+  .act-btn.ok .val { stroke: var(--green); }
+  .act-pct { color: var(--orange); font-variant-numeric: tabular-nums; }
+  @keyframes act-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
+
+  /* Список — .st-menu з налаштувань лаунчера; тут лише розкладка рядків. */
+  .act-pop { position: fixed; width: min(400px, calc(100vw - 32px)); max-height: min(480px, calc(100vh - 120px)); padding: 6px; gap: 2px; }
+  .act-head { padding: 6px 10px 8px; font: 700 12px var(--font-ui); color: var(--text-mute); text-transform: uppercase; letter-spacing: .04em; }
+  .act-row { display: flex; align-items: center; border-radius: 8px; flex: none; }
+  .act-pop .act-open { flex: 1; min-width: 0; justify-content: flex-start; gap: 10px; padding: 8px 10px; font-weight: 500; }
+  .act-open.static { display: flex; align-items: center; }
+  .act-ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 16px; flex: none; }
+  .act-ic.in { color: var(--blue); background: color-mix(in srgb, var(--blue) 15%, transparent); }
+  .act-ic.out { color: var(--orange); background: rgba(var(--orange-rgb), .14); }
+  .act-row.ok .act-ic { color: var(--green); background: color-mix(in srgb, var(--green) 15%, transparent); }
+  .act-row.bad .act-ic { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+  .act-row.pause .act-ic { color: var(--text-mute); background: var(--hover-strong); }
+  .act-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .act-top { display: flex; gap: 8px; align-items: center; min-width: 0; color: var(--text); font-size: 12.5px; }
+  .act-top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .act-top .st-tag { margin-left: auto; flex: none; }
+  .act-from { color: var(--text-mute); font-size: 11px; margin-left: auto; white-space: nowrap; }
+  .act-bar { display: block; height: 4px; border-radius: 99px; background: var(--bg-input); overflow: hidden; }
+  .act-fill { display: block; height: 100%; background: var(--orange); transition: width .3s; }
+  .act-fill.paused { background: var(--text-mute); }
+  .act-fill.ind { animation: act-ind 1.2s ease-in-out infinite; }
+  @keyframes act-ind { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+  .act-sub { font-size: 11px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .act-acts { display: flex; align-items: center; padding: 0 6px; }
+  .act-pop .act-acts button { width: 28px; height: 28px; padding: 0; justify-content: center; background: var(--bg-input); }
+  .act-pop .act-acts button:hover { background: var(--hover-strong); }
 </style>

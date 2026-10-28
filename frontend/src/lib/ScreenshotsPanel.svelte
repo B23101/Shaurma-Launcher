@@ -1,5 +1,7 @@
 <script lang="ts">
   import Portal from './Portal.svelte'
+  import UiModal from './UiModal.svelte'
+  import './settings/settings.css'
   // ── Галерея скріншотів збірки (вкладка «Галерея») ─────────────────────
   // Сітка всіх скріншотів з <InstanceDir>/<packID>/.minecraft/screenshots.
   // ЛКМ по картці — відкриває фоторедактор на весь екран (ScreenshotEditor).
@@ -414,46 +416,34 @@
 
 <!-- ── Перейменування ── -->
 {#if renamePrompt}
-  <Portal>
-<div class="modal-overlay" onclick={() => renamePrompt = null}>
-    <div class="modal" onclick={(e: any) => e.stopPropagation()}>
-      <div class="modal-head"><h3>{t('gallery.rename')}</h3></div>
-      <div class="modal-body">
-        <div class="rl-name" style="margin-bottom:8px">{t('gallery.renameTo')}</div>
-        <input class="input mono" value={renameValue} oninput={(e: any) => renameValue = e.target.value}
-               onkeydown={(e: any) => { if (e.key === 'Enter') submitRename() }} autofocus />
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" onclick={() => renamePrompt = null}>{t('gallery.cancel')}</button>
-        <button class="btn btn-primary" onclick={submitRename} disabled={!renameValue.trim()}>{t('gallery.save')}</button>
-      </div>
-    </div>
-  </div>
-</Portal>
+  <UiModal open={true} onclose={() => renamePrompt = null} size="sm" icon="ti-pencil" title={t('gallery.rename')}>
+    <div class="rl-name" style="margin-bottom:8px">{t('gallery.renameTo')}</div>
+    <!-- svelte-ignore a11y_autofocus -->
+    <input class="st-input mono grow" value={renameValue} oninput={(e: any) => renameValue = e.target.value}
+           onkeydown={(e: any) => { if (e.key === 'Enter') submitRename() }} autofocus />
+    {#snippet footer()}
+      <button class="btn btn-ghost" onclick={() => renamePrompt = null}>{t('gallery.cancel')}</button>
+      <button class="btn btn-primary" onclick={submitRename} disabled={!renameValue.trim()}>{t('gallery.save')}</button>
+    {/snippet}
+  </UiModal>
 {/if}
 
 <!-- ── Підпис/опис ── -->
 {#if detailsPrompt}
-  <Portal>
-<div class="modal-overlay" onclick={() => detailsPrompt = null}>
-    <div class="modal" onclick={(e: any) => e.stopPropagation()}>
-      <div class="modal-head"><h3>{t('gallery.editDetails')}</h3></div>
-      <div class="modal-body">
-        <div class="rl-name" style="margin-bottom:6px">{t('gallery.title')}</div>
-        <input class="input" placeholder={t('gallery.titlePlaceholder')} value={detailsTitle}
-               oninput={(e: any) => detailsTitle = e.target.value} style="margin-bottom:14px" autofocus />
-        <div class="rl-name" style="margin-bottom:6px">{t('gallery.description')}</div>
-        <textarea class="input" placeholder={t('gallery.descriptionPlaceholder')} rows="4"
-                  style="resize:vertical" value={detailsDesc}
-                  oninput={(e: any) => detailsDesc = e.target.value}></textarea>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" onclick={() => detailsPrompt = null}>{t('gallery.cancel')}</button>
-        <button class="btn btn-primary" onclick={submitDetails}>{t('gallery.save')}</button>
-      </div>
-    </div>
-  </div>
-</Portal>
+  <UiModal open={true} onclose={() => detailsPrompt = null} icon="ti-file-description" title={t('gallery.editDetails')}>
+    <div class="rl-name" style="margin-bottom:6px">{t('gallery.title')}</div>
+    <!-- svelte-ignore a11y_autofocus -->
+    <input class="st-input grow" placeholder={t('gallery.titlePlaceholder')} value={detailsTitle}
+           oninput={(e: any) => detailsTitle = e.target.value} style="margin-bottom:14px" autofocus />
+    <div class="rl-name" style="margin-bottom:6px">{t('gallery.description')}</div>
+    <textarea class="st-input grow" placeholder={t('gallery.descriptionPlaceholder')} rows="4"
+              value={detailsDesc}
+              oninput={(e: any) => detailsDesc = e.target.value}></textarea>
+    {#snippet footer()}
+      <button class="btn btn-ghost" onclick={() => detailsPrompt = null}>{t('gallery.cancel')}</button>
+      <button class="btn btn-primary" onclick={submitDetails}>{t('gallery.save')}</button>
+    {/snippet}
+  </UiModal>
 {/if}
 
 <!-- ── Фоторедактор (повноекранний). ОБОВ'ЯЗКОВО в <Portal>: інакше
@@ -503,7 +493,7 @@
   }
   .gal-meta { padding:8px 10px; }
   .gal-title { font-size:12px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .gal-date { font-size:10px; color:var(--text-mute); margin-top:2px; font-family:var(--font-mono); }
+  .gal-date { font-size:var(--fs-min); color:var(--text-mute); margin-top:2px; font-family:var(--font-mono); }
   .gal-more {
     position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:8px; border:none;
     background:rgba(0,0,0,.55); color:#fff; opacity:0; cursor:pointer; display:flex; align-items:center; justify-content:center;

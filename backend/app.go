@@ -894,6 +894,9 @@ func (a *App) emit(name string, data ...any) {
 	} else if len(data) > 1 {
 		payload = data
 	}
+	// Довгі операції (передачі, встановлення, міграції…) — у спільний реєстр
+	// для індикатора активності й панелі завдань (activity_api.go).
+	a.observeActivity(name, payload)
 	b, err := json.Marshal(payload)
 	if err != nil {
 		bridgeEmit(name, "null")
@@ -1154,6 +1157,9 @@ func (a *App) isCustomPack(packID string) bool {
 // Кастомні: installations/<id>/
 // Shaurma:   installations/shaurma_packs/<id>/
 func (a *App) packDir(packID, kind string) string {
+	if t, ok := a.serverForModTarget(packID); ok {
+		return t.srv.Dir // таргет менеджера модів — сервер (mod_target.go)
+	}
 	if kind == "" {
 		if a.buildsReg != nil {
 			if entry, ok := a.buildsReg.Get(packID); ok {
@@ -1181,6 +1187,9 @@ func (a *App) packDir(packID, kind string) string {
 
 // gameDir повертає .minecraft теку збірки (авто-детект kind).
 func (a *App) gameDir(packID string) string {
+	if t, ok := a.serverForModTarget(packID); ok {
+		return t.srv.Dir // у сервера mods/ лежить прямо в його теці
+	}
 	return filepath.Join(a.packDir(packID, ""), ".minecraft")
 }
 
@@ -1831,6 +1840,9 @@ func (a *App) LaunchInstance(instanceID string) error {
 		icfg.AutoJoinType = "server"
 		icfg.AutoJoinServer = overrideAddr
 	}
+	// Сервери «разом зі збіркою» стартують ДО підготовки гри — поки гра
+	// вантажиться, сервер встигає піднятись (pack_server_link.go).
+	a.startLinkedServers(build.ID, &icfg, hasOverride && overrideAddr != "")
 
 	// Рекомендована Java для версії гри: MC <1.17 → 8, 1.17–1.20.4 → 17,
 	// 1.20.5+/1.21+ → 21, нові snapshot → 25.
@@ -2299,6 +2311,7 @@ func (a *App) wireSessionLauncher(l *minecraft.Launcher, account model.Account, 
 		}
 		a.socialGameExited(build.ID)
 		a.sessionsM.Remove(account.ID, build.ID)
+		a.stopLinkedServers(build.ID)
 		// Гра завершилась (штатно/крашем/ручно) — прибираємо ЛИШЕ запис цієї
 		// пари (build, account) зі списку запущених: інші паралельні сесії
 		// (інші збірки і/або акаунти) лишаються в файлі недоторканими.
@@ -2834,8 +2847,7 @@ func (a *App) SearchContent(query string) ([]model.BrowserEntry, error) {
 }
 
 func (a *App) GetMods(instanceID string) ([]model.ModEntry, error) {
-	modsDir := filepath.Join(a.gameDir(instanceID), "mods")
-	return a.modMgr.ListMods(modsDir)
+	return a.modMgr.ListMods(a.instanceModsDir(instanceID))
 }
 
 func (a *App) ToggleMod(instanceID, fileName string, enabled bool) error {
@@ -2850,8 +2862,7 @@ func (a *App) ToggleMod(instanceID, fileName string, enabled bool) error {
 	if err := a.modsLockedErr(instanceID, fileName); err != nil {
 		return err
 	}
-	modsDir := filepath.Join(a.gameDir(instanceID), "mods")
-	return a.modMgr.ToggleMod(modsDir, fileName, enabled)
+	return a.modMgr.ToggleMod(a.instanceModsDir(instanceID), fileName, enabled)
 }
 
 func (a *App) GetSettings() model.Settings { return a.cfg.GetSettings() }
@@ -3340,6 +3351,11 @@ func (a *App) rewireComponents() {
 	// Прогрес створення бекапів світів → "server:backup-progress".
 	// Раніше ручний бекап великого світу був "чорним ящиком" без жодного
 	// зворотного зв'язку, а авто-бекап — узагалі невидимий.
+	// Фонові ланцюги мережі Velocity (сервер не запустився разом із проксі
+	// тощо) → "server:network-event".
+	a.srvAPI.SetNetworkNotifyCallback(func(proxyID, serverID, message string) {
+		a.emit("server:network-event", map[string]any{"proxyId": proxyID, "serverId": serverID, "message": message})
+	})
 	a.srvAPI.SetBackupProgressCallback(func(serverID string, p servers.BackupProgress) {
 		a.emit("server:backup-progress", map[string]any{
 			"serverId": serverID,
@@ -3580,48 +3596,15 @@ func (a *App) recordSyncProgress(sp syncengine.RunnerProgress) {
 }
 
 // refreshTaskbarProgressLocked перемальовує прогрес у панелі завдань за
-// поточним станом УСІХ активних завантажень (dlTransient): показується
-// завантаження з НАЙБІЛЬШИМ % (серед running); якщо активних немає, але є
-// призупинені — жовтий paused-бар з найбільшим %; інакше прогрес зникає.
-// Раніше таскбар жив лише останньою подією recordSyncProgress (Shaurma),
-// а імпорт модпаків (recordCustomImportProgress) його взагалі не оновлював —
-// при паралельних завантаженнях бар стрибав між ними, а імпорт виглядав
-// «без прогресу». Викликається ТІЛЬКИ під dlTransientMu.
+// поточним станом УСІХ активних операцій: завантажень (dlTransient) і
+// реєстру довгих операцій (activity_api.go) — показується найбільший %
+// серед активних; якщо активних немає, але є призупинені — жовтий
+// paused-бар; інакше прогрес зникає. Заодно планує розсилку
+// activity:changed, щоб індикатор у верхній панелі бачив завантаження.
+// Викликається ТІЛЬКИ під dlTransientMu.
 func (a *App) refreshTaskbarProgressLocked() {
-	bestRunning := -1
-	bestPaused := -1
-	hasRunning := false
-	hasPaused := false
-	for _, p := range a.dlTransient {
-		if p == nil {
-			continue
-		}
-		switch p.Mode {
-		case "running":
-			hasRunning = true
-			if p.Percent > bestRunning {
-				bestRunning = p.Percent
-			}
-		case "paused":
-			hasPaused = true
-			if p.Percent > bestPaused {
-				bestPaused = p.Percent
-			}
-		}
-	}
-	switch {
-	case hasRunning:
-		// % може бути 0 на старті (ще немає метаданих файлів) — «нескінченний» бар.
-		if bestRunning <= 0 {
-			updateTaskbarProgress(-1, taskbarIndeterminate)
-		} else {
-			updateTaskbarProgress(bestRunning, taskbarNormal)
-		}
-	case hasPaused:
-		updateTaskbarProgress(bestPaused, taskbarPaused)
-	default:
-		updateTaskbarProgress(0, taskbarNone)
-	}
+	a.drawTaskbarLocked()
+	a.activityNotify()
 }
 
 // GetJavaStatus повертає стан вбудованої Java лаунчера: чи вона вже

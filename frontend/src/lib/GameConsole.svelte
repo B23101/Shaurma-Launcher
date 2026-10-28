@@ -1054,7 +1054,15 @@
     <!-- Перемикач акаунтів консолі — справа в шапці: меню відкривається
          ПІД кнопкою (position:absolute у .acc-wrap), як типовий select
          лаунчера, а не «де завгодно» по вікну. -->
-    {#if ctx.instanceId && ctx.accounts && ctx.accounts.length > 0}
+    {#if ctx.instanceId && ctx.accounts && ctx.accounts.length === 1}
+      <!-- Один акаунт — перемикати нема на що: просто показуємо, хто грає, без меню. -->
+      <div class="acc-wrap">
+        <span class="acc-sel static">
+          <img class="acc-head" src={headForAcc(ctx.accountId)} alt="" />
+          <span class="acc-sel-name">{ctx.accountName || ctx.accountId}</span>
+        </span>
+      </div>
+    {:else if ctx.instanceId && ctx.accounts && ctx.accounts.length > 1}
       <div class="acc-wrap">
         <span class="acc-sel" class:open={accMenuOpen} role="button" tabindex="0"
               onclick={(e: any) => { e.stopPropagation(); accMenuOpen = !accMenuOpen }}
@@ -1072,6 +1080,7 @@
                 <span class="acc-dot" class:run={acc.running}></span>
                 <span class="acc-name">{acc.accountName || acc.accountId}</span>
                 {#if acc.running}<i class="ti ti-player-play acc-play"></i>{/if}
+                {#if acc.accountId === ctx.accountId}<i class="ti ti-check acc-check"></i>{/if}
               </button>
             {/each}
           </div>
@@ -1460,16 +1469,16 @@
   .gl-ico i { display: block; }
   .gl-info { flex: 1; min-width: 0; }
   .gl-name { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-  .gl-sub { font-size: 10.5px; color: var(--text-mute); margin-top: 1px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .gl-sub { font-size: var(--fs-min); color: var(--text-mute); margin-top: 1px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .gl-sub .ok { color: var(--green); }
   .gl-sub .err { color: var(--red); }
   /* Лоадер/версія збірки під назвою — «пігулка» лоадера + моно-версія. */
   .gl-tag {
-    padding: 1px 7px; border-radius: 6px; font-size: 9px; font-weight: 800;
+    padding: 1px 7px; border-radius: 6px; font-size: var(--fs-min); font-weight: 800;
     background: rgba(var(--orange-rgb), .13); color: var(--orange);
     text-transform: uppercase; letter-spacing: .4px; flex-shrink: 0;
   }
-  .gl-ver { font-family: var(--font-mono); font-size: 10px; color: var(--text-dim); flex-shrink: 0; }
+  .gl-ver { font-family: var(--font-mono); font-size: var(--fs-min); color: var(--text-dim); flex-shrink: 0; }
 
   /* Перемикач акаунтів консолі — типовий select лаунчера: «пігулка» з
      головою гравця + меню ПІД кнопкою (position:absolute у .acc-wrap,
@@ -1479,23 +1488,27 @@
   .acc-wrap { position: relative; flex-shrink: 0; }
   .acc-sel {
     display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 9px;
-    padding: 3px 9px 3px 4px; font-size: 11px; color: var(--text);
-    transition: border-color .15s, background .15s, box-shadow .15s;
+    height: 30px; box-sizing: border-box;
+    background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--r-sm);
+    padding: 0 9px 0 4px; font-size: 12px; color: var(--text);
+    transition: border-color .15s, background .15s;
     max-width: 200px; white-space: nowrap; flex-shrink: 0;
   }
-  .acc-sel:hover { border-color: var(--border-hi); background: var(--bg-input); }
+  .acc-sel:focus { outline: none; }
+  .acc-sel:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+  .acc-sel:not(.static):hover, .acc-sel.open { border-color: var(--border-hi); background: var(--bg-input); }
+  .acc-sel.static { cursor: default; padding-right: 10px; }
   .acc-sel .acc-head {
     width: 20px; height: 20px; border-radius: 6px; object-fit: cover;
     background: var(--bg-input-hi); flex-shrink: 0;
   }
   .acc-sel .acc-sel-name { overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-  .acc-sel > i:last-child { font-size: 10px; color: var(--text-dim); transition: transform .2s; }
+  .acc-sel > i:last-child { font-size: var(--fs-min); color: var(--text-dim); transition: transform .2s; }
   .acc-sel.open > i:last-child { transform: rotate(180deg); }
   .acc-menu {
     position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; min-width: 210px;
-    background: var(--bg-window); border: 1px solid var(--border-hi); border-radius: var(--r-md);
-    box-shadow: 0 18px 46px rgba(0,0,0,.55); padding: 5px; display: flex; flex-direction: column; gap: 2px;
+    background: var(--bg-card); border: 1px solid var(--border-hi); border-radius: 12px;
+    box-shadow: 0 12px 32px rgba(0,0,0,.4); padding: 4px; display: flex; flex-direction: column; gap: 1px;
     /* Не вище за висоту вікна: у низьких вікнах .gc (overflow:hidden)
        зрізав би меню знизу без можливості дістатись до останніх акаунтів. */
     max-height: min(280px, calc(100vh - 120px)); overflow-y: auto;
@@ -1509,11 +1522,11 @@
   .acc-item {
     display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
     background: transparent; border: none; border-radius: 8px; padding: 7px 9px; cursor: pointer;
-    color: var(--text); font-size: 12px; font-weight: 600; font-family: inherit;
+    color: var(--text); font: 600 13px var(--font-ui);
     transition: background .15s; white-space: nowrap;
   }
-  .acc-item:hover { background: var(--hover); }
-  .acc-item.active { background: rgba(var(--orange-rgb), .12); color: var(--orange); }
+  .acc-item:hover { background: var(--hover-strong); }
+  .acc-check { color: var(--orange); font-size: 15px; }
   .acc-item .acc-head {
     width: 26px; height: 26px; border-radius: 8px; object-fit: cover;
     background: var(--bg-input-hi); flex-shrink: 0;
@@ -1550,13 +1563,13 @@
     background: rgba(var(--orange-rgb), .05);
   }
   .gl-prog { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .gl-prog .gl-sub { font-size: 10.5px; color: var(--text-mute); display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .gl-prog .gl-sub { font-size: var(--fs-min); color: var(--text-mute); display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .gl-sub .ti-loader { color: var(--orange); }
-  .gl-sub.dim { font-size: 9.5px; font-family: var(--font-mono); }
+  .gl-sub.dim { font-size: var(--fs-min); font-family: var(--font-mono); }
   .gl-pct { color: var(--orange); font-family: var(--font-mono); font-size: 11px; }
   .gl-nonet { color: var(--red); display: inline-flex; align-items: center; gap: 4px; }
   .gl-warn {
-    margin-top: 4px; font-size: 10px; line-height: 1.4; color: var(--orange);
+    margin-top: 4px; font-size: var(--fs-min); line-height: 1.4; color: var(--orange);
     background: rgba(var(--orange-rgb), .08); border: 1px solid rgba(var(--orange-rgb), .25);
     border-radius: 6px; padding: 5px 8px; display: flex; align-items: flex-start; gap: 6px;
     max-width: 380px;
@@ -1590,7 +1603,7 @@
     background: var(--bg-input); border: 1px solid var(--border);
   }
   .fchip {
-    padding: 5px 12px; border-radius: 9px; font-size: 10.5px; font-weight: 700;
+    padding: 5px 12px; border-radius: 9px; font-size: var(--fs-min); font-weight: 700;
     background: transparent; border: none; color: var(--text-mute);
     cursor: pointer; transition: background-color .15s, color .15s, box-shadow .15s; display: flex; align-items: center; gap: 6px;
   }
@@ -1707,11 +1720,11 @@
     transition: background-color .12s ease;
   }
   .line:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-  .line .l-ts { color: var(--text-dim); flex-shrink: 0; user-select: none; -webkit-user-select: none; font-size: 10.5px; opacity: .8; font-variant-numeric: tabular-nums; }
+  .line .l-ts { color: var(--text-dim); flex-shrink: 0; user-select: none; -webkit-user-select: none; font-size: var(--fs-min); opacity: .8; font-variant-numeric: tabular-nums; }
   /* Рівень — кольоровий «бейдж» (колір береться з рядка через currentColor,
      тож налаштування кольорів консолі продовжують працювати). */
   .line .l-lvl {
-    flex-shrink: 0; width: 40px; text-align: center; font-weight: 800; font-size: 9.5px; letter-spacing: .4px;
+    flex-shrink: 0; width: 40px; text-align: center; font-weight: 800; font-size: var(--fs-min); letter-spacing: .4px;
     line-height: 16px; height: 16px; border-radius: 5px; align-self: center;
     background: color-mix(in srgb, currentColor 14%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
@@ -1768,7 +1781,7 @@
   }
   .ai-title { font-size: 12.5px; font-weight: 700; color: var(--violet-l); }
   .ai-badge {
-    font-size: 9.5px; font-weight: 700; color: var(--violet-l);
+    font-size: var(--fs-min); font-weight: 700; color: var(--violet-l);
     background: rgba(123, 77, 255, .16); padding: 2px 8px; border-radius: 20px; letter-spacing: .3px;
   }
   .ai-fold { margin-left: auto; }
@@ -1828,7 +1841,7 @@
   .ai-result { margin-top: 10px; font-size: 11.5px; padding: 8px 10px; border-radius: var(--r-sm); line-height: 1.5; }
   .ai-result.ok { background: rgba(16, 185, 129, .1); border: 1px solid rgba(16, 185, 129, .3); color: var(--green); }
   .ai-result.fail { background: rgba(239, 68, 68, .1); border: 1px solid rgba(239, 68, 68, .3); color: var(--red); }
-  .ai-model { margin-top: 8px; font-size: 9.5px; color: var(--text-dim); font-family: var(--font-mono); }
+  .ai-model { margin-top: 8px; font-size: var(--fs-min); color: var(--text-dim); font-family: var(--font-mono); }
 
   .ram-adjust {
     display: flex; align-items: center; gap: 12px; margin-top: 12px;

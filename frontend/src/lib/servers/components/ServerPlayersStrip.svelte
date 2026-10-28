@@ -13,7 +13,7 @@
   // Тости з ніком показує App.svelte (глобально, з будь-якої сторінки) —
   // тут лише список, щоб не було подвійних повідомлень.
   import { flip } from 'svelte/animate'
-  import { scale, fade } from 'svelte/transition'
+  import { scale, fade, fly } from 'svelte/transition'
   import { App, on } from '../../wails'
   import FriendAvatar from '../../friends/FriendAvatar.svelte'
   import type { ServerPlayer, ServerPlayerPlaytime } from '../../types'
@@ -134,9 +134,20 @@
   }
 
   const maxSeconds = $derived(Math.max(1, ...playtimes.map((p) => p.seconds)))
+
+  // Панель «Час гри» — випадаюча: закривається кліком поза смугою та Esc.
+  let root = $state<HTMLElement | null>(null)
+  function onWindowPointer(e: PointerEvent) {
+    if (showTime && root && !root.contains(e.target as Node)) showTime = false
+  }
+  function onWindowKey(e: KeyboardEvent) {
+    if (showTime && e.key === 'Escape') showTime = false
+  }
 </script>
 
-<div class="sps">
+<svelte:window onpointerdown={onWindowPointer} onkeydown={onWindowKey} />
+
+<div class="sps" bind:this={root}>
   <div class="sps-head">
     <i class="ti ti-users"></i>
     <span class="sps-title">Гравці</span>
@@ -170,34 +181,51 @@
   {/if}
 
   {#if showTime}
-    <div class="sps-times" transition:fade={{ duration: 120 }}>
-      {#if !timeLoaded}
-        <span class="sps-hint"><i class="ti ti-loader spin"></i> читаю статистику світу…</span>
-      {:else if playtimes.length === 0}
-        <span class="sps-hint">Статистики ще немає — зʼявиться після першого збереження світу гравцем</span>
-      {:else}
-        {#each playtimes as p (p.uuid || p.name)}
-          <div class="sps-trow" class:online={p.online}>
-            <FriendAvatar nickname={p.name} status={p.online ? 'online' : 'offline'} size={20} />
-            <span class="sps-tname">{p.name}</span>
-            <span class="sps-bar"><span style:width="{Math.max(2, Math.round((p.seconds / maxSeconds) * 100))}%"></span></span>
-            <span class="sps-ttotal">{p.seconds > 0 ? fmtTotal(p.seconds) : '—'}</span>
-            <span class="sps-tnote">
-              {#if p.online}
-                {p.sessionStart ? `онлайн · ${fmtSince(p.sessionStart, now)}` : 'онлайн'}
-              {:else if p.lastSeen}
-                {fmtAgo(p.lastSeen, now)}
-              {/if}
-            </span>
+    <div class="sps-pop" role="dialog" aria-label="Час гри" transition:fly={{ y: -6, duration: 140 }}>
+      <div class="sps-pop-head">
+        <i class="ti ti-clock-hour-4"></i>
+        <b>Час гри</b>
+        <span class="sps-pop-sub">за весь час на цьому сервері</span>
+        <button class="sps-pop-x" onclick={() => (showTime = false)} aria-label="Закрити"><i class="ti ti-x"></i></button>
+      </div>
+      <div class="sps-pop-body">
+        {#if !timeLoaded}
+          <span class="sps-hint"><i class="ti ti-loader spin"></i> читаю статистику світу…</span>
+        {:else if playtimes.length === 0}
+          <span class="sps-hint">Статистики ще немає — зʼявиться після першого збереження світу гравцем</span>
+        {:else}
+          <div class="sps-grid">
+            {#each playtimes as p (p.uuid || p.name)}
+              <div class="sps-card" class:online={p.online}>
+                <FriendAvatar nickname={p.name} status={p.online ? 'online' : 'offline'} size={34} />
+                <div class="sps-card-main">
+                  <div class="sps-card-top">
+                    <span class="sps-tname" title={p.name}>{p.name}</span>
+                    <span class="sps-ttotal">{p.seconds > 0 ? fmtTotal(p.seconds) : '—'}</span>
+                  </div>
+                  <span class="sps-bar"><span style:width="{Math.max(3, Math.round((p.seconds / maxSeconds) * 100))}%"></span></span>
+                  <span class="sps-tnote">
+                    {#if p.online}
+                      {p.sessionStart ? `онлайн · ${fmtSince(p.sessionStart, now)}` : 'онлайн'}
+                    {:else if p.lastSeen}
+                      був {fmtAgo(p.lastSeen, now)}
+                    {:else}
+                      —
+                    {/if}
+                  </span>
+                </div>
+              </div>
+            {/each}
           </div>
-        {/each}
-      {/if}
+        {/if}
+      </div>
     </div>
   {/if}
 </div>
 
 <style>
   .sps {
+    position: relative;
     display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
     padding: 8px 14px; flex-shrink: 0;
     border-bottom: 1px solid var(--border);
@@ -207,7 +235,7 @@
   .sps-head i { color: var(--text-mute); font-size: 14px; }
   .sps-title { font: 700 11px/1 var(--font-ui); color: var(--text-mute); text-transform: uppercase; letter-spacing: .5px; }
   .sps-n {
-    font: 700 10px/1 var(--font-mono); color: var(--text);
+    font: 700 var(--fs-min)/1 var(--font-mono); color: var(--text);
     background: var(--hover); padding: 3px 7px; border-radius: 999px;
   }
   .sps-hint { font: 400 11px/1.4 var(--font-ui); color: var(--text-dim); display: inline-flex; align-items: center; gap: 5px; }
@@ -228,18 +256,39 @@
   }
   .sps-toggle:hover { border-color: var(--border-hi); background: var(--hover); color: var(--text); }
   .sps-toggle.on { color: var(--text); background: var(--hover); border-color: var(--border-hi); }
-  .sps-times {
-    flex-basis: 100%; display: flex; flex-direction: column; gap: 4px;
-    max-height: 220px; overflow-y: auto; padding-top: 6px;
-    border-top: 1px dashed var(--border);
+  .sps-pop {
+    position: absolute; z-index: 20; top: calc(100% + 6px); left: 10px; right: 10px;
+    display: flex; flex-direction: column; max-height: min(420px, 62vh);
+    background: var(--bg-panel); border: 1px solid var(--border-hi); border-radius: 14px;
+    box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
   }
-  .sps-trow { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .sps-tname { font: 650 12px/1 var(--font-ui); color: var(--text); width: 120px; flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sps-bar { flex: 1; min-width: 40px; height: 4px; border-radius: 999px; background: var(--bg-input); overflow: hidden; }
+  .sps-pop-head {
+    display: flex; align-items: center; gap: 8px; padding: 11px 14px; flex-shrink: 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .sps-pop-head > i { color: var(--text-mute); font-size: 15px; }
+  .sps-pop-head b { font: 700 13px/1 var(--font-ui); color: var(--text); }
+  .sps-pop-sub { font: 400 11px/1 var(--font-ui); color: var(--text-dim); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sps-pop-x {
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; cursor: pointer;
+    background: transparent; border: 1px solid var(--border); color: var(--text-mute); font-size: 13px;
+  }
+  .sps-pop-x:hover { background: var(--hover); color: var(--text); border-color: var(--border-hi); }
+  .sps-pop-body { padding: 12px; overflow-y: auto; min-height: 0; }
+  .sps-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+  .sps-card {
+    display: flex; align-items: center; gap: 10px; min-width: 0; padding: 10px 12px;
+    border-radius: 12px; background: var(--bg-input); border: 1px solid var(--border);
+  }
+  .sps-card.online { border-color: color-mix(in srgb, var(--accent, var(--text)) 40%, var(--border)); }
+  .sps-card-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .sps-card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
+  .sps-tname { font: 650 13px/1.1 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .sps-ttotal { font: 700 12px/1 var(--font-mono); color: var(--text); white-space: nowrap; flex-shrink: 0; }
+  .sps-bar { height: 4px; border-radius: 999px; background: var(--hover); overflow: hidden; }
   .sps-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--text-dim); }
-  .sps-trow.online .sps-bar > span { background: var(--accent, var(--text)); }
-  .sps-ttotal { font: 600 11px/1 var(--font-mono); color: var(--text); width: 84px; text-align: right; flex-shrink: 0; }
-  .sps-tnote { font: 400 10px/1 var(--font-ui); color: var(--text-dim); width: 110px; flex-shrink: 0; }
+  .sps-card.online .sps-bar > span { background: var(--accent, var(--text)); }
+  .sps-tnote { font: 400 var(--fs-min)/1 var(--font-ui); color: var(--text-dim); }
   .sps-name { font: 650 12px/1 var(--font-ui); color: var(--text); }
-  .sps-time { font: 400 10px/1 var(--font-mono); color: var(--text-dim); }
+  .sps-time { font: 400 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); }
 </style>

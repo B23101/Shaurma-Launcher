@@ -57,8 +57,11 @@ func DetectCore(dir string) (CoreDetectResult, error) {
 		result.ServerJar = "server.jar"
 	}
 
-	// 3. Paper: paper.yml / paper-server.yml (Paper 1.19+)
-	if result.Core == "" && (fileExists(filepath.Join(dir, "paper.yml")) || fileExists(filepath.Join(dir, "paper-server.yml"))) {
+	// 3. Paper: paper.yml (≤1.18) або config/paper-global.yml (1.19+ — у
+	// корені теки paper.yml там уже немає; раніше такий сервер
+	// визначався як Vanilla і не міг бути в мережі Velocity).
+	if result.Core == "" && (fileExists(filepath.Join(dir, "paper.yml")) ||
+		fileExists(filepath.Join(dir, "config", "paper-global.yml"))) {
 		result.Core = CorePaper
 		result.Confidence = "high"
 		result.Messages = append(result.Messages, "знайдено paper.yml")
@@ -161,7 +164,21 @@ func dirExists(path string) bool {
 // detectMCVersion визначає MC-версію за пріоритетом:
 // 1) logs/latest.log (перший рядок "Starting minecraft server version X")
 // 2) server.properties (немає версії — використовуємо дефолт)
+var reVersionHistoryMC = regexp.MustCompile(`\(MC: ([0-9][^)]*)\)`)
+
 func detectMCVersion(dir, core string) string {
+	// Спроба 0: version_history.json Paper/Purpur — "… (MC: 1.21.4)".
+	if data, err := os.ReadFile(filepath.Join(dir, "version_history.json")); err == nil {
+		var vh struct {
+			CurrentVersion string `json:"currentVersion"`
+		}
+		if json.Unmarshal(data, &vh) == nil {
+			if m := reVersionHistoryMC.FindStringSubmatch(vh.CurrentVersion); m != nil {
+				return m[1]
+			}
+		}
+	}
+
 	// Спроба 1: logs/latest.log
 	logPath := filepath.Join(dir, "logs", "latest.log")
 	if data, err := os.ReadFile(logPath); err == nil {

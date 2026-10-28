@@ -201,7 +201,7 @@
 
 <div class="sat" style="--pcol:{editColor}">
   <!-- ═══ ІДЕНТИЧНІСТЬ: назва · опис · ID ═══ -->
-  <div class="card" class:qdirty={dirtyName || dirtyNotes}>
+  <div class="card" class:qdirty={dirtyName || dirtyNotes} data-skey="name">
     <div class="card-head">
       <div class="ci"><i class="ti ti-id"></i></div>
       <div class="ctw"><div class="ct">{t('servers.appearance.identity')}</div><div class="cd">{t('servers.appearance.identityDesc')}</div></div>
@@ -218,7 +218,7 @@
       <input class="input" bind:value={editName} placeholder={t('servers.settings.name')} data-testid="server-name-input" />
     </div>
 
-    <div class="row col">
+    <div class="row col" data-skey="id">
       <div class="rl-name">{t('servers.settings.folderId')} <span class="muted">{isRunning ? t('servers.appearance.stopFirst') : ''}</span></div>
       <div class="sat-inline">
         <input class="input mono" style="flex:1" bind:value={editFolder} disabled={isRunning} placeholder="id-сервера" />
@@ -233,7 +233,7 @@
       {/if}
     </div>
 
-    <div class="row col last">
+    <div class="row col last" data-skey="notes">
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('servers.settings.notes')}</span>
         <button class="sat-save sm" class:busy={savingKey === 'notes'} disabled={savingKey === 'notes' || !dirtyNotes}
@@ -268,7 +268,7 @@
   {/if}
 
   <!-- ═══ ІКОНКА В ГРІ (server-icon.png) ═══ -->
-  <div class="card">
+  <div class="card" data-skey="gameicon">
     <div class="card-head">
       <div class="ci"><i class="ti ti-photo"></i></div>
       <div class="ctw">

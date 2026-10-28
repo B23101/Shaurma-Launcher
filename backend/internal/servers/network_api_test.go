@@ -87,7 +87,8 @@ func TestNetworkSaveGeneratesConfig(t *testing.T) {
 	if want := `bind = "0.0.0.0:25577"`; !strings.Contains(txt, want) {
 		t.Errorf("velocity.toml не містить %q:\n%s", want, txt)
 	}
-	if !strings.Contains(txt, `[servers]`) || !strings.Contains(txt, `виживання = "127.0.0.1:25566"`) {
+	// Ім'я в мережі — транслітерація назви, ключ у лапках.
+	if !strings.Contains(txt, `[servers]`) || !strings.Contains(txt, `"vyzhyvannia" = "127.0.0.1:25566"`) {
 		t.Errorf("velocity.toml не містить backend-сервер:\n%s", txt)
 	}
 	if strings.Contains(txt, "forced-defauls") {
@@ -96,7 +97,7 @@ func TestNetworkSaveGeneratesConfig(t *testing.T) {
 
 	// «Склеювання» (glue): секрет + modern forwarding у toml + конфіг
 	// Paper backend-а.
-	if !strings.Contains(txt, "[player-info-forwarding]") || !strings.Contains(txt, `mode = "modern"`) {
+	if !strings.Contains(txt, `player-info-forwarding-mode = "modern"`) || !strings.Contains(txt, `config-version = "2.7"`) {
 		t.Errorf("velocity.toml не містить modern forwarding:\n%s", txt)
 	}
 	secretBytes, err := os.ReadFile(filepath.Join(proxy.Dir, "forwarding.secret"))

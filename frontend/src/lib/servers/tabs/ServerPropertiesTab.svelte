@@ -478,7 +478,7 @@
   /* min-width:0 — без нього ряд вкладок (nowrap) розтягує flex-батька і картка
      вилазить за межі екрана замість внутрішнього горизонтального скролу. */
   .spt { padding-bottom: 0; overflow: visible; min-width: 0; max-width: 100%; }
-  .spt-file { font: 500 10.5px/1 var(--font-mono); color: var(--text-dim); margin-left: 6px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; vertical-align: 1px; }
+  .spt-file { font: 500 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); margin-left: 6px; padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px; vertical-align: 1px; }
 
   /* ── Пошук і вкладки груп ── */
   .spt-bar { display: flex; align-items: center; gap: 12px; padding: 12px 22px 0; }
@@ -501,7 +501,7 @@
   .spt-tab:hover { color: var(--text); border-color: var(--border-hi, var(--border)); }
   .spt-tab.on { color: var(--text); border-color: color-mix(in srgb, var(--pcol, var(--orange)) 60%, transparent); background: color-mix(in srgb, var(--pcol, var(--orange)) 13%, transparent); }
   .spt-tab.on i { color: var(--pcol, var(--orange)); }
-  .spt-tab-n { font: 700 9.5px/1 var(--font-mono); color: var(--text-dim); }
+  .spt-tab-n { font: 700 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); }
   .spt-tab-dot { position: absolute; top: -3px; right: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--pcol, var(--orange)); box-shadow: 0 0 0 2px var(--bg-card, #151515); }
 
   /* ── Рядки параметрів ── */
@@ -532,12 +532,12 @@
 
   .spt-info { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .spt-name { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font: 650 13px/1.3 var(--font-ui); color: var(--text); }
-  .spt-badge { display: inline-flex; align-items: center; gap: 4px; font: 600 9.5px/1 var(--font-ui); padding: 3px 7px; border-radius: 20px; color: var(--blue, #3b82f6); background: color-mix(in srgb, var(--blue, #3b82f6) 13%, transparent); border: 1px solid color-mix(in srgb, var(--blue, #3b82f6) 30%, transparent); }
+  .spt-badge { display: inline-flex; align-items: center; gap: 4px; font: 600 var(--fs-min)/1 var(--font-ui); padding: 3px 7px; border-radius: 20px; color: var(--blue, #3b82f6); background: color-mix(in srgb, var(--blue, #3b82f6) 13%, transparent); border: 1px solid color-mix(in srgb, var(--blue, #3b82f6) 30%, transparent); }
   .spt-badge.mute { color: var(--text-mute); background: var(--hover); border-color: var(--border); }
   .spt-hint { font: 400 11.5px/1.5 var(--font-ui); color: var(--text-mute); max-width: 620px; }
   .spt-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 1px; }
-  .spt-key { font: 500 10px/1 var(--font-mono); color: var(--text-dim); padding: 3px 6px; border-radius: 5px; background: var(--bg-input); border: 1px solid var(--border); }
-  .spt-chipm { font: 600 10px/1 var(--font-ui); color: var(--text-dim); padding: 3px 0; background: none; border: 0; }
+  .spt-key { font: 500 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); padding: 3px 6px; border-radius: 5px; background: var(--bg-input); border: 1px solid var(--border); }
+  .spt-chipm { font: 600 var(--fs-min)/1 var(--font-ui); color: var(--text-dim); padding: 3px 0; background: none; border: 0; }
   .spt-chipm.link { cursor: pointer; padding: 3px 7px; border-radius: 5px; border: 1px dashed var(--border); color: var(--text-mute); }
   .spt-chipm.link:hover { color: var(--pcol, var(--orange)); border-color: var(--pcol, var(--orange)); }
   .spt-err { display: inline-flex; align-items: center; gap: 5px; font: 600 11px/1.3 var(--font-ui); color: var(--red); }
@@ -566,7 +566,7 @@
   .spt-text .input.bad { border-color: var(--red); }
   .spt-eye { flex: 0 0 auto; background: none; border: 1px solid var(--border); border-radius: 7px; color: var(--text-dim); cursor: pointer; padding: 6px 8px; }
   .spt-eye:hover { color: var(--text); }
-  .spt-count { flex: 0 0 auto; font: 600 10.5px/1 var(--font-mono); color: var(--text-dim); }
+  .spt-count { flex: 0 0 auto; font: 600 var(--fs-min)/1 var(--font-mono); color: var(--text-dim); }
   .spt-count.over { color: var(--yellow); }
 
   /* ── Нижня панель збереження (липка) ── */

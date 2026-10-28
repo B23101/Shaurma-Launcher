@@ -62,7 +62,7 @@
 }
 .st-nav-group + .st-nav-group { margin-top: 18px; }
 .st-nav-title {
-  padding: 0 12px 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .9px;
+  padding: 0 12px 6px; font-size: var(--fs-min); font-weight: 700; letter-spacing: .9px;
   text-transform: uppercase; color: var(--text-dim);
 }
 .st-nav-item {
@@ -120,6 +120,7 @@
 .st-row-ctl { flex: none; display: flex; align-items: center; gap: 8px; max-width: 60%; }
 .st-row.stack { flex-direction: column; align-items: stretch; gap: 12px; }
 .st-row.stack .st-row-ctl { max-width: none; width: 100%; flex-wrap: wrap; }
+.st-row-ctl.wrap { flex-wrap: wrap; justify-content: flex-end; }
 .st-row.off { opacity: .45; pointer-events: none; }
 .st-row.sub { padding-left: 40px; background: rgba(127, 127, 127, .04); }
 
@@ -243,6 +244,12 @@ textarea.st-input { height: auto; padding: 9px 12px; resize: vertical; line-heig
 }
 .st-seg button:hover { color: var(--text); }
 .st-seg button.on { background: var(--bg-card); color: var(--orange); border-color: rgba(var(--orange-rgb), .5); }
+/* Сегменти з підписом (не лише іконка): ширина за текстом, шрифт інтерфейсу. */
+.st-seg.labeled button {
+  width: auto; display: inline-flex; align-items: center; gap: 6px; padding: 0 12px;
+  font: 600 12.5px var(--font-ui); white-space: nowrap;
+}
+.st-seg.labeled button i { font-size: 15px; }
 
 /* пресети кольорів власної теми */
 .st-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; }
@@ -263,6 +270,7 @@ textarea.st-input { height: auto; padding: 9px 12px; resize: vertical; line-heig
 .st-empty span { font-size: 12px; max-width: 380px; line-height: 1.5; }
 .st-note { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; color: var(--text-mute); }
 .st-note i { margin-top: 2px; flex: none; }
+.st-note > span { min-width: 0; overflow-wrap: anywhere; }
 .st-path { font: 11.5px var(--font-mono); color: var(--text-dim); margin-top: 4px; word-break: break-all; }
 .st-tag { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; font-size: 11px; font-weight: 600; border-radius: 999px; background: var(--hover-strong); color: var(--text-mute); }
 .st-tag.on { background: rgba(var(--orange-rgb), .14); color: var(--orange); }

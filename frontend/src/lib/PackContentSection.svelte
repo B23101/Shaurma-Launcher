@@ -11,6 +11,8 @@
   import PackPicker from './PackPicker.svelte'
   import PackModsSection from './PackModsSection.svelte'
   import SelectField from './SelectField.svelte'
+  import { slideTabs } from './slideTabs'
+  import { tip } from './friends/tooltip'
   import modrinthIcon from '../assets/images/Modrinth_icon.png'
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
   import { getPackUI, setPackUI, readContentScroll, restoreContentScroll } from './uiState'
@@ -513,15 +515,18 @@
 
 <div class="content-section">
   <!-- ── Під-вкладки ── -->
-  <div class="ct-subtabs">
+  <!-- Той самий ковзний таббар, що й вкладки збірки; акцент — колір
+       активного типу вмісту. -->
+  <div class="tabbar tb-slide ct-subtabs" role="tablist" use:slideTabs style="--tb-acc:{activeTab.color}">
     {#each subTabs.filter(s => !s.mods || canMods) as st (st.id)}
       <button
-        class="ct-subtab"
+        class="tab-btn ct-subtab"
         class:active={sub === st.id}
-        style="--ct-c:{st.color}"
+        role="tab"
+        aria-selected={sub === st.id}
         onclick={() => sub = st.id}
       >
-        <i class="ti {st.icon}"></i>{st.label()}
+        <i class="ti {st.icon}"></i> {st.label()}
       </button>
     {/each}
   </div>
@@ -569,12 +574,12 @@
 	        />
 	      </div>
 	      <div class="ct-toolbar-actions">
-	        <button class="btn btn-ghost btn-sm icon-tb" onclick={checkUpdates} title={t('content.checkUpdates')} disabled={scanning}>
-	          <i class="ti {scanning ? 'ti-loader spin' : 'ti-refresh'}"></i>
-	        </button>
-	        <button class="btn btn-ghost btn-sm icon-tb" onclick={openFolder} title={t('content.openFolder')}>
-	          <i class="ti ti-folder-open"></i>
-	        </button>
+	        <div class="tool-cluster" role="toolbar" aria-label={t('mods.tools')}>
+	          <button onclick={checkUpdates} disabled={scanning} use:tip={t('content.checkUpdates')} aria-label={t('content.checkUpdates')}>
+	            <i class="ti {scanning ? 'ti-loader spin' : 'ti-refresh'}"></i>
+	          </button>
+	          <button onclick={openFolder} use:tip={t('content.openFolder')} aria-label={t('content.openFolder')}><i class="ti ti-folder-open"></i></button>
+	        </div>
 	        {#if onSearchContent}
 	          <button class="btn btn-ghost btn-sm" onclick={() => onSearchContent(activeTab.projectType)} title={t('content.addFromBrowser')}>
 	            <i class="ti ti-world-search"></i> {t('content.addFromBrowser')}
@@ -976,36 +981,17 @@
 <style>
   .content-section { display: flex; flex-direction: column; gap: 12px; }
 
-  /* ── Під-вкладки ── */
-  .ct-subtabs {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    padding: 4px; border-radius: 10px;
-    background: var(--bg-input);
-  }
-  .ct-subtab {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 6px 14px; border-radius: 8px;
-    border: 1px solid transparent;
-    background: transparent; color: var(--text-mute, #999);
-    font-size: 12.5px; font-weight: 600; cursor: pointer;
-    transition: all .15s ease;
-  }
-  .ct-subtab:hover { color: var(--text, #eee); background: rgba(255,255,255,.06); }
-  .ct-subtab.active {
-    color: #fff;
-    background: color-mix(in srgb, var(--ct-c) 22%, transparent);
-    border-color: color-mix(in srgb, var(--ct-c) 55%, transparent);
-    box-shadow: 0 0 14px -4px var(--ct-c);
-  }
-  .ct-subtab.active i { color: var(--ct-c); }	  /* ── Тулбар ──
-	     Той самий вигляд і поведінка, що .mods-toolbar у менеджері модів:
-	     два чіткі рядки, sticky ПІД закріпленим тулбаром сторінки збірки
-	     (той самий відступ stickyTop, що й у модів — без «виступу» між
-	     закріпленими смугами), зградієнтний blur-фон і заокруглення знизу.
-	     Рядок 1 — пошук + фільтр; рядок 2 — кнопки дій (перевірити
-	     оновлення, тека, додати з браузера, додати файл, «Оновити всі»). */
+  /* ── Під-вкладки: ковзний таббар (style.css), менший і притиснутий ліворуч ── */
+  .ct-subtabs.tabbar { margin: 0; align-self: flex-start; padding: 4px; border-radius: 13px; }
+  .ct-subtabs.tabbar::before { top: 4px; bottom: 4px; border-radius: 10px; }
+  .ct-subtabs.tabbar::after { bottom: 4px; }
+  .ct-subtabs .ct-subtab.tab-btn { padding: 7px 14px; font-size: 12.5px; }
+
+  /* ── Тулбар — той самий вигляд, що .mods-toolbar у менеджері модів:
+     пошук і фільтр зліва, блок іконок + підписані дії справа, в один
+     рядок; sticky під закріпленим тулбаром сторінки збірки. */
 	  .ct-toolbar {
-	    display: flex; flex-direction: column; gap: 8px;
+	    display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
 	    position: sticky; top: var(--mt-top, 0px); z-index: 18;
 	    margin: -4px -4px 4px; padding: 8px 4px 10px;
 	    background: linear-gradient(180deg,
@@ -1014,25 +1000,26 @@
 	    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 	    border-radius: 0 0 var(--r-lg) var(--r-lg);
 	  }
-	  .ct-toolbar-main    { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; min-width: 0; }
-	  .ct-toolbar-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; justify-content: flex-end; }
-	  .ct-toolbar-actions .btn { height: 36px; }
+	  .ct-toolbar-main    { display: flex; align-items: center; gap: 8px; flex: 1 1 320px; min-width: 0; }
+	  .ct-toolbar-actions { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; flex-wrap: wrap; margin-left: auto; justify-content: flex-end; }
+	  .ct-toolbar-actions .btn { height: 36px; white-space: nowrap; }
 	  .ct-toolbar-actions .upd-badge {
 	    display: inline-flex; align-items: center; justify-content: center;
 	    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
-	    background: rgba(255,255,255,.22); font-size: 10.5px; font-weight: 800; margin-left: 2px;
+	    background: rgba(255,255,255,.22); font-size: var(--fs-min); font-weight: 800; margin-left: 2px;
 	  }
 	  .ct-search {
 	    display: flex; align-items: center; gap: 8px;
-	    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
-	    padding: 0 11px; height: 32px; flex: 1 1 220px; min-width: 150px;
+	    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
+	    padding: 0 12px; height: 36px; flex: 1 1 200px; min-width: 140px;
+	    transition: border-color .15s, box-shadow .15s;
 	  }
-	  .ct-search i { color: var(--text-dim, #777); font-size: 14px; }
-	  .ct-search input { flex: 1; background: none; border: none; outline: none; color: var(--text, #eee); font-size: 12.5px; }
+	  .ct-search:focus-within { border-color: rgba(var(--orange-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
+	  .ct-search i { color: var(--text-dim, #777); font-size: 15px; }
+	  .ct-search:focus-within i { color: var(--orange); }
+	  .ct-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text, #eee); font-size: 13px; }
 	  .ct-addbtn { white-space: nowrap; }
 
-	  /* Компактні іконкові кнопки тулбара (як .icon-tb у модів) */
-	  .icon-tb { width: 36px; height: 36px; padding: 0; justify-content: center; }
 
 	  /* ── Статус-рядок (як .mods-status у менеджері модів) ── */
 	  .ct-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--text-mute); min-height: 16px; margin: 0 2px 6px; }
@@ -1148,13 +1135,13 @@
   }
   .ct-name-btn:hover { color: var(--violet-l, #c4b5fd); text-decoration: underline; }
   .ct-meta {
-    font-size: 10.5px; color: var(--text-mute, #999); margin-top: 2px;
+    font-size: var(--fs-min); color: var(--text-mute, #999); margin-top: 2px;
     font-family: var(--font-mono);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
   /* ── Бейджі — точно як у менеджері модів ── */
-  .badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 5px; font-family: var(--font-mono); letter-spacing: .3px; }
+  .badge { font-size: var(--fs-min); font-weight: 700; padding: 2px 7px; border-radius: 5px; font-family: var(--font-mono); letter-spacing: .3px; }
   .badge.upd { background: rgba(16,185,129,.15); color: var(--green, #3ddc84); display: inline-flex; align-items: center; gap: 3px; }
   .badge.upd .ti-arrow-up { font-size: 9px; }
   .badge.off { background: var(--bg-input); color: var(--text-mute, #999); border: 1px solid var(--border); }
@@ -1257,13 +1244,13 @@
   }
   .ct-pack-info { flex: 1; min-width: 0; }
   .ct-pack-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ct-pack-sub  { font-size: 10.5px; color: var(--text-mute); font-family: var(--font-mono); }
+  .ct-pack-sub  { font-size: var(--fs-min); color: var(--text-mute); font-family: var(--font-mono); }
   .ct-pack-check { color: var(--violet, #a78bfa); opacity: 0; transition: opacity .12s; }
   .ct-pack-item.sel .ct-pack-check { opacity: 1; }
 
   /* Бейдж наявності у збірці */
   .ct-presence-badge {
-    font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 5px;
+    font-size: var(--fs-min); font-weight: 700; padding: 2px 7px; border-radius: 5px;
     font-family: var(--font-mono); letter-spacing: .3px; white-space: nowrap; flex-shrink: 0;
   }
   .ct-presence-badge.already { background: rgba(16,185,129,.15); color: var(--green, #3ddc84); }

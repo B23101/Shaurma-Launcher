@@ -454,9 +454,9 @@
 
   .pcd-mod-name { min-width: 0; flex: 1 1 90px; }
   .pcd-name { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pcd-author { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pcd-author { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .pcd-badge { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .pcd-badge { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-min); font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   .pcd-badge.present { background: rgba(16,185,129,.12); color: var(--green); }
   .pcd-badge.outdated { background: rgba(255,138,0,.12); color: var(--orange); }
   .pcd-badge.target { background: rgba(157,124,255,.14); color: var(--violet-l); }
@@ -465,7 +465,7 @@
   .pcd-badge.dim { background: color-mix(in srgb, var(--red) 10%, transparent); color: var(--red); opacity: .85; }
   .pcd-arrow { font-size: 11px; color: var(--text-dim); }
 
-  .pcd-tag.local { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(148,163,184,.15); color: var(--muted, #94a3b8); }
+  .pcd-tag.local { font-size: var(--fs-min); font-weight: 700; padding: 1px 6px; border-radius: 4px; background: rgba(148,163,184,.15); color: var(--muted, #94a3b8); }
 
   /* ── Кнопка дії: кругла іконка-кнопка по центру, без тексту — статус/
        версія вже сказані рядком вище (pcd-status-row). Іконка на самій

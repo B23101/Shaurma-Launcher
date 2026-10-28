@@ -543,7 +543,7 @@
   .swt-banner b { color: var(--text); }
 
   .swt-chip {
-    display: inline-flex; align-items: center; font: 700 10px/1 var(--font-ui); letter-spacing: .3px;
+    display: inline-flex; align-items: center; font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .3px;
     padding: 3px 7px; border-radius: 999px; color: var(--text-mute); background: var(--hover);
   }
   .swt-chip.ok { color: var(--green, #22c55e); background: rgba(34,197,94,.12); }
@@ -650,7 +650,9 @@
 
   /* ── Розгорнутий світ: таймлайн копій ── */
   .swt-expand { border-top: 1px solid var(--border); background: var(--bg-panel); padding: 8px 14px 12px; }
-  .swt-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+  /* Розгорнутий список не росте безмежно: інакше один світ займає весь екран і
+     решту (авто-бекап, інші світи) не видно. Довгий список скролиться всередині. */
+  .swt-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: min(340px, 45vh); overflow-y: auto; }
   .swt-bk { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 6px 12px 0; }
   .swt-bk + .swt-bk { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
   .swt-dot {

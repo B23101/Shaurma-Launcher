@@ -4,7 +4,8 @@
   // підвантажується скін. Живу перевірку робить сервер (CheckShaurmaNick); 🎲 підбирає вільний
   // осмислений нік (ПрикметникІменник).
   import { untrack } from 'svelte'
-  import Portal from './Portal.svelte'
+  import UiModal from './UiModal.svelte'
+  import './settings/settings.css'
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import { pirateNicknameError, sanitizeNick } from './validation'
@@ -79,54 +80,47 @@
   })
 </script>
 
-{#if open}
-<Portal>
-  <div class="modal-overlay gate">
-    <div class="modal" onclick={(e: any) => e.stopPropagation()}>
-      <div class="modal-head"><h3>{t('nick.title')}</h3></div>
-      <div class="modal-body" style="display:flex;flex-direction:column;gap:12px">
-        {#if provider === 'microsoft' && noLicense}
-          <div class="nc-note warn">
-            <i class="ti ti-alert-circle"></i>
-            <span>{noLicense === 'no_xbox' ? t('nick.noXbox') : t('nick.noLicense')}</span>
-          </div>
-        {:else}
-          <div class="nc-note"><i class="ti ti-info-circle"></i><span>{t('nick.intro')}</span></div>
-          {#if provider === 'google'}
-            <!-- Акаунт Шаурми шукається за парою «провайдер + особа»: акаунт, створений через
-                 Microsoft або інший Google, за цим входом НЕ знаходиться. Кажемо про це одразу,
-                 щоб людина не створювала дубль замість входу в наявний. -->
-            <div class="nc-note warn"><i class="ti ti-alert-circle"></i><span>{t('nick.googleNew')}</span></div>
-          {/if}
-        {/if}
-        <div class="wiz-field-row">
-          <input class="input {st === 'bad' ? 'input-err' : ''}" style="flex:1" maxlength="16"
-                 placeholder={t('nickname')} value={nick}
-                 oninput={(e: any) => onInput(e.target.value)}
-                 onkeydown={(e: any) => e.key === 'Enter' && submit()} />
-          <button class="btn btn-ghost" title={t('nick.random')} disabled={rolling || busy} onclick={roll}>
-            <i class="ti ti-dice-5 {rolling ? 'nc-spin' : ''}"></i>
-          </button>
-        </div>
-        <div class="nc-status {st}">
-          {#if st === 'checking'}<i class="ti ti-loader-2 nc-spin"></i> {t('nick.checking')}
-          {:else if st === 'ok'}<i class="ti ti-circle-check"></i> {t('nick.free')}
-          {:else if st === 'bad' && (submitErr || msg)}<i class="ti ti-alert-triangle"></i> {submitErr || msg}
-          {:else}&nbsp;{/if}
-        </div>
-        <div class="nc-hint"><i class="ti ti-shirt"></i> {t('nick.skinHint')}</div>
+<UiModal {open} dismissible={false} icon="ti-user-edit" title={t('nick.title')}>
+  <div style="display:flex;flex-direction:column;gap:12px">
+    {#if provider === 'microsoft' && noLicense}
+      <div class="nc-note warn">
+        <i class="ti ti-alert-circle"></i>
+        <span>{noLicense === 'no_xbox' ? t('nick.noXbox') : t('nick.noLicense')}</span>
       </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" disabled={busy} onclick={oncancel}>{t('cancel')}</button>
-        <button class="btn btn-primary" disabled={busy || rolling || st !== 'ok'} onclick={submit}>
-          {#if busy}<div class="spinner" style="width:14px;height:14px"></div>{:else}<i class="ti ti-check"></i>{/if}
-          {t('nick.create')}
-        </button>
-      </div>
+    {:else}
+      <div class="nc-note"><i class="ti ti-info-circle"></i><span>{t('nick.intro')}</span></div>
+      {#if provider === 'google'}
+        <!-- Акаунт Шаурми шукається за парою «провайдер + особа»: акаунт, створений через
+             Microsoft або інший Google, за цим входом НЕ знаходиться. Кажемо про це одразу,
+             щоб людина не створювала дубль замість входу в наявний. -->
+        <div class="nc-note warn"><i class="ti ti-alert-circle"></i><span>{t('nick.googleNew')}</span></div>
+      {/if}
+    {/if}
+    <div class="wiz-field-row">
+      <input class="st-input grow {st === 'bad' ? 'input-err' : ''}" maxlength="16"
+             placeholder={t('nickname')} value={nick}
+             oninput={(e: any) => onInput(e.target.value)}
+             onkeydown={(e: any) => e.key === 'Enter' && submit()} />
+      <button class="btn btn-ghost" title={t('nick.random')} disabled={rolling || busy} onclick={roll}>
+        <i class="ti ti-dice-5 {rolling ? 'nc-spin' : ''}"></i>
+      </button>
     </div>
+    <div class="nc-status {st}">
+      {#if st === 'checking'}<i class="ti ti-loader-2 nc-spin"></i> {t('nick.checking')}
+      {:else if st === 'ok'}<i class="ti ti-circle-check"></i> {t('nick.free')}
+      {:else if st === 'bad' && (submitErr || msg)}<i class="ti ti-alert-triangle"></i> {submitErr || msg}
+      {:else}&nbsp;{/if}
+    </div>
+    <div class="nc-hint"><i class="ti ti-shirt"></i> {t('nick.skinHint')}</div>
   </div>
-</Portal>
-{/if}
+  {#snippet footer()}
+    <button class="btn btn-ghost" disabled={busy} onclick={oncancel}>{t('cancel')}</button>
+    <button class="btn btn-primary" disabled={busy || rolling || st !== 'ok'} onclick={submit}>
+      {#if busy}<i class="ti ti-loader-2 nc-spin"></i>{:else}<i class="ti ti-check"></i>{/if}
+      {t('nick.create')}
+    </button>
+  {/snippet}
+</UiModal>
 
 <style>
   .nc-note { display:flex; gap:8px; align-items:flex-start; font-size:12.5px; line-height:1.5; color:var(--text-mute);

@@ -321,7 +321,7 @@
   .ar-fix.on { border-color: var(--orange); background: rgba(var(--orange-rgb), .07); }
   .ar-fix input { margin-top: 3px; accent-color: var(--orange); }
   .ar-fix-label { font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .ar-rec { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: rgba(16,185,129,.15); color: var(--green); }
+  .ar-rec { font-size: var(--fs-min); font-weight: 700; padding: 2px 7px; border-radius: 6px; background: rgba(16,185,129,.15); color: var(--green); }
   .ar-steps { margin: 5px 0 0; padding-left: 17px; font-size: 12px; color: var(--text-mute); line-height: 1.55; }
   .ar-manual { font-size: 12px; color: var(--text-mute); display: flex; gap: 6px; }
   .ar-evidence { margin: 0; max-height: 170px; overflow: auto; font-size: 11px; padding: 9px 10px; border-radius: 8px; background: rgba(0,0,0,.25); white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); }

@@ -1,230 +1,411 @@
-// network.go — Velocity proxy-мережа: запуск/зупинка кількох серверів разом з Velocity.
+// network.go — модель мережі Velocity і генерація velocity.toml.
+//
+// Мережа — це система серверів, а не «сервер з налаштуваннями»: проксі
+// (Velocity) + backend-сервери (Paper/Purpur, Fabric/Forge з проксі-модом)
+// зі своїми іменами в мережі, порядком входу, ланцюгами запуску й
+// налаштуваннями самого проксі. Зберігається у <тека проксі>/.shaurma/
+// network.json; velocity.toml лаунчер генерує з неї (network_api.go).
 package servers
 
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
-	"time"
 )
+
+// networkVersion — версія формату network.json. 0 — старий формат без
+// автозапуску й налаштувань проксі (мігрується в LoadNetwork).
+const networkVersion = 2
+
+// velocityConfigVersion — версія формату velocity.toml, який ми пишемо.
+// Без неї Velocity вважає файл старим (1.0) і запускає міграції, одна з
+// яких ПЕРЕЗАПИСУЄ forwarding.secret випадковим значенням — після цього
+// секрет на backend-ах не збігався, і гравців не пускало.
+const velocityConfigVersion = "2.7"
 
 // NetworkServer — сервер у мережі Velocity.
 type NetworkServer struct {
 	ServerID string `json:"serverId"`
-	Order    int    `json:"order"`    // порядок запуску (0 = перший після proxy)
-	DelaySec int    `json:"delaySec"` // затримка перед стартом (секунди)
-	IsProxy  bool   `json:"isProxy"`  // це Velocity?
+	Order    int    `json:"order"`    // порядок запуску й входу (менше — раніше)
+	DelaySec int    `json:"delaySec"` // пауза перед стартом (секунди)
+	IsProxy  bool   `json:"isProxy"`
+	// Alias — ім'я сервера в мережі: ключ у [servers] velocity.toml і
+	// аргумент /server <alias>. Порожнє — генерується з назви.
+	Alias string `json:"alias,omitempty"`
+	// AutoStart — стартує разом із проксі (кнопка «Запустити мережу» і
+	// звичайний старт проксі).
+	AutoStart bool `json:"autoStart"`
+	// StartsNetwork — запуск ЦЬОГО сервера піднімає проксі, а з ним і
+	// решту серверів з AutoStart.
+	StartsNetwork bool `json:"startsNetwork"`
+	// InTry — сервер у списку try: туди проксі пускає гравця при вході
+	// (у порядку Order) і куди переносить, якщо сервер упав.
+	InTry bool `json:"inTry"`
+	// ForcedHost — домен, з яким гравець одразу потрапляє на цей сервер
+	// ([forced-hosts]), напр. survival.example.com.
+	ForcedHost string `json:"forcedHost,omitempty"`
 }
 
-// Network — група серверів, що працюють разом через Velocity.
+// ProxySettings — налаштування самого проксі (velocity.toml).
+type ProxySettings struct {
+	Motd                           string `json:"motd"`
+	ShowMaxPlayers                 int    `json:"showMaxPlayers"`
+	OnlineMode                     bool   `json:"onlineMode"`
+	ForceKeyAuthentication         bool   `json:"forceKeyAuthentication"`
+	PreventClientProxyConnections  bool   `json:"preventClientProxyConnections"`
+	ForwardingMode                 string `json:"forwardingMode"` // modern | legacy | bungeeguard | none
+	AnnounceForge                  bool   `json:"announceForge"`
+	KickExistingPlayers            bool   `json:"kickExistingPlayers"`
+	PingPassthrough                string `json:"pingPassthrough"` // disabled | mods | description | all
+	FailoverOnUnexpectedDisconnect bool   `json:"failoverOnUnexpectedDisconnect"`
+	CompressionThreshold           int    `json:"compressionThreshold"`
+	CompressionLevel               int    `json:"compressionLevel"`
+	LoginRatelimit                 int    `json:"loginRatelimit"`
+	ConnectionTimeout              int    `json:"connectionTimeout"`
+	ReadTimeout                    int    `json:"readTimeout"`
+	HAProxyProtocol                bool   `json:"haproxyProtocol"`
+	TCPFastOpen                    bool   `json:"tcpFastOpen"`
+	LogCommandExecutions           bool   `json:"logCommandExecutions"`
+	LogPlayerConnections           bool   `json:"logPlayerConnections"`
+	QueryEnabled                   bool   `json:"queryEnabled"`
+	QueryPort                      int    `json:"queryPort"`
+}
+
+// DefaultProxySettings — значення за замовчуванням Velocity 3.x.
+func DefaultProxySettings() ProxySettings {
+	return ProxySettings{
+		Motd:                           "<#09add3>A Velocity Server",
+		ShowMaxPlayers:                 500,
+		OnlineMode:                     true,
+		ForceKeyAuthentication:         true,
+		ForwardingMode:                 "modern",
+		PingPassthrough:                "disabled",
+		FailoverOnUnexpectedDisconnect: true,
+		CompressionThreshold:           256,
+		CompressionLevel:               -1,
+		LoginRatelimit:                 3000,
+		ConnectionTimeout:              5000,
+		ReadTimeout:                    30000,
+		LogPlayerConnections:           true,
+		QueryPort:                      25577,
+	}
+}
+
+// Network — проксі та його backend-сервери.
 type Network struct {
-	ID       string          `json:"id"`
-	Name     string          `json:"name"`
-	Servers  []NetworkServer `json:"servers"`
-	FileName string          `json:"-"` // файл зберігання
+	ID      string          `json:"id"`
+	Name    string          `json:"name"`
+	Servers []NetworkServer `json:"servers"`
+	Version int             `json:"version"`
+	Proxy   ProxySettings   `json:"proxy"`
+	// StopMembersWithProxy — зупинка проксі спершу зупиняє сервери мережі.
+	StopMembersWithProxy bool `json:"stopMembersWithProxy"`
+	// LockBackends — backend-и слухають лише 127.0.0.1: з online-mode=false
+	// напряму в обхід проксі на них міг би зайти будь-хто з будь-яким ніком.
+	LockBackends bool `json:"lockBackends"`
+	// External — сервери мережі, яких немає в лаунчері (інша машина,
+	// сервер, запущений окремо): лаунчер лише тримає їх у [servers].
+	External []ExternalServer `json:"external,omitempty"`
 }
 
-// NetworkManager — менеджер мереж.
-type NetworkManager struct {
-	mgr *Manager
+// ExternalServer — запис [servers] поза лаунчером.
+type ExternalServer struct {
+	Alias      string `json:"alias"`
+	Address    string `json:"address"` // host:port
+	InTry      bool   `json:"inTry"`
+	ForcedHost string `json:"forcedHost,omitempty"`
 }
 
-// NewNetworkManager створює менеджер мереж.
-func NewNetworkManager(mgr *Manager) *NetworkManager {
-	return &NetworkManager{mgr: mgr}
+// NewNetwork — порожня мережа проксі з налаштуваннями за замовчуванням.
+func NewNetwork(proxy *Server) *Network {
+	return &Network{
+		ID: proxy.ID, Name: proxy.Name, Version: networkVersion,
+		Servers:              []NetworkServer{{ServerID: proxy.ID, IsProxy: true}},
+		Proxy:                DefaultProxySettings(),
+		StopMembersWithProxy: true,
+		LockBackends:         true,
+	}
 }
 
-// StartNetwork запускає мережу: спочатку Velocity, потім backend-сервери з затримками.
-func (nm *NetworkManager) StartNetwork(net *Network, javaPath string, servers map[string]*Server) error {
-	// Знаходимо Velocity (проксі).
-	var proxyServer *Server
-	var backendServers []NetworkServer
-
-	for _, ns := range net.Servers {
-		if ns.IsProxy {
-			if s, ok := servers[ns.ServerID]; ok {
-				proxyServer = s
-			}
-		} else {
-			backendServers = append(backendServers, ns)
+// Members — backend-сервери мережі в порядку Order.
+func (n *Network) Members() []NetworkServer {
+	out := make([]NetworkServer, 0, len(n.Servers))
+	for _, s := range n.Servers {
+		if !s.IsProxy {
+			out = append(out, s)
 		}
 	}
-
-	if proxyServer == nil {
-		return fmt.Errorf("merежа %s: velocity сервер не знайдено", net.Name)
-	}
-
-	// Сортуємо backend за порядком.
-	sortByOrder(backendServers)
-
-	// Запускаємо Velocity.
-	log.Printf("[network] запуск мережі %s: velocity", net.Name)
-	if err := nm.mgr.Start(proxyServer, javaPath); err != nil {
-		return fmt.Errorf("start velocity: %w", err)
-	}
-
-	// Запускаємо backend-сервери з затримками.
-	for _, bs := range backendServers {
-		if bs.DelaySec > 0 {
-			log.Printf("[network] затримка %ds перед запуском %s", bs.DelaySec, bs.ServerID)
-			time.Sleep(time.Duration(bs.DelaySec) * time.Second)
-		}
-
-		s, ok := servers[bs.ServerID]
-		if !ok {
-			log.Printf("[network] сервер %s не знайдено, пропускаємо", bs.ServerID)
-			continue
-		}
-
-		log.Printf("[network] запуск backend %s", s.Name)
-		if err := nm.mgr.Start(s, javaPath); err != nil {
-			log.Printf("[network] помилка запуску %s: %v (продовжуємо)", s.Name, err)
-		}
-	}
-
-	log.Printf("[network] мережа %s запущена (velocity + %d backend)", net.Name, len(backendServers))
-	return nil
+	sortByOrder(out)
+	return out
 }
 
-// StopNetwork зупиняє мережу: спочатку backend (у зворотному порядку), потім Velocity.
-func (nm *NetworkManager) StopNetwork(net *Network, graceful bool) {
-	// Знаходимо сервери.
-	var proxyID string
-	var backendIDs []string
-
-	for _, ns := range net.Servers {
-		if ns.IsProxy {
-			proxyID = ns.ServerID
-		} else {
-			backendIDs = append(backendIDs, ns.ServerID)
+// Member повертає запис backend-а мережі.
+func (n *Network) Member(serverID string) (NetworkServer, bool) {
+	for _, s := range n.Servers {
+		if !s.IsProxy && s.ServerID == serverID {
+			return s, true
 		}
 	}
-
-	// Зупиняємо backend у зворотному порядку.
-	for i := len(backendIDs) - 1; i >= 0; i-- {
-		id := backendIDs[i]
-		if nm.mgr.IsRunning(id) {
-			log.Printf("[network] зупинка backend %s", id)
-			_ = nm.mgr.Stop(id, graceful)
-		}
-	}
-
-	// Даємо час backend закритися.
-	time.Sleep(2 * time.Second)
-
-	// Зупиняємо Velocity.
-	if proxyID != "" && nm.mgr.IsRunning(proxyID) {
-		log.Printf("[network] зупинка velocity %s", proxyID)
-		_ = nm.mgr.Stop(proxyID, graceful)
-	}
-
-	log.Printf("[network] мережа %s зупинена", net.Name)
+	return NetworkServer{}, false
 }
 
-// NetworkStatus повертає статуси всіх серверів мережі.
-func (nm *NetworkManager) NetworkStatus(net *Network) map[string]ServerStatus {
-	result := make(map[string]ServerStatus)
-	for _, ns := range net.Servers {
-		result[ns.ServerID] = nm.mgr.GetStatus(ns.ServerID)
-	}
-	return result
-}
-
-// SaveNetwork зберігає конфіг мережі у файлі сервера.
+// SaveNetwork зберігає конфіг мережі у теці проксі.
 func SaveNetwork(dir string, net *Network) error {
+	net.Version = networkVersion
 	return saveJSON(filepath.Join(dir, ".shaurma", "network.json"), net)
 }
 
-// LoadNetwork завантажує конфіг мережі з папки.
+// LoadNetwork завантажує конфіг мережі (зі старого формату — з міграцією:
+// раніше «Запустити мережу» запускала всіх і пускала гравців на всіх).
 func LoadNetwork(dir string) (*Network, error) {
 	var net Network
-	err := loadJSON(filepath.Join(dir, ".shaurma", "network.json"), &net)
-	if err != nil {
+	if err := loadJSON(filepath.Join(dir, ".shaurma", "network.json"), &net); err != nil {
 		return nil, err
+	}
+	if net.Version < 2 {
+		for i := range net.Servers {
+			net.Servers[i].AutoStart = true
+			net.Servers[i].InTry = true
+		}
+		net.Proxy = DefaultProxySettings()
+		net.StopMembersWithProxy = true
+		net.Version = networkVersion
 	}
 	return &net, nil
 }
 
-// GenerateVelocityConfig генерує velocity.toml у ФОРМАТІ, який реально
-// вміє читати Velocity (перевірено проти default-velocity.toml):
-//
-//	· bind = "0.0.0.0:порт" — обов'язкова: без неї Velocity слухає
-//	  дефолтний 25577, а detectVelocityPort не знає порт;
-//	· [servers]: лише рядки "ім'я = \"127.0.0.1:порт\"" + ключ try
-//	  (список імен у порядку спроби входу). try живе ВСЕРЕДИНІ [servers],
-//	  як у дефолтному конфігу; try поза [servers] валить Velocity з
-//	  ClassCastException, а не-рядковий ключ у [servers], крім try — з
-//	  IllegalArgumentException;
-//	· [forced-hosts] — порожня секція, яку Velocity очікує завжди.
-func GenerateVelocityConfig(dir, bindAddr string, servers map[string]*Server, net *Network) error {
-	// Backend-сервери у порядку запуску (як у net.Servers після SaveNetwork).
-	type entry struct {
-		name string
-		port int
-	}
-	var backends []entry
-	for _, ns := range net.Servers {
-		if ns.IsProxy {
-			continue
-		}
-		s, ok := servers[ns.ServerID]
-		if !ok {
-			continue
-		}
-		name := strings.ToLower(strings.ReplaceAll(s.Name, " ", "-"))
-		backends = append(backends, entry{name: name, port: s.Port})
-	}
+// ── Імена серверів у мережі ─────────────────────────────────────────────
 
-	var sb strings.Builder
-	sb.WriteString("# Generated by ShaurmLauncher\n")
-	sb.WriteString("# Velocity proxy configuration\n\n")
-
-	// bind — обов'язковий: без нього Velocity стартує на дефолтному
-	// 25577, а не на порту, який користувач бачить в UI/налаштуваннях.
-	if bindAddr == "" {
-		bindAddr = "0.0.0.0:25565"
-	}
-	sb.WriteString(fmt.Sprintf("bind = \"%s\"\n\n", bindAddr))
-
-	// Player-info forwarding: режим modern — правильні UUID/скіни гравців
-	// на backend-ах. Секрет живе у файлі forwarding.secret біля проксі
-	// (створює ApplyNetworkGlue); сам секрет у toml не дублюємо.
-	sb.WriteString("[player-info-forwarding]\n")
-	sb.WriteString("mode = \"modern\"\n\n")
-
-	if len(backends) == 0 {
-		sb.WriteString("# Мережа порожня — додайте backend-сервери у менеджері мережі.\n\n[servers]\ntry = []\n\n[forced-hosts]\n")
-		return os.WriteFile(filepath.Join(dir, "velocity.toml"), []byte(sb.String()), 0644)
-	}
-
-	sb.WriteString("[servers]\n")
-	for _, b := range backends {
-		sb.WriteString(fmt.Sprintf("%s = \"127.0.0.1:%d\"\n", b.name, b.port))
-	}
-
-	// try — порядок спроби входу (перший сервер = основний «лобі»).
-	// Живе ВСЕРЕДИНІ [servers] і є списком РЯДКІВ-імен, а не таблиць.
-	sb.WriteString("try = [\n")
-	for _, b := range backends {
-		sb.WriteString(fmt.Sprintf("  \"%s\",\n", b.name))
-	}
-	sb.WriteString("]\n\n")
-
-	// [forced-hosts] — порожня секція обов'язкова, Velocity її завжди читає.
-	sb.WriteString("[forced-hosts]\n")
-	return os.WriteFile(filepath.Join(dir, "velocity.toml"), []byte(sb.String()), 0644)
+var aliasTranslit = map[rune]string{
+	'а': "a", 'б': "b", 'в': "v", 'г': "h", 'ґ': "g", 'д': "d", 'е': "e", 'є': "ie", 'ж': "zh",
+	'з': "z", 'и': "y", 'і': "i", 'ї': "i", 'й': "i", 'к': "k", 'л': "l", 'м': "m", 'н': "n",
+	'о': "o", 'п': "p", 'р': "r", 'с': "s", 'т': "t", 'у': "u", 'ф': "f", 'х': "kh", 'ц': "ts",
+	'ч': "ch", 'ш': "sh", 'щ': "shch", 'ь': "", 'ю': "iu", 'я': "ia", 'ы': "y", 'э': "e", 'ё': "e", 'ъ': "",
 }
 
-// sortByOrder сортує сервери за порядком.
-func sortByOrder(servers []NetworkServer) {
-	for i := 0; i < len(servers); i++ {
-		for j := i + 1; j < len(servers); j++ {
-			if servers[j].Order < servers[i].Order {
-				servers[i], servers[j] = servers[j], servers[i]
+// AliasFromName — ім'я сервера в мережі з його назви: латиниця, цифри,
+// «-» і «_» (так його зручно набирати в /server). «Виживання 2» → vyzhyvannia-2.
+var trailingMCVersion = regexp.MustCompile(`[\s_-]+v?\d+\.\d+(\.\d+)?$`)
+
+func AliasFromName(name string) string {
+	// «hub 1.21.4» → hub: версія гри в назві теки імені в мережі не потрібна.
+	if short := trailingMCVersion.ReplaceAllString(strings.TrimSpace(name), ""); short != "" {
+		name = short
+	}
+	var sb strings.Builder
+	dash := false
+	for _, r := range strings.ToLower(name) {
+		if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' || r == '_' {
+			sb.WriteRune(r)
+			dash = false
+		} else if tr, ok := aliasTranslit[r]; ok {
+			sb.WriteString(tr)
+			dash = false
+		} else if !dash && sb.Len() > 0 {
+			sb.WriteByte('-')
+			dash = true
+		}
+	}
+	out := strings.Trim(sb.String(), "-")
+	if len(out) > 32 {
+		out = strings.Trim(out[:32], "-")
+	}
+	return out
+}
+
+// ValidAlias — чи ім'я придатне для мережі: 1–32 символи [A-Za-z0-9_-]
+// (Velocity шукає сервери без урахування регістру; лаунчер пропонує малі).
+func ValidAlias(a string) bool {
+	if a == "" || len(a) > 32 {
+		return false
+	}
+	for _, r := range a {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// uniqueAlias додає -2, -3… якщо ім'я вже зайняте.
+func uniqueAlias(base string, taken map[string]bool) string {
+	if base == "" {
+		base = "server"
+	}
+	a := base
+	for n := 2; taken[a]; n++ {
+		a = fmt.Sprintf("%s-%d", base, n)
+	}
+	taken[a] = true
+	return a
+}
+
+// ── velocity.toml ───────────────────────────────────────────────────────
+
+// VelocityBackend — сервер у [servers] velocity.toml.
+type VelocityBackend struct {
+	Alias      string
+	Address    string // host:port
+	InTry      bool
+	ForcedHost string
+}
+
+func tomlString(s string) string { return strconv.Quote(s) }
+
+// Приклади, які Velocity сам пише в новий velocity.toml, — не сервери мережі.
+var velocityDefaultExamples = map[string]string{
+	"lobby": "127.0.0.1:30066", "factions": "127.0.0.1:30067", "minigames": "127.0.0.1:30068",
+}
+
+// ApplyVelocityConfig переносить мережу в velocity.toml (формат Velocity 3,
+// config-version 2.7), змінюючи лише ключі, якими керує лаунчер. Імена
+// серверів — у лапках: TOML не дозволяє кирилицю й пробіли в «голих»
+// ключах. existing — поточний вміст файлу ("" — файлу ще нема).
+func ApplyVelocityConfig(existing string, port int, p ProxySettings, backends []VelocityBackend) string {
+	if port <= 0 {
+		port = 25577
+	}
+	if strings.TrimSpace(existing) == "" {
+		existing = "# Velocity: ключі мережі керуються з Shaurma Launcher, решту можна змінювати вручну.\n"
+	}
+	d := parseTOMLDoc(existing)
+	q, b, n := tomlString, strconv.FormatBool, strconv.Itoa
+
+	// Старий генератор лаунчера писав неіснуючу секцію — прибираємо.
+	d.RemoveSection("player-info-forwarding")
+
+	// Без config-version Velocity вважає файл версії 1.0 і при старті
+	// перезаписує forwarding.secret випадковим значенням.
+	d.SetIfMissing("", "config-version", q(velocityConfigVersion))
+	host := "0.0.0.0"
+	if cur, ok := d.GetString("", "bind"); ok {
+		if i := strings.LastIndex(cur, ":"); i > 0 {
+			host = cur[:i]
+		}
+	}
+	d.Set("", "bind", q(fmt.Sprintf("%s:%d", host, port)))
+	d.Set("", "motd", q(p.Motd))
+	d.Set("", "show-max-players", n(p.ShowMaxPlayers))
+	d.Set("", "online-mode", b(p.OnlineMode))
+	d.Set("", "force-key-authentication", b(p.ForceKeyAuthentication))
+	d.Set("", "prevent-client-proxy-connections", b(p.PreventClientProxyConnections))
+	d.Set("", "player-info-forwarding-mode", q(p.ForwardingMode))
+	d.Set("", "forwarding-secret-file", q("forwarding.secret"))
+	d.Set("", "announce-forge", b(p.AnnounceForge))
+	d.Set("", "kick-existing-players", b(p.KickExistingPlayers))
+	d.Set("", "ping-passthrough", q(p.PingPassthrough))
+
+	var body, try, hosts []string
+	for _, be := range backends {
+		body = append(body, q(be.Alias)+" = "+q(be.Address))
+		if be.InTry {
+			try = append(try, q(be.Alias))
+		}
+		if h := strings.TrimSpace(be.ForcedHost); h != "" {
+			hosts = append(hosts, q(h)+" = ["+q(be.Alias)+"]")
+		}
+	}
+	// Без try проксі не знає, куди пустити гравця; перший сервер — лобі.
+	if len(try) == 0 && len(backends) > 0 {
+		try = append(try, q(backends[0].Alias))
+	}
+	body = append(body, "try = ["+strings.Join(try, ", ")+"]")
+	d.ReplaceSectionBody("servers", body)
+	// forced-hosts — інлайн-таблицею на верхньому рівні (як у Velocity);
+	// секція [forced-hosts] поруч з нею дала б дубль ключа.
+	d.RemoveSection("forced-hosts")
+	d.Set("", "forced-hosts", "{"+strings.Join(hosts, ", ")+"}")
+
+	d.Set("advanced", "compression-threshold", n(p.CompressionThreshold))
+	d.Set("advanced", "compression-level", n(p.CompressionLevel))
+	d.Set("advanced", "login-ratelimit", n(p.LoginRatelimit))
+	d.Set("advanced", "connection-timeout", n(p.ConnectionTimeout))
+	d.Set("advanced", "read-timeout", n(p.ReadTimeout))
+	d.Set("advanced", "haproxy-protocol", b(p.HAProxyProtocol))
+	d.Set("advanced", "tcp-fast-open", b(p.TCPFastOpen))
+	d.Set("advanced", "failover-on-unexpected-server-disconnect", b(p.FailoverOnUnexpectedDisconnect))
+	d.Set("advanced", "log-command-executions", b(p.LogCommandExecutions))
+	d.Set("advanced", "log-player-connections", b(p.LogPlayerConnections))
+	d.Set("query", "enabled", b(p.QueryEnabled))
+	d.Set("query", "port", n(p.QueryPort))
+	return d.String()
+}
+
+// readProxySettings — налаштування проксі з наявного velocity.toml
+// (поверх значень за замовчуванням) — для імпорту готової мережі.
+func readProxySettings(d *tomlDoc) ProxySettings {
+	p := DefaultProxySettings()
+	str := func(sec, key string, dst *string) {
+		if v, ok := d.GetString(sec, key); ok {
+			*dst = v
+		}
+	}
+	boolean := func(sec, key string, dst *bool) {
+		if v, ok := d.Get(sec, key); ok {
+			*dst = v == "true"
+		}
+	}
+	num := func(sec, key string, dst *int) {
+		if v, ok := d.Get(sec, key); ok {
+			if i, err := strconv.Atoi(v); err == nil {
+				*dst = i
 			}
+		}
+	}
+	str("", "motd", &p.Motd)
+	num("", "show-max-players", &p.ShowMaxPlayers)
+	boolean("", "online-mode", &p.OnlineMode)
+	boolean("", "force-key-authentication", &p.ForceKeyAuthentication)
+	boolean("", "prevent-client-proxy-connections", &p.PreventClientProxyConnections)
+	str("", "player-info-forwarding-mode", &p.ForwardingMode)
+	boolean("", "announce-forge", &p.AnnounceForge)
+	boolean("", "kick-existing-players", &p.KickExistingPlayers)
+	str("", "ping-passthrough", &p.PingPassthrough)
+	num("advanced", "compression-threshold", &p.CompressionThreshold)
+	num("advanced", "compression-level", &p.CompressionLevel)
+	num("advanced", "login-ratelimit", &p.LoginRatelimit)
+	num("advanced", "connection-timeout", &p.ConnectionTimeout)
+	num("advanced", "read-timeout", &p.ReadTimeout)
+	boolean("advanced", "haproxy-protocol", &p.HAProxyProtocol)
+	boolean("advanced", "tcp-fast-open", &p.TCPFastOpen)
+	boolean("advanced", "failover-on-unexpected-server-disconnect", &p.FailoverOnUnexpectedDisconnect)
+	boolean("advanced", "log-command-executions", &p.LogCommandExecutions)
+	boolean("advanced", "log-player-connections", &p.LogPlayerConnections)
+	boolean("query", "enabled", &p.QueryEnabled)
+	num("query", "port", &p.QueryPort)
+	// Velocity пише режими великими літерами (MODERN, DISABLED).
+	p.ForwardingMode = strings.ToLower(p.ForwardingMode)
+	p.PingPassthrough = strings.ToLower(p.PingPassthrough)
+	return p
+}
+
+var forcedHostRe = regexp.MustCompile(`"([^"]+)"\s*=\s*\[\s*"([^"]+)"`)
+
+// readForcedHosts — ім'я сервера → домен (інлайн-таблиця або секція).
+func readForcedHosts(d *tomlDoc) map[string]string {
+	out := map[string]string{}
+	src := ""
+	if v, ok := d.Get("", "forced-hosts"); ok {
+		src = v
+	}
+	if s, e, ok := d.sectionRange("forced-hosts"); ok {
+		src += "\n" + strings.Join(d.lines[s:e], "\n")
+	}
+	for _, m := range forcedHostRe.FindAllStringSubmatch(src, -1) {
+		out[m[2]] = m[1]
+	}
+	return out
+}
+
+// sortByOrder сортує сервери за порядком (стабільно).
+func sortByOrder(servers []NetworkServer) {
+	for i := 1; i < len(servers); i++ {
+		for j := i; j > 0 && servers[j].Order < servers[j-1].Order; j-- {
+			servers[j], servers[j-1] = servers[j-1], servers[j]
 		}
 	}
 }

@@ -1,22 +1,22 @@
 // glue.go — «склеювання» Velocity-мережі: окрім списку серверів у
 // velocity.toml, реальне зʼєднання вимагає player-info-forwarding.
 //
-// За офіційною документацією Velocity/Paper (docs.papermc.io/velocity/
+// За документацією Velocity/Paper (docs.papermc.io/velocity/
 // player-information-forwarding): щоб гравці через проксі потрапляли на
 // backend з правильними UUID/скінами, треба
-//  1. velocity.toml: [player-info-forwarding] mode = "modern";
+//  1. velocity.toml: player-info-forwarding-mode = "modern" і
+//     forwarding-secret-file = "forwarding.secret" (network.go);
 //  2. тека проксі: файл forwarding.secret (спільний секрет);
-//  3. кожен Paper/Purpur backend:
+//  3. кожен backend:
 //     · server.properties: online-mode=false (автентифікує проксі);
-//     · 1.19.3+: config/paper-global.yml: proxies.velocity.enabled=true,
-//     proxies.velocity.online-mode=true, proxies.velocity.secret="…";
-//     · 1.18.2 і нижче: paper.yml: settings.velocity-support.{enabled,
-//     online-mode, secret}.
+//     · Paper/Purpur 1.19+: config/paper-global.yml → proxies.velocity
+//     {enabled, online-mode, secret}; ≤1.18.2: paper.yml →
+//     settings.velocity-support;
+//     · Fabric/Quilt: мод FabricProxy-Lite → config/FabricProxy-Lite.toml;
+//     · Forge/NeoForge: мод Proxy Compatible Forge → config/pcf-common.toml.
 //
-// Ці файли дописуються АКУРАТНО (лаунчер лише додає свої ключі, чужі
-// рядки лишає), тому повторні застосування безпечні. Paper при першому
-// старті сам розгорне повний конфіг на основі наших ключів — вони
-// збережуться (Paper зливає дефолти з існуючим файлом).
+// Ключі ставляться точково (yamlkv.go), решта конфігів не змінюється, тож
+// повторні застосування безпечні.
 package servers
 
 import (
@@ -26,6 +26,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -51,10 +52,53 @@ func ensureForwardingSecret(proxyDir string) (string, error) {
 	return secret, nil
 }
 
-// velocityForwardingSupported каже, чи ядро backend-а вміє modern forwarding
-// нативно (без додаткових модів): Paper та його форки (Purpur).
-func velocityForwardingSupported(core string) bool {
-	return core == "paper" || core == "purpur"
+// Як backend приймає modern forwarding.
+const (
+	fwdPaper       = "paper"        // Paper/Purpur — нативно
+	fwdFabricProxy = "fabric-proxy" // мод FabricProxy-Lite
+	fwdPCF         = "pcf"          // мод Proxy Compatible Forge
+	fwdNone        = ""             // не вміє (vanilla, або мод не встановлено)
+)
+
+// backendForwarding визначає, чим backend приймає forwarding.
+func backendForwarding(srv *Server) string {
+	switch srv.Core {
+	case CorePaper, CorePurpur:
+		return fwdPaper
+	case "fabric", "quilt":
+		if modJarPresent(srv.Dir, "fabricproxy") {
+			return fwdFabricProxy
+		}
+	case "forge", "neoforge":
+		if modJarPresent(srv.Dir, "proxy-compatible-forge", "proxycompatibleforge", "pcf-") {
+			return fwdPCF
+		}
+	}
+	return fwdNone
+}
+
+// modJarPresent — чи є в mods/ увімкнений jar, ім'я якого містить один із
+// фрагментів (без урахування регістру й дефісів/підкреслень).
+func modJarPresent(dir string, fragments ...string) bool {
+	entries, err := os.ReadDir(filepath.Join(dir, "mods"))
+	if err != nil {
+		return false
+	}
+	norm := func(s string) string {
+		return strings.NewReplacer("-", "", "_", "", " ", "").Replace(strings.ToLower(s))
+	}
+	for _, e := range entries {
+		name := strings.ToLower(e.Name())
+		if !strings.HasSuffix(name, ".jar") {
+			continue
+		}
+		for _, f := range fragments {
+			if strings.Contains(norm(name), norm(f)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // mcVersionAtLeast — чи версія (major.minor…) не нижча за (major, minor).
@@ -77,97 +121,150 @@ func mcVersionAtLeast(version string, major, minor int) bool {
 	return mn >= minor
 }
 
-// applyBackendForwarding налаштовує ОДИН Paper/Purpur backend під modern
-// forwarding: online-mode=false у server.properties + секрет у
-// config/paper-global.yml (1.19.3+) або paper.yml settings.velocity-support
-// (1.18.2 і нижче). Повертає помилку, але не критичну для списку мережі.
-func applyBackendForwarding(srv *Server, secret string) error {
+// paperForwardingPath — файл і шлях ключів velocity-налаштувань Paper.
+// Спершу — який файл уже є (версію з теки не завжди вдається визначити),
+// далі — за версією гри.
+func paperForwardingPath(srv *Server) (file string, base []string) {
+	global := filepath.Join(srv.Dir, "config", "paper-global.yml")
+	legacy := filepath.Join(srv.Dir, "paper.yml")
+	switch {
+	case fileExists(global):
+		return global, []string{"proxies", "velocity"}
+	case fileExists(legacy) && !mcVersionAtLeast(srv.MCVersion, 1, 19):
+		return legacy, []string{"settings", "velocity-support"}
+	}
+	if srv.MCVersion == "" || mcVersionAtLeast(srv.MCVersion, 1, 19) {
+		return filepath.Join(srv.Dir, "config", "paper-global.yml"), []string{"proxies", "velocity"}
+	}
+	return filepath.Join(srv.Dir, "paper.yml"), []string{"settings", "velocity-support"}
+}
+
+// quoteYAML — скаляр у одинарних лапках.
+func quoteYAML(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
+// setYAMLFile ставить кілька ключів у YAML-файл (створює файл, якщо нема).
+func setYAMLFile(path string, base []string, kv [][2]string) error {
+	data, _ := os.ReadFile(path)
+	doc := string(data)
+	for _, p := range kv {
+		doc = setYAMLScalar(doc, append(append([]string{}, base...), p[0]), p[1])
+	}
+	if !strings.HasSuffix(doc, "\n") {
+		doc += "\n"
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return writeFileAtomic(path, []byte(doc), 0644)
+}
+
+var tomlKeyRe = func(key string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^(\s*)` + regexp.QuoteMeta(key) + `\s*=.*$`)
+}
+
+// setTOMLFile ставить ключ=значення у простий TOML-конфіг мода (рядок з
+// ключем замінюється, інакше дописується під section або в кінець).
+func setTOMLFile(path, section, key, value string) error {
+	data, _ := os.ReadFile(path)
+	doc := string(data)
+	re := tomlKeyRe(key)
+	if re.MatchString(doc) {
+		doc = re.ReplaceAllString(doc, "${1}"+key+" = "+value)
+	} else {
+		if section != "" && !strings.Contains(doc, "["+section+"]") {
+			doc += "\n[" + section + "]\n"
+		}
+		if section != "" {
+			i := strings.Index(doc, "["+section+"]") + len(section) + 2
+			doc = doc[:i] + "\n\t" + key + " = " + value + doc[i:]
+		} else {
+			doc += key + " = " + value + "\n"
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return writeFileAtomic(path, []byte(doc), 0644)
+}
+
+// applyBackendForwarding налаштовує ОДИН backend під forwarding проксі.
+// proxyOnline — чи проксі сам перевіряє акаунти Mojang (Paper має знати
+// те саме, інакше офлайн-гравцям ламаються UUID); lock — слухати лише
+// 127.0.0.1 (вхід тільки через проксі).
+func applyBackendForwarding(srv *Server, secret, mode string, proxyOnline, lock bool) error {
 	if srv == nil || srv.Dir == "" {
 		return fmt.Errorf("сервер без теки")
 	}
 	_ = os.MkdirAll(srv.Dir, 0755)
 
-	// 1) server.properties: online-mode=false (проксі автентифікує).
-	if err := WriteServerProperties(srv.Dir, []PropUpdate{{Key: "online-mode", Value: "false"}}); err != nil {
+	// server.properties: проксі автентифікує гравців сам.
+	props := []PropUpdate{{Key: "online-mode", Value: "false"}}
+	// Сервер ще не запускався — файл створиться з дефолтним 25565; порт
+	// сервера з налаштувань має зберегтися, інакше він мовчки змінився б.
+	if !fileExists(filepath.Join(srv.Dir, "server.properties")) && srv.Port > 0 {
+		props = append(props, PropUpdate{Key: "server-port", Value: fmt.Sprint(srv.Port)})
+	}
+	if lock {
+		props = append(props, PropUpdate{Key: "server-ip", Value: "127.0.0.1"})
+	}
+	if err := WriteServerProperties(srv.Dir, props); err != nil {
 		return fmt.Errorf("server.properties (%s): %w", srv.Name, err)
 	}
 
-	old := !mcVersionAtLeast(srv.MCVersion, 1, 19)
-	var file string
-	var block string
-	if old {
-		// Paper ≤1.18.2: paper.yml → settings.velocity-support
-		file = filepath.Join(srv.Dir, "paper.yml")
-		block = "settings:\n  velocity-support:\n    enabled: true\n    online-mode: true\n    secret: " + quoteYAML(secret) + "\n"
-	} else {
-		// Paper 1.19.3+/1.19+: config/paper-global.yml → proxies.velocity
-		file = filepath.Join(srv.Dir, "config", "paper-global.yml")
-		block = "proxies:\n  velocity:\n    enabled: true\n    online-mode: true\n    secret: " + quoteYAML(secret) + "\n"
-	}
-	if err := upsertYAMLKeys(file, block, "secret: "); err != nil {
-		return fmt.Errorf("%s (%s): %w", filepath.Base(file), srv.Name, err)
+	modern := mode == "modern"
+	switch backendForwarding(srv) {
+	case fwdPaper:
+		file, base := paperForwardingPath(srv)
+		kv := [][2]string{
+			{"enabled", fmt.Sprint(modern)},
+			{"online-mode", fmt.Sprint(proxyOnline)},
+			{"secret", quoteYAML(secret)},
+		}
+		if err := setYAMLFile(file, base, kv); err != nil {
+			return fmt.Errorf("%s (%s): %w", filepath.Base(file), srv.Name, err)
+		}
+		// Legacy/BungeeGuard — через spigot.yml settings.bungeecord.
+		if err := setYAMLFile(filepath.Join(srv.Dir, "spigot.yml"), []string{"settings"},
+			[][2]string{{"bungeecord", fmt.Sprint(mode == "legacy" || mode == "bungeeguard")}}); err != nil {
+			return fmt.Errorf("spigot.yml (%s): %w", srv.Name, err)
+		}
+	case fwdFabricProxy:
+		f := filepath.Join(srv.Dir, "config", "FabricProxy-Lite.toml")
+		if err := setTOMLFile(f, "", "secret", fmt.Sprintf("%q", secret)); err != nil {
+			return err
+		}
+		return setTOMLFile(f, "", "hackOnlineMode", "true")
+	case fwdPCF:
+		f := filepath.Join(srv.Dir, "config", "pcf-common.toml")
+		return setTOMLFile(f, "modernForwarding", "forwardingSecret", fmt.Sprintf("%q", secret))
 	}
 	return nil
 }
 
-// quoteYAML — простий скаляр у лапках (секрет — hex, без спецсимволів,
-// але лапки не завадять).
-func quoteYAML(s string) string {
-	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
-}
-
-// upsertYAMLKeys створює (якщо нема) або дописує в існуючий YAML-файл
-// наш блок ключів: якщо в файлі вже є рядок, що містить marker (напр.
-// "secret: "), ми не чіпаємо файл (значить, користувач/Paper уже
-// налаштували своє); інакше — якщо файл порожній або згенерований
-// сервером, дописуємо блок у кінець. Для файлу, який ще не існує,
-// створюємо його лише з нашим блоком (Paper зіллє дефолти при старті).
-func upsertYAMLKeys(path, block, marker string) error {
-	if _, err := os.Stat(path); err == nil {
-		data, rerr := os.ReadFile(path)
-		if rerr != nil {
-			return rerr
-		}
-		if strings.Contains(string(data), marker) {
-			return nil // уже налаштовано
-		}
-		// Дописуємо блок у кінець (Paper збереже чужі ключі).
-		out := append(data, []byte(block)...)
-		return writeFileAtomic(path, out, 0644)
-	}
-	_ = os.MkdirAll(filepath.Dir(path), 0755)
-	return writeFileAtomic(path, []byte(block), 0644)
-}
-
 // ApplyNetworkGlue налаштовує forwarding для всієї мережі: секрет +
-// velocity.toml на проксі + конфіг кожного Paper/Purpur backend-а.
-// idempotent — можна викликати на кожному збереженні/старті мережі.
-func ApplyNetworkGlue(proxy *Server, servers map[string]*Server, net *Network) error {
+// конфіг кожного backend-а. Повертає помилки по серверах (ID → текст).
+func ApplyNetworkGlue(proxy *Server, servers map[string]*Server, net *Network) map[string]string {
+	errs := map[string]string{}
 	if proxy == nil {
-		return fmt.Errorf("проксі не знайдено")
+		errs[""] = "проксі не знайдено"
+		return errs
 	}
 	secret, err := ensureForwardingSecret(proxy.Dir)
 	if err != nil {
-		return err
+		errs[proxy.ID] = err.Error()
+		return errs
 	}
-	for _, ns := range net.Servers {
-		if ns.IsProxy {
-			continue
-		}
+	for _, ns := range net.Members() {
 		srv := servers[ns.ServerID]
 		if srv == nil {
 			continue
 		}
-		if !velocityForwardingSupported(srv.Core) {
-			// Vanilla/Fabric/Forge потребують додаткових модів для
-			// forwarding — не чіпаємо їхні конфіги, мережа все одно
-			// працює в «none»-режимі для таких backend-ів.
-			log.Printf("[servers] backend %s (%s) не підтримує modern forwarding нативно — пропускаємо конфіг", srv.Name, srv.Core)
-			continue
-		}
-		if err := applyBackendForwarding(srv, secret); err != nil {
+		if err := applyBackendForwarding(srv, secret, net.Proxy.ForwardingMode, net.Proxy.OnlineMode, net.LockBackends); err != nil {
 			log.Printf("[servers] glue %s: %v", srv.Name, err)
+			errs[srv.ID] = err.Error()
 		}
 	}
-	return nil
+	return errs
 }

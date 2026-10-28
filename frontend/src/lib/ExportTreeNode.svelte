@@ -146,7 +146,7 @@
     font-size: 12px; color: var(--text); overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;
   }
-  .ep-node-size { font-size: 10.5px; color: var(--text-dim); font-family: var(--font-mono); flex-shrink: 0; }
+  .ep-node-size { font-size: var(--fs-min); color: var(--text-dim); font-family: var(--font-mono); flex-shrink: 0; }
   .ep-node-children { margin-left: 16px; border-left: 1px solid var(--hover); padding-left: 6px; }
   input[type='checkbox'] { accent-color: var(--orange); cursor: pointer; flex-shrink: 0; }
 </style>

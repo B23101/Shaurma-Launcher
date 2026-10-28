@@ -86,9 +86,9 @@
 </div>
 
 <style>
-  .fr { --pc: var(--orange); position: relative; display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 8px 0 7px; margin: 1px 5px; border-radius: 10px;
+  .fr { --pc: var(--orange); position: relative; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px 0 8px; margin: 1px 0; border-radius: var(--r-md, 12px);
     cursor: pointer; box-sizing: border-box; user-select: none; border: 1px solid transparent;
-    content-visibility: auto; contain-intrinsic-size: auto 44px;
+    content-visibility: auto; contain-intrinsic-size: auto 46px;
     transition: background-color .16s, border-color .16s; }
   .fr.enter { animation: fr-in .3s var(--ff-ease) both; }
   @keyframes fr-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
@@ -96,7 +96,8 @@
   /* Гравець у грі: картка тоновано кольором його збірки. */
   .fr.in_game { background: linear-gradient(100deg, color-mix(in srgb, var(--pc) 15%, transparent), color-mix(in srgb, var(--pc) 3%, transparent) 70%); }
   .fr.in_game:hover { background: linear-gradient(100deg, color-mix(in srgb, var(--pc) 22%, transparent), color-mix(in srgb, var(--pc) 6%, transparent) 70%); }
-  .fr.sel { background: linear-gradient(100deg, rgba(var(--orange-rgb), .2), rgba(var(--orange-rgb), .06)); border-color: rgba(var(--orange-rgb), .38); }
+  .fr.sel, .fr.sel:hover { background: rgba(var(--orange-rgb), .14); }
+  .fr.sel .fr-nick { color: var(--orange); }
   .fr.offline:not(.sel):not(:hover) .fr-info { opacity: .7; }
   .fr.busy { opacity: .5; pointer-events: none; }
   .fr:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 70%, transparent); outline-offset: -2px; }
@@ -108,13 +109,13 @@
      пропускає клік до .fr, який і відкриває чат. */
   .fr-av:disabled { cursor: inherit; pointer-events: none; }
   .fr-av:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
-  .fr-ub { position: absolute; top: -6px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 9.5px; border: 2px solid var(--bg-panel); box-sizing: content-box; }
+  .fr-ub { position: absolute; top: -6px; right: -8px; min-width: 16px; height: 16px; padding: 0 4px; font-size: var(--fs-min); border: 2px solid var(--fl-bg, var(--bg-panel)); box-sizing: content-box; }
 
   .fr-info { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; transition: opacity .2s; }
-  .fr-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; font: 650 12.5px/1.2 var(--font-ui); color: var(--text); }
+  .fr-name { display: flex; align-items: baseline; gap: 5px; min-width: 0; font: 600 13px/1.2 var(--font-ui); color: var(--text); }
   .fr-name.unread { font-weight: 800; }
   .fr-nick { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .fr-sub { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 10.5px/1.2 var(--font-ui); color: var(--text-dim); }
+  .fr-sub { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11px/1.2 var(--font-ui); color: var(--text-mute); }
   .fr-sub.online { color: var(--ff-ok); }
   .fr-sub.away { color: var(--ff-warn); }
   .fr-sub.typing { color: var(--orange); }
@@ -124,14 +125,14 @@
 
   .fr-tail { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
   .fr-muted { font-size: 14px; color: var(--text-dim); }
-  .fr-unread { min-width: 18px; height: 18px; border-radius: 9px; font-size: 10px; box-shadow: 0 4px 12px rgba(var(--orange-rgb), .35); }
+  .fr-unread { min-width: 18px; height: 18px; border-radius: 9px; font-size: var(--fs-min); box-shadow: 0 4px 12px rgba(var(--orange-rgb), .35); }
 
   /* Швидка дія: накладається на правий край, а не штовхає вміст. */
   .fr-act { position: absolute; right: 5px; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 26px; opacity: 0; pointer-events: none; transition: opacity .14s;
-    background: linear-gradient(90deg, transparent, var(--bg-panel) 24px); border-radius: 0 10px 10px 0; }
+    background: linear-gradient(90deg, transparent, var(--fl-bg, var(--bg-panel)) 24px); border-radius: 0 10px 10px 0; }
   .fr:hover .fr-act, .fr:focus-within .fr-act { opacity: 1; pointer-events: auto; }
   .fr-act-b { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 7px; cursor: pointer; white-space: nowrap;
-    font: 700 10.5px/1 var(--font-ui); color: #fff; background: linear-gradient(135deg, var(--orange), var(--orange-2, var(--orange))); border: 0;
+    font: 700 var(--fs-min)/1 var(--font-ui); color: #fff; background: linear-gradient(135deg, var(--orange), var(--orange-2, var(--orange))); border: 0;
     box-shadow: 0 3px 8px rgba(var(--orange-rgb), .24); transition: transform .12s, filter .14s; }
   .fr-act-b:hover { filter: brightness(1.08); }
   .fr-act-b:active { transform: scale(.94); }
@@ -143,7 +144,7 @@
   @keyframes dot-b { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
 
   /* Згорнутий список-рейка: лише аватари по центру. */
-  :global(.fl.compact) .fr { justify-content: center; padding: 0; margin: 2px 5px; height: 44px; contain-intrinsic-size: auto 44px; }
+  :global(.fl.compact) .fr { justify-content: center; padding: 0; margin: 2px 0; height: 46px; contain-intrinsic-size: auto 46px; }
 
   @media (prefers-reduced-motion: reduce) { .fr.enter, .dots i { animation: none; } .fr, .fr-act, .fr-av { transition: none; } }
 </style>

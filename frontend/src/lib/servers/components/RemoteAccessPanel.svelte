@@ -8,8 +8,10 @@
   const toastInfo = (m: string) => toast(m, 'info')
   import type { RemoteAccessView, RemoteServerAccess, RemoteAuditEntry, SocialFriend } from '../../types'
   import FriendAvatar from '../../friends/FriendAvatar.svelte'
+  import { REMOTE_CODES } from '../remoteServers.svelte'
 
-  let { serverId = '' }: { serverId?: string } = $props()
+  // isProxy — проксі Velocity: можна дати другу запуск/зупинку й серверів його мережі.
+  let { serverId = '', isProxy = false }: { serverId?: string; isProxy?: boolean } = $props()
 
   let view = $state<RemoteAccessView>({ paused: false, servers: [] })
   let friends = $state<SocialFriend[]>([])
@@ -34,18 +36,19 @@
 
   $effect(() => { void serverId; void load() })
   $effect(() => {
-    const off1 = on('remote:key_changed', (d: any) => { keyWarn = d?.message ?? 'Ключ VPS змінився' })
+    const off1 = on('remote:key_changed', (d: any) => { keyWarn = d?.message ?? 'Ключ сервера Шаурми змінився — перевірте з’єднання' })
     const off2 = on('friends:update', () => { void load() })
     return () => { off1(); off2() }
   })
 
-  async function setGrant(friendId: string, patch: Partial<{ start: boolean; stop: boolean; console: boolean; exec: boolean }>) {
+  async function setGrant(friendId: string, patch: Partial<{ start: boolean; stop: boolean; console: boolean; exec: boolean; network: boolean }>) {
     const g = grantOf(friendId)
-    const next = { start: !!g?.start, stop: !!g?.stop, console: !!g?.console, exec: !!g?.exec, ...patch }
+    const next = { start: !!g?.start, stop: !!g?.stop, console: !!g?.console, exec: !!g?.exec, network: !!g?.network, ...patch }
     if (!next.console) next.exec = false // команди «наосліп» заборонені
+    if (!next.start && !next.stop) next.network = false // мережа — це запуск/зупинка її серверів
     busy = true
     try {
-      await App.SetRemoteGrant(serverId, friendId, next.start, next.stop, next.console, next.exec)
+      await App.SetRemoteGrant(serverId, friendId, next.start, next.stop, next.console, next.exec, next.network)
       await load()
     } catch (e: any) { toastErr(String(e?.message ?? e)) } finally { busy = false }
   }
@@ -69,18 +72,20 @@
 
   const fmt = (ts: number) => new Date(ts).toLocaleString()
 
-  const PERMS = [
+  const BASE_PERMS = [
     { k: 'start', icon: 'ti-player-play', label: 'Запуск' },
     { k: 'stop', icon: 'ti-player-stop', label: 'Зупинка' },
     { k: 'console', icon: 'ti-eye', label: 'Консоль' },
     { k: 'exec', icon: 'ti-terminal-2', label: 'Команди' },
   ] as const
+  const NETWORK_PERM = { k: 'network', icon: 'ti-topology-star-3', label: 'Сервери мережі' } as const
+  const PERMS = $derived(isProxy ? [...BASE_PERMS, NETWORK_PERM] : [...BASE_PERMS])
   const withAccess = $derived(acc.grants.filter(g => g.start || g.stop || g.console || g.exec).length)
   const OPS: Record<string, string> = { start: 'Запуск', stop: 'Зупинка', console_open: 'Відкрив консоль', console_exec: 'Команда', console_close: 'Закрив консоль' }
 </script>
 
 <section class="rap">
-  <header class="rap-hero">
+  <header class="rap-hero" data-skey="pause">
     <div class="rap-ic"><i class="ti ti-users-group"></i></div>
     <div class="rap-ht">
       <div class="rap-t">Доступ друзів</div>
@@ -101,14 +106,14 @@
 
   <div class="rap-banner info">
     <i class="ti ti-shield-lock"></i>
-    <span>Друг керує сервером, лише поки ваш лаунчер у мережі. Кожну дію підтверджує VPS (дружба і право), а ваш лаунчер перевіряє її ще раз. Команди діють лише разом із переглядом консолі.</span>
+    <span>Друг керує сервером, лише поки ваш лаунчер у мережі. Кожну дію перевіряє сервер Шаурми і ваш лаунчер.</span>
   </div>
 
   {#if friends.length === 0}
     <div class="rap-empty"><i class="ti ti-user-plus"></i> У вас ще немає друзів у Shaurma.</div>
   {:else}
     <div class="rap-h"><i class="ti ti-users"></i> Друзі</div>
-    <div class="rap-list">
+    <div class="rap-list" data-skey="friends">
       {#each friends as f (f.accountId)}
         {@const g = grantOf(f.accountId)}
         {@const has = !!(g?.start || g?.stop || g?.console || g?.exec)}
@@ -123,9 +128,10 @@
           <div class="rap-perms">
             {#each PERMS as p (p.k)}
               {@const on = !!g?.[p.k]}
-              {@const dis = busy || (p.k === 'exec' && !g?.console)}
+              {@const dis = busy || (p.k === 'exec' && !g?.console) || (p.k === 'network' && !g?.start && !g?.stop)}
               <button class="rap-perm" class:on aria-pressed={on} disabled={dis}
-                      title={p.k === 'exec' && !g?.console ? 'Спершу дозвольте перегляд консолі' : ''}
+                      title={p.k === 'exec' && !g?.console ? 'Спершу дозвольте перегляд консолі'
+                        : p.k === 'network' ? 'Запуск і зупинка (як позначено ліворуч) діють і на кожен сервер мережі проксі. Консоль серверів мережі — окремо на кожному сервері.' : ''}
                       onclick={() => setGrant(f.accountId, { [p.k]: !on })}>
                 <i class="ti {p.icon}"></i> {p.label}
               </button>
@@ -137,29 +143,31 @@
 
     <div class="rap-h"><i class="ti ti-adjustments"></i> Додаткові дозволи</div>
     <div class="rap-opts">
-      <div class="rap-opt">
+      <div class="rap-opt" data-skey="stopplayers">
         <div class="rap-ot"><b>Зупинка, коли на сервері є гравці</b><span>Інакше зупинку заблоковано, поки хтось онлайн.</span></div>
         <button class="toggle" class:on={acc.allowStopWithPlayers} role="switch" aria-checked={acc.allowStopWithPlayers} aria-label="Дозволити зупинку з гравцями" onclick={() => flag('players', !acc.allowStopWithPlayers)}></button>
       </div>
-      <div class="rap-opt">
-        <div class="rap-ot"><b>Привілейовані команди</b><span><code>op</code>, <code>deop</code>, <code>whitelist</code>, <code>save-off</code> — небезпечні, вмикайте лише для довірених.</span></div>
+      <div class="rap-opt" data-skey="privileged">
+        <div class="rap-ot"><b>Привілейовані команди</b><span><code>op</code>, <code>deop</code>, <code>whitelist</code>, <code>save-off</code>, плагіни прав (<code>lp</code>, <code>pex</code>) і <code>sudo</code> — також усередині <code>execute … run</code>. Небезпечні, вмикайте лише для довірених.</span></div>
         <button class="toggle" class:on={acc.allowPrivileged} role="switch" aria-checked={acc.allowPrivileged} aria-label="Дозволити привілейовані команди" onclick={() => flag('priv', !acc.allowPrivileged)}></button>
       </div>
     </div>
   {/if}
 
-  <button class="rap-audit-h" class:open={showAudit} onclick={toggleAudit}>
+  <button class="rap-audit-h" class:open={showAudit} onclick={toggleAudit} data-skey="audit">
     <span><i class="ti ti-history"></i> Журнал дій друзів</span>
     <i class="ti ti-chevron-down rap-chev"></i>
   </button>
   {#if showAudit}
     <div class="rap-audit">
-      {#each audit as a (a.ts + a.op + a.friend)}
+      <!-- Ключ — індекс: кілька спроб в одну мілісекунду (напр. відмови rate_limited) давали
+           однаковий ключ ts+op+friend, і Svelte падав на дублі ключа. -->
+      {#each audit as a, i (i)}
         <div class="rap-a">
           <span class="rap-a-t">{fmt(a.ts)}</span>
           <b>{a.nick || a.friend.slice(0, 8)}</b>
           <span>{OPS[a.op] ?? a.op}</span>
-          <span class="rap-a-r" class:bad={a.result !== 'ok' && a.result !== 'accepted'}>{a.result}</span>
+          <span class="rap-a-r" class:bad={a.result !== 'ok' && a.result !== 'accepted'} title={a.result}>{REMOTE_CODES[a.result] ?? a.result}</span>
           {#if a.cmd}<code>{a.cmd}</code>{/if}
         </div>
       {:else}
@@ -252,6 +260,6 @@
   .rap-a + .rap-a { border-top: 1px solid var(--border); }
   .rap-a b { color: var(--text); font-weight: 700; }
   .rap-a-t { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); }
-  .rap-a-r { margin-left: auto; padding: 2px 8px; border-radius: 999px; font: 700 10.5px/1.2 var(--font-ui); color: var(--green); background: rgba(34, 197, 94, .12); }
+  .rap-a-r { margin-left: auto; padding: 2px 8px; border-radius: 999px; font: 700 var(--fs-min)/1.2 var(--font-ui); color: var(--green); background: rgba(34, 197, 94, .12); }
   .rap-a-r.bad { color: var(--red); background: rgba(239, 68, 68, .12); }
 </style>

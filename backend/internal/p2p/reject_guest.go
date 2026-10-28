@@ -160,6 +160,28 @@ func (g *GuestService) statusTransit(conn net.Conn, hs Handshake, upstream net.C
 		g.rejectClient(conn, hs, RejHostNoResponse, cid, false)
 		return
 	}
+	// Справжній пінг списку серверів шле Status Request — рівно 01 00. Передача збірок/серверів
+	// (internal/share) теж відкривається зі state=1 (щоб не займати слот кімнати), але далі
+	// говорить по HTTP: перший байт «G»/«P» читався як довжина фрейму > 64, з'єднання тихо
+	// закривалось і одержувач вічно висів на «Підключення…». Усе, що не схоже на Status
+	// Request, віддаємо звичайним тунелем.
+	if bc, ok := conn.(*bufConn); ok {
+		_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		head, perr := bc.r.Peek(2)
+		_ = conn.SetReadDeadline(time.Time{})
+		if perr != nil {
+			return // клієнт пішов, нічого не надіславши
+		}
+		if !(head[0] == 0x01 && head[1] == 0x00) {
+			sniff := newRejectSniffConn(upstream, func(r RejectReason) {
+				sent := writeReject(conn, hs.ProtocolVersion, hs.NextState, r, true)
+				launchlog.Info(compGuest, "[%s] %s: хост не пустив: %s (надіслано=%v)", cid, address, RejectKey(r), sent)
+			})
+			stats := pipeBothStats(conn, sniff)
+			launchlog.Debug(compGuest, "[%s] тунель (не пінг) %s за %s: %s", cid, address, sw, stats.describe("клієнт", "хост"))
+			return
+		}
+	}
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	raw, _, err := readFrame(conn, 64)
 	_ = conn.SetReadDeadline(time.Time{})

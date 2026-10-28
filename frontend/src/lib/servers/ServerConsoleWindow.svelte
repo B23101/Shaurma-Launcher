@@ -136,7 +136,7 @@
   .scw-meta { flex: 1; min-width: 0; }
   .scw-name { font: 700 12.5px/1.2 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .scw-sub { display: flex; gap: 8px; margin-top: 2px; flex-wrap: wrap; }
-  .scw-sub span { display: inline-flex; align-items: center; gap: 3px; font: 400 9.5px/1 var(--font-mono); color: var(--text-mute); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .scw-sub span { display: inline-flex; align-items: center; gap: 3px; font: 400 var(--fs-min)/1 var(--font-mono); color: var(--text-mute); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .scw-sub i { font-size: 11px; color: var(--pcol); }
   .scw-win { display: flex; gap: 6px; flex-shrink: 0; }
   .scw-b {

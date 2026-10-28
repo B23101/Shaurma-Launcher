@@ -163,3 +163,24 @@ func TestAuditNewestFirstFilterAndCap(t *testing.T) {
 		t.Fatalf("журнал має обрізатись до %d, а є %d", MaxAudit, n)
 	}
 }
+
+// Сервер видалено / перейменовано (id = тека) — права йдуть за ним; «сервер друга», виданий іншим
+// акаунтом цього ж лаунчера, впізнається.
+func TestServerLifecycleAndSameLauncher(t *testing.T) {
+	s := Open(t.TempDir())
+	if err := s.SetGrant(me, "s1", f1, true, false, 1); err != nil {
+		t.Fatal(err)
+	}
+	if !s.GrantedOnThisLauncher(me, f1, "s1") || s.GrantedOnThisLauncher(me, f2, "s1") || s.GrantedOnThisLauncher(f1, me, "s1") {
+		t.Fatal("GrantedOnThisLauncher")
+	}
+	if !s.RenameServer("s1", "s2") || s.GrantedOnThisLauncher(me, f1, "s1") || !s.GrantedOnThisLauncher(me, f1, "s2") {
+		t.Fatal("RenameServer має перенести права")
+	}
+	if !s.ForgetServer("s2") || s.GrantedOnThisLauncher(me, f1, "s2") || len(s.Shared(me)) != 0 {
+		t.Fatal("ForgetServer має прибрати права")
+	}
+	if s.ForgetServer("s2") || s.RenameServer("nope", "x") {
+		t.Fatal("повторні виклики нічого не змінюють")
+	}
+}

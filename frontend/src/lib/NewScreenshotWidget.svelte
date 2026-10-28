@@ -149,7 +149,7 @@
   .scr-widget-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: var(--text); }
   .scr-widget-title i { color: var(--orange); font-size: 13px; }
   .scr-widget-pack { font-size: 11px; color: var(--text-mute); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scr-widget-time { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 4px; }
+  .scr-widget-time { font-size: var(--fs-min); color: var(--text-dim); font-family: var(--font-mono); margin-bottom: 4px; }
   .scr-widget-actions { display: flex; gap: 6px; margin-top: auto; }
   .scr-widget-btn {
     flex: 1; border: none; border-radius: 8px; background: var(--hover); color: var(--text);

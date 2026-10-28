@@ -101,6 +101,8 @@ func (a *App) socialService() *social.Service {
 		notifySeenInvites.mu.Lock()
 		notifySeenInvites.m = map[string]bool{}
 		notifySeenInvites.mu.Unlock()
+		// Інший акаунт: сервери друзів і консолі попереднього тут не показуємо.
+		a.remoteOnIdentityChanged()
 	}
 	return svc
 }
@@ -137,6 +139,7 @@ func (a *App) stopSocial() {
 	if svc != nil {
 		svc.Stop()
 	}
+	a.remoteOnIdentityChanged()
 }
 
 // ── Хуки присутності (викликаються поруч із Discord RPC) ─────────────────
@@ -209,7 +212,11 @@ func (a *App) ListSentFriendInvites() ([]social.Invite, error) {
 
 // RemoveFriend — видалити друга.
 func (a *App) RemoveFriend(accountID string) error {
-	return a.socialService().Remove(accountID)
+	if err := a.socialService().Remove(accountID); err != nil {
+		return err
+	}
+	a.remoteOnFriendRemoved(accountID)
+	return nil
 }
 
 // SetFriendsPrivacy — зберегти приватність (три «друзівські» перемикачі).

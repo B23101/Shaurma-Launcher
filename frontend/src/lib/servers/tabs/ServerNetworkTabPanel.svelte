@@ -4,8 +4,7 @@
   //   • локальна адреса (ServerIpBar);
   //   • публічний доступ через власну P2P-систему (ServerP2PWidget) і
   //     P2P-кімната (ServerP2PAccess: режим доступу, списки, співхости);
-  //   • для Velocity-проксі — керування проксі та backend-серверами
-  //     (ServerNetworkPanel).
+  //   (мережа серверів самого проксі — окрема вкладка ServerProxyTab).
   //
   // НАВАНТАЖЕННЯ (CPU/RAM/гравці/uptime) тут БІЛЬШЕ НЕ ПОКАЗУЄМО: воно
   // переїхало в банер сервера (ServerBanner → ServerMetricsPanel). «Продуктивність
@@ -13,12 +12,16 @@
   // щоб побачити, що сервер задихається, доводилось відкривати інший розділ.
   //
   // Вкладка доступна ДЛЯ ВСІХ ядер (не лише Velocity).
-  import type { ServerView, P2PStatus } from '../../types'
+  //
+  // remoteServer — сервер друга: лише його публічна P2P-адреса, яку друг
+  // вмикає з правом запуску й вимикає з правом зупинки (решта — у власника).
+  import type { ServerView, P2PStatus, RemoteServer } from '../../types'
+  import { remote, remoteKey, remoteP2P } from '../remoteServers.svelte'
+  import { toast } from '../../toast.svelte'
   import { App } from '../../wails'
   import ServerIpBar from '../components/ServerIpBar.svelte'
   import ServerP2PWidget from '../components/ServerP2PWidget.svelte'
   import ServerP2PAccess from '../components/ServerP2PAccess.svelte'
-  import ServerNetworkPanel from '../../ServerNetworkPanel.svelte'
   import { t } from '../../i18n.svelte'
 
   let {
@@ -27,13 +30,25 @@
     refreshKey = 0,
     velocityProxyRunning = false,
     onAutoStartChange = null,
+    remoteServer = null,
   }: {
     srv: ServerView
     isRunning?: boolean
     refreshKey?: number
     velocityProxyRunning?: boolean
     onAutoStartChange?: ((v: boolean) => void) | null
+    remoteServer?: RemoteServer | null
   } = $props()
+
+  // ── Сервер друга: P2P-адреса ──
+  const rs = $derived(remoteServer)
+  const p2pBusy = $derived(!!rs && !!remote.p2pPending[remoteKey(rs)])
+  // Увімкнути — з правом запуску на запущеному сервері, вимкнути — з правом зупинки.
+  const canToggleP2P = $derived(!!rs && rs.ownerOnline && (rs.p2p ? rs.canStop : rs.canStart && rs.state === 'running'))
+  async function copyAddr() {
+    if (!rs?.p2pAddr) return
+    try { await App.CopyToClipboard(rs.p2pAddr); toast(t('servers.remote.addrCopied'), 'success') } catch { /* ignore */ }
+  }
 
   const isVelocity = $derived(srv.core === 'velocity')
   const port = $derived(srv.port ?? 25565)
@@ -52,12 +67,43 @@
   $effect(() => {
     const rk = refreshKey
     void rk
+    if (remoteServer) return
     App.GetP2PStatus()
       .then((st) => { p2pStatus = st; p2pBlocked = !st.configured })
       .catch(() => { p2pStatus = null; p2pBlocked = false })
   })
 </script>
 
+{#if rs}
+<div class="snt">
+  <div class="snt-block">
+    <div class="snt-title"><i class="ti ti-world"></i> {t('servers.remote.p2pTitle')}</div>
+    <div class="st-card">
+      <div class="st-row">
+        <div class="st-row-text">
+          <div class="st-row-name">{t('servers.remote.p2pTitle')}</div>
+          <div class="st-row-hint">{rs.p2p ? t('servers.remote.p2pOnHint') : t('servers.remote.p2pOffHint')}</div>
+        </div>
+        <div class="st-row-ctl wrap">
+          {#if rs.p2p && rs.p2pAddr}
+            <span class="st-tag ok mono">{rs.p2pAddr}</span>
+            <button type="button" class="st-iconbtn" onclick={copyAddr} title={t('servers.remote.copyAddr')} aria-label={t('servers.remote.copyAddr')}><i class="ti ti-copy"></i></button>
+          {/if}
+          <button type="button" class="st-switch" class:on={rs.p2p} role="switch" aria-checked={!!rs.p2p}
+                  aria-label={t('servers.remote.p2pTitle')} disabled={!canToggleP2P || p2pBusy}
+                  title={!rs.p2p && rs.state !== 'running' ? t('servers.remote.p2pNeedRunning') : ''}
+                  onclick={() => remoteP2P(rs, !rs.p2p)}></button>
+        </div>
+      </div>
+      {#if !rs.p2p && !rs.canStart}
+        <div class="st-pad"><div class="st-note"><i class="ti ti-lock"></i><span>{t('servers.remote.p2pNoStart')}</span></div></div>
+      {:else if rs.p2p && !rs.canStop}
+        <div class="st-pad"><div class="st-note"><i class="ti ti-lock"></i><span>{t('servers.remote.p2pNoStop')}</span></div></div>
+      {/if}
+    </div>
+  </div>
+</div>
+{:else}
 <div class="snt">
   <div class="snt-block">
     <div class="snt-title"><i class="ti ti-world"></i> {t('servers.net.access')}</div>
@@ -100,14 +146,8 @@
       </div>
     {/if}
   {/key}
-
-  {#if isVelocity}
-    <div class="snt-block">
-      <div class="snt-title"><i class="ti ti-network"></i> {t('servers.net.proxyNet')}</div>
-      <ServerNetworkPanel proxyServerId={srv.id} />
-    </div>
-  {/if}
 </div>
+{/if}
 
 <style>
   .snt { display: flex; flex-direction: column; gap: 22px; padding: 2px 2px 24px; }
@@ -118,5 +158,5 @@
     font: 700 12px/1 var(--font-ui); color: var(--text);
   }
   .snt-title i { color: var(--pcol, var(--orange)); font-size: 14px; }
-  .snt-hint { font: 400 10.5px/1.4 var(--font-ui); color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
+  .snt-hint { font: 400 var(--fs-min)/1.4 var(--font-ui); color: var(--text-dim); display: flex; align-items: center; gap: 5px; }
 </style>

@@ -1,5 +1,6 @@
 <script lang="ts">
-  import Portal from './lib/Portal.svelte'
+  import UiModal from './lib/UiModal.svelte'
+  import './lib/settings/settings.css'
   import './style.css'
   import { onMount, onDestroy } from 'svelte'
   import { fade, fly } from 'svelte/transition'
@@ -26,7 +27,6 @@
   import BirthdayMode from './lib/BirthdayMode.svelte'
   import Toasts from './lib/Toasts.svelte'
   import NewScreenshotWidget from './lib/NewScreenshotWidget.svelte'
-  import TransferWidget from './lib/TransferWidget.svelte'
   import { initShareStore, shareRecoverable, shareUi } from './lib/friends/shareStore.svelte'
   import ConfirmModal from './lib/ConfirmModal.svelte'
   import ErrorPanel from './lib/ErrorPanel.svelte'
@@ -64,13 +64,13 @@
   import SettingsPage from './lib/SettingsPage.svelte'
   import ServersLibraryPage from './lib/servers/ServerLibraryPage.svelte'
   import ServerInstancePage from './lib/servers/ServerInstancePage.svelte'
-  import RemoteServerPage from './lib/servers/RemoteServerPage.svelte'
   import ServerWizard from './lib/ServerWizard.svelte'
   import { grpTitleKeys, normalizeSectionId } from './lib/settingsMeta'
   import { searchSettings as searchSettingsIndex, labelKeyOf, revealSetting } from './lib/settings/registry'
   import { packAsset } from './lib/packAssets.svelte'
   import { orderMainBuildViews, orderFlatBuildViews, deriveServerFolders, mergeFolders } from './lib/packOrder'
   import AnimatedIcon from './lib/AnimatedIcon.svelte'
+  import FolderTile from './lib/FolderTile.svelte'
   import { windowVisibility } from './lib/visible.svelte'
   import { windowActive as windowActiveState, initWindowActive } from './lib/windowActive.svelte'
   import { launchStageLabel, launchStageColor, launchStagePct, downloadStageLabel, downloadStageColor, downloadStageIcon, downloadStageGlow } from './lib/launchStages'
@@ -5766,6 +5766,17 @@
     // мовчати про втрату/відновлення даних користувача.
     on('db:health', (h: DBHealth) => { if (h && (h.restoredFromBackup || h.erasedIntentionally || h.fallbackMemory)) dbHealthInfo = h })
   // Консоль гри більше НЕ дублює рядки тут — нею займається компонент
+  // Сервер «разом зі збіркою» не стартував (порт зайнятий, мало RAM…) —
+  // гра все одно запускається, а користувач бачить причину.
+  // Ланцюг мережі Velocity не вдався у фоні (сервер не стартував разом із
+  // проксі тощо) — показуємо причину.
+  on('server:network-event', (e: { message: string }) => {
+    if (e?.message) toast(e.message, 'error')
+  })
+  on('server:linked-error', (e: { serverName: string; message: string }) => {
+    toast(t('packlink.startFailed', { name: e?.serverName ?? '', message: e?.message ?? '' }), 'error')
+  })
+
   // GameConsole (підписки на console:line всередині нього, з віртуалізацією
   // та обрізанням буфера за consoleMaxLines). Консоль тепер живе у вкладці
   // «Консоль» на сторінці збірки. Тут лишається лише реакція на game:exit.
@@ -5805,6 +5816,125 @@
   }
   })
 </script>
+
+<!-- Картка збірки — ОДИН сніпет для головного списку й для вікна папки: папка показує
+     ту саму картку, що й «Мої збірки» (inFolder лише міняє drag-out і закриття папки при кліку). -->
+{#snippet packTile(bv: BuildView, gi: number, inFolder: boolean)}
+  {@const pk = bv.build}
+  {@const status = bv.status}
+  {@const prog = bv.progress}
+  {@const pcol = pk.color || 'var(--orange)'}
+  {@const othersRunning = otherRunningAccounts(bv)}
+  {@const icon = packAsset(pk.iconUrl)}
+  {@const iconSrc = packIconSrc(icon)}
+  {@const lp = launchProgress[pk.id]}
+  {@const sti = lp && !lp.done ? launchStageIcon(lp.stage) : null}
+  {@const dsti = !sti ? syncStageIcon(bv) : null}
+  {@const limg = lp && !lp.done && lp.stage === 'loader' ? loaderImgFor(pk.loaderType) : undefined}
+  {@const glow = glowClass(bv, lp)}
+  {@const mig = migrateByPack[pk.id]}
+  {@const isDragSrc = dragSrcId === pk.id}
+  {@const isDropTarget = dropTargetId === pk.id}
+  <div class="inst-tile rise-in" class:running={status === 'running'} class:pin-badge={isPinned(pk.id)} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, inFolder)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={() => { if (inFolder) { if (suppressPackClick) return; folderModalId = null } openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor};animation-delay:{Math.min(gi,10)*30}ms">
+    <div class="it-ic" class:has-icon={!!iconSrc} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
+      {#if iconSrc}
+        <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, inFolder ? 'folder' : 'grid', true)} alt="" />
+      {:else}
+        <i class="ti {pk.icon || 'ti-puzzle'}" style="color:var(--pcol)"></i>
+      {/if}
+      {#if mig && !lp}
+        <!-- Іконка міграції модів поверх іконки збірки: видна
+             завжди під час міграції (навіть коли збірка ще
+             качається і підпис зайнятий прогресом качки). -->
+        <span class="it-mig-badge" title={t('mods.migratingTitle')}><i class="ti ti-arrows-right-left"></i></span>
+      {/if}
+    </div>
+    <div class="it-info">
+      <div class="it-name">{pk.name}</div>
+      <div class="it-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
+        {#if lp && !lp.done}
+          <i class="ti ti-loader spin"></i>
+          <span>{launchStageLabel(lp.stage)}</span>
+        {:else if mig && !lp}
+          <!-- Міграція модів має ПРІОРИТЕТ над прогресом качки:
+               після створення збірки з міграцією підпис показує
+               саме її (а не «качається файли»), бо для гравця
+               важливо бачити, що моди переносяться. -->
+          <span class="mig-chip" title={mig.currentFile}>
+            <i class="ti ti-arrows-right-left spin-slow"></i>
+            <span>{t('mods.migratingTitle')} {mig.done}/{mig.total}</span>
+          </span>
+        {:else if status === 'downloading' || status === 'updating'}
+          <i class="ti {prog?.mode === 'paused' ? 'ti-player-pause' : 'ti-download'}"></i>
+          <span>{packSubText(bv, lp)}</span>
+        {:else if othersRunning.length}
+          <span class="it-heads" title={othersRunning.map(o => o.username).join(', ')}>
+            {#each othersRunning as o (o.id)}
+              <img src={headFor(o.uuid)} alt="" title={o.username} />
+            {/each}
+          </span>
+        {:else}
+          <span>{pk.loaderType} {pk.mcVersion}</span>
+        {/if}
+      </div>
+      {#if mig && !lp && mig.name}
+        <div class="it-mig-name" title={mig.currentFile}>
+          {#if mig.iconUrl}<img src={mig.iconUrl} alt="" />{/if}
+          <span>{mig.name}</span>
+        </div>
+      {/if}
+      {#if lp && !lp.done && lp.message}
+        <div class="it-stage"><i class="ti ti-file"></i> {lp.message}</div>
+      {/if}
+      {#if settings.showGameTime && playtimes[pk.id]}
+        <div class="it-time"><i class="ti ti-clock"></i> {fmtPlaytime(playtimes[pk.id])}</div>
+      {/if}
+    </div>
+    {#if sti}
+      <!-- Під час встановлення Java/лоадера/оновлення файлів
+           кнопка стає «Стоп» (скасувати встановлення) — 1:1 як
+           у sidebar (.sp-st). -->
+      <button class="it-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
+        {#if limg}
+          <img src={limg} alt="" />
+        {:else}
+          <i class="ti {sti.icon}"></i>
+        {/if}
+      </button>
+    {:else if dsti}
+      <!-- Під час синхронізації файлів (downloading/
+           manifest_fetched/extracting/finalizing) — так само
+           живий індикатор стадії, окрім паузи (там лишається
+           кнопка «продовжити»). -->
+      <div class="it-st {dsti.cls}" title={downloadStageLabel(prog?.stage)}>
+        <i class="ti {dsti.icon}"></i>
+      </div>
+    {:else if mig && !lp}
+      <button class="it-btn it-mig" disabled title={t('mods.migratingTitle')}>
+        <i class="ti ti-arrows-right-left"></i>
+      </button>
+    {:else}
+      <button class="it-btn it-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} title={spBtnTitle(bv)}>
+        {#if status === 'running'}<i class="ti ti-player-stop"></i>
+        {:else if status === 'ready'}<i class="ti ti-player-play"></i>
+        {:else if status === 'needs-update'}<i class="ti ti-refresh"></i>
+        {:else if status === 'not-installed'}<i class="ti ti-download"></i>
+        {:else if prog?.mode === 'paused'}<i class="ti ti-player-pause"></i>
+        {:else if status === 'downloading' || status === 'updating'}<i class="ti ti-player-pause"></i>
+        {:else}<i class="ti ti-loader spin"></i>
+        {/if}
+      </button>
+    {/if}
+    {#if lp && !lp.done}
+      <div class="it-prog"><div class="it-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
+    {:else if prog && (status === 'downloading' || status === 'updating')}
+      <div class="it-prog"><div class="it-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
+    {:else if mig && !lp}
+      <div class="it-prog"><div class="it-prog-fill mig-fill" style="width:{mig.total ? Math.round(mig.done / mig.total * 100) : 0}%"></div></div>
+    {/if}
+  </div>
+
+{/snippet}
 
 <!-- ═══════════════════ FULL SCREEN WIZARD ═══════════════════ -->
 {#if showWizard}
@@ -5926,6 +6056,7 @@
       onmin={winMin}
       onmax={winMax}
       onclose={winClose}
+      onopenmod={openModPageFromPack}
     />
 
     <div class="content {currentPage === 'wardrobe' || currentPage === 'browser' || currentPage === 'friends' || currentPage === 'settings' || (currentPage === 'servers' && !showServerWizard) ? 'content-no-scroll' : ''} {currentPage === 'instances' && openPackId ? 'content-pack-open' : ''} {currentPage === 'friends' ? 'content-friends' : ''}">
@@ -5943,7 +6074,7 @@
            вікна — той самий баг, що був у браузера). -->
       <div class="page-view" hidden={(currentPage === 'browser' && !browserProject && !browserAuthor) || currentPage === 'wardrobe' || currentPage === 'settings' || currentPage === 'analytics' || currentPage === 'friends'}>
       {#if currentPage === 'instances' && showCreatePack}
-        <CreatePackPage {settings} initialTab={createPackTab} folders={packFolders} onCancel={closeCreatePack} onCreated={onPackCreated} />
+        <CreatePackPage {settings} initialTab={createPackTab} onTabChange={(v) => (createPackTab = v)} folders={packFolders} onCancel={closeCreatePack} onCreated={onPackCreated} />
       {:else if currentPage === 'instances' && openPack}
         <!-- Кожна збірка = своє власне «вікно»: {#key openPack.id} перемонтовує
              сторінку при перемиканні збірок через сайдбар, щоб під старою
@@ -6114,147 +6245,20 @@
                   const fic = packAsset(p.build.iconUrl)
                   return { src: packIconSrc(fic), paused: shouldPauseIcon(fic, 'grid', false), pcol: p.build.color || fpcol, preset: p.build.icon || 'ti-puzzle' }
                 })}
-                {@const fEmpty = fv.packs.length === 0}
-                <div class="inst-tile folder-tile rise-in" class:folder-drop={fIsDropTarget || (fIsDropTarget2 && (dropPos === 'before' || dropPos === 'after'))} class:drop-before={fIsDropTarget2 && dropPos === 'before'} class:drop-after={fIsDropTarget2 && dropPos === 'after'} class:drag-src={fIsDragSrc} data-folder-id={folder.id} data-folder-drop={folder.id} style="--pcol:{fpcol};--drop-c:{dragPackColor};animation-delay:{Math.min(gi,10)*30}ms" onpointerdown={(e) => folderPointerDown(e, folder.id)} onpointermove={folderPointerMove} onpointerup={pointerDragEnd} onclick={() => { if (suppressPackClick) return; folderModalId = folder.id }} oncontextmenu={(e) => { e.preventDefault(); openFolderCtxMenu(e, folder.id) }} title={folder.name}>
-                  <div class="ft-stack">
-                    {#if fEmpty}
-                      <!-- Порожня папка: іконка папки замість стеку -->
-                      <span class="ft-stack-fallback ft-stack-empty" style="--pcol:{fpcol}"><i class="ti {safeFolderIcon(folder.icon)}"></i></span>
-                    {:else}
-                      {#each fIcons as fic, fii (fii)}
-                        {#if fic.src}
-                          <AnimatedIcon src={fic.src} paused={fic.paused} alt="" />
-                        {:else}
-                          <span class="ft-stack-fallback" style="--pcol:{fic.pcol}"><i class="ti {fic.preset}"></i></span>
-                        {/if}
-                      {/each}
-                      {#if fv.packs.length > 3}
-                        <span class="ft-more" style="--pcol:{fpcol}">+{fv.packs.length - 3}</span>
-                      {/if}
-                    {/if}
-                  </div>
-                  <div class="ft-info">
-                    <div class="ft-name">{folder.name}</div>
-                    <div class="ft-sub">{fv.packs.length} {t('packs.folderCount')}</div>
-                  </div>
-                </div>
+                <FolderTile class="rise-in {fIsDropTarget || (fIsDropTarget2 && (dropPos === 'before' || dropPos === 'after')) ? 'folder-drop' : ''} {fIsDropTarget2 && dropPos === 'before' ? 'drop-before' : ''} {fIsDropTarget2 && dropPos === 'after' ? 'drop-after' : ''} {fIsDragSrc ? 'drag-src' : ''}"
+                            data-folder-id={folder.id} data-folder-drop={folder.id}
+                            style="--drop-c:{dragPackColor};animation-delay:{Math.min(gi,10)*30}ms"
+                            name={folder.name} color={fpcol} icon={folder.icon} icons={fIcons} total={fv.packs.length} animated
+                            onpointerdown={(e: PointerEvent) => folderPointerDown(e, folder.id)} onpointermove={folderPointerMove} onpointerup={pointerDragEnd}
+                            onclick={() => { if (suppressPackClick) return; folderModalId = folder.id }}
+                            oncontextmenu={(e: MouseEvent) => { e.preventDefault(); openFolderCtxMenu(e, folder.id) }}>
+                  {#snippet sub()}{fv.packs.length} {t('packs.folderCount')}{/snippet}
+                </FolderTile>
               {/if}
             {:else}
               {@const bv = builds.find(b => b.build.id === item.id)}
               {#if bv}
-              {@const pk = bv.build}
-              {@const status = bv.status}
-              {@const prog = bv.progress}
-              {@const pcol = pk.color || 'var(--orange)'}
-              {@const othersRunning = otherRunningAccounts(bv)}
-              {@const icon = packAsset(pk.iconUrl)}
-              {@const iconSrc = packIconSrc(icon)}
-              {@const lp = launchProgress[pk.id]}
-              {@const sti = lp && !lp.done ? launchStageIcon(lp.stage) : null}
-              {@const dsti = !sti ? syncStageIcon(bv) : null}
-              {@const limg = lp && !lp.done && lp.stage === 'loader' ? loaderImgFor(pk.loaderType) : undefined}
-              {@const glow = glowClass(bv, lp)}
-              {@const mig = migrateByPack[pk.id]}
-              {@const isDragSrc = dragSrcId === pk.id}
-              {@const isDropTarget = dropTargetId === pk.id}
-              <div class="inst-tile rise-in" class:running={status === 'running'} class:pin-badge={isPinned(pk.id)} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={() => openPackPage(pk.id)} style="--pcol:{pcol};--drop-c:{dragPackColor};animation-delay:{Math.min(gi,10)*30}ms">
-                <div class="it-ic" class:has-icon={!!iconSrc} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
-                  {#if iconSrc}
-                    <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, 'grid', true)} alt="" />
-                  {:else}
-                    <i class="ti {pk.icon || 'ti-puzzle'}" style="color:var(--pcol)"></i>
-                  {/if}
-                  {#if mig && !lp}
-                    <!-- Іконка міграції модів поверх іконки збірки: видна
-                         завжди під час міграції (навіть коли збірка ще
-                         качається і підпис зайнятий прогресом качки). -->
-                    <span class="it-mig-badge" title={t('mods.migratingTitle')}><i class="ti ti-arrows-right-left"></i></span>
-                  {/if}
-                </div>
-                <div class="it-info">
-                  <div class="it-name">{pk.name}</div>
-                  <div class="it-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
-                    {#if lp && !lp.done}
-                      <i class="ti ti-loader spin"></i>
-                      <span>{launchStageLabel(lp.stage)}</span>
-                    {:else if mig && !lp}
-                      <!-- Міграція модів має ПРІОРИТЕТ над прогресом качки:
-                           після створення збірки з міграцією підпис показує
-                           саме її (а не «качається файли»), бо для гравця
-                           важливо бачити, що моди переносяться. -->
-                      <span class="mig-chip" title={mig.currentFile}>
-                        <i class="ti ti-arrows-right-left spin-slow"></i>
-                        <span>{t('mods.migratingTitle')} {mig.done}/{mig.total}</span>
-                      </span>
-                    {:else if status === 'downloading' || status === 'updating'}
-                      <i class="ti {prog?.mode === 'paused' ? 'ti-player-pause' : 'ti-download'}"></i>
-                      <span>{packSubText(bv, lp)}</span>
-                    {:else if othersRunning.length}
-                      <span class="it-heads" title={othersRunning.map(o => o.username).join(', ')}>
-                        {#each othersRunning as o (o.id)}
-                          <img src={headFor(o.uuid)} alt="" title={o.username} />
-                        {/each}
-                      </span>
-                    {:else}
-                      <span>{pk.loaderType} {pk.mcVersion}</span>
-                    {/if}
-                  </div>
-                  {#if mig && !lp && mig.name}
-                    <div class="it-mig-name" title={mig.currentFile}>
-                      {#if mig.iconUrl}<img src={mig.iconUrl} alt="" />{/if}
-                      <span>{mig.name}</span>
-                    </div>
-                  {/if}
-                  {#if lp && !lp.done && lp.message}
-                    <div class="it-stage"><i class="ti ti-file"></i> {lp.message}</div>
-                  {/if}
-                  {#if settings.showGameTime && playtimes[pk.id]}
-                    <div class="it-time"><i class="ti ti-clock"></i> {fmtPlaytime(playtimes[pk.id])}</div>
-                  {/if}
-                </div>
-                {#if sti}
-                  <!-- Під час встановлення Java/лоадера/оновлення файлів
-                       кнопка стає «Стоп» (скасувати встановлення) — 1:1 як
-                       у sidebar (.sp-st). -->
-                  <button class="it-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
-                    {#if limg}
-                      <img src={limg} alt="" />
-                    {:else}
-                      <i class="ti {sti.icon}"></i>
-                    {/if}
-                  </button>
-                {:else if dsti}
-                  <!-- Під час синхронізації файлів (downloading/
-                       manifest_fetched/extracting/finalizing) — так само
-                       живий індикатор стадії, окрім паузи (там лишається
-                       кнопка «продовжити»). -->
-                  <div class="it-st {dsti.cls}" title={downloadStageLabel(prog?.stage)}>
-                    <i class="ti {dsti.icon}"></i>
-                  </div>
-                {:else if mig && !lp}
-                  <button class="it-btn it-mig" disabled title={t('mods.migratingTitle')}>
-                    <i class="ti ti-arrows-right-left"></i>
-                  </button>
-                {:else}
-                  <button class="it-btn it-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} title={spBtnTitle(bv)}>
-                    {#if status === 'running'}<i class="ti ti-player-stop"></i>
-                    {:else if status === 'ready'}<i class="ti ti-player-play"></i>
-                    {:else if status === 'needs-update'}<i class="ti ti-refresh"></i>
-                    {:else if status === 'not-installed'}<i class="ti ti-download"></i>
-                    {:else if prog?.mode === 'paused'}<i class="ti ti-player-pause"></i>
-                    {:else if status === 'downloading' || status === 'updating'}<i class="ti ti-player-pause"></i>
-                    {:else}<i class="ti ti-loader spin"></i>
-                    {/if}
-                  </button>
-                {/if}
-                {#if lp && !lp.done}
-                  <div class="it-prog"><div class="it-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
-                {:else if prog && (status === 'downloading' || status === 'updating')}
-                  <div class="it-prog"><div class="it-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
-                {:else if mig && !lp}
-                  <div class="it-prog"><div class="it-prog-fill mig-fill" style="width:{mig.total ? Math.round(mig.done / mig.total * 100) : 0}%"></div></div>
-                {/if}
-              </div>
+              {@render packTile(bv, gi, false)}
               {/if}
             {/if}
           {/each}
@@ -6455,19 +6459,27 @@
           onCreated={(id, launchNow) => { showServerWizard = false; openServerId = id; openServerAutoStart = launchNow }}
         />
       {:else if currentPage === 'servers' && openRemote}
-        <RemoteServerPage
-          ownerId={openRemote.ownerId}
+        <!-- Сервер друга — та сама сторінка сервера, лише з дозволеними вкладками -->
+        {#key `${openRemote.ownerId}:${openRemote.serverId}`}
+        <ServerInstancePage
           serverId={openRemote.serverId}
+          remoteOwnerId={openRemote.ownerId}
           onBack={() => { openRemote = null }}
         />
+        {/key}
       {:else if currentPage === 'servers' && openServerId}
+        <!-- key: перехід на інший сервер (з мережі проксі) — свіжа сторінка
+             з вкладкою за замовчуванням для його ядра -->
+        {#key openServerId}
         <ServerInstancePage
           serverId={openServerId}
           autoStart={openServerAutoStart}
           onBack={() => { openServerId = ''; openServerAutoStart = false }}
           onSearchOnline={openBrowserForServer}
           canShare={shaurmaFriendsVisible}
+          onOpenServer={(id) => { openServerId = id; openServerAutoStart = false }}
         />
+        {/key}
       {:else if currentPage === 'servers'}
         <ServersLibraryPage
           onOpenServer={(id, autoStart) => { openServerId = id; openServerAutoStart = !!autoStart }}
@@ -6532,38 +6544,20 @@
      Кнопка «Запустити все одно» доступна якщо немає незафіксованих errors. -->
 {#if healthModal}
   {@const _hpid = healthPackId}
-  <div
-    class="modal-overlay"
-    role="dialog"
-    aria-modal="true"
-    onclick={() => { healthModal = false }}
-    onkeydown={(e) => e.key === 'Escape' && (healthModal = false)}
-    tabindex="-1"
-  >
-    <div class="health-modal-box" onclick={(e) => e.stopPropagation()} onkeydown={() => {}}>
-      <div class="health-modal-head">
-        <i class="ti ti-stethoscope"></i>
-        <span>{t('health.modalTitle')}</span>
-        <span class="health-modal-pack">{healthPackName}</span>
-        <button class="icon-btn health-modal-close" onclick={() => { healthModal = false }}>
-          <i class="ti ti-x"></i>
-        </button>
-      </div>
-      <div class="health-modal-body">
-        <PackHealthCheck
-          packId={_hpid}
-          modal={true}
-          onClose={() => { healthModal = false }}
-          onLaunchAnyway={() => {
-          healthModal = false
-          const addr = pendingLaunchServerAddress || undefined
-          pendingLaunchServerAddress = ''
-          launchInstance(_hpid, false, true, addr)
-        }}
-        />
-      </div>
-    </div>
-  </div>
+  <UiModal open={true} onclose={() => { healthModal = false }} icon="ti-stethoscope" color="var(--green)"
+           title={t('health.modalTitle')} subtitle={healthPackName} width="520px" maxHeight="90vh" shake>
+    <PackHealthCheck
+      packId={_hpid}
+      modal={true}
+      onClose={() => { healthModal = false }}
+      onLaunchAnyway={() => {
+      healthModal = false
+      const addr = pendingLaunchServerAddress || undefined
+      pendingLaunchServerAddress = ''
+      launchInstance(_hpid, false, true, addr)
+    }}
+    />
+  </UiModal>
 {/if}
 
 <!-- ═══ CRASH MODAL (замість старого банера на «Моїх збірках»): показується
@@ -6698,26 +6692,22 @@
 
 <!-- ═══ СТАН БАЗИ ДАНИХ (відновлення з бекупу / навмисне скидання) ═══ -->
 {#if dbHealthInfo}
-  <div class="modal-overlay" onclick={() => dbHealthInfo = null}>
-    <div class="modal dbh-modal" onclick={(e: any) => e.stopPropagation()}>
-      <div class="dbh-ico">
-        {#if dbHealthInfo.restoredFromBackup}<i class="ti ti-shield-check" style="color:var(--green)"></i>
-        {:else if dbHealthInfo.erasedIntentionally}<i class="ti ti-eraser" style="color:var(--orange)"></i>
-        {:else}<i class="ti ti-alert-triangle" style="color:#ef4444"></i>{/if}
-      </div>
-      <div class="dbh-title">
-        {dbHealthInfo.restoredFromBackup ? t('migrate.dbRestoredTitle')
-          : dbHealthInfo.erasedIntentionally ? t('migrate.dbErasedTitle')
-          : t('migrate.dbMemoryTitle')}
-      </div>
-      <div class="dbh-desc">
-        {dbHealthInfo.restoredFromBackup ? t('migrate.dbRestoredDesc', { at: dbHealthInfo.backupAt ?? '' })
-          : dbHealthInfo.erasedIntentionally ? t('migrate.dbErasedDesc', { at: dbHealthInfo.erasedAt ?? '' })
-          : t('migrate.dbMemoryDesc')}
-      </div>
-      <button class="btn btn-primary" onclick={() => dbHealthInfo = null}><i class="ti ti-check"></i> {t('migrate.dbOk')}</button>
+  {@const dbh = dbHealthInfo}
+  <UiModal open={true} onclose={() => dbHealthInfo = null} size="sm"
+           icon={dbh.restoredFromBackup ? 'ti-shield-check' : dbh.erasedIntentionally ? 'ti-eraser' : 'ti-alert-triangle'}
+           color={dbh.restoredFromBackup ? 'var(--green)' : dbh.erasedIntentionally ? 'var(--orange)' : 'var(--red)'}
+           title={dbh.restoredFromBackup ? t('migrate.dbRestoredTitle')
+             : dbh.erasedIntentionally ? t('migrate.dbErasedTitle')
+             : t('migrate.dbMemoryTitle')}>
+    <div class="dbh-desc">
+      {dbh.restoredFromBackup ? t('migrate.dbRestoredDesc', { at: dbh.backupAt ?? '' })
+        : dbh.erasedIntentionally ? t('migrate.dbErasedDesc', { at: dbh.erasedAt ?? '' })
+        : t('migrate.dbMemoryDesc')}
     </div>
-  </div>
+    {#snippet footer()}
+      <button class="btn btn-primary" onclick={() => dbHealthInfo = null}><i class="ti ti-check"></i> {t('migrate.dbOk')}</button>
+    {/snippet}
+  </UiModal>
 {/if}
 
 <!-- ═══ ГЛОБАЛЬНИЙ ПОШУК (Ctrl+K) ═══ -->
@@ -6886,47 +6876,38 @@
 
 	  {#if folderBundleExport}
 	    {@const bse = folderBundleExport}
-	    <Portal>
-	    <div class="modal-overlay" role="presentation" style="z-index:2100000" onclick={(e) => { if (e.target === e.currentTarget && !bse.busy) folderBundleExport = null }}>
-      <div class="modal small-modal fe-modal">
-        <div class="fe-body">
-          <div class="fe-head-row" style="display:flex;align-items:center;gap:10px">
-            <span class="fe-head-icon" style="--fe-c:var(--orange)"><i class="ti ti-archive"></i></span>
-            <div>
-              <div class="fe-label" style="text-transform:none;font-size:14px">{t('packs.bundleExportTitle')}</div>
-              <div class="rl-sub" style="font-size:11px">{t('packs.bundleExportSub')}</div>
+    <UiModal open={true} onclose={() => folderBundleExport = null} locked={bse.busy} zIndex="2100000" size="sm"
+             icon="ti-archive" title={t('packs.bundleExportTitle')} subtitle={t('packs.bundleExportSub')}>
+      <div class="bse-body">
+        {#if bse.busy}
+          <div class="fe-field">
+            <div class="rl-sub" style="display:flex;align-items:center;gap:8px"><i class="ti ti-loader spin"></i> {t('packs.bundleExporting')}</div>
+            {#if bse.total > 0}
+              <div class="bundle-export-progress"><div class="bundle-export-fill" style="width:{Math.round((bse.done / bse.total) * 100)}%"></div></div>
+              <div class="rl-sub mono" style="font-size:11px">{bse.done}/{bse.total}</div>
+            {/if}
+          </div>
+        {:else}
+          <div class="fe-field">
+            <div class="fe-label">{t('packs.bundleExportName')}</div>
+            <input class="st-input grow" bind:value={bse.name} placeholder={t('packs.bundleExportNamePlaceholder')} />
+          </div>
+          <div class="fe-field">
+            <div class="fe-label">{t('packs.bundleExportDir')}</div>
+            <div class="folder-row">
+              <input class="st-input grow" bind:value={bse.outDir} placeholder={t('packs.bundleExportDirPlaceholder')} />
+              <button class="btn btn-ghost" onclick={pickBundleExportDir} title={t('browse')}><i class="ti ti-folder"></i></button>
             </div>
           </div>
-          {#if bse.busy}
-            <div class="fe-field">
-              <div class="rl-sub" style="display:flex;align-items:center;gap:8px"><i class="ti ti-loader spin"></i> {t('packs.bundleExporting')}</div>
-              {#if bse.total > 0}
-                <div class="bundle-export-progress"><div class="bundle-export-fill" style="width:{Math.round((bse.done / bse.total) * 100)}%"></div></div>
-                <div class="rl-sub mono" style="font-size:11px">{bse.done}/{bse.total}</div>
-              {/if}
-            </div>
-          {:else}
-            <div class="fe-field">
-              <div class="fe-label">{t('packs.bundleExportName')}</div>
-              <input class="fe-input" bind:value={bse.name} placeholder={t('packs.bundleExportNamePlaceholder')} />
-            </div>
-            <div class="fe-field">
-              <div class="fe-label">{t('packs.bundleExportDir')}</div>
-              <div class="folder-row">
-                <input class="fe-input" bind:value={bse.outDir} placeholder={t('packs.bundleExportDirPlaceholder')} />
-                <button class="btn btn-ghost" onclick={pickBundleExportDir} title={t('browse')}><i class="ti ti-folder"></i></button>
-              </div>
-            </div>
-          {/if}
-          <div class="fe-field" style="flex-direction:row;justify-content:flex-end;gap:8px;margin-top:4px">
-            <button class="btn btn-ghost" disabled={bse.busy} onclick={() => folderBundleExport = null}><i class="ti ti-x"></i> {t('cancel')}</button>
-            <button class="btn btn-primary" disabled={bse.busy} onclick={startFolderBundleExport}>
-              <i class="ti {bse.busy ? 'ti-loader spin' : 'ti-archive'}"></i> {t('packs.bundleExportStart')}
-            </button>
-          </div>	        </div>
-	      </div>
-	    </div>
-	    </Portal>
+        {/if}
+      </div>
+      {#snippet footer()}
+        <button class="btn btn-ghost" disabled={bse.busy} onclick={() => folderBundleExport = null}>{t('cancel')}</button>
+        <button class="btn btn-primary" disabled={bse.busy} onclick={startFolderBundleExport}>
+          <i class="ti {bse.busy ? 'ti-loader spin' : 'ti-archive'}"></i> {t('packs.bundleExportStart')}
+        </button>
+      {/snippet}
+    </UiModal>
 	  {/if}
 
   {#if folderEditor}
@@ -7008,57 +6989,7 @@
       >
                 <div class="fm-grid">
                   {#each fmv.packs as bpk, fi (bpk.build.id)}
-                    {@const pk = bpk.build}
-                    {@const status = bpk.status}
-                    {@const prog = bpk.progress}
-                    {@const pcol = pk.color || 'var(--orange)'}
-                    {@const icon = packAsset(pk.iconUrl)}
-                    {@const iconSrc = packIconSrc(icon)}
-                    {@const lp = launchProgress[pk.id]}
-                    {@const isDragSrc = dragSrcId === pk.id}
-                    {@const isDropTarget = dropTargetId === pk.id}
-                    <div class="inst-tile fm-tile" class:running={status === 'running'} class:blink={status === 'downloading' || status === 'updating'} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, true)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} onclick={() => { if (suppressPackClick) return; folderModalId = null; openPackPage(pk.id) }} oncontextmenu={(e) => openCtxMenu(e, pk.id)} style="--pcol:{pcol};--drop-c:{dragPackColor}" in:fly={{ y: 6, duration: 240, easing: cubicOut, delay: Math.min(fi, 8) * 28 }} animate:flip={{ duration: 220 }}>
-                      <div class="it-ic" class:has-icon={!!iconSrc} style="--pcol:{pcol}">
-                        {#if iconSrc}
-                          <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, 'folder', true)} alt="" />
-                        {:else}
-                          <i class="ti {pk.icon || 'ti-puzzle'}" style="color:var(--pcol)"></i>
-                        {/if}
-                        {#if lp && !lp.done}
-                          <span class="fm-status st-{lp.stage}" title={launchStageLabel(lp.stage)}><i class="ti ti-loader spin"></i></span>
-                        {:else if status === 'running'}
-                          <span class="fm-status st-running" title={t('pack.stop')}><i class="ti ti-player-play"></i></span>
-                        {:else if status === 'downloading' || status === 'updating'}
-                          <span class="fm-status st-dl" title={t('build.status.downloading')}><i class="ti {prog?.mode === 'paused' ? 'ti-player-pause' : 'ti-download'}"></i></span>
-                        {:else if status === 'needs-update'}
-                          <span class="fm-status st-upd" title={t('build.status.updating')}><i class="ti ti-refresh"></i></span>
-                        {/if}
-                      </div>
-                      <div class="it-info">
-                        <div class="it-name">{pk.name}</div>
-                        <div class="it-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
-                          {#if lp && !lp.done}<span>{launchStageLabel(lp.stage)}</span>
-                          {:else}<span>{packSubText(bpk, lp)}</span>
-                          {/if}
-                        </div>
-                        {#if lp && !lp.done}
-                          <div class="it-prog"><div class="it-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
-                        {:else if prog && (status === 'downloading' || status === 'updating')}
-                          <div class="it-prog"><div class="it-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
-                        {/if}
-                      </div>
-                      <button class="fm-act it-{spBtnClass(bpk)}" onclick={(e: any) => { e.stopPropagation(); if (lp && !lp.done) cancelGameInstall(bpk.build.id); else packBtnAction(bpk) }} title={lp && !lp.done ? t('pack.stop') : spBtnTitle(bpk)}>
-                        {#if lp && !lp.done}<i class="ti ti-square"></i>
-                        {:else if status === 'running'}<i class="ti ti-player-stop"></i>
-                        {:else if status === 'ready'}<i class="ti ti-player-play"></i>
-                        {:else if status === 'needs-update'}<i class="ti ti-refresh"></i>
-                        {:else if status === 'not-installed'}<i class="ti ti-download"></i>
-                        {:else if prog?.mode === 'paused'}<i class="ti ti-player-play"></i>
-                        {:else if status === 'downloading' || status === 'updating'}<i class="ti ti-player-pause"></i>
-                        {:else}<i class="ti ti-loader spin"></i>
-                        {/if}
-                      </button>
-                    </div>
+                    {@render packTile(bpk, fi, true)}
                   {/each}
                 </div>
       </FolderViewModal>
@@ -7068,55 +6999,47 @@
   <!-- Діалог «Оновити з джерела» (інтернет-збірка, 3 крапки → Оновити) -->
   {#if updateSourceDialog}
     {@const d = updateSourceDialog}
-    <Portal>
-<div class="modal-overlay" onclick={(e) => { if (e.target === e.currentTarget) updateSourceDialog = null }}>
-      <div class="modal upsrc-modal">
-        <div class="modal-head">
-          <i class="ti ti-refresh" style="font-size:20px; color:var(--orange)"></i>
-          <h3>{t('browser.update.title', { name: d.name })}</h3>
-          <button class="icon-btn" onclick={() => updateSourceDialog = null}><i class="ti ti-x"></i></button>
-        </div>
-        <div class="modal-body">
-          {#if d.loading}
-            <div class="upsrc-loading"><i class="ti ti-loader spin"></i> {t('browser.update.installing')}</div>
-          {:else if (d.versions ?? []).length === 0}
-            <div class="upsrc-empty"><i class="ti ti-versions"></i><div>{t('browser.update.noVersions')}</div></div>
-          {:else}
-            <div class="upsrc-list">
-              {#each d.versions ?? [] as v (v.id)}
-                {@const sel = v.id === d.selected}
-                <div class="upsrc-row" class:sel onclick={() => d.selected = v.id}>
-                  <div class="upsrc-info">
-                    <div class="upsrc-name">
-                      <b>{v.name || v.versionNumber}</b>
-                      {#if v.versionType === 'release'}<span class="chip g">{t('browser.project.recommended')}</span>{/if}
-                    </div>
-                    <div class="upsrc-meta">
-                      <span><i class="ti ti-cube"></i> {(v.gameVersions ?? []).join(', ')}</span>
-                      {#if v.loaders?.length}<span><i class="ti ti-plug"></i> {(v.loaders ?? []).join(', ')}</span>{/if}
-                      <span class="upsrc-date">{v.datePublished ? new Date(v.datePublished).toLocaleDateString() : ''}</span>
-                    </div>
-                  </div>
-                  <div class="upsrc-radio" class:on={sel}><i class="ti ti-check"></i></div>
+    <UiModal open={true} onclose={() => updateSourceDialog = null} icon="ti-refresh" width="520px" maxHeight="80vh"
+             title={t('browser.update.title', { name: d.name })}>
+      {#if d.loading}
+        <div class="upsrc-loading"><i class="ti ti-loader spin"></i> {t('browser.update.installing')}</div>
+      {:else if (d.versions ?? []).length === 0}
+        <div class="upsrc-empty"><i class="ti ti-versions"></i><div>{t('browser.update.noVersions')}</div></div>
+      {:else}
+        <div class="upsrc-list">
+          {#each d.versions ?? [] as v (v.id)}
+            {@const sel = v.id === d.selected}
+            <div class="upsrc-row" class:sel onclick={() => d.selected = v.id}>
+              <div class="upsrc-info">
+                <div class="upsrc-name">
+                  <b>{v.name || v.versionNumber}</b>
+                  {#if v.versionType === 'release'}<span class="chip g">{t('browser.project.recommended')}</span>{/if}
                 </div>
-              {/each}
+                <div class="upsrc-meta">
+                  <span><i class="ti ti-cube"></i> {(v.gameVersions ?? []).join(', ')}</span>
+                  {#if v.loaders?.length}<span><i class="ti ti-plug"></i> {(v.loaders ?? []).join(', ')}</span>{/if}
+                  <span class="upsrc-date">{v.datePublished ? new Date(v.datePublished).toLocaleDateString() : ''}</span>
+                </div>
+              </div>
+              <div class="upsrc-radio" class:on={sel}><i class="ti ti-check"></i></div>
             </div>
-            <div class="upsrc-foot">
-              <button class="btn btn-ghost" onclick={() => updateSourceDialog = null}>{t('cancel')}</button>
-              <button
-                class="btn btn-primary"
-                disabled={!d.selected || d.running}
-                onclick={runUpdateFromSource}
-              >
-                {#if d.running}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-refresh"></i>{/if}
-                {t('browser.update.install', { v: d.versions.find(v => v.id === d.selected)?.versionNumber || '' })}
-              </button>
-            </div>
-          {/if}
+          {/each}
         </div>
-      </div>
-    </div>
-</Portal>
+      {/if}
+      {#snippet footer()}
+        <button class="btn btn-ghost" onclick={() => updateSourceDialog = null}>{t('cancel')}</button>
+        {#if !d.loading && (d.versions ?? []).length > 0}
+          <button
+            class="btn btn-primary"
+            disabled={!d.selected || d.running}
+            onclick={runUpdateFromSource}
+          >
+            {#if d.running}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-refresh"></i>{/if}
+            {t('browser.update.install', { v: d.versions.find(v => v.id === d.selected)?.versionNumber || '' })}
+          </button>
+        {/if}
+      {/snippet}
+    </UiModal>
   {/if}
 
   <!-- «Реальна картка» за курсором під час перетягування збірки/папки -->
@@ -7143,82 +7066,19 @@
        одною кнопкою «Зрозуміло». Не плутати з помилкою — гра СТАРТУЄ
        в офлайн-режимі, це лише пояснення користувачу. -->
   {#if launchWarning}
-    <div class="modal-overlay" onclick={() => launchWarning = null}>
-      <div class="modal" onclick={(e: any) => e.stopPropagation()}>
-        <div class="modal-head">
-          <h3><i class="ti ti-wifi-off" style="color:var(--orange)"></i> {t('offline.launchTitle')}</h3>
-        </div>
-        <div class="modal-body">
-          <div style="font-size:13px;color:var(--text-mute);line-height:1.6;white-space:pre-line">{launchWarning}</div>
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-primary" onclick={() => launchWarning = null}>{t('offline.gotIt')}</button>
-        </div>
-      </div>
-    </div>
+    <UiModal open={true} onclose={() => launchWarning = null} icon="ti-wifi-off" title={t('offline.launchTitle')}>
+      <div style="font-size:13px;color:var(--text-mute);line-height:1.6;white-space:pre-line">{launchWarning}</div>
+      {#snippet footer()}
+        <button class="btn btn-primary" onclick={() => launchWarning = null}>{t('offline.gotIt')}</button>
+      {/snippet}
+    </UiModal>
   {/if}
   <NewScreenshotWidget onOpenGallery={openGalleryFor} />
-  <TransferWidget onOpenMod={openModPageFromPack} />
 
 <!-- Скоуп-стилі, що лишились тільки для розмітки App (інші перенесені в
      style.css при рефакторингу SettingsPage — там вони глобальні й діють
-     і на компоненти). .icon-btn — варіант саме для кнопок у модалках App
-     (редактор папок, діалог оновлення); у style.css є свій глобальний. -->
+     і на компоненти). Модалки App — на спільному UiModal. -->
 <style>
-  .icon-btn {
-    width:30px; height:30px; border-radius:9px; border:none;
-    background:var(--hover); color:var(--text-mute); cursor:pointer;
-    display:flex; align-items:center; justify-content:center;
-    transition:background .15s, color .15s; flex-shrink:0; font-size:15px;
-  }
-  .icon-btn:hover { background:var(--hover-strong); color:var(--text); }
-  .icon-btn.danger:hover { background:rgba(239,68,68,.15); color:var(--red); }
-
-  /* Модалка стану бази даних (відновлення з бекупу / навмисне скидання) */
-  .dbh-modal { max-width: 420px; text-align: center; padding: 26px 24px 22px; }
-
-  /* ── Pack Doctor modal ── */
-  .modal-overlay {
-    position: fixed; inset: 0; z-index: 900;
-    background: rgba(0,0,0,.55); backdrop-filter: blur(4px);
-    display: flex; align-items: center; justify-content: center;
-    animation: fadeIn .15s ease both;
-  }
-  @keyframes fadeIn { from { opacity: 0 } to { opacity: 1 } }
-
-  .health-modal-box {
-    width: 520px; max-width: calc(100vw - 32px); max-height: 90vh;
-    background: var(--bg-card); border: 1px solid var(--border-hi);
-    border-radius: var(--r-lg); box-shadow: 0 24px 60px rgba(0,0,0,.55);
-    display: flex; flex-direction: column;
-    animation: slideUp .2s ease both, ui-modal-shake .55s cubic-bezier(.36,.07,.19,.97) .18s both;
-  }
-  @keyframes slideUp { from { transform: translateY(18px); opacity: 0 } to { transform: none; opacity: 1 } }
-  @keyframes ui-modal-shake {
-    0%   { transform: none; }
-    12%  { transform: translateX(-7px) rotate(-1.2deg); }
-    24%  { transform: translateX( 6px) rotate( 1.0deg); }
-    36%  { transform: translateX(-5px) rotate(-0.8deg); }
-    48%  { transform: translateX( 4px) rotate( 0.6deg); }
-    60%  { transform: translateX(-3px) rotate(-0.4deg); }
-    72%  { transform: translateX( 2px) rotate( 0.2deg); }
-    84%  { transform: translateX(-1px); }
-    100% { transform: none; }
-  }
-
-  .health-modal-head {
-    display: flex; align-items: center; gap: 10px;
-    padding: 16px 18px; border-bottom: 1px solid var(--border);
-    font-size: 14px; font-weight: 700; color: var(--text); flex-shrink: 0;
-  }
-  .health-modal-head .ti-stethoscope { color: var(--green, #3ddc84); font-size: 17px; }
-  .health-modal-pack {
-    font-size: 12px; color: var(--text-mute); font-weight: 500;
-    padding: 2px 7px; background: var(--bg-input); border-radius: 5px;
-  }
-  .health-modal-close { margin-left: auto; }
-  .health-modal-body  { padding: 18px; overflow-y: auto; flex: 1; }
-  .dbh-ico { font-size: 34px; margin-bottom: 12px; display:flex; justify-content:center; }
-  .dbh-title { font-size: 15px; font-weight: 800; color: var(--text); margin-bottom: 8px; }
-  .dbh-desc { font-size: 12.5px; line-height: 1.5; color: var(--text-mute); margin-bottom: 18px; }
+  .dbh-desc { font-size: 12.5px; line-height: 1.5; color: var(--text-mute); }
+  .bse-body { display: flex; flex-direction: column; gap: 14px; }
 </style>

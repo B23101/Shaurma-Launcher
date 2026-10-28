@@ -247,7 +247,7 @@
   .ap-src-dot.cf { background: #f16436; }
   .ap-card-title { font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ap-card-tags { display: flex; align-items: center; gap: 5px; }
-  .ap-card-type, .ap-card-src { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border-radius: 4px; padding: 1px 5px; }
+  .ap-card-type, .ap-card-src { font-size: var(--fs-min); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border-radius: 4px; padding: 1px 5px; }
   .ap-card-type { background: rgba(255,255,255,.07); color: var(--text-mute); }
   .ap-card-src.mr { background: rgba(27,217,106,.15); color: #1bd96a; }
   .ap-card-src.cf { background: rgba(241,100,54,.15); color: #f16436; }
@@ -256,7 +256,7 @@
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .ap-card-meta { display: flex; align-items: center; gap: 6px; margin-top: auto; flex-wrap: wrap; }
-  .ap-card-meta .chip { font-size: 10.5px; padding: 2px 7px; }
+  .ap-card-meta .chip { font-size: var(--fs-min); padding: 2px 7px; }
   .ap-downloads { font-size: 11px; color: var(--text-mute); display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
   .ap-downloads i { color: var(--orange); }
 </style>

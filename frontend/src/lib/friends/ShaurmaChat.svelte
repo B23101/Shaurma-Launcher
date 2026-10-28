@@ -1364,7 +1364,11 @@ import { windowActive } from '../windowActive.svelte'
     })
     return () => { clearTimeout(t0); clearInterval(iv); timers.forEach(clearTimeout); off(); offInv() }
   })
-  const tempOf = (inv: Invite) => tiStates[clean(inv.serverAddr).toLowerCase()]
+  // Вузол повертає стан і для постійних P2P-кімнат серверів (permanent + status). Це не тимчасовий
+  // доступ: квитка для неї немає (JoinTempInvite падає), а картка показує лише онлайн/офлайн.
+  const liveStateOf = (inv: Invite) => tiStates[clean(inv.serverAddr).toLowerCase()]
+  const tempOf = (inv: Invite) => { const s = liveStateOf(inv); return s && !s.permanent ? s : undefined }
+  const permOf = (inv: Invite) => { const s = liveStateOf(inv); return s && s.permanent ? s : undefined }
   const tiKind = (k: string) => (k === 'lan' ? 'LAN-світ' : k === 'modded' ? 'Сервер з модами' : 'Сервер')
 
   // Збірка вже запущена на цьому акаунті — бекенд віддає "…already running…". Це не збій,
@@ -1513,8 +1517,8 @@ import { windowActive } from '../windowActive.svelte'
               <i class="ti ti-plus"></i>
               <span>{t('social.chat.inviteTip')}</span>
             </button>
-            <div class="sc-qi-sep"></div>
             {#if quickTargets.length}
+              <div class="sc-qi-sep"></div>
               <div class="sc-qi-sec">{t('social.chat.inviteQuickTip')}</div>
               {#each quickTargets as ti (ti.id)}
                 <button data-testid="chat-quick-invite-item-{ti.id}" onclick={() => quickInvite(ti)}>
@@ -1522,8 +1526,10 @@ import { windowActive } from '../windowActive.svelte'
                   <span>{ti.meta.motd || tiKind(ti.meta.kind)} <small>порт {ti.meta.port}</small></span>
                 </button>
               {/each}
-            {:else}
-              <div class="sc-qi-sec">{t('social.chat.inviteAlready')}</div>
+            {:else if openInvites.length}
+              <!-- Друга вже запрошено в усі відкриті світи — це стан, а не заголовок розділу. -->
+              <div class="sc-qi-sep"></div>
+              <div class="sc-qi-note"><i class="ti ti-circle-check"></i><span>{t('social.chat.inviteAlready')}</span></div>
             {/if}
           </div>
         {/if}
@@ -1639,18 +1645,21 @@ import { windowActive } from '../windowActive.svelte'
                 {#if m.bodyType === 'server_invite' && m.invite}
                   {@const inv = m.invite}
                   {@const ti = tempOf(inv)}
-                  {@const dead = !!(inv.revoked || inviteExpired(inv) || (ti && !ti.active))}
+                  {@const pm = permOf(inv)}
+                  {@const live = ti ?? pm}
+                  {@const dead = !!(inv.revoked || inviteExpired(inv) || (ti && !ti.active) || pm?.status === 'deleted')}
                   <div class="sc-bub sc-invite" data-testid="chat-invite-card">
                     <InviteCard
-                      title={ti ? (clean(ti.motd) || clean(inv.packName) || tiKind(ti.kind)) : (clean(inv.packName) || t('social.chat.invite.noPack'))}
-                      kind={ti ? tiKind(ti.kind) : ''}
+                      title={live ? (clean(live.motd) || clean(inv.packName) || tiKind(live.kind)) : (clean(inv.packName) || t('social.chat.invite.noPack'))}
+                      kind={live?.kind ? tiKind(live.kind) : ''}
                       temp={!!ti}
+                      status={pm ? (pm.status ?? '') : ''}
                       {dead}
-                      deadText={ti && !ti.active ? 'Світ закрито — доступ більше недоступний' : inv.revoked ? t('social.chat.invite.revoked') : t('social.chat.invite.expired')}
+                      deadText={pm?.status === 'deleted' ? 'Сервер видалено — адреса більше не працює' : ti && !ti.active ? 'Світ закрито — доступ більше недоступний' : inv.revoked ? t('social.chat.invite.revoked') : t('social.chat.invite.expired')}
                       addr={clean(inv.serverAddr)}
-                      version={ti?.version ?? ''}
-                      players={ti?.players ?? 0}
-                      max={ti?.max ?? 0}
+                      version={live?.version ?? ''}
+                      players={live?.players ?? 0}
+                      max={live?.max ?? 0}
                       host={!!(ti && ti.host)}
                       {own}
                       canJoin={!!inv.packId && !own}
@@ -1952,13 +1961,17 @@ import { windowActive } from '../windowActive.svelte'
   .sc-hbtn.on { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
   .sc-hbtn.on:hover:not(:disabled) { color: color-mix(in srgb, var(--red) 80%, #fff); background: color-mix(in srgb, var(--red) 16%, transparent); }
   .sc-qi { position: relative; flex: 0 0 auto; }
-  .sc-qi-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 220px; display: grid; gap: 2px; padding: 6px; border-radius: 12px; background: var(--bg-elev, #17171c); border: 1px solid var(--border, #2a2a33); box-shadow: 0 10px 30px rgba(0,0,0,.35); }
-  .sc-qi-menu button { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: inherit; cursor: pointer; text-align: left; transition: background-color .15s; }
-  .sc-qi-menu button:hover { background: color-mix(in srgb, var(--accent, #f5a524) 14%, transparent); }
-  .sc-qi-menu button small { color: var(--text-mute); }
+  /* Меню — як .st-menu у налаштуваннях: ті самі фон, рамка, радіус і рядки. */
+  .sc-qi-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 240px; display: flex; flex-direction: column; gap: 1px; padding: 4px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border-hi); box-shadow: 0 12px 32px rgba(0,0,0,.4); }
+  .sc-qi-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: 600 13px var(--font-ui); cursor: pointer; text-align: left; transition: background .15s; }
+  .sc-qi-menu button i { font-size: 16px; width: 18px; text-align: center; color: var(--text-mute); transition: color .15s; }
+  .sc-qi-menu button:hover { background: var(--hover-strong); }
+  .sc-qi-menu button:hover i { color: var(--orange); }
   .sc-qi-sep { height: 1px; margin: 4px 6px; background: var(--border); }
-  .sc-qi-sec { padding: 4px 10px 2px; font: 700 10px/1.3 var(--font-ui); text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
-  .sc-qi-menu small { opacity: .6; font-size: 11px; margin-left: 4px; }
+  .sc-qi-sec { padding: 6px 10px 4px; font: 700 var(--fs-min)/1.3 var(--font-ui); text-transform: uppercase; letter-spacing: .9px; color: var(--text-dim); }
+  .sc-qi-note { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font: 500 12px/1.4 var(--font-ui); color: var(--text-mute); }
+  .sc-qi-note i { font-size: 15px; color: var(--green); }
+  .sc-qi-menu small { color: var(--text-dim); font-size: 11px; margin-left: 4px; }
 
   .sc-conn { display: flex; align-items: center; gap: 8px; flex-shrink: 0; padding: 7px 16px; font: 600 11px/1.3 var(--font-ui); color: var(--text); background: rgba(239,68,68,.1); border-bottom: 1px solid rgba(239,68,68,.25); }
   .sc-conn i { color: var(--red); font-size: 14px; }
@@ -1968,7 +1981,7 @@ import { windowActive } from '../windowActive.svelte'
   .sc-msgs { container: scm / inline-size; flex: 1; min-height: 0; overflow-y: auto; padding: 26px 16px 8px; overflow-anchor: none; }
   .sc-inner { display: flex; flex-direction: column; min-height: 100%; }
   .sc-more-new { align-self: center; display: flex; align-items: center; gap: 6px; padding: 8px; color: var(--text-dim); font: 600 11px/1 var(--font-ui); }
-  .sc-newdiv { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; color: var(--orange); font: 750 10.5px/1 var(--font-ui); }
+  .sc-newdiv { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; color: var(--orange); font: 750 var(--fs-min)/1 var(--font-ui); }
   .sc-newdiv::before, .sc-newdiv::after { content: ''; flex: 1; height: 1px; background: rgba(var(--orange-rgb), .35); }
 
   /* ── Закріплені ── */
@@ -2082,7 +2095,7 @@ import { windowActive } from '../windowActive.svelte'
   .sc-more:hover { color: var(--text); border-color: var(--border-hi); } .sc-more:active { transform: scale(.96); }
 
   .sc-it { display: flex; flex-direction: column; min-width: 0; }
-  .sc-day { align-self: center; margin: 10px 0 6px; padding: 3px 13px; border-radius: 20px; background: color-mix(in srgb, var(--bg-input) 75%, transparent); border: 1px solid var(--border); font: 650 10.5px/1.6 var(--font-ui); color: var(--text-dim); }
+  .sc-day { align-self: center; margin: 10px 0 6px; padding: 3px 13px; border-radius: 20px; background: color-mix(in srgb, var(--bg-input) 75%, transparent); border: 1px solid var(--border); font: 650 var(--fs-min)/1.6 var(--font-ui); color: var(--text-dim); }
 
   .sc-row { display: flex; align-items: flex-end; gap: 8px; max-width: 100%; margin-top: 8px; }
   .sc-row:not(.gstart) { margin-top: 2px; }
@@ -2122,9 +2135,9 @@ import { windowActive } from '../windowActive.svelte'
   .sc-evt.warn .sc-evt-ic { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 16%, transparent); }
   .sc-evt.bad .sc-evt-ic { color: var(--red); background: color-mix(in srgb, var(--red) 15%, transparent); }
   .sc-evt-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; }
-  .sc-evt-tm { flex: none; font-size: 10px; font-weight: 600; color: var(--text-mute); }
+  .sc-evt-tm { flex: none; font-size: var(--fs-min); font-weight: 600; color: var(--text-mute); }
   .sc-bad { color: var(--text-dim); font-style: italic; display: inline-flex; align-items: center; gap: 5px; }
-  .sc-meta { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 3px; font: 500 10px/1 var(--font-ui); color: var(--text-dim); }
+  .sc-meta { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 3px; font: 500 var(--fs-min)/1 var(--font-ui); color: var(--text-dim); }
 
   /* ── Іконки стану ── */
   .tk { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; font-size: 14px; }
@@ -2135,11 +2148,11 @@ import { windowActive } from '../windowActive.svelte'
   .tk.sending .ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid color-mix(in srgb, var(--orange) 28%, transparent); border-top-color: var(--orange); animation: tk-spin .8s linear infinite; }
   @keyframes tk-spin { to { transform: rotate(360deg); } }
 
-  .sc-state { display: flex; align-items: center; gap: 5px; margin: 3px 4px 0; font: 600 10.5px/1.3 var(--font-ui); color: var(--text-dim); }
+  .sc-state { display: flex; align-items: center; gap: 5px; margin: 3px 4px 0; font: 600 var(--fs-min)/1.3 var(--font-ui); color: var(--text-dim); }
   .sc-state.sending { color: var(--orange); }
   .sc-state.read { color: var(--orange); }
   .sc-state.failed { color: var(--red); flex-wrap: wrap; justify-content: flex-end; }
-  .sc-link { background: none; border: 0; padding: 0 2px; font: 750 10.5px/1.3 var(--font-ui); color: var(--orange); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .sc-link { background: none; border: 0; padding: 0 2px; font: 750 var(--fs-min)/1.3 var(--font-ui); color: var(--orange); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
   .sc-link.muted { color: var(--text-mute); } .sc-link:hover { filter: brightness(1.2); }
 
   /* крапки «друкує / надсилається» */
@@ -2173,7 +2186,7 @@ import { windowActive } from '../windowActive.svelte'
      піднімається вище, щоб не перекривати хрестик скасування відповіді. */
   .sc:has(.sc-replybar) .sc-down { bottom: 128px; }
   .sc-down:hover { border-color: rgba(var(--orange-rgb), .6); } .sc-down:active { transform: scale(.9); }
-  .sc-down-n { position: absolute; top: -6px; right: -4px; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 10px; background: var(--orange); color: #111; font: 800 10px/17px var(--font-ui); text-align: center; animation: tk-pop .3s cubic-bezier(.2,1.6,.4,1); }
+  .sc-down-n { position: absolute; top: -6px; right: -4px; min-width: 17px; height: 17px; padding: 0 5px; border-radius: 10px; background: var(--orange); color: #111; font: 800 var(--fs-min)/17px var(--font-ui); text-align: center; animation: tk-pop .3s cubic-bezier(.2,1.6,.4,1); }
 
   /* ── Поле вводу ── */
   .sc-foot { display: flex; align-items: flex-end; gap: 8px; flex-shrink: 0; padding: 10px 14px; border-top: 1px solid var(--border); }

@@ -80,3 +80,24 @@ func TestCheckCommand(t *testing.T) {
 		t.Fatalf("%+v %s", cmd, code)
 	}
 }
+
+// Обгортка execute не має обходити ні право Stop, ні заборону привілейованих команд.
+func TestCheckCommandExecuteWrapper(t *testing.T) {
+	for _, c := range []string{"execute run stop", "minecraft:execute as @a run minecraft:stop", "execute  if entity @p run /restart", "execute run execute run stop", "shutdown", "end"} {
+		cmd, _ := CheckCommand(c, true)
+		if !cmd.IsStop {
+			t.Fatalf("%q має класифікуватись як stop", c)
+		}
+	}
+	for _, c := range []string{"execute run op Steve", "execute as @a at @s run deop x", "lp user x permission set *", "sudo Steve op me"} {
+		if _, code := CheckCommand(c, false); code != CodePrivileged {
+			t.Fatalf("%q має бути привілейованою", c)
+		}
+	}
+	for _, c := range []string{"execute as @a run say hi", "execute run tp @a 0 64 0", "say run stop"} {
+		cmd, code := CheckCommand(c, false)
+		if code != "" || cmd.IsStop {
+			t.Fatalf("%q — звичайна команда: %+v %s", c, cmd, code)
+		}
+	}
+}

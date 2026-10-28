@@ -19,6 +19,7 @@
 
 import { Call, Events as RtEvents, Application as RtApp, Window as RtWindow } from '/wails/runtime.js'
 import type { ShareStartRequest, ShareOutView, ShareInView, ShareRecoverable, SharePreviewView } from './friends/shareMsg'
+import type { ActivityItem } from './activityStore.svelte'
 import type {
   FontFile, RepairReport, RepairFix, RepairFixResult, RepairIssueKind, ModDependencyGraph, ModRemovalImpact, PackMetrics,
   Account, BrowserEntry, AIDiagnosis, AIFixResult, AIRecommendedAction, ConsoleContext, ConsoleLine,
@@ -36,7 +37,7 @@ import type {
   PackDirListing, PackFileContent, ConsoleAccountInfo,
   ScreenshotEntry, NewScreenshotEvent,
   ModSourcesView, ModVersionOption, ModBackupEntry, DuplicateModGroup, ModUpdateResult, PreLaunchModIssues, LaunchWarnings, ServerPing,
-  SuggestedMod, DependencyResult,
+  SuggestedMod, DependencyResult, PackServerLink,
   InstanceServer, ModImportResult, ServerCopyResult, PinnedServerView,
   ServerView, CoreDetectResult, NewServerRequest, ServerConfigPatch, ChangeCoreRequest, ServerStatus, ServerFolderCheck,
   CheckPortResult, CheckRAMResult, PropertiesDoc, PropUpdate, ServerLiveStats, ServerPreflight,
@@ -45,9 +46,8 @@ import type {
   ClaimResult, P2PHostStatus, P2PUDPStatus, P2PClaimedAddress, P2PConnection,
   P2PAccess, P2PEntry, P2PACLList, P2PApplyResult, P2PCohostList, P2PSharedRoom,
   ServerModInfo, ServerPluginInfo, WorldInfo, BackupInfo, ServerPlayer, ServerPlayerPlaytime, ServerBackupProgress, CrashAnalysis, ServerBrowserContextView,
-  ServerModsCompareResult,
-  NetworkView, NetworkMemberView,
-  BrowserSearchResult, BrowserProjectDetail, BrowserVersionView, BrowserCompatiblePack, BrowserInstallResult,
+  NetworkView, NetworkMemberView, NetworkSettings, NetworkIssue, ExternalServer, NetworkFolderInfo, NetworkImportResult,
+  BrowserSearchResult, BrowserProjectDetail, BrowserVersionView, BrowserCompatiblePack, BrowserInstallResult, BrowserServerCompat,
   DesktopShortcut, PendingShortcutLaunch,
   BrowserCategory, BrowserInstalledItem, BrowserInstalledInPack, BrowserProgress, BrowserModpackInstallCheck,
   ContentFileEntry,
@@ -93,7 +93,7 @@ async function call(method: string, ...args: unknown[]): Promise<any> {
     // Друзі Shaurma: «already_friends», «rate_limited» тощо — очікувані відповіді
     // (UI показує переклад за кодом), а не збої лаунчера.
     const skipAutolog = new Set([
-      'RemoteStartServer', 'RemoteStopServer', 'RemoteOpenConsole', 'RemoteConsoleExec', 'RemoteCloseConsole',
+      'RemoteStartServer', 'RemoteStopServer', 'RemoteSetP2P', 'RemoteOpenConsole', 'RemoteConsoleExec', 'RemoteCloseConsole',
       'GetFriendsState', 'RefreshFriends', 'SendFriendInvite', 'SendFriendInviteByHandle', 'SetShaurmaHandle', 'SetShaurmaProfileStyle', 'RespondFriendInvite', 'ListSentFriendInvites', 'RemoveFriend', 'SetFriendsPrivacy', 'GetFriendProfile', 'GetProfileVisibility', 'SetProfileVisibility',
     ])
     if (method !== 'AppendLauncherError' && !skipAutolog.has(method)) {
@@ -306,6 +306,9 @@ export const App = {
   // мод знайти не вдалось.
   GetModPageLink: (packID: string, fileName: string, mcVersion: string, loader: string): Promise<string> =>
     call('GetModPageLink', packID, fileName, mcVersion, loader),
+  // GetModProjectRef — джерело і ID проєкту мода за файлом (для переходу на сторінку мода).
+  GetModProjectRef: (packID: string, fileName: string, mcVersion: string, loader: string): Promise<{ source: string; projectId: string }> =>
+    call('GetModProjectRef', packID, fileName, mcVersion, loader),
   // ── Рекомендовані моди (вкладка «Контент») ──
   // Hard-залежності вже встановлених модів, яких самих ще немає в збірці.
   // Поважає Settings.disableModSuggestions (бекенд повертає [] одразу).
@@ -336,6 +339,11 @@ export const App = {
   // збірку» — тоді не буде статусів already/update).
   AnalyzeModMigration: (sourcePackId: string, targetPackId: string, targetMcVersion: string, targetLoader: string): Promise<ModMigrationReport> =>
     call('AnalyzeModMigration', sourcePackId, targetPackId, targetMcVersion, targetLoader),
+  // AnalyzeModPort — звіт портування модів зі збірки на сервер ("srv:<id>"):
+  // ті самі jar (версія гри й лоадер мають збігатися), у кожному рядку side.
+  // Виконання — той самий MigrateMods.
+  AnalyzeModPort: (sourcePackId: string, targetId: string): Promise<ModMigrationReport> =>
+    call('AnalyzeModPort', sourcePackId, targetId),
   CancelModMigrationAnalysis: (packId: string): Promise<void> => call('CancelModMigrationAnalysis', packId),
   // Виконує міграцію: качає підтверджені моди (статус found/update) у
   // теки модів цільової збірки. Прогрес — подією mods:migrate-progress.
@@ -388,10 +396,6 @@ export const App = {
   AddModSource: (packID: string, kind: string, path: string): Promise<ModSourcesView> => call('AddModSource', packID, kind, path),
   RemoveModSource: (packID: string, sourceID: string): Promise<ModSourcesView> => call('RemoveModSource', packID, sourceID),
   SyncModSources: (packID: string): Promise<{ checked: number; copied: number; restored: number; removed: number; moved: number; missing: any[]; errors: string[] }> => call('SyncModSources', packID),
-  // ── «Єдине джерело» модів/плагінів (сервери; name = 'mods' | 'plugins') ──
-  GetServerModSources: (serverID: string, name: string): Promise<ModSourcesView> => call('GetServerModSources', serverID, name),
-  AddServerModSource: (serverID: string, name: string, kind: string, path: string): Promise<ModSourcesView> => call('AddServerModSource', serverID, name, kind, path),
-  RemoveServerModSource: (serverID: string, name: string, sourceID: string): Promise<ModSourcesView> => call('RemoveServerModSource', serverID, name, sourceID),
   // ── ШІ браузера контенту: переклад сторінки + відгук про проєкт ──
   // Переклад опису (markdown/HTML розмітка зберігається) через Groq.
   // Кешується на диску — повторне відкриття сторінки без запиту до API.
@@ -682,8 +686,8 @@ export const App = {
   // ── Віддалене керування серверами друзів ─────────────────────────────
   // ВЛАСНИК: хто з друзів що може на моєму сервері (VPS перевіряє дружбу й права, лаунчер — ще раз).
   GetRemoteAccess: (): Promise<RemoteAccessView> => call('GetRemoteAccess'),
-  SetRemoteGrant: (serverId: string, friendId: string, start: boolean, stop: boolean, consoleView: boolean, exec: boolean): Promise<void> =>
-    call('SetRemoteGrant', serverId, friendId, start, stop, consoleView, exec),
+  SetRemoteGrant: (serverId: string, friendId: string, start: boolean, stop: boolean, consoleView: boolean, exec: boolean, network: boolean): Promise<void> =>
+    call('SetRemoteGrant', serverId, friendId, start, stop, consoleView, exec, network),
   SetRemoteAllowStopWithPlayers: (serverId: string, v: boolean): Promise<void> => call('SetRemoteAllowStopWithPlayers', serverId, v),
   SetRemoteAllowPrivileged: (serverId: string, v: boolean): Promise<void> => call('SetRemoteAllowPrivileged', serverId, v),
   SetRemotePaused: (v: boolean): Promise<void> => call('SetRemotePaused', v),
@@ -692,6 +696,8 @@ export const App = {
   GetRemoteServers: (): Promise<RemoteServer[]> => call('GetRemoteServers'),
   RemoteStartServer: (ownerId: string, serverId: string): Promise<string> => call('RemoteStartServer', ownerId, serverId),
   RemoteStopServer: (ownerId: string, serverId: string): Promise<string> => call('RemoteStopServer', ownerId, serverId),
+  // P2P-адреса сервера друга: увімкнути — з правом запуску, вимкнути — з правом зупинки.
+  RemoteSetP2P: (ownerId: string, serverId: string, on: boolean): Promise<string> => call('RemoteSetP2P', ownerId, serverId, on),
   RemoteOpenConsole: (ownerId: string, serverId: string): Promise<string> => call('RemoteOpenConsole', ownerId, serverId),
   RemoteConsoleExec: (sid: string, cmd: string): Promise<void> => call('RemoteConsoleExec', sid, cmd),
   RemoteCloseConsole: (sid: string): Promise<void> => call('RemoteCloseConsole', sid),
@@ -761,6 +767,7 @@ export const App = {
   ShareSenderPause: (id: string, accountId: string, paused: boolean): Promise<void> => call('ShareSenderPause', id, accountId, paused),
   ShareRevokeRecipient: (id: string, accountId: string): Promise<void> => call('ShareRevokeRecipient', id, accountId),
   ListShareOut: (): Promise<ShareOutView[]> => call('ListShareOut'),
+  ListActivities: (): Promise<ActivityItem[]> => call('ListActivities'),
   ShareAccept: (encoded: string, fromAccountId: string, fromName: string): Promise<ShareInView> => call('ShareAccept', encoded, fromAccountId, fromName),
   SharePause: (sid: string): Promise<void> => call('SharePause', sid),
   ShareResume: (sid: string): Promise<void> => call('ShareResume', sid),
@@ -959,23 +966,12 @@ export const App = {
   // (Type 'ServerModInfo[]' is not assignable to type 'ModEntry[]'), а дані
   // з бекенду нікуди не дівались.
   ListServerMods: (serverID: string): Promise<ModEntry[]> => call('ListServerMods', serverID),
-  // ExportServerModList — список модів СЕРВЕРА у тому самому форматі, що
-  // ExportModList для збірок (html/markdown/plain/json/csv).
-  ExportServerModList: (serverID: string, opts: ModListExportOptions): Promise<string> =>
-    call('ExportServerModList', serverID, opts),
-  // CompareServerMods — порівняння модів двох серверів (що є лише на
-  // одному і де розійшлися версії).
-  CompareServerMods: (serverA: string, serverB: string): Promise<ServerModsCompareResult> =>
-    call('CompareServerMods', serverA, serverB),
-  // CheckServerModUpdates — друга, мережева хвиля (єдиний batch-запит до
-  // Modrinth за SHA1) поверх уже показаного списку з диска: патчить
-  // hasUpdate/latestVersion/latestUrl/iconUrl в картках.
-  CheckServerModUpdates: (serverID: string): Promise<ModEntry[]> => call('CheckServerModUpdates', serverID),
-  ToggleServerMod: (serverID: string, fileName: string): Promise<void> => call('ToggleServerMod', serverID, fileName),
-  DeleteServerMod: (serverID: string, fileName: string): Promise<void> => call('DeleteServerMod', serverID, fileName),
+  // Сервер разом зі збіркою: зв'язки збірка ↔ сервер (pack_server_link.go).
+  GetPackServerLinks: (packId: string): Promise<PackServerLink[] | null> => call('GetPackServerLinks', packId),
+  GetServerPackLinks: (serverId: string): Promise<PackServerLink[] | null> => call('GetServerPackLinks', serverId),
+  SavePackServerLink: (link: PackServerLink): Promise<void> => call('SavePackServerLink', link),
+  RemovePackServerLink: (packId: string, serverId: string): Promise<void> => call('RemovePackServerLink', packId, serverId),
   ListServerPlugins: (serverID: string): Promise<ServerPluginInfo[]> => call('ListServerPlugins', serverID),
-  ToggleServerPlugin: (serverID: string, fileName: string): Promise<void> => call('ToggleServerPlugin', serverID, fileName),
-  DeleteServerPlugin: (serverID: string, fileName: string): Promise<void> => call('DeleteServerPlugin', serverID, fileName),
   // Світи + бекапи сервера
   ListWorlds: (serverID: string): Promise<WorldInfo[]> => call('ListWorlds', serverID),
   CreateWorldBackup: (serverID: string, worldName: string): Promise<string> => call('CreateWorldBackup', serverID, worldName),
@@ -995,8 +991,16 @@ export const App = {
   NetworkSave: (proxyServerId: string, members: NetworkMemberView[]): Promise<void> => call('NetworkSave', proxyServerId, members),
   NetworkStart: (proxyServerId: string): Promise<void> => call('NetworkStart', proxyServerId),
   NetworkStop: (proxyServerId: string): Promise<void> => call('NetworkStop', proxyServerId),
-  AddServerModFile: (serverID: string, kind: string, fileName: string, dataBase64: string): Promise<void> =>
-    call('AddServerModFile', serverID, kind, fileName, dataBase64),
+  NetworkSaveSettings: (proxyServerId: string, s: NetworkSettings): Promise<void> => call('NetworkSaveSettings', proxyServerId, s),
+  // Діагностика мережі: конфіг проксі, секрет, forwarding і порти кожного
+  // сервера, пінг запущених. NetworkRepair виправляє все з fixable.
+  NetworkDiagnose: (proxyServerId: string): Promise<NetworkIssue[] | null> => call('NetworkDiagnose', proxyServerId),
+  NetworkRepair: (proxyServerId: string): Promise<void> => call('NetworkRepair', proxyServerId),
+  NetworkConfigText: (proxyServerId: string): Promise<string> => call('NetworkConfigText', proxyServerId),
+  NetworkSaveExternal: (proxyServerId: string, list: ExternalServer[]): Promise<void> => call('NetworkSaveExternal', proxyServerId, list),
+  // Готова мережа з однієї теки: проксі + сервери в підтеках — одним кроком.
+  DetectNetworkFolder: (dir: string): Promise<NetworkFolderInfo> => call('DetectNetworkFolder', dir),
+  ImportNetworkFolder: (dir: string): Promise<NetworkImportResult> => call('ImportNetworkFolder', dir),
   // ── Браузер контенту ДЛЯ СЕРВЕРІВ ──
   // ServerBrowserContext — версія MC / лоадер / уже встановлені файли,
   // щоб вкладка «Знайти онлайн» шукала сумісний з САМЕ ЦИМ сервером
@@ -1179,12 +1183,12 @@ export const App = {
   // список Modrinth рендериться одразу, не чекаючи CurseForge.
   BrowserSearchModrinth: (query: string, projectType: string, mcVersion: string, loader: string, categories: string, sort: string, client: boolean, server: boolean, openSource: boolean, limit: number, offset: number, packID: string): Promise<BrowserSearchResult> =>
     call('BrowserSearchModrinth', query, projectType, mcVersion, loader, categories, sort, client, server, openSource, limit, offset, packID),
-  BrowserSearchCurseForge: (query: string, projectType: string, mcVersion: string, loader: string, categories: string, sort: string, limit: number, packID: string): Promise<BrowserSearchResult> =>
-    call('BrowserSearchCurseForge', query, projectType, mcVersion, loader, categories, sort, limit, packID),
+  BrowserSearchCurseForge: (query: string, projectType: string, mcVersion: string, loader: string, categories: string, sort: string, limit: number, offset: number, packID: string): Promise<BrowserSearchResult> =>
+    call('BrowserSearchCurseForge', query, projectType, mcVersion, loader, categories, sort, limit, offset, packID),
   // Те саме, але без суто клієнтських модів — для серверної цілі (CurseForge
   // не віддає поле «Environment» в API, тож відсів іде за тегами файлів).
-  BrowserSearchCurseForgeForServer: (query: string, projectType: string, mcVersion: string, loader: string, categories: string, sort: string, limit: number, packID: string): Promise<BrowserSearchResult> =>
-    call('BrowserSearchCurseForgeForServer', query, projectType, mcVersion, loader, categories, sort, limit, packID),
+  BrowserSearchCurseForgeForServer: (query: string, projectType: string, mcVersion: string, loader: string, categories: string, sort: string, limit: number, offset: number, packID: string): Promise<BrowserSearchResult> =>
+    call('BrowserSearchCurseForgeForServer', query, projectType, mcVersion, loader, categories, sort, limit, offset, packID),
   GetBrowserProjectDetail: (source: string, projectId: string): Promise<BrowserProjectDetail> =>
     call('GetBrowserProjectDetail', source, projectId),
   // projectType — тип контенту (mod/modpack/resourcepack/shader/datapack):
@@ -1203,6 +1207,10 @@ export const App = {
   // (для ресурспаків/датапаків/шейдерів лоадер не враховується).
   GetBrowserCompatiblePacks: (source: string, projectId: string, projectType: string, contentDir: string, versionId?: string): Promise<BrowserCompatiblePack[]> =>
     call('GetBrowserCompatiblePacks', source, projectId, projectType, contentDir, versionId ?? ''),
+  // GetBrowserServerCompat — сумісність контенту з кожним сервером (версія
+  // під mc/ядро) і сторона мода (client_side/server_side).
+  GetBrowserServerCompat: (source: string, projectId: string, projectType: string): Promise<BrowserServerCompat> =>
+    call('GetBrowserServerCompat', source, projectId, projectType),
   // Теги-категорії для сайдбара фільтра (Modrinth + CurseForge, з іконками).
   GetBrowserCategories: (projectType: string): Promise<BrowserCategory[]> =>
     call('GetBrowserCategories', projectType),

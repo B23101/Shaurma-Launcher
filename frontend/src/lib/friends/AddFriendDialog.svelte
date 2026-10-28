@@ -9,7 +9,7 @@
   import { toast } from '../toast.svelte'
   import { t } from '../i18n.svelte'
   import { parseFriendLink } from './friendLink'
-  import FModal from './FModal.svelte'
+  import UiModal from '../UiModal.svelte'
   import FAvatar from './FAvatar.svelte'
   import type { SocialUserHit } from '../types'
 
@@ -65,7 +65,7 @@
   }
 </script>
 
-<FModal {open} {onclose} icon="ti-user-plus" title={t('friends.addFriend')} subtitle={t('ff.add.sub')} width={480}>
+<UiModal {open} {onclose} icon="ti-user-plus" title={t('friends.addFriend')} subtitle={t('ff.add.sub')} width="480px" zIndex={1000001}>
   {#if s.me}
     <div class="ad-me">
       <div class="ad-me-l">
@@ -109,12 +109,12 @@
       <div class="ad-note"><i class="ti ti-bulb"></i>{t('ff.add.hint')}</div>
     {/if}
   </div>
-</FModal>
+</UiModal>
 
 <style>
   .ad-me { display: flex; align-items: center; gap: 8px; padding: 12px 12px 12px 16px; margin-bottom: 20px; border-radius: 16px; background: var(--bg-input); border: 1px solid var(--border); }
   .ad-me-l { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-  .ad-lab { font: 700 10.5px/1 var(--font-ui); letter-spacing: .3px; color: var(--text-dim); }
+  .ad-lab { font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .3px; color: var(--text-dim); }
   .ad-lab-in { display: block; margin-bottom: 7px; }
   .ad-code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 13px/1.3 var(--font-mono); color: var(--text); user-select: all; }
   .ad-btn { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 11px; cursor: pointer; font: 700 12px/1 var(--font-ui); color: var(--text); background: var(--bg-panel); border: 1px solid var(--border-hi); transition: border-color .14s, color .14s, transform .12s; }

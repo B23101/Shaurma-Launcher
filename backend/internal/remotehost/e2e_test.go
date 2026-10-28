@@ -48,6 +48,14 @@ type fakeServers struct {
 	stopped int
 	cmds    []string
 	tail    []Line
+	p2p     []bool // виклики P2P(on)
+}
+
+func (f *fakeServers) P2P(_ string, on bool) error {
+	f.mu.Lock()
+	f.p2p = append(f.p2p, on)
+	f.mu.Unlock()
+	return nil
 }
 
 func (f *fakeServers) Exists(id string) (string, bool) { return "Мій сервер", id == srvID }
@@ -496,5 +504,33 @@ func TestVPSRefusalIsSurfaced(t *testing.T) {
 	r.client.HandleResult(social.RemoteResultFrame{ReqID: rq, Code: "not_allowed"})
 	if ev := r.ev.lastResult(); ev == nil || ev.OK || ev.Code != "not_allowed" {
 		t.Fatalf("%+v", ev)
+	}
+}
+
+// p2p_on — за правом запуску й лише на запущеному сервері; p2p_off без
+// права зупинки не виконується.
+func TestP2POpsFollowStartStop(t *testing.T) {
+	r := newRig(t, remotectl.Rights{Start: true}, "s")
+	r.srv.state = "stopped"
+	if _, err := r.client.Command(ownerID, srvID, "p2p_on"); err != nil {
+		t.Fatal(err)
+	}
+	if ev := r.ev.lastResult(); ev == nil || ev.Code != "not_running" || len(r.srv.p2p) != 0 {
+		t.Fatalf("на зупиненому сервері P2P не вмикається: %+v %v", ev, r.srv.p2p)
+	}
+	r.tick()
+	r.srv.state = "running"
+	if _, err := r.client.Command(ownerID, srvID, "p2p_on"); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.srv.p2p) != 1 || !r.srv.p2p[0] {
+		t.Fatalf("p2p_on мав увімкнути тунель: %v", r.srv.p2p)
+	}
+	r.tick()
+	if _, err := r.client.Command(ownerID, srvID, "p2p_off"); err != nil {
+		t.Fatal(err)
+	}
+	if len(r.srv.p2p) != 1 {
+		t.Fatalf("p2p_off без права зупинки не має виконатись: %v", r.srv.p2p)
 	}
 }

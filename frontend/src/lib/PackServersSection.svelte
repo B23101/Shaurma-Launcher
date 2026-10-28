@@ -756,9 +756,9 @@
   .srv-info { flex: 1; min-width: 0; }
   .srv-name { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
   .srv-name-text { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .srv-addr { font-size: 10.5px; color: var(--text-mute); font-family: 'JetBrains Mono', monospace; }
+  .srv-addr { font-size: var(--fs-min); color: var(--text-mute); font-family: 'JetBrains Mono', monospace; }
   .srv-motd {
-    margin-top: 3px; font-size: 10.5px; color: var(--text-mute); line-height: 1.3;
+    margin-top: 3px; font-size: var(--fs-min); color: var(--text-mute); line-height: 1.3;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;
     opacity: .85;
   }
@@ -821,8 +821,8 @@
   .srv-card:active .srv-grip { cursor: grabbing; }
 
   /* Chip-бейджі */
-  .chip.pin { padding: 2px 6px; font-size: 10px; color: var(--orange); background: rgba(var(--orange-rgb),.12); border-color: rgba(var(--orange-rgb),.3); }
-  .chip.temp { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: 9.5px; color: #60a5fa; background: rgba(59, 130, 246, .13); border-color: rgba(59, 130, 246, .35); }
+  .chip.pin { padding: 2px 6px; font-size: var(--fs-min); color: var(--orange); background: rgba(var(--orange-rgb),.12); border-color: rgba(var(--orange-rgb),.3); }
+  .chip.temp { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: var(--fs-min); color: #60a5fa; background: rgba(59, 130, 246, .13); border-color: rgba(59, 130, 246, .35); }
 
   .pss-chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
   .pss-chip {
@@ -850,7 +850,7 @@
   /* Лічильник вибраних */
   .srv-sel-count {
     background: var(--orange); color: #fff; border-radius: 999px;
-    font-size: 10px; font-weight: 700; padding: 1px 7px; line-height: 1.5;
+    font-size: var(--fs-min); font-weight: 700; padding: 1px 7px; line-height: 1.5;
   }
 
   .field label { font-size: 12px; font-weight: 700; display: block; margin-bottom: 6px; }
@@ -883,7 +883,7 @@
   .cp-src-name { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cp-src-addr { font-size: 11px; flex-shrink: 1; min-width: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip.ex {
-    padding: 2px 8px; font-size: 9.5px; font-weight: 700; border-radius: 6px;
+    padding: 2px 8px; font-size: var(--fs-min); font-weight: 700; border-radius: 6px;
     background: rgba(251,191,36,.12); border: 1px solid rgba(251,191,36,.35); color: rgb(251,191,36);
     flex-shrink: 0;
   }
@@ -912,8 +912,8 @@
   .cp-info { flex: 1; min-width: 0; }
   .cp-name { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; }
   .cp-name > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .cp-name .chip { padding: 2px 8px; font-size: 9.5px; flex-shrink: 0; }
-  .cp-sub { font-size: 10.5px; color: var(--text-mute); font-family: var(--font-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cp-name .chip { padding: 2px 8px; font-size: var(--fs-min); flex-shrink: 0; }
+  .cp-sub { font-size: var(--fs-min); color: var(--text-mute); font-family: var(--font-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cp-check { font-size: 16px; color: var(--text-dim); opacity: 0; flex-shrink: 0; transition: opacity .15s, color .15s; }
   .cp-item.sel .cp-check { opacity: 1; color: var(--orange); }
 </style>

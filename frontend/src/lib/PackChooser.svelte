@@ -163,7 +163,7 @@
     font-size: 12.5px; font-weight: 700; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .pc-sub { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pc-sub { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pc-caret { color: var(--text-dim); font-size: 14px; flex-shrink: 0; }
 
   /* ── Вміст модалки ── */
@@ -195,10 +195,10 @@
   .pc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .pc-rname { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text); }
   .pc-tag {
-    font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 999px;
+    font-size: var(--fs-min); font-weight: 800; padding: 1px 6px; border-radius: 999px;
     background: rgba(var(--orange-rgb), .14); color: var(--orange); white-space: nowrap;
   }
-  .pc-rsub { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: var(--text-mute); }
+  .pc-rsub { display: flex; align-items: center; gap: 8px; font-size: var(--fs-min); color: var(--text-mute); }
   .pc-mods { display: inline-flex; align-items: center; gap: 3px; }
   .pc-check { color: var(--violet-l); font-size: 15px; flex-shrink: 0; }
   .pc-empty {

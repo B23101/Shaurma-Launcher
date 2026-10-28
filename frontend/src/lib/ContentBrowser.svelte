@@ -11,13 +11,14 @@
   //     контенту), встановлення — зі сторінки (з прогресом і позначкою
   //     «вже встановлено», як у Modrinth app).
   import { t } from './i18n.svelte'
+  import { projectTags, tagLabel } from './browserTags'
   import { tick } from 'svelte'
   import { fly } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import { App, on, withCallTimeout } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import { packAsset } from './packAssets.svelte'
-  import type { BrowserEntry, BrowserSearchResult, BrowserCategory, BrowserInstalledItem, BrowserProgress, BrowserCompatEvent, BrowserCompatiblePack, BrowserVersionView, BrowserModpackInstallCheck, BrowserGameVersion, BrowserLoaderTag, BrowserCollection, CollectionItemVersion, CollectionInstallPlanItem, BrowserInstallResult, SearchHistoryItem } from './types'
+  import type { BrowserEntry, BrowserSearchResult, BrowserCategory, BrowserInstalledItem, BrowserProgress, BrowserCompatEvent, BrowserCompatiblePack, BrowserVersionView, BrowserModpackInstallCheck, BrowserGameVersion, BrowserLoaderTag, BrowserCollection, CollectionItemVersion, CollectionInstallPlanItem, BrowserInstallResult, SearchHistoryItem, BrowserServerCompat } from './types'
   import fabricIcon from '../assets/images/fabric_icon.png'
   import forgeIcon from '../assets/images/forge_icon.png'
   import neoforgeIcon from '../assets/images/neoforge_icon.png'
@@ -739,9 +740,14 @@
   // Загальна кількість сторінок з бекенду (totalHits) — якщо бекенд не
   // дав точний totalHits, вважаємо що є ще хоча б одна сторінка, поки
   // hasMore === true.
+  // Джерела гортаються синхронно (той самий offset), тож сторінок стільки,
+  // скільки в «довшого» з тих, що беруть участь у пошуку.
   const totalPages = $derived.by(() => {
-    if (results.totalHits > 0) return Math.max(1, Math.ceil(results.totalHits / PAGE_SIZE))
-    return results.hasMore ? currentPage + 1 : currentPage
+    const useMr = sourceFilter !== 'curseforge'
+    const useCf = sourceFilter !== 'modrinth'
+    const hits = Math.max(useMr ? results.totalHits : 0, useCf ? (results.cfTotalHits ?? 0) : 0)
+    if (hits > 0) return Math.max(1, Math.ceil(hits / PAGE_SIZE))
+    return (useMr && results.hasMore) || (useCf && results.cfHasMore) ? currentPage + 1 : currentPage
   })
 
   // Аналіз «вже встановлено» у збірці-фільтрі (по sha1, як Modrinth app):
@@ -764,7 +770,7 @@
   // збірок фільтрується під саме цю версію (GetBrowserCompatiblePacks з
   // versionID). Без фільтра збірки — клік «Встановити» на картці відкриває
   // саме це; з фільтром збірки — встановлення йде одразу (без вікна).
-  let packPickDialog = $state<{ entry: BrowserEntry; packs: BrowserCompatiblePack[]; versions: BrowserVersionView[]; loading: boolean; selectedVersionId: string } | null>(null)
+  let packPickDialog = $state<{ entry: BrowserEntry; packs: BrowserCompatiblePack[]; versions: BrowserVersionView[]; loading: boolean; selectedVersionId: string; serverCompat: BrowserServerCompat | null; serverChecking: boolean } | null>(null)
   let packPickFilter = $state('')
   // Ціль у діалозі «Встановити»: збірки чи сервери. Сервери пропонуємо лише
   // для видів контенту, які сервер реально тримає (моди/плагіни), і лише ті
@@ -1364,7 +1370,7 @@
         query.trim(), activeType,
         searchVersion, searchLoader,
         selectedCFCategoryIds, sort,
-        PAGE_SIZE,
+        PAGE_SIZE, offset,
         searchPackID,
       ), SEARCH_TIMEOUT_MS, t('browser.timeout')).then((res) => {
         if (seq !== searchSeq) return
@@ -1372,6 +1378,8 @@
         results = {
           ...results,
           curseforge: res?.curseforge ?? [],
+          cfTotalHits: res?.cfTotalHits ?? 0,
+          cfHasMore: res?.cfHasMore ?? false,
           cfDisabled: res?.cfDisabled ?? false,
           cfError: res?.cfError,
           smartSearchTerms: res?.smartSearchTerms?.length ? res.smartSearchTerms : results.smartSearchTerms,
@@ -1887,8 +1895,17 @@
     packPickFilter = ''
     // Плагін збірки не тримають — одразу вкладка «Сервери»; решта — «Збірки».
     packPickTab = (activeType === 'plugin' || entry.type === 'plugin') ? 'servers' : 'packs'
-    packPickDialog = { entry, packs: [], versions: [], loading: true, selectedVersionId: '' }
+    packPickDialog = { entry, packs: [], versions: [], loading: true, selectedVersionId: '', serverCompat: null, serverChecking: false }
     const dialog = packPickDialog
+    // Сервери (версія під mc/ядро + сторона мода) — паралельно зі збірками.
+    const srvType = (activeType === 'plugin' || entry.type === 'plugin') ? 'plugin' : entry.type
+    if (kindForTab(srvType)) {
+      dialog.serverChecking = true
+      App.GetBrowserServerCompat(entry.source, entryKey(entry), srvType)
+        .then((r) => { if (packPickDialog === dialog) packPickDialog.serverCompat = r })
+        .catch(() => { /* без перевірки — сервери лишаються доступними */ })
+        .finally(() => { if (packPickDialog === dialog) packPickDialog.serverChecking = false })
+    }
     try {
       // Версії НЕ завантажуємо: вибір версії прибрано з UI — завжди «авто»
       // (selectedVersionId=''), лаунчер підбирає версію під (mc, loader)
@@ -1977,6 +1994,22 @@
 
   function isCategorySelected(cat: BrowserCategory): boolean {
     return selectedCategories.some(c => c.source === cat.source && c.name === cat.name)
+  }
+
+  // Теги картки (як Categories у GDLauncher): без лоадерів; клік по тегу
+  // вмикає фільтр за ним, якщо такий тег є серед категорій вкладки.
+  function cardTags(item: BrowserEntry): string[] {
+    return projectTags(item.categories)
+  }
+  function tagCategory(item: BrowserEntry, name: string): BrowserCategory | undefined {
+    return categories.find(c => c.source === item.source && c.name.toLowerCase() === name.toLowerCase())
+  }
+  function filterByTag(item: BrowserEntry, name: string, ev: Event) {
+    ev.stopPropagation()
+    const cat = tagCategory(item, name)
+    if (!cat) return
+    if (!isCategorySelected(cat)) toggleCategory(cat)
+    doSearch(1)
   }
 
   function categoryIcon(c: BrowserCategory): string {
@@ -2128,6 +2161,25 @@
         </div>
       {/if}
       <div class="cb-card-desc">{item.description}</div>
+      {#if mode !== 'compact'}
+        {@const tags = cardTags(item)}
+        {#if tags.length > 0}
+          {@const shown = tags.slice(0, mode === 'grid' ? 2 : 4)}
+          <div class="cb-card-cats">
+            {#each shown as tag (tag)}
+              {@const cat = tagCategory(item, tag)}
+              <button type="button" class="cb-card-cat" class:on={!!cat && isCategorySelected(cat)} disabled={!cat}
+                      title={cat ? t('browser.tagFilterHint', { tag: tagLabel(tag) }) : tagLabel(tag)}
+                      onclick={(ev) => filterByTag(item, tag, ev)}>
+                <i class="ti ti-tag"></i>{tagLabel(tag)}
+              </button>
+            {/each}
+            {#if tags.length > shown.length}
+              <span class="cb-card-cat more" title={tags.slice(shown.length).map(tagLabel).join(', ')}>+{tags.length - shown.length}</span>
+            {/if}
+          </div>
+        {/if}
+      {/if}
       {#if mode === 'detailed'}
         <div class="cb-card-meta">
           {#if item.loader}<span class="chip chip-l"><i class="ti ti-brand-git"></i> {item.loader}</span>{/if}
@@ -2539,7 +2591,7 @@
         {#if mergedResults.length > 0}
           <div class="cb-section">
             <div class="cb-section-head">
-              <span class="cb-count">{t('browser.resultsCount', { count: mergedResults.length, total: results.totalHits || mergedResults.length })}</span>
+              <span class="cb-count">{t('browser.resultsCount', { count: mergedResults.length, total: ((sourceFilter !== 'curseforge' ? results.totalHits : 0) + (sourceFilter !== 'modrinth' ? (results.cfTotalHits ?? 0) : 0)) || mergedResults.length })}</span>
               {@render pager()}
             </div>
             {#if results.smartSearchTerms?.length}
@@ -2776,7 +2828,7 @@
                 {#each grp.items as cat (cat.source + cat.name)}
                   <button type="button" class="cbs-chip" class:on={isCategorySelected(cat)} aria-pressed={isCategorySelected(cat)}
                           onclick={() => { toggleCategory(cat); doSearch(1) }}>
-                    {cat.name}
+                    {tagLabel(cat.name)}
                     {#if cat.source === 'curseforge'}<span class="cbs-src" title="CurseForge">CF</span>{/if}
                   </button>
                 {/each}
@@ -2840,6 +2892,9 @@
         </div>
       {/if}
       {#if packPickTab === 'servers' && (packPickServers.length > 0 || packPickType === 'plugin')}
+        {#if dlg.serverCompat?.clientOnly}
+          <div class="cb-side-note bad"><i class="ti ti-device-desktop"></i> {t('browser.target.clientOnlyMod')}</div>
+        {/if}
         <ServerTargetList
           servers={servers}
           tab={packPickType}
@@ -2847,8 +2902,13 @@
           onpick={installToPickedServer}
           variant="row"
           name="cb-dlg-target"
+          compat={dlg.serverCompat?.servers ?? null}
+          checking={dlg.serverChecking}
         />
       {:else}
+      {#if dlg.serverCompat?.serverOnly && packPickType === 'mod'}
+        <div class="cb-side-note"><i class="ti ti-server"></i> {t('browser.target.serverOnlyMod')}</div>
+      {/if}
       {#if !packPickDialog.loading && packPickDialog.packs.length > 0}
         <div class="cb-modal-search">
           <i class="ti ti-search"></i>
@@ -3511,7 +3571,7 @@
   .cb-search-history-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: 6px 8px 8px;
-    font: 700 10.5px/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase;
+    font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase;
     color: var(--text-dim);
   }
   .cb-search-history-clear {
@@ -3535,7 +3595,7 @@
     width: 20px; height: 20px; flex-shrink: 0;
     border: none; border-radius: 50%; cursor: pointer;
     background: transparent; color: var(--text-mute);
-    display: flex; align-items: center; justify-content: center; font-size: 10px;
+    display: flex; align-items: center; justify-content: center; font-size: var(--fs-min);
     transition: background-color .15s ease, color .15s ease;
   }
   .cb-search-history-remove:hover { background: var(--orange); color: #fff; }
@@ -3553,7 +3613,7 @@
     color: var(--text); font-size: 12.5px; font-weight: 600;
   }
   .cb-active-pack .btn { margin-left: auto; }
-  .cb-active-pack .cb-ctx-meta { color: var(--green); font-size: 10.5px; font-family: var(--font-mono); white-space: nowrap; }
+  .cb-active-pack .cb-ctx-meta { color: var(--green); font-size: var(--fs-min); font-family: var(--font-mono); white-space: nowrap; }
 
   /* ── Секція результатів ── */
   .cb-section { margin-bottom: 22px; }
@@ -3564,7 +3624,7 @@
   .cb-count {
     padding: 4px 12px; border-radius: 999px;
     background: var(--bg-input); border: 1px solid var(--border);
-    font: 700 10.5px/1 var(--font-mono);
+    font: 700 var(--fs-min)/1 var(--font-mono);
     color: var(--text-mute); white-space: nowrap;
   }
 
@@ -3618,7 +3678,7 @@
 
   .cb-card-tags { display: flex; align-items: center; gap: 6px; margin-top: 2px; flex-wrap: wrap; }
   .cb-card-type {
-    font: 700 9.5px/1 var(--font-ui);
+    font: 700 var(--fs-min)/1 var(--font-ui);
     text-transform: uppercase; letter-spacing: .5px;
     color: var(--text-mute);
     border: 1px solid var(--border);
@@ -3627,13 +3687,34 @@
   }
   .cb-card-src {
     display: inline-flex; align-items: center; gap: 5px;
-    font: 700 9.5px/1 var(--font-ui);
+    font: 700 var(--fs-min)/1 var(--font-ui);
     padding: 3px 7px; border-radius: 999px;
     white-space: nowrap;
   }
   .cb-card-src img { width: 11px; height: 11px; border-radius: 3px; object-fit: contain; }
   .cb-card-src.mr { color: var(--green); background: rgba(16, 185, 129, .12); }
   .cb-card-src.cf { color: var(--orange); background: rgba(var(--orange-rgb), .12); }
+  .cb-side-note {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 10px;
+    border-radius: 9px; border: 1px solid var(--border);
+    font: 500 12px/1.4 var(--font-ui); color: var(--text-mute);
+  }
+  .cb-side-note.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
+  .cb-card-cats { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; min-width: 0; }
+  .cb-card-cat {
+    all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
+    font: 600 var(--fs-min)/1 var(--font-ui); color: var(--text-mute);
+    padding: 3px 7px; border-radius: 999px; border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--hover) 50%, transparent);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .cb-card-cat i { font-size: 11px; opacity: .7; }
+  .cb-card-cat:not(:disabled):not(.more) { cursor: pointer; }
+  .cb-card-cat:not(:disabled):not(.more):hover { color: var(--text); border-color: var(--tacc, var(--orange)); }
+  .cb-card-cat.on { color: var(--tacc, var(--orange)); border-color: var(--tacc, var(--orange)); }
+  .cb-card-cat:disabled { cursor: default; }
+  .cb-card-cat.more { cursor: default; }
   .cb-card-desc {
     font-size: 11.5px; line-height: 1.5;
     color: var(--text-mute);
@@ -3642,7 +3723,7 @@
     overflow: hidden;
   }
   .cb-card-meta { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
-  .cb-card-meta .chip { padding: 2px 8px; font-size: 10.5px; }
+  .cb-card-meta .chip { padding: 2px 8px; font-size: var(--fs-min); }
   .cb-chip-skeleton { opacity: .6; }
 
   .cb-card-side {
@@ -3798,7 +3879,7 @@
   .cbs-chip.on { color: var(--orange); border-color: rgba(var(--orange-rgb), .45); background: rgba(var(--orange-rgb), .15); }
   .cbs-chip.on i { color: var(--orange); }
   .cbs-src {
-    font: 800 9px/1 var(--font-mono); padding: 2px 4px; border-radius: 4px; letter-spacing: .3px;
+    font: 800 var(--fs-min)/1 var(--font-mono); padding: 2px 4px; border-radius: 4px; letter-spacing: .3px;
     color: var(--orange); background: rgba(var(--orange-rgb), .14);
   }
 
@@ -3808,7 +3889,9 @@
     background: var(--bg-input); border: 1px solid var(--border);
   }
   .cbs-seg button {
-    flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    /* flex-basis auto: ширина ділиться за довжиною підпису — «CurseForge» не
+       обрізається у вузькій (288px) панелі фільтрів поруч із коротким «Усі». */
+    flex: 1 1 auto; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 5px;
     padding: 0 6px; min-height: 32px; border-radius: 8px; border: 1px solid transparent; cursor: pointer;
     background: transparent; color: var(--text-mute);
     font: 650 11.5px/1 var(--font-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -3907,44 +3990,6 @@
   /* ═══════════════════════════════════════════════════════════════════
      МОДАЛКИ БРАУЗЕРА (спільні з іншими вікнами лаунчера)
      ═══════════════════════════════════════════════════════════════════ */
-  .modal-overlay {
-    position: fixed; inset: 0;
-    background: rgba(0, 0, 0, .68);
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    display: flex; align-items: center; justify-content: center;
-    padding: 32px; z-index: 1000000;
-    animation: cb-modal-overlay-in .2s ease-out both;
-  }
-  .modal {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-hi);
-    border-radius: var(--cb-radius-lg, 18px);
-    box-shadow: var(--cb-shadow-strong);
-  }
-  .cb-modal {
-    width: 500px; max-width: 100%; max-height: 82vh;
-    display: flex; flex-direction: column;
-    animation: cb-modal-in .28s var(--cb-ease) both;
-  }
-  @keyframes cb-modal-overlay-in { from { opacity: 0; } to { opacity: 1; } }
-  @keyframes cb-modal-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-  .modal-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 15px 18px; border-bottom: 1px solid var(--border);
-  }
-  .cb-modal-title { display: flex; gap: 12px; align-items: center; min-width: 0; }
-  .cb-modal-name { font: 750 14px/1.2 var(--font-ui); color: var(--text); }
-  .cb-modal-sub { font-size: 11px; color: var(--text-mute); text-transform: capitalize; margin-top: 2px; }
-  .modal-x {
-    width: 30px; height: 30px;
-    background: transparent; border: 1px solid transparent;
-    color: var(--text-mute); cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 8px; font-size: 16px;
-    transition: color .15s ease, background-color .15s ease;
-  }
-  .modal-x:hover { color: var(--text); background: var(--hover); }
-  .cb-modal-body { padding: 16px 18px; overflow-y: auto; }
   .cb-modal-search {
     display: flex; align-items: center; gap: 9px;
     margin: -16px -20px 14px; padding: 10px 20px;
@@ -3996,7 +4041,7 @@
   .cb-pack-ic img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
   .cb-pack-name { font: 700 13px/1.2 var(--font-ui); color: var(--text); }
   .cb-pack-meta { font: 500 11px/1.2 var(--font-mono); color: var(--text-mute); margin-top: 3px; }
-  .cb-warn { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--orange); margin-top: 4px; }
+  .cb-warn { display: flex; align-items: center; gap: 6px; font-size: var(--fs-min); color: var(--orange); margin-top: 4px; }
   .cb-hint {
     display: flex; gap: 8px; align-items: flex-start;
     padding: 10px 12px;
@@ -4006,7 +4051,7 @@
   }
   .cb-hint > i { color: var(--orange); margin-top: 1px; flex-shrink: 0; }
   .cb-dlg-label {
-    display: block; font: 700 10.5px/1 var(--font-ui); color: var(--text-mute);
+    display: block; font: 700 var(--fs-min)/1 var(--font-ui); color: var(--text-mute);
     text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;
   }
   .cb-loading.sm, .cb-empty.sm { padding: 28px 16px; }
@@ -4056,10 +4101,10 @@
   .btn-sm { padding: 6px 12px; font-size: 11.5px; }
 
   /* ── Розділ «Збережено» (закладки + колекції) ── */
-  .cb-add-col-count { font-size: 10.5px; color: var(--text-mute); background: var(--bg); padding: 1px 7px; border-radius: 999px; }
+  .cb-add-col-count { font-size: var(--fs-min); color: var(--text-mute); background: var(--bg); padding: 1px 7px; border-radius: 999px; }
   .ctx-item-in { opacity: .6; }
   .ctx-item-in i { color: var(--green); }
-  .cb-add-col-in { font-size: 10px; font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: .03em; }
+  .cb-add-col-in { font-size: var(--fs-min); font-weight: 700; color: var(--green); text-transform: uppercase; letter-spacing: .03em; }
   .cb-saved {
     display: flex; flex-direction: column; gap: 14px;
     padding: 4px 2px 28px;
@@ -4230,7 +4275,7 @@
 
   .cb-col-label {
     display: block; margin: 12px 0 6px;
-    font: 700 10.5px/1 var(--font-ui); color: var(--text-mute);
+    font: 700 var(--fs-min)/1 var(--font-ui); color: var(--text-mute);
     text-transform: uppercase; letter-spacing: .05em;
   }
   .cb-col-colors { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }

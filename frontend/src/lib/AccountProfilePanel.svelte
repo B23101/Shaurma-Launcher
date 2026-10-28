@@ -560,7 +560,7 @@
   .badges { display: flex; flex-wrap: wrap; gap: 6px; }
   .badge {
     display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px;
-    font: 600 10.5px/1 var(--font-ui); border: 1px solid transparent;
+    font: 600 var(--fs-min)/1 var(--font-ui); border: 1px solid transparent;
   }
   .badge i { font-size: 13px; }
   .badge.green  { color: var(--green);  background: color-mix(in srgb, var(--green) 13%, transparent);  border-color: color-mix(in srgb, var(--green) 30%, transparent); }
@@ -574,7 +574,7 @@
   }
   .idbar-ic { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--blue); background: color-mix(in srgb, var(--blue) 14%, transparent); }
   .idbar-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-  .idbar-body small { font: 500 10px/1 var(--font-ui); color: var(--text-dim); }
+  .idbar-body small { font: 500 var(--fs-min)/1 var(--font-ui); color: var(--text-dim); }
   .idbar-val { width: 100%; background: transparent; border: none; outline: none; padding: 0; color: var(--text); font: 600 13px/1.2 var(--font-mono); letter-spacing: .02em; }
 
   .copy {
@@ -601,7 +601,7 @@
   .tile-ic { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); margin-bottom: 6px; }
   .tile-v { font: 800 20px/1.1 var(--font-ui); color: var(--text); letter-spacing: -.01em; }
   .tile-l { font: 500 11px/1.2 var(--font-ui); color: var(--text-mute); }
-  .note { display: flex; align-items: center; gap: 6px; margin-top: -4px; font: 400 10.5px/1.4 var(--font-ui); color: var(--text-dim); padding: 0 2px; }
+  .note { display: flex; align-items: center; gap: 6px; margin-top: -4px; font: 400 var(--fs-min)/1.4 var(--font-ui); color: var(--text-dim); padding: 0 2px; }
 
   /* ── Картки ── */
   .acard { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; background: var(--bg-card); border: 1px solid var(--border); }
@@ -609,7 +609,7 @@
   .acard-t > i { color: var(--orange); font-size: 17px; }
   .nchip {
     margin-left: auto; display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px;
-    font: 600 10.5px/1 var(--font-ui); color: var(--text-mute); background: var(--hover); border: 1px solid var(--border);
+    font: 600 var(--fs-min)/1 var(--font-ui); color: var(--text-mute); background: var(--hover); border: 1px solid var(--border);
   }
   .nchip.zero { color: var(--red); background: color-mix(in srgb, var(--red) 11%, transparent); border-color: color-mix(in srgb, var(--red) 30%, transparent); }
 
@@ -655,12 +655,12 @@
   .ms .prov-ic { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
   .prov-t { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
   .prov-t b { font: 700 13px/1.1 var(--font-ui); }
-  .prov-t small { font: 400 10.5px/1.2 var(--font-ui); color: var(--text-mute); }
+  .prov-t small { font: 400 var(--fs-min)/1.2 var(--font-ui); color: var(--text-mute); }
   .prov-go { color: var(--text-dim); font-size: 17px; transition: transform .15s, color .15s; }
   .prov-btn:hover .prov-go { transform: translateX(3px); color: var(--text); }
   .wait { position: relative; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 12px 14px; border-radius: 13px; font: 500 12px/1.4 var(--font-ui); color: var(--orange); background: color-mix(in srgb, var(--orange) 9%, transparent); border: 1px solid color-mix(in srgb, var(--orange) 28%, transparent); }
   .wait span { flex: 1; min-width: 160px; }
-  .privacy { position: relative; display: flex; align-items: flex-start; gap: 8px; font: 400 10.5px/1.5 var(--font-ui); color: var(--text-dim); }
+  .privacy { position: relative; display: flex; align-items: flex-start; gap: 8px; font: 400 var(--fs-min)/1.5 var(--font-ui); color: var(--text-dim); }
   .privacy i { font-size: 15px; color: var(--green); margin-top: 1px; }
 
   /* ── Оновлення / порожні стани / небезпечна зона ── */

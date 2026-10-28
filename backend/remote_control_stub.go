@@ -11,4 +11,8 @@ import (
 type remoteRT struct{}
 
 func (a *App) remoteOnLine(string, model.ConsoleLine)      {}
+func (a *App) remoteOnNetworkChanged()                     {}
+func (a *App) remoteOnP2PChanged()                         {}
 func (a *App) remoteOnStatus(string, servers.ServerStatus) {}
+func (a *App) remoteOnServerDeleted(string)                {}
+func (a *App) remoteOnServerRenamed(string, string)        {}

@@ -323,7 +323,7 @@
   .pp-more {
     position: absolute; right: -2px; bottom: -2px; min-width: 15px; height: 15px;
     border-radius: 8px; background: var(--pcol, var(--orange)); color: #fff;
-    font-size: 8.5px; font-weight: 800; display: flex; align-items: center;
+    font-size: var(--fs-min); font-weight: 800; display: flex; align-items: center;
     justify-content: center; padding: 0 3px; box-shadow: 0 2px 5px rgba(0,0,0,.4);
   }
   .pp-folder-meta { flex: 1; min-width: 0; }
@@ -331,7 +331,7 @@
     font-size: 12px; font-weight: 700; color: var(--pcol, var(--orange));
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .pp-folder-count { font-size: 10.5px; color: var(--text-mute); }
+  .pp-folder-count { font-size: var(--fs-min); color: var(--text-mute); }
   .pp-folder-arrow {
     font-size: 14px; color: var(--text-mute); flex-shrink: 0;
     transition: transform .22s cubic-bezier(.34,1.56,.64,1);
@@ -385,7 +385,7 @@
     font-size: 12.5px; font-weight: 700; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .pp-sub { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pp-sub { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pp-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .pp-check { color: var(--pcol, var(--orange)); font-size: 15px; flex-shrink: 0; }
 </style>

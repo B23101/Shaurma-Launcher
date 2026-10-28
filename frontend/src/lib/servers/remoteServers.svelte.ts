@@ -2,7 +2,7 @@
 // Друг дав мені доступ до свого сервера → він з'являється в «Серверах» як звичайна картка
 // (ServerCard у режимі remote). Запуск/зупинка/консоль ідуть через VPS (перевіряє дружбу й права)
 // або напряму зашифрованим каналом. Тут лише спільний стан і виклики бекенда; вигляд — у ServerCard
-// та RemoteServerPage (сторінка сервера друга: старт/стоп/консоль).
+// та ServerInstancePage (сервер друга — та сама сторінка сервера з дозволеними вкладками).
 import { App, on } from '../wails'
 import { toast } from '../toast.svelte'
 import type { RemoteServer, RemoteResultEvent, RemoteConsoleEvent, SocialFriend, ServerView } from '../types'
@@ -14,7 +14,12 @@ export const REMOTE_CODES: Record<string, string> = {
   bad_command: 'Некоректна команда', privileged: 'Ця команда заборонена власником', start_failed: 'Не вдалося запустити',
   stop_failed: 'Не вдалося зупинити', exec_failed: 'Не вдалося виконати команду', session_limit: 'Забагато відкритих консолей',
   already_running: 'Сервер уже працює', already_stopped: 'Сервер уже зупинено',
+  not_running: 'Спершу запустіть сервер', p2p_failed: 'Не вдалося змінити P2P-адресу',
   accepted: 'Команду прийнято — чекаємо на сервер',
+  // Лише в журналі власника (у відповідях другові їх не буває):
+  ok: 'Виконано', duplicate: 'Повторна сесія', mandate_invalid: 'Без підпису VPS — відхилено',
+  bad_envelope: 'Пошкоджена команда — відхилено', envelope_mismatch: 'Підроблена команда — відхилено',
+  no_vps_key: 'Ключ VPS не підтверджено — відхилено',
 }
 const REASONS: Record<string, string> = {
   revoked: 'Власник зняв право на консоль', owner_offline: 'Лаунчер друга вийшов з мережі', friend_gone: 'Дружбу розірвано',
@@ -33,6 +38,8 @@ export const remote = $state({
   lines: [] as RemoteConsoleLine[],
   ended: '',
   secure: null as boolean | null, // null — ще не відомо
+  // Сервери, для яких P2P вмикається/вимикається (key → true), до фінальної відповіді власника.
+  p2pPending: {} as Record<string, boolean>,
 })
 
 export const remoteKey = (s: Pick<RemoteServer, 'ownerId' | 'id'>) => `${s.ownerId}|${s.id}`
@@ -78,7 +85,8 @@ export function remoteAsView(r: RemoteServer): ServerView {
   return {
     id: remoteKey(r), name: r.name, dir: '', core: r.core ?? '', coreLabel: r.core ?? '', mcVersion: '', loaderVer: '',
     javaMajor: 0, javaInstalled: true, coreInstalled: true, ramMB: 0, port: 0, status: r.state || 'stopped',
-    color: r.color, hasWorlds: false, hasMods: false, hasPlugins: false, createdAt: 0,
+    color: r.color, icon: r.icon, launcherIconData: r.img,
+    hasWorlds: false, hasMods: false, hasPlugins: false, createdAt: 0,
   } as unknown as ServerView
 }
 
@@ -111,6 +119,11 @@ export function startRemote(): () => void {
           if (!r.ok) { toast(REMOTE_CODES[r.code ?? ''] ?? r.code ?? 'Не вдалося відкрити консоль', 'error'); remote.consoleFor = null; remote.sid = '' }
           return
         }
+        if (r.op === 'p2p_on' || r.op === 'p2p_off') {
+          if (r.final || !r.ok) delete remote.p2pPending[key]
+          if (!r.ok) toast(REMOTE_CODES[r.code ?? ''] ?? r.code ?? 'Помилка', 'error')
+          return
+        }
         if (r.final || !r.ok) clearPending(key)
         if (!r.ok) toast(REMOTE_CODES[r.code ?? ''] ?? r.code ?? 'Помилка', 'error')
         else if (r.code && REMOTE_CODES[r.code]) toast(REMOTE_CODES[r.code], 'info')
@@ -136,6 +149,20 @@ export async function remoteAct(s: RemoteServer, what: 'start' | 'stop') {
     if (remote.pending[key]) remote.pending[key] = reqId
   } catch (e: any) {
     clearPending(key)
+    toast(REMOTE_CODES[String(e?.message)] ?? String(e?.message ?? e), 'error')
+  }
+}
+
+// remoteP2P — увімкнути/вимкнути публічну P2P-адресу сервера друга. Новий стан приходить
+// у списку серверів (власник перепублікує його, щойно тунель піднявся чи зупинився).
+export async function remoteP2P(s: RemoteServer, on: boolean) {
+  const key = remoteKey(s)
+  if (remote.p2pPending[key]) return
+  remote.p2pPending[key] = true
+  try {
+    await App.RemoteSetP2P(s.ownerId, s.id, on)
+  } catch (e: any) {
+    delete remote.p2pPending[key]
     toast(REMOTE_CODES[String(e?.message)] ?? String(e?.message ?? e), 'error')
   }
 }

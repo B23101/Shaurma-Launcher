@@ -23,6 +23,9 @@ import (
 const (
 	RemoteOpStart = "start"
 	RemoteOpStop  = "stop"
+	// P2P-тунель сервера: увімкнути — за правом запуску, вимкнути — за правом зупинки.
+	RemoteOpP2POn  = "p2p_on"
+	RemoteOpP2POff = "p2p_off"
 
 	remoteTSWindow   = 5 * time.Minute
 	remoteReplayTTL  = 15 * time.Minute
@@ -62,6 +65,14 @@ type RemoteServer struct {
 	CanStop     bool   `json:"canStop"`
 	CanConsole  bool   `json:"canConsole,omitempty"`
 	CanExec     bool   `json:"canExec,omitempty"`
+	// Network — serverId проксі, до мережі якого входить сервер ("" — не в мережі).
+	Network string `json:"network,omitempty"`
+	// P2P / P2PAddr — публічна P2P-адреса сервера, якщо піднята.
+	P2P     bool   `json:"p2p,omitempty"`
+	P2PAddr string `json:"p2pAddr,omitempty"`
+	// Icon — пресет-іконка ("ti-…"); Img — data URL PNG-мініатюри, якщо в сервера своя картинка.
+	Icon string `json:"icon,omitempty"`
+	Img  string `json:"img,omitempty"`
 }
 
 // RemoteOwnerList — усі мої доступні сервери одного друга.
@@ -88,7 +99,14 @@ type RemoteShare struct {
 	Core     string
 	// HostKey — base64 публічного ключа Ed25519 для прямого каналу (див. remotechan); "" — без P2P.
 	HostKey string
-	Grants  []RemoteShareGrant
+	// Network — проксі, до мережі якого входить сервер; P2P/P2PAddr — публічна P2P-адреса.
+	Network string
+	P2P     bool
+	P2PAddr string
+	// Icon — пресет-іконка ("ti-…"); Img — base64 PNG-мініатюри (remoteIconThumb).
+	Icon   string
+	Img    string
+	Grants []RemoteShareGrant
 }
 
 // RemoteCommand — розшифрована й перевірена на формат команда друга. Права ще НЕ перевірено —
@@ -178,6 +196,11 @@ type rsServerWire struct {
 	CanStop    bool   `json:"canStop"`
 	CanConsole bool   `json:"canConsole"`
 	CanExec    bool   `json:"canExec"`
+	Network    string `json:"network"`
+	P2P        bool   `json:"p2p"`
+	P2PAddr    string `json:"p2pAddr"`
+	Icon       string `json:"icon"`
+	Img        string `json:"img"`
 }
 
 type rsOwnerWire struct {
@@ -209,7 +232,21 @@ func (p *PresenceClient) cleanOwnerList(w rsOwnerWire) (RemoteOwnerList, bool) {
 			OwnerID: w.Owner, OwnerOnline: w.Online, ID: s.ID, Name: name,
 			State: SanitizeRemoteState(s.State), Color: SanitizeColor(s.Color), Core: CleanText(s.Core, 24),
 			CanStart: s.CanStart, CanStop: s.CanStop, CanConsole: s.CanConsole, CanExec: s.CanConsole && s.CanExec,
+			P2P: s.P2P,
 		})
+		last := &out.Servers[len(out.Servers)-1]
+		if remoteIDRe.MatchString(s.Network) && s.Network != s.ID {
+			last.Network = s.Network
+		}
+		if s.P2P {
+			last.P2PAddr = CleanText(s.P2PAddr, 255)
+		}
+		if remoteIconRe.MatchString(s.Icon) {
+			last.Icon = s.Icon
+		}
+		if validRemoteImg(s.Img) {
+			last.Img = "data:image/png;base64," + s.Img
+		}
 	}
 	return out, true
 }
@@ -334,7 +371,9 @@ func newRemoteShares() remoteShares {
 }
 
 func sameShare(a, b RemoteShare) bool {
-	if a.ServerID != b.ServerID || a.Name != b.Name || a.Color != b.Color || a.Core != b.Core || a.HostKey != b.HostKey || len(a.Grants) != len(b.Grants) {
+	if a.ServerID != b.ServerID || a.Name != b.Name || a.Color != b.Color || a.Core != b.Core || a.HostKey != b.HostKey ||
+		a.Network != b.Network || a.P2P != b.P2P || a.P2PAddr != b.P2PAddr || a.Icon != b.Icon || a.Img != b.Img ||
+		len(a.Grants) != len(b.Grants) {
 		return false
 	}
 	for i := range a.Grants {
@@ -353,7 +392,19 @@ func (p *PresenceClient) SetShares(list []RemoteShare) {
 			continue
 		}
 		c := RemoteShare{ServerID: s.ServerID, Name: CleanText(s.Name, MaxPackNameLen), State: SanitizeRemoteState(s.State),
-			Color: SanitizeColor(s.Color), Core: CleanText(s.Core, 24)}
+			Color: SanitizeColor(s.Color), Core: CleanText(s.Core, 24), HostKey: s.HostKey, P2P: s.P2P}
+		if remoteIDRe.MatchString(s.Network) && s.Network != s.ServerID {
+			c.Network = s.Network
+		}
+		if s.P2P {
+			c.P2PAddr = CleanText(s.P2PAddr, 255)
+		}
+		if remoteIconRe.MatchString(s.Icon) {
+			c.Icon = s.Icon
+		}
+		if validRemoteImg(s.Img) {
+			c.Img = s.Img
+		}
 		seen := map[string]bool{}
 		for _, g := range s.Grants {
 			if !ValidAccountID(g.AccountID) || seen[g.AccountID] || (!g.Start && !g.Stop && !g.Console) || len(c.Grants) >= maxRemoteGrants {
@@ -460,6 +511,7 @@ func (p *PresenceClient) takeShare() []byte {
 		b, _ := json.Marshal(map[string]any{
 			"type": "rs_set", "serverId": s.ServerID, "name": s.Name, "state": s.State,
 			"color": s.Color, "core": s.Core, "grants": grants, "hk": s.HostKey,
+			"net": s.Network, "p2p": s.P2P, "pa": s.P2PAddr, "ic": s.Icon, "im": s.Img,
 		})
 		return b
 	}
@@ -492,10 +544,23 @@ func sortedBoolKeys(m map[string]bool) []string {
 	return out
 }
 
+// remoteIconRe — пресет-іконка лаунчера (Tabler).
+var remoteIconRe = regexp.MustCompile(`^ti-[a-z0-9-]{1,40}$`)
+
+// validRemoteImg — base64 справжнього PNG у межах стелі VPS (у UI воно стає data:image/png).
+func validRemoteImg(s string) bool {
+	if s == "" || len(s) > 2400 {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(s)
+	return err == nil && len(raw) >= 8 && string(raw[:8]) == "\x89PNG\r\n\x1a\n"
+}
+
 // ValidRemoteOp — відома операція віддаленого керування.
 func ValidRemoteOp(op string) bool {
 	switch op {
-	case RemoteOpStart, RemoteOpStop, RemoteOpConsoleOpen, RemoteOpConsoleExec, RemoteOpConsoleClose:
+	case RemoteOpStart, RemoteOpStop, RemoteOpConsoleOpen, RemoteOpConsoleExec, RemoteOpConsoleClose,
+		RemoteOpP2POn, RemoteOpP2POff:
 		return true
 	}
 	return false

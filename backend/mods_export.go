@@ -61,14 +61,7 @@ func (a *App) ExportModList(packID string, opts ModListExportOptions) (string, e
 	}
 	// mcVersion/loader збірки — для злиття закешованої інфи про джерело
 	// мода (Modrinth/CurseForge), щоб у списку були реальні посилання.
-	mcVersion, loader := "", ""
-	if cp, ok := a.customPacks.Get(packID); ok {
-		mcVersion, loader = cp.MCVersion, cp.Loader
-	} else if a.packs != nil {
-		if entry, err := a.packs.GetPackByID(packID); err == nil {
-			mcVersion, loader = entry.MCVersion, entry.LoaderType
-		}
-	}
+	mcVersion, loader := a.modTargetEnv(packID)
 	if mcVersion != "" && loader != "" {
 		mods = a.mergeCachedUpdateInfo(packID, mcVersion, loader, mods)
 	}
@@ -76,10 +69,8 @@ func (a *App) ExportModList(packID string, opts ModListExportOptions) (string, e
 	return exportModListFromMods(mods, opts)
 }
 
-// exportModListFromMods — спільна частина експорту для збірок І серверів:
-// перетворює проскановані моди у рядки й рендерить обраний формат.
-// Виокремлено, щоб серверний експорт (ExportServerModList) не дублював
-// форматування html/markdown/plain/json/csv (5 форматів × 2 джерела).
+// exportModListFromMods перетворює проскановані моди у рядки й рендерить
+// обраний формат (html/markdown/plain/json/csv).
 func exportModListFromMods(mods []model.ModEntry, opts ModListExportOptions) (string, error) {
 	rows := make([]modRow, 0, len(mods))
 	// Фільтр «тільки вибрані»: якщо передано fileNames — експортуємо ЛИШЕ

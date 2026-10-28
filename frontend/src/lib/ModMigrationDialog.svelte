@@ -8,43 +8,48 @@
   // Аналіз має «живу» анімацію: радар-пульс + біжучі рядки зі статусами
   // окремих модів, щоб користувач бачив, що відбувається (не голий
   // прогресс-бар). Після завершення рядки плавно «впадають» на місце.
+  //
+  // mode='port' — портування модів зі збірки на сервер (AnalyzeModPort):
+  // джерело — лише збірки з тією самою версією гри й лоадером, переносяться
+  // ті самі jar; клієнтські моди не переносяться, серверні вибрані одразу,
+  // а моди з невизначеною стороною вирішує користувач.
   import { onMount } from 'svelte'
   import { t } from './i18n.svelte'
-  import { App, on } from './wails'
+  import { on } from './wails'
   import { toast } from './toast.svelte'
+  import { ModMigrationFlow } from './modMigrationFlow.svelte'
   import PackChooser from './PackChooser.svelte'
   import modrinthIcon from '../assets/images/Modrinth_icon.png'
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
-  import type { MigrationPack, ModMigrationReport, MigrationItem, ModMigrationResult } from './types'
+  import type { MigrationPack, MigrationItem, ModMigrationResult } from './types'
 
   let {
     packId = '',       // поточна збірка (вкладка модів) — ціль за замовчуванням
     packName = '',
     mcVersion = '',    // версія/лоадер поточної збірки — ціль аналізу
     loader = '',
+    mode = 'migrate',
     onClose = () => {}
   }: {
     packId?: string
     packName?: string
     mcVersion?: string
     loader?: string
+    mode?: 'migrate' | 'port'
     onClose?: () => void
   } = $props()
 
-  let packs = $state<MigrationPack[]>([])
-  let loadingPacks = $state(true)
-  let sourcePackId = $state('')
+  const isPort = $derived(mode === 'port')
+
   let targetPackId = $state(packId)
 
-  // Аналіз
-  let analyzing = $state(false)
-  let cancelling = $state(false)
-  let analyzeDone = $state(0)
-  let analyzeTotal = $state(0)
-  let report = $state<ModMigrationReport | null>(null)
-  // Живі рядки під час аналізу (статуси приходять частинами — бачиш
-  // «знайдено/не знайдено» ще до завершення, як у старому лаунчері).
-  let liveItems = $state<MigrationItem[]>([])
+  // Аналіз, живі рядки, вибір модів — спільний стан (modMigrationFlow).
+  const flow: ModMigrationFlow = new ModMigrationFlow({
+    target: () => targetPackId,
+    mcVersion: () => selectedTarget?.mcVersion ?? mcVersion,
+    loader: () => selectedTarget?.loader ?? loader,
+    mode: () => mode,
+  })
 
   // Міграція
   let migrating = $state(false)
@@ -52,132 +57,41 @@
   let migrateTotal = $state(0)
   let migrateCurrent = $state('')
 
-  onMount(async () => {
-    try {
-      packs = (await App.GetMigrationPacks(packId)) ?? []
-    } catch (e: any) {
-      toast(t('error.withMessage', { message: e }), 'error')
-    } finally {
-      loadingPacks = false
-    }
-    // Джерело НЕ підставляємо — користувач сам обирає, «з якої» збірки
-    // копіювати моди. Порожній селект = жодної випадкової міграції.
-  })
+  // Джерело НЕ підставляємо — користувач сам обирає, «з якої» збірки
+  // копіювати моди. Порожній селект = жодної випадкової міграції.
+  onMount(() => { flow.loadPacks(packId) })
+  onMount(() => flow.listen())
 
-  const sourcePacks = $derived(packs.filter(p => p.modCount > 0 && p.packId !== targetPackId))
-  const targetPacks = $derived(packs.filter(p => p.packId !== sourcePackId))
-
-  const selectedSource = $derived(packs.find(p => p.packId === sourcePackId))
   // Поточна збірка `packId` БЕКЕНД виключає зі списку (GetMigrationPacks
   // передає її як excludePackID), тож її немає в `packs`. Але вона — ціль
   // міграції за замовчуванням (кнопка «копіювати з іншої збірки» копіює
-  // СЮДИ). Формуємо її об'єкт окремо (іконку/колір беремо з `packs`, якщо
-  // є збіг за id, інакше — fallback).
+  // СЮДИ). Формуємо її об'єкт окремо.
   const currentPackT = $derived<MigrationPack>({
-    packId,
-    name: packName,
-    mcVersion,
-    loader,
-    iconUrl: packs.find(p => p.packId === packId)?.iconUrl ?? '',
-    icon: packs.find(p => p.packId === packId)?.icon ?? 'ti-package',
-    color: packs.find(p => p.packId === packId)?.color ?? '',
-    modCount: 0,
-  } as unknown as MigrationPack)
-  const selectedTarget = $derived((packs.find(p => p.packId === targetPackId) ?? (packId === targetPackId ? currentPackT : undefined)))
+    packId, name: packName, mcVersion, loader, iconUrl: '', icon: 'ti-package', color: '', modCount: 0,
+  })
+  const selectedTarget: MigrationPack | undefined = $derived(flow.packs.find(p => p.packId === targetPackId) ?? (packId === targetPackId ? currentPackT : undefined))
 
-  // ── Вибір збірок — МОДАЛЬНЕ вікно (PackChooser), а не select-дропдаун:
-  // так само, як вибір збірки вже працює в інших розділах лаунчера
-  // (скарга: «міграція має select, а збірки вже вибираються модалкою»).
-  const sourceChoices = $derived(packs.filter(p => p.modCount > 0 && p.packId !== targetPackId))
+  // ── Вибір збірок — МОДАЛЬНЕ вікно (PackChooser), а не select-дропдаун.
+  // Портування: джерело — лише збірки з тією самою версією гри й лоадером.
+  const sourceChoices = $derived(flow.packs.filter(p => p.modCount > 0 && p.packId !== targetPackId &&
+    (!isPort || (p.kind !== 'server' && p.mcVersion === mcVersion && p.loader.toLowerCase() === loader.toLowerCase()))))
   const targetChoices = $derived.by((): MigrationPack[] => {
-    const list = packs.filter(p => p.packId !== sourcePackId)
+    if (isPort) return [currentPackT] // портування — завжди на цей сервер
+    const list = flow.packs.filter(p => p.packId !== flow.source)
     if (packId && !list.some(p => p.packId === packId)) list.push(currentPackT)
     return list
   })
 
-  // Вибрані для перенесення моди (ключ — sourceFileName). За замовчуванням
-  // після аналізу вибрані ВСІ «можна перенести» (found/update) — так само,
-  // як у міні-картці міграції на сторінці створення збірки
-  // (MigrationPanel.svelte/CreatePackPage.svelte) — користувач знімає
-  // зайві галочки, а не мігрує все підряд без вибору.
-  let selected = $state<Set<string>>(new Set())
-
-  // ── Аналіз ──
-  async function runAnalysis() {
-    if (!sourcePackId || !targetPackId || analyzing) return
-    if (sourcePackId === targetPackId) {
-      toast(t('mods.migrateSamePack'), 'error')
-      return
-    }
-    analyzing = true
-    analyzeDone = 0
-    analyzeTotal = 0
-    liveItems = []
-    report = null
-    selected = new Set()
-    try {
-      const res = await App.AnalyzeModMigration(sourcePackId, targetPackId, targetMCVersion(), targetLoader())
-      // Спершу «живі» рядки (прогрес аналізу), потім — фінальний звіт.
-      liveItems = res.items ?? []
-      report = res
-      selected = new Set(
-        (res.items ?? [])
-          .filter(it => it.status === 'found' || it.status === 'update')
-          .map(it => it.sourceFileName)
-      )
-    } catch (e: any) {
-      toast(t('error.withMessage', { message: e }), 'error')
-    } finally {
-      analyzing = false
-    }
-  }
-
-  function targetMCVersion(): string {
-    return selectedTarget?.mcVersion ?? mcVersion
-  }
-  function targetLoader(): string {
-    return selectedTarget?.loader ?? loader
-  }
-
-  // ── Скасування аналізу ──
-  // Бекенд зупиняє розбір і повертає частковий звіт (report.cancelled=true),
-  // діалог не закривається — можна змінити джерело/ціль і запустити знову.
-  async function cancelAnalysis() {
-    if (!analyzing) return
-    cancelling = true
-    try {
-      await App.CancelModMigrationAnalysis(targetPackId)
-    } catch {
-      // Якщо аналіз уже завершився між кліком і запитом — це не помилка.
-    } finally {
-      cancelling = false
-    }
-  }
-
-  // Моди, які реально можна перенести (found/update) — саме з них
-  // складається список з чекбоксами; already/not-found у вибір не входять.
-  const transferable = $derived((report?.items ?? []).filter(it => it.status === 'found' || it.status === 'update'))
-
-  function toggleSelect(key: string) {
-    const next = new Set(selected)
-    if (next.has(key)) next.delete(key); else next.add(key)
-    selected = next
-  }
-  function toggleAll() {
-    if (selected.size === transferable.length) selected = new Set()
-    else selected = new Set(transferable.map(it => it.sourceFileName))
-  }
-
   // ── Міграція ──
   async function runMigration() {
-    if (!report || migrating) return
-    const toMigrate = transferable.filter(it => selected.has(it.sourceFileName))
+    if (!flow.report || migrating) return
+    const toMigrate = flow.selectedItems
     if (toMigrate.length === 0) return
     migrating = true
     migrateDone = 0
     migrateTotal = toMigrate.length
     try {
-      const res: ModMigrationResult = await App.MigrateMods(targetPackId, toMigrate)
+      const res: ModMigrationResult = await flow.migrate(targetPackId)
       if (res.migrated.length > 0) {
         toast(t('mods.migrateDone', { n: res.migrated.length, name: selectedTarget?.name ?? '' }), 'success')
       }
@@ -192,30 +106,7 @@
     }
   }
 
-  // Живі підсумкові чипи: лічаться з liveItems, які оновлюються по одній
-  // події на мод. Після завершення liveItems замінюється повним звітом,
-  // тому ці самі чипи показують і фінальні числа.
-  const liveCounts = $derived.by(() => {
-    const c = { found: 0, notFound: 0, already: 0, update: 0 }
-    for (const it of liveItems) {
-      if (it.status === 'found') c.found++
-      else if (it.status === 'not-found') c.notFound++
-      else if (it.status === 'already') c.already++
-      else if (it.status === 'update') c.update++
-    }
-    return c
-  })
-
-  const canMigrate = $derived(!!report && selected.size > 0 && !migrating)
-
-  // Дедуп живого списку за sourceFileName: у збірці можуть бути два jar з
-  // однаковим ім'ям файлу (різні теки mods/), і Svelte 5 {#each (ключ)}
-  // падає з each_key_duplicate на дублікаті ключа. Останній запис виграє.
-  const liveUnique = $derived.by(() => {
-    const seen = new Map<string, MigrationItem>()
-    for (const it of liveItems) seen.set(it.sourceFileName, it)
-    return [...seen.values()]
-  })
+  const canMigrate = $derived(!!flow.report && flow.selected.size > 0 && !migrating)
 
   function statusIcon(it: MigrationItem): string {
     switch (it.status) {
@@ -242,63 +133,22 @@
     }
   }
 
-  onMount(() => {
-    const off = on('mods:migrate-progress', (p: any) => {
-      if (p?.packId !== targetPackId) return
-      migrateDone = p.current ?? migrateDone
-      migrateTotal = p.total ?? migrateTotal
-      migrateCurrent = p.fileName ?? ''
-    })
-    return off
-  })
-
-  // ── Живий прогрес АНАЛІЗУ (події від AnalyzeModMigration) ────────────
-  // Кожен мод після визначення статусу шле mods:migrate-analyze — рядки
-  // звіту з'являються по одному, не чекаючи завершення всього аналізу.
-  onMount(() => {
-    const off = on('mods:migrate-analyze', (p: any) => {
-      if (p?.packId !== targetPackId) return
-      if (p.total) analyzeTotal = p.total
-      if (p.phase !== 'item' || !p.sourceFileName) return
-      // Події йдуть з 6 паралельних горутин — «current» може прийти не по
-      // порядку (6 раніше за 5). Тому лише МОНОТОННЕ оновлення лічильника.
-      analyzeDone = Math.max(p.current ?? 0, analyzeDone + 1)
-      const item: MigrationItem = {
-        sourceName: p.sourceName ?? '',
-        sourceFileName: p.sourceFileName,
-        sourceSha1: '',
-        status: p.status ?? 'not-found',
-        projectId: '',
-        projectSlug: '',
-        // Іконка/джерело/назва приходять з batch-проєктів прямо в події —
-        // видно в живому рядку одразу, а не лише у фінальному звіті.
-        resolvedName: p.resolvedName ?? '',
-        resolvedVersion: '',
-        resolvedFilename: '',
-        resolvedUrl: '',
-        resolvedSha1: '',
-        source: p.source ?? '',
-        iconUrl: p.iconUrl ?? '',
-        willReplace: false,
-      }
-      const idx = liveItems.findIndex((it) => it.sourceFileName === p.sourceFileName)
-      if (idx >= 0) {
-        liveItems = liveItems.map((it, i) => (i === idx ? item : it))
-      } else {
-        liveItems = [...liveItems, item]
-      }
-    })
-    return off
-  })
+  onMount(() => on('mods:migrate-progress', (p: any) => {
+    if (p?.packId !== targetPackId) return
+    migrateDone = p.current ?? migrateDone
+    migrateTotal = p.total ?? migrateTotal
+    migrateCurrent = p.fileName ?? ''
+  }))
 </script>
 
 <UiModal
   open={true}
   size="xl"
-  title={t('mods.migrateTitle')}
-  icon="ti-arrows-right-left"
+  title={isPort ? t('mods.port.title') : t('mods.migrateTitle')}
+  subtitle={isPort ? t('mods.port.subtitle', { mc: mcVersion, loader }) : ''}
+  icon={isPort ? 'ti-server-bolt' : 'ti-arrows-right-left'}
   color="var(--orange)"
-  locked={analyzing || migrating}
+  locked={flow.analyzing || migrating}
   onclose={onClose}
 >
     <div>
@@ -308,10 +158,10 @@
           <label class="mig-sel-label">{t('mods.migrateFrom')}</label>
           <PackChooser
             packs={sourceChoices}
-            value={sourcePackId}
-            onchange={(v) => { sourcePackId = v; report = null; liveItems = [] }}
-            disabled={analyzing || migrating || loadingPacks}
-            placeholder={loadingPacks ? '…' : t('mods.migrateEmptySource')}
+            value={flow.source}
+            onchange={(v) => flow.setSource(v)}
+            disabled={flow.analyzing || migrating || !flow.packsLoaded}
+            placeholder={!flow.packsLoaded ? '…' : (isPort && sourceChoices.length === 0 ? t('mods.port.noSource') : t('mods.migrateEmptySource'))}
             ariaLabel={t('mods.migrateFrom')}
           />
         </div>
@@ -321,9 +171,9 @@
           <PackChooser
             packs={targetChoices}
             value={targetPackId}
-            onchange={(v) => { targetPackId = v; report = null; liveItems = [] }}
-            disabled={analyzing || migrating || loadingPacks}
-            placeholder={loadingPacks ? '…' : ''}
+            onchange={(v) => { targetPackId = v; flow.reset() }}
+            disabled={flow.analyzing || migrating || !flow.packsLoaded}
+            placeholder={!flow.packsLoaded ? '…' : ''}
             ariaLabel={t('mods.migrateTo')}
             currentId={packId}
           />
@@ -332,85 +182,96 @@
 
       <!-- ═══ Кнопка аналізу ═══ -->
       <div class="mig-analyze-row">
-        <button class="btn btn-primary" onclick={runAnalysis} disabled={!sourcePackId || !targetPackId || analyzing || migrating}>
-          {#if analyzing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-search"></i>{/if}
+        <button class="btn btn-primary" onclick={() => flow.analyze()} disabled={!flow.source || !targetPackId || flow.analyzing || migrating}>
+          {#if flow.analyzing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-search"></i>{/if}
           {t('mods.migrateAnalyze')}
         </button>
-        {#if analyzing}
-          <button class="btn btn-danger" onclick={cancelAnalysis} disabled={cancelling}>
-            {#if cancelling}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-square"></i>{/if}
+        {#if flow.analyzing}
+          <button class="btn btn-danger" onclick={() => flow.cancel()} disabled={flow.cancelling}>
+            {#if flow.cancelling}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-square"></i>{/if}
             {t('mods.migrateCancel')}
           </button>
         {/if}
-        <span class="mig-hint">{t('mods.migrateAnalyzeHint')}</span>
+        <span class="mig-hint">{isPort ? t('mods.port.hint') : t('mods.migrateAnalyzeHint')}</span>
       </div>
 
       <!-- ═══ Звіт / живі рядки ═══ -->
-      {#if analyzing && liveItems.length === 0}
+      {#if flow.analyzing && flow.live.length === 0}
         <div class="mig-radar">
           <div class="mig-radar-ring"></div>
           <div class="mig-radar-ring r2"></div>
           <div class="mig-radar-core"><i class="ti ti-radar"></i></div>
-          <div class="mig-radar-text">{t('mods.migrateAnalyzing', { done: analyzeDone, total: analyzeTotal })}</div>
+          <div class="mig-radar-text">{t('mods.migrateAnalyzing', { done: flow.analyzeDone, total: flow.analyzeTotal })}</div>
         </div>
-      {:else if liveItems.length > 0 || report}
-        <!-- Підсумок: чипи лічаться з liveItems і оновлюються в реальному
+      {:else if flow.live.length > 0 || flow.report}
+        <!-- Підсумок: чипи лічаться з flow.live і оновлюються в реальному
              часі (found/update/already/notFound), а не лише по завершенню -->
-        {#if liveItems.length > 0}
+        {#if flow.live.length > 0 && !isPort}
           <div class="mig-summary">
-            <span class="mig-sum found"><i class="ti ti-circle-check"></i>{liveCounts.found} {t('mods.migrateStatusFound').toLowerCase()}</span>
-            <span class="mig-sum upd"><i class="ti ti-refresh"></i>{liveCounts.update} {t('mods.migrateStatusUpdate').toLowerCase()}</span>
-            <span class="mig-sum alr"><i class="ti ti-circle-check"></i>{liveCounts.already} {t('mods.migrateStatusAlready').toLowerCase()}</span>
-            <span class="mig-sum nf"><i class="ti ti-circle-x"></i>{liveCounts.notFound} {t('mods.migrateStatusNotFound').toLowerCase()}</span>
+            <span class="mig-sum found"><i class="ti ti-circle-check"></i>{flow.liveCounts.found} {t('mods.migrateStatusFound').toLowerCase()}</span>
+            <span class="mig-sum upd"><i class="ti ti-refresh"></i>{flow.liveCounts.update} {t('mods.migrateStatusUpdate').toLowerCase()}</span>
+            <span class="mig-sum alr"><i class="ti ti-circle-check"></i>{flow.liveCounts.already} {t('mods.migrateStatusAlready').toLowerCase()}</span>
+            <span class="mig-sum nf"><i class="ti ti-circle-x"></i>{flow.liveCounts.notFound} {t('mods.migrateStatusNotFound').toLowerCase()}</span>
           </div>
         {/if}
-        {#if report?.cancelled}
+        <!-- Ціль — сервер: де працює кожен мод (клієнтські не переносяться). -->
+        {#if flow.forServer && flow.report && !flow.analyzing}
+          <div class="mig-summary">
+            <span class="mig-sum found"><i class="ti ti-server-2"></i>{flow.sideCounts.server} {t('mods.port.sideServer')}</span>
+            <span class="mig-sum upd"><i class="ti ti-help-circle"></i>{flow.sideCounts.unknown} {t('mods.port.sideUnknown')}</span>
+            <span class="mig-sum nf"><i class="ti ti-device-desktop"></i>{flow.sideCounts.client} {t('mods.port.sideClient')}</span>
+          </div>
+          {#if flow.sideCounts.unknown > 0}
+            <div class="mig-cancelled-hint"><i class="ti ti-help-circle"></i> {t('mods.port.unknownHint')}</div>
+          {/if}
+        {/if}
+        {#if flow.report?.cancelled}
           <div class="mig-cancelled-hint"><i class="ti ti-alert-triangle"></i> {t('mods.migrateCancelledHint')}</div>
         {/if}
 
-        {#if analyzing && liveItems.length > 0}
+        {#if flow.analyzing && flow.live.length > 0}
           <div class="mig-live-head">
             <div class="mig-live-head-top">
               <i class="ti ti-radar"></i>
-              <span>{t('mods.migrateAnalyzing', { done: analyzeDone, total: analyzeTotal })}</span>
-              <span class="mig-live-remaining">{t('mods.migrateRemaining', { n: Math.max(0, analyzeTotal - analyzeDone) })}</span>
-              <span class="mig-live-pct mono">{analyzeTotal ? Math.round(analyzeDone / analyzeTotal * 100) : 0}%</span>
+              <span>{t('mods.migrateAnalyzing', { done: flow.analyzeDone, total: flow.analyzeTotal })}</span>
+              <span class="mig-live-remaining">{t('mods.migrateRemaining', { n: Math.max(0, flow.analyzeTotal - flow.analyzeDone) })}</span>
+              <span class="mig-live-pct mono">{flow.analyzeTotal ? Math.round(flow.analyzeDone / flow.analyzeTotal * 100) : 0}%</span>
             </div>
-            <div class="mig-live-bar"><div style="width:{analyzeTotal ? Math.round(analyzeDone / analyzeTotal * 100) : 0}%"></div></div>
+            <div class="mig-live-bar"><div style="width:{flow.analyzeTotal ? Math.round(flow.analyzeDone / flow.analyzeTotal * 100) : 0}%"></div></div>
           </div>
         {/if}
 
-        {#if !analyzing && report && transferable.length > 0}
+        {#if !flow.analyzing && flow.report && flow.transferable.length > 0}
           <div class="mig-tools">
-            <span class="mig-tools-hint">{t('mods.migrateSelectedHint', { n: selected.size, total: transferable.length })}</span>
-            <button class="btn btn-ghost btn-sm" onclick={toggleAll} disabled={migrating}>
-              <i class="ti {selected.size === transferable.length ? 'ti-square-off' : 'ti-square-check'}"></i>
-              {selected.size === transferable.length ? t('mods.migrateSelectNone') : t('mods.migrateSelectAll')}
+            <span class="mig-tools-hint">{t('mods.migrateSelectedHint', { n: flow.selected.size, total: flow.transferable.length })}</span>
+            <button class="btn btn-ghost btn-sm" onclick={() => flow.toggleAll()} disabled={migrating}>
+              <i class="ti {flow.selected.size === flow.transferable.length ? 'ti-square-off' : 'ti-square-check'}"></i>
+              {flow.selected.size === flow.transferable.length ? t('mods.migrateSelectNone') : t('mods.migrateSelectAll')}
             </button>
           </div>
         {/if}
 
         <div class="mig-list">
-          {#each liveUnique as it (it.sourceFileName)}
-            {@const canSelect = !analyzing && report && (it.status === 'found' || it.status === 'update')}
+          {#each flow.liveUnique as it (it.sourceFileName)}
+            {@const canSelect = !flow.analyzing && flow.report && flow.isTransferable(it)}
             <div
               class={'mig-row st-' + it.status}
               class:selectable={canSelect}
-              class:sel={canSelect && selected.has(it.sourceFileName)}
-              onclick={() => { if (canSelect) toggleSelect(it.sourceFileName) }}
+              class:sel={canSelect && flow.selected.has(it.sourceFileName)}
+              onclick={() => { if (canSelect) flow.toggle(it.sourceFileName) }}
               role={canSelect ? 'checkbox' : undefined}
-              aria-checked={canSelect ? selected.has(it.sourceFileName) : undefined}
+              aria-checked={canSelect ? flow.selected.has(it.sourceFileName) : undefined}
               tabindex={canSelect ? 0 : undefined}
             >
               {#if canSelect}
                 <button
                   type="button"
                   role="checkbox"
-                  aria-checked={selected.has(it.sourceFileName)}
+                  aria-checked={flow.selected.has(it.sourceFileName)}
                   class="mig-check"
-                  class:checked={selected.has(it.sourceFileName)}
+                  class:checked={flow.selected.has(it.sourceFileName)}
                   disabled={migrating}
-                  onclick={(e: any) => { e.stopPropagation(); toggleSelect(it.sourceFileName) }}
+                  onclick={(e: any) => { e.stopPropagation(); flow.toggle(it.sourceFileName) }}
                 >
                   <i class="ti ti-check"></i>
                 </button>
@@ -442,7 +303,11 @@
                     <span class="mig-ver">{it.resolvedVersion || it.sourceFileName}</span>
                     {#if it.status === 'update'}<span class="mig-tag upd">{t('mods.migrateStatusUpdate')}</span>{/if}
                     {#if it.willReplace}<span class="mig-tag rep">{t('mods.migrateReplace')}</span>{/if}
-                    {#if it.localCopy}<span class="mig-tag local" title={t('mods.migrateLocalCopyHint')}>{t('mods.migrateLocalCopy')}</span>{/if}
+                    {#if it.side}
+                      {#if it.side === 'server'}<span class="mig-tag side-srv">{t('mods.port.sideServer')}</span>
+                      {:else if it.side === 'client'}<span class="mig-tag side-cl" title={t('mods.port.clientHint')}>{t('mods.port.sideClient')}</span>
+                      {:else}<span class="mig-tag side-unk" title={t('mods.port.unknownHint')}>{t('mods.port.sideUnknown')}</span>{/if}
+                    {:else if it.localCopy}<span class="mig-tag local" title={t('mods.migrateLocalCopyHint')}>{t('mods.migrateLocalCopy')}</span>{/if}
                   {/if}
                 </div>
               </div>
@@ -468,10 +333,10 @@
     </div>
 
     <div class="modal-foot">
-      <button class="btn btn-ghost" onclick={onClose} disabled={analyzing || migrating}>{t('cancel')}</button>
+      <button class="btn btn-ghost" onclick={onClose} disabled={flow.analyzing || migrating}>{t('cancel')}</button>
       <button class="btn btn-primary" onclick={runMigration} disabled={!canMigrate}>
-        {#if migrating}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-arrows-right-left"></i>{/if}
-        {t('mods.migrate')}{#if report && transferable.length > 0} ({selected.size}){/if}
+        {#if migrating}<i class="ti ti-loader spin"></i>{:else}<i class="ti {isPort ? 'ti-server-bolt' : 'ti-arrows-right-left'}"></i>{/if}
+        {isPort ? t('mods.port.run') : t('mods.migrate')}{#if flow.report && flow.transferable.length > 0} ({flow.selected.size}){/if}
       </button>
     </div>
 </UiModal>
@@ -588,14 +453,17 @@
 
   .mig-info { flex: 1; min-width: 0; }
   .mig-name { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mig-meta { display: flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--text-mute); margin-top: 2px; flex-wrap: wrap; }
+  .mig-meta { display: flex; align-items: center; gap: 6px; font-size: var(--fs-min); color: var(--text-mute); margin-top: 2px; flex-wrap: wrap; }
   .mig-ver { font-family: var(--font-mono); }
-  .mig-tag { font-size: 9.5px; font-weight: 700; padding: 1px 6px; border-radius: 4px; }
+  .mig-tag { font-size: var(--fs-min); font-weight: 700; padding: 1px 6px; border-radius: 4px; }
   .mig-tag.upd { background: rgba(255,138,0,.15); color: var(--orange); }
   .mig-tag.rep { background: rgba(245,158,11,.15); color: var(--yellow); }
   .mig-tag.local { background: rgba(148,163,184,.15); color: var(--muted, #94a3b8); }
+  .mig-tag.side-srv { background: rgba(16,185,129,.15); color: var(--green); }
+  .mig-tag.side-cl { background: rgba(148,163,184,.15); color: var(--text-mute); }
+  .mig-tag.side-unk { background: rgba(245,158,11,.15); color: var(--yellow); }
 
-  .mig-status { display: flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; flex-shrink: 0; }
+  .mig-status { display: flex; align-items: center; gap: 5px; font-size: var(--fs-min); font-weight: 600; flex-shrink: 0; }
   .mig-status.st-found { color: var(--green); }
   .mig-status.st-update { color: var(--orange); }
   .mig-status.st-already { color: var(--violet-l); }

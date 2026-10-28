@@ -122,13 +122,52 @@ func (a *App) GetMigrationPacks(excludePackID string) []model.MigrationPack {
 	}
 	// Страховка на випадок дублювання (одна збірка у кількох списках).
 	if len(sorted) != len(out) {
-		fallback := append([]model.MigrationPack{}, out...)
-		sort.Slice(fallback, func(i, j int) bool {
-			return strings.ToLower(fallback[i].Name) < strings.ToLower(fallback[j].Name)
+		sorted = append([]model.MigrationPack{}, out...)
+		sort.Slice(sorted, func(i, j int) bool {
+			return strings.ToLower(sorted[i].Name) < strings.ToLower(sorted[j].Name)
 		})
-		return fallback
 	}
-	return sorted
+	// Сервери — після збірок: міграція, порівняння й портування модів
+	// працюють і з ними (той самий таргет менеджера модів, mod_target.go).
+	return append(sorted, a.serverMigrationTargets(excludePackID)...)
+}
+
+// serverMigrationTargets — сервери з ядром під моди чи плагіни як таргети
+// міграції/порівняння (ID "srv:<id>" або "srvp:<id>").
+func (a *App) serverMigrationTargets(excludeID string) []model.MigrationPack {
+	out := []model.MigrationPack{}
+	if a.srvAPI == nil {
+		return out
+	}
+	list, err := a.srvAPI.ListServers()
+	if err != nil {
+		return out
+	}
+	for _, srv := range list {
+		prefix := modTargetServerMods
+		if isPluginCore(srv.Core) {
+			prefix = modTargetServerPlugins
+		}
+		id := prefix + srv.ID
+		t, ok := a.serverForModTarget(id)
+		if !ok || id == excludeID || t.loader() == "" {
+			continue
+		}
+		icon := srv.Icon
+		if icon == "" {
+			icon = "ti-server-2"
+		}
+		iconURL := srv.LauncherIconData
+		if iconURL == "" {
+			iconURL = srv.IconData
+		}
+		out = append(out, model.MigrationPack{
+			PackID: id, Name: srv.Name, MCVersion: srv.MCVersion, Loader: t.loader(),
+			IconURL: iconURL, Icon: icon, Color: srv.Color, ModCount: a.countEnabledJars(id),
+			Kind: "server",
+		})
+	}
+	return out
 }
 
 // packLayoutOrder повертає збережений порядок збірок (settings.PackOrder).
@@ -181,7 +220,19 @@ const (
 // збірки (саме під них шукаються версії модів). targetPackID може бути
 // порожнім (сценарій «створюю збірку» — цілі ще немає, тоді статусів
 // already/update просто не буде).
+//
+// Ціль-сервер ("srv:<id>", або modTargetNewServer для сервера, що ще
+// створюється) — кожен рядок звіту отримує Side: клієнтські моди на сервер
+// не переносяться (mods_port.go).
 func (a *App) AnalyzeModMigration(sourcePackID, targetPackID, targetMCVersion, targetLoader string) (model.ModMigrationReport, error) {
+	report, err := a.analyzeModMigration(sourcePackID, targetPackID, targetMCVersion, targetLoader)
+	if err == nil && isServerModTarget(targetPackID) {
+		a.attachModSides(sourcePackID, report.Items)
+	}
+	return report, err
+}
+
+func (a *App) analyzeModMigration(sourcePackID, targetPackID, targetMCVersion, targetLoader string) (model.ModMigrationReport, error) {
 	var report model.ModMigrationReport
 	srcMods := a.scanMigrationSource(sourcePackID)
 	if len(srcMods) == 0 {
@@ -221,7 +272,7 @@ func (a *App) AnalyzeModMigration(sourcePackID, targetPackID, targetMCVersion, t
 	// Моди цілі: sha1-множина (already) + modId-множина (update).
 	targetSha1s := map[string]bool{}
 	targetModIDs := map[string]bool{}
-	if targetPackID != "" {
+	if targetPackID != "" && targetPackID != modTargetNewServer {
 		if tmods, err := a.modMgr.ScanModsFull(a.instanceModsDir(targetPackID)); err == nil {
 			for i := range tmods {
 				if tmods[i].Sha1 != "" {

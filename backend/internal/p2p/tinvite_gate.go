@@ -107,7 +107,7 @@ func (a *API) SetGuestTicket(address, id, ticket string) error {
 	if err := a.ensureGuestLocked(); err != nil {
 		return err
 	}
-	key := strings.ToLower(strings.TrimSpace(address))
+	key := tinviteKey(address)
 	if id == "" {
 		a.guest.tickets.Delete(key)
 		return nil
@@ -116,8 +116,20 @@ func (a *API) SetGuestTicket(address, id, ticket string) error {
 	return nil
 }
 
+// tinviteKey — ключ квитка тимчасового запрошення: сама адреса без домену гри. Квиток приходить
+// з VPS під повною адресою (tmp1-123456.play.shaurma-launcher.org), а маршрутизатор гостя шукає
+// його за адресою з хендшейка, з якої суфікс уже відрізано (tmp1-123456). Без цього квиток не
+// знаходився, преамбула не дописувалась і хост відхиляв кожне з'єднання передачі збірки/сервера.
+func tinviteKey(address string) string {
+	key := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(address)), ".")
+	if i := strings.IndexByte(key, '.'); i > 0 {
+		key = key[:i]
+	}
+	return key
+}
+
 func (g *GuestService) preambleFor(address string) []byte {
-	if v, ok := g.tickets.Load(strings.ToLower(strings.TrimSpace(address))); ok {
+	if v, ok := g.tickets.Load(tinviteKey(address)); ok {
 		return v.([]byte) // тимчасове запрошення (SHTI1) має пріоритет
 	}
 	return g.p2pTickets.get(address) // квиток режиму доступу кімнати (SHP2P1, p2p_gate.go)

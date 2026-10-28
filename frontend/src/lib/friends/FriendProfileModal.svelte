@@ -244,7 +244,7 @@
   .fpm-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 2px; }
   .fpm-badge {
     display: inline-flex; align-items: center; gap: 5px; max-width: 100%; padding: 4px 9px; border-radius: 999px;
-    border: 1px solid var(--border); background: var(--hover); color: var(--text-mute); font: 600 10.5px/1.2 var(--font-ui);
+    border: 1px solid var(--border); background: var(--hover); color: var(--text-mute); font: 600 var(--fs-min)/1.2 var(--font-ui);
     cursor: pointer; transition: border-color .14s, color .14s, background .14s;
   }
   .fpm-badge.plain { cursor: default; }
@@ -254,7 +254,7 @@
   .fpm-badge .ok, .fpm-cp.ok { color: var(--ff-ok, #22c55e); }
 
   .fpm-flags { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; }
-  .fpm-flag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font: 650 10px/1 var(--font-ui);
+  .fpm-flag { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px; font: 650 var(--fs-min)/1 var(--font-ui);
     color: var(--red); background: color-mix(in srgb, var(--red) 12%, transparent); border: 1px solid color-mix(in srgb, var(--red) 32%, transparent); }
   .fpm-flag.ban { color: var(--red); }
   .fpm-flag i { font-size: 11px; }
@@ -284,7 +284,7 @@
   .fpm-tile-ic i { font-size: inherit; }
   .fpm-tile-v { font: 800 17px/1.15 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 22px; }
   .fpm-tile-v.sm { font-size: 13px; padding-top: 3px; }
-  .fpm-tile small { font: 500 10.5px/1.2 var(--font-ui); color: var(--text-mute); }
+  .fpm-tile small { font: 500 var(--fs-min)/1.2 var(--font-ui); color: var(--text-mute); }
 
   .fpm-card { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: var(--bg-input); border: 1px solid var(--border); }
   .fpm-card-t { display: flex; align-items: center; gap: 6px; font: 700 11.5px/1 var(--font-ui); color: var(--text-dim); }
@@ -303,7 +303,7 @@
   .fpm-row-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .fpm-row-t b { font: 650 12.5px/1.25 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fpm-row-t b.mono { font: 500 11.5px/1.25 var(--font-mono); color: var(--text-mute); }
-  .fpm-row-t small { font: 500 10px/1.2 var(--font-ui); color: var(--text-dim); }
+  .fpm-row-t small { font: 500 var(--fs-min)/1.2 var(--font-ui); color: var(--text-dim); }
   .fpm-cp { font-size: 14px; color: var(--text-dim); opacity: .6; transition: opacity .12s, color .12s; }
   .fpm-row:hover .fpm-cp, .fpm-row:focus-visible .fpm-cp { opacity: 1; }
 

@@ -63,8 +63,13 @@ type Client struct {
 	mu   sync.Mutex
 	pend map[string]*pendingCmd
 	sess map[string]*clientSession
-	chs  map[string]*remotechan.Conn
+	// Прямі канали — по парі власник|сервер: власник прив'язує канал до сервера з мандата
+	// (ServeChannel рве його на команді для іншого сервера), тож спільний канал на власника ламав
+	// керування другим сервером того самого друга.
+	chs map[string]*remotechan.Conn
 }
+
+func chKey(owner, srv string) string { return owner + "|" + srv }
 
 // NewClient створює Client.
 func NewClient(c Crypto, n Net, emit func(string, any)) *Client {
@@ -82,9 +87,11 @@ func randID(prefix string) string {
 	return prefix + hex.EncodeToString(b)
 }
 
-// Command надсилає start/stop. Повертає reqId — за ним UI зіставляє подію remote:result.
+// Command надсилає start/stop/p2p_on/p2p_off. Повертає reqId — за ним UI зіставляє подію remote:result.
 func (c *Client) Command(ownerID, serverID, op string) (string, error) {
-	if op != social.RemoteOpStart && op != social.RemoteOpStop {
+	switch op {
+	case social.RemoteOpStart, social.RemoteOpStop, social.RemoteOpP2POn, social.RemoteOpP2POff:
+	default:
 		return "", ErrBadRequest
 	}
 	return c.send(ownerID, serverID, op, "", "")
@@ -155,12 +162,12 @@ func (c *Client) send(owner, srv, op, sid, cmd string) (string, error) {
 	}
 	c.pend[reqID] = &pendingCmd{owner: owner, srv: srv, op: op, sid: sid, at: now}
 	c.mu.Unlock()
-	if ch := c.channelFor(owner); ch != nil {
+	if ch := c.channelFor(owner, srv); ch != nil {
 		// Пряма дорога: той самий конверт, але у зашифрований канал (шифрування канал дає сам).
 		if err := ch.Send([]byte(plain)); err == nil {
 			return reqID, nil
 		}
-		c.dropChannel(owner, ch) // канал помер — нижче піде через VPS
+		c.dropChannel(owner, srv, ch) // канал помер — нижче піде через VPS
 	}
 	if err := c.Net.SendCmd(reqID, owner, srv, op, sid, ct, nonce); err != nil {
 		c.mu.Lock()
@@ -293,31 +300,32 @@ func (c *Client) HandleStreamEnd(sid, reason string) {
 // SanitizeState зводить стан до відомого.
 func SanitizeState(s string) string { return social.SanitizeRemoteState(s) }
 
-func (c *Client) channelFor(owner string) *remotechan.Conn {
+func (c *Client) channelFor(owner, srv string) *remotechan.Conn {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.chs[owner]
+	return c.chs[chKey(owner, srv)]
 }
 
-func (c *Client) dropChannel(owner string, ch *remotechan.Conn) {
+func (c *Client) dropChannel(owner, srv string, ch *remotechan.Conn) {
 	c.mu.Lock()
-	if c.chs[owner] == ch {
-		delete(c.chs, owner)
+	if k := chKey(owner, srv); c.chs[k] == ch {
+		delete(c.chs, k)
 	}
 	c.mu.Unlock()
 	_ = ch.Close()
 }
 
-// UseChannel переключає команди до цього власника на пряме зашифроване з'єднання і читає з нього
-// відповіді та потік консолі. Блокує до закриття каналу; після цього команди знову йдуть через VPS.
-func (c *Client) UseChannel(owner string, ch *remotechan.Conn) {
+// UseChannel переключає команди до цього сервера власника на пряме зашифроване з'єднання і читає
+// з нього відповіді та потік консолі. Блокує до закриття каналу; після цього команди знову йдуть через VPS.
+func (c *Client) UseChannel(owner, srv string, ch *remotechan.Conn) {
+	k := chKey(owner, srv)
 	c.mu.Lock()
-	if old := c.chs[owner]; old != nil {
+	if old := c.chs[k]; old != nil {
 		_ = old.Close()
 	}
-	c.chs[owner] = ch
+	c.chs[k] = ch
 	c.mu.Unlock()
-	defer c.dropChannel(owner, ch)
+	defer c.dropChannel(owner, srv, ch)
 	for {
 		_ = ch.SetReadDeadline(c.Now().Add(2 * time.Minute))
 		msg, err := ch.Recv()
@@ -344,5 +352,16 @@ func (c *Client) UseChannel(owner string, ch *remotechan.Conn) {
 	}
 }
 
-// HasChannel — чи є зараз пряме з'єднання з власником.
-func (c *Client) HasChannel(owner string) bool { return c.channelFor(owner) != nil }
+// HasChannel — чи є зараз пряме з'єднання з цим сервером власника.
+func (c *Client) HasChannel(owner, srv string) bool { return c.channelFor(owner, srv) != nil }
+
+// Reset забуває всі команди, сесії й канали (змінився акаунт Shaurma: старі належать іншій особі).
+func (c *Client) Reset() {
+	c.mu.Lock()
+	chs := c.chs
+	c.pend, c.sess, c.chs = map[string]*pendingCmd{}, map[string]*clientSession{}, map[string]*remotechan.Conn{}
+	c.mu.Unlock()
+	for _, ch := range chs {
+		_ = ch.Close()
+	}
+}

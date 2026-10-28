@@ -73,6 +73,7 @@ func (a *App) remote() *remoteRT {
 		rt := &remoteRT{lists: map[string]social.RemoteOwnerList{}, pipes: map[string]*remotepipe.Conn{}, waiters: map[string]chan social.P2PMandateFrame{}}
 		dir := a.cfg.Dir()
 		rt.store = remotectl.Open(dir)
+		rt.store.SetNetworks(remoteNetworks{a}) // право на проксі → сервери його мережі
 		rt.hostPriv, rt.hostPub = loadOrCreateHostKey(filepath.Join(dir, "remote_host_key"))
 		keyFile := filepath.Join(dir, "remote_vps_key")
 		rt.pin = social.KeyPin{
@@ -179,7 +180,21 @@ func (s remoteServersAdapter) Exists(id string) (string, bool) {
 func (s remoteServersAdapter) State(id string) string { return s.a.srvAPI.ServerStatus(id).Status }
 func (s remoteServersAdapter) Players(id string) int  { return len(s.a.srvAPI.OnlinePlayers(id)) }
 func (s remoteServersAdapter) Start(id string) error  { return s.a.StartServer(id) }
-func (s remoteServersAdapter) Stop(id string) error   { return s.a.srvAPI.StopServer(id, true) }
+
+// P2P — публічна P2P-адреса сервера (та сама, що вмикає власник у вкладці «Мережа»).
+func (s remoteServersAdapter) P2P(id string, on bool) error {
+	if on {
+		_, err := s.a.P2PStartForServer(id)
+		return err
+	}
+	sub := s.a.p2pSubdomainFor(id)
+	if sub == "" {
+		return nil
+	}
+	err := s.a.StopP2PHost(sub)
+	return err
+}
+func (s remoteServersAdapter) Stop(id string) error { return s.a.srvAPI.StopServer(id, true) }
 func (s remoteServersAdapter) SendCommand(id, cmd string) error {
 	return s.a.srvAPI.SendCommand(id, cmd)
 }
@@ -201,18 +216,32 @@ func toRemoteLine(l model.ConsoleLine) remotehost.Line {
 
 // ── хуки соціальної служби ────────────────────────────────────────────────
 
+// remoteFlat — усі доступні мені сервери друзів одним списком, БЕЗ тих, що насправді живуть у цьому
+// ж лаунчері (доступ видав інший мій акаунт Shaurma): такий сервер уже є в бібліотеці як свій,
+// його можна просто запустити, а не керувати ним «через друга».
+func (a *App) remoteFlat(r *remoteRT) []social.RemoteServer {
+	r.mu.Lock()
+	all := []social.RemoteServer{}
+	for _, l := range r.lists {
+		all = append(all, l.Servers...)
+	}
+	r.mu.Unlock()
+	self := a.socialService().RemoteSelf()
+	flat := make([]social.RemoteServer, 0, len(all)) // не nil: nil-слайс у JS стає null
+	for _, s := range all {
+		if r.store.GrantedOnThisLauncher(s.OwnerID, self, s.ID) {
+			if _, err := a.srvAPI.GetServer(s.ID); err == nil {
+				continue
+			}
+		}
+		flat = append(flat, s)
+	}
+	return flat
+}
+
 func (a *App) remoteHooks() *social.RemoteHooks {
 	rt := func() *remoteRT { return a.remote() }
-	emitServers := func() {
-		r := rt()
-		r.mu.Lock()
-		flat := []social.RemoteServer{} // не nil: nil-слайс у JS стає null
-		for _, l := range r.lists {
-			flat = append(flat, l.Servers...)
-		}
-		r.mu.Unlock()
-		a.emit("remote:servers", flat)
-	}
+	emitServers := func() { a.emit("remote:servers", a.remoteFlat(rt())) }
 	return &social.RemoteHooks{
 		OnSnapshot: func(lists []social.RemoteOwnerList) {
 			r := rt()
@@ -379,7 +408,7 @@ func (r *remoteRT) pipeEnd(tunnel string) {
 // Повертає помилку, якщо прямий канал не вдалося встановити (консоль тоді йде через VPS-релей).
 func (a *App) remoteConnectSecure(ownerID, serverID string, timeout time.Duration) error {
 	rt := a.remote()
-	if rt.client.HasChannel(ownerID) {
+	if rt.client.HasChannel(ownerID, serverID) {
 		return nil
 	}
 	svc := a.socialService()
@@ -423,10 +452,10 @@ func (a *App) remoteConnectSecure(ownerID, serverID string, timeout time.Duratio
 	}
 	go func() {
 		defer crashguard.Recover("remote_control_shaurma.go:channel")
-		rt.client.UseChannel(ownerID, ch) // блокує до закриття каналу
+		rt.client.UseChannel(ownerID, serverID, ch) // блокує до закриття каналу
 		_ = pc.Close()
 	}()
-	for end := time.Now().Add(time.Second); !rt.client.HasChannel(ownerID); time.Sleep(10 * time.Millisecond) {
+	for end := time.Now().Add(time.Second); !rt.client.HasChannel(ownerID, serverID); time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(end) {
 			_ = pc.Close()
 			return errors.New("remote: channel did not register")
@@ -448,6 +477,22 @@ func (a *App) remoteSyncShares() {
 			continue
 		}
 		sh := social.RemoteShare{ServerID: sv.ServerID, Name: v.Name, State: a.srvAPI.ServerStatus(sv.ServerID).Status, Core: v.CoreLabel, HostKey: rt.hostPub}
+		// Вигляд — той самий, що в бібліотеці власника: колір, пресет-іконка, мініатюра картинки.
+		sh.Color, sh.Icon = v.Color, v.Icon
+		if img := v.LauncherIconData; img != "" {
+			sh.Img = remoteIconThumb(img)
+		} else if v.Icon == "" && v.IconData != "" {
+			sh.Img = remoteIconThumb(v.IconData)
+		}
+		// Мережа проксі: друг бачить сервери мережі на сторінці проксі.
+		if parents := a.srvAPI.NetworkParents(sv.ServerID); len(parents) > 0 {
+			sh.Network = parents[0]
+		}
+		if sub := a.p2pSubdomainFor(sv.ServerID); sub != "" {
+			if st := a.GetP2PHostStatus(sub); st.Active {
+				sh.P2P, sh.P2PAddr = true, st.Address
+			}
+		}
 		for _, g := range sv.Grants {
 			sh.Grants = append(sh.Grants, social.RemoteShareGrant{AccountID: g.AccountID, Start: g.Start, Stop: g.Stop, Console: g.Console, Exec: g.Exec})
 		}
@@ -457,6 +502,30 @@ func (a *App) remoteSyncShares() {
 	if len(out) == 0 {
 		rt.host.EndAll()
 	}
+}
+
+// remoteNetworks — мережі проксі для remotectl: право «Сервери мережі» на
+// проксі поширюється на його сервери.
+type remoteNetworks struct{ a *App }
+
+func (n remoteNetworks) Parents(serverID string) []string { return n.a.srvAPI.NetworkParents(serverID) }
+func (n remoteNetworks) Members(proxyID string) []string  { return n.a.srvAPI.NetworkMemberIDs(proxyID) }
+
+// remoteOnP2PChanged — P2P-адресу сервера піднято чи зупинено: друзі бачать новий стан.
+func (a *App) remoteOnP2PChanged() {
+	if a.remoteRT == nil {
+		return
+	}
+	go a.remoteSyncShares()
+}
+
+// remoteOnNetworkChanged — склад мережі змінився: друзі з правом на проксі
+// мають одразу бачити (і лише ті) сервери мережі.
+func (a *App) remoteOnNetworkChanged() {
+	if a.remoteRT == nil {
+		return
+	}
+	go a.remoteSyncShares()
 }
 
 // remoteOnLine / remoteOnStatus — викликаються з колбеків серверного менеджера (app.go).
@@ -474,13 +543,59 @@ func (a *App) remoteOnStatus(serverID string, st servers.ServerStatus) {
 	a.socialService().SetRemoteShareState(serverID, st.Status)
 }
 
+// remoteOnIdentityChanged — змінився (або вийшов) акаунт Shaurma. Сервери друзів, команди в дорозі
+// й відкриті консолі належали ІНШІЙ особі: забуваємо їх, щоб новий акаунт не бачив чужого доступу.
+func (a *App) remoteOnIdentityChanged() {
+	rt := a.remoteRT
+	if rt == nil {
+		return
+	}
+	rt.mu.Lock()
+	rt.lists = map[string]social.RemoteOwnerList{}
+	rt.mu.Unlock()
+	rt.client.Reset()
+	rt.host.ForgetAll()
+	rt.pmu.Lock()
+	pipes := make([]*remotepipe.Conn, 0, len(rt.pipes))
+	for _, pc := range rt.pipes {
+		pipes = append(pipes, pc)
+	}
+	rt.pmu.Unlock()
+	for _, pc := range pipes {
+		_ = pc.Close() // onClose бере pmu — тому поза замком
+	}
+	a.emit("remote:servers", []social.RemoteServer{})
+}
+
+// remoteOnServerDeleted / remoteOnServerRenamed — права друзів ідуть за сервером: видалений сервер
+// забуваємо (і знімаємо з VPS), перейменований (id = ім'я теки) — переносимо на новий id.
+func (a *App) remoteOnServerDeleted(serverID string) {
+	if a.remote().store.ForgetServer(serverID) {
+		go a.remoteSyncShares()
+	}
+}
+
+func (a *App) remoteOnServerRenamed(oldID, newID string) {
+	if a.remote().store.RenameServer(oldID, newID) {
+		go a.remoteSyncShares()
+	}
+}
+
+// remoteOnFriendRemoved — друга видалено: забираємо всі його права й закриваємо його консолі.
+func (a *App) remoteOnFriendRemoved(friendID string) {
+	rt := a.remote()
+	if n, _ := rt.store.RemoveFriend(a.socialService().RemoteSelf(), friendID); n > 0 {
+		go a.remoteSyncShares()
+	}
+}
+
 // ── API для фронтенду: ВЛАСНИК ────────────────────────────────────────────
 
 func (a *App) GetRemoteAccess() remotectl.View {
 	return a.remote().store.View(a.socialService().RemoteSelf())
 }
 
-func (a *App) SetRemoteGrant(serverID, friendID string, start, stop, console, exec bool) error {
+func (a *App) SetRemoteGrant(serverID, friendID string, start, stop, console, exec, network bool) error {
 	rt, self := a.remote(), a.socialService().RemoteSelf()
 	if ok, _ := a.socialService().RemoteFriend(friendID); !ok {
 		return errors.New("це не ваш друг")
@@ -488,7 +603,7 @@ func (a *App) SetRemoteGrant(serverID, friendID string, start, stop, console, ex
 	if _, err := a.srvAPI.GetServer(serverID); err != nil {
 		return err
 	}
-	if err := rt.store.SetGrantFull(self, serverID, friendID, remotectl.Rights{Start: start, Stop: stop, Console: console, Exec: exec}, time.Now().UnixMilli()); err != nil {
+	if err := rt.store.SetGrantFull(self, serverID, friendID, remotectl.Rights{Start: start, Stop: stop, Console: console, Exec: exec, Network: network}, time.Now().UnixMilli()); err != nil {
 		return err
 	}
 	a.remoteSyncShares()
@@ -523,18 +638,20 @@ func (a *App) GetRemoteAudit(serverID string, limit int) []remotectl.AuditEntry 
 // ── API для фронтенду: ДРУГ ───────────────────────────────────────────────
 
 func (a *App) GetRemoteServers() []social.RemoteServer {
-	rt := a.remote()
-	rt.mu.Lock()
-	defer rt.mu.Unlock()
-	flat := []social.RemoteServer{} // не nil: nil-слайс у JS стає null
-	for _, l := range rt.lists {
-		flat = append(flat, l.Servers...)
-	}
-	return flat
+	return a.remoteFlat(a.remote())
 }
 
 func (a *App) RemoteStartServer(ownerID, serverID string) (string, error) {
 	return a.remote().client.Command(ownerID, serverID, social.RemoteOpStart)
+}
+
+// RemoteSetP2P вмикає/вимикає публічну P2P-адресу сервера друга (права Старт/Стоп).
+func (a *App) RemoteSetP2P(ownerID, serverID string, on bool) (string, error) {
+	op := social.RemoteOpP2POff
+	if on {
+		op = social.RemoteOpP2POn
+	}
+	return a.remote().client.Command(ownerID, serverID, op)
 }
 
 func (a *App) RemoteStopServer(ownerID, serverID string) (string, error) {
@@ -546,7 +663,7 @@ func (a *App) RemoteStopServer(ownerID, serverID string) (string, error) {
 // працює через VPS-релей (його авторизація та сама), а UI про це чесно попереджає подією "remote:secure".
 func (a *App) RemoteOpenConsole(ownerID, serverID string) (string, error) {
 	rt := a.remote()
-	secure := rt.client.HasChannel(ownerID)
+	secure := rt.client.HasChannel(ownerID, serverID)
 	if !secure {
 		secure = a.remoteConnectSecure(ownerID, serverID, 6*time.Second) == nil
 	}

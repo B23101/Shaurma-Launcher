@@ -137,7 +137,7 @@
   .bm-file .ti-file { color: var(--text-mute); font-size: 14px; flex: none; }
   .bm-file span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bm-badge {
-    flex: none; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .3px;
+    flex: none; font-size: var(--fs-min); font-weight: 800; text-transform: uppercase; letter-spacing: .3px;
     border-radius: 6px; padding: 2px 7px;
     background: color-mix(in srgb, var(--red, #ef4444) 15%, transparent);
     color: var(--red, #ef4444);

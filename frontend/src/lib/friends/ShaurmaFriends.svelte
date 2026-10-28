@@ -111,8 +111,8 @@
     </div>
 
   {:else}
-    <!-- Макет як у головного sidebar: список — окрема колонка на всю висоту,
-         впритул до головного sidebar; праворуч — тулбар і діалог. -->
+    <!-- Макет як у налаштувань лаунчера: зверху рядок дій (FriendsToolbar),
+         під ним меню-список друзів зліва і діалог у картці справа. -->
     <div class="sf-body" class:rail={s.rail} class:resizing={s.listResizing}
          style="--fl-w:{s.rail ? LIST_W_RAIL : s.listW}px">
       <FriendsList {activeId} onAdd={() => (addOpen = true)} />
@@ -142,13 +142,13 @@
 <style>
   .sf { container: sf / inline-size; display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; min-height: 0; height: 100%; }
 
-  /* Сітка: [список на всю висоту] | [тулбар / діалог]. Ширина колонки —
-     --fl-w (перетягування краю, 220–400px; рейка 68px), зміна ширини
-     анімується тим самим easing, що й у головного sidebar. */
-  .sf-body { flex: 1 1 0; min-height: 0; min-width: 0; display: grid;
+  /* Сітка: [рядок дій на всю ширину] / [список-меню | картка діалогу].
+     Ширина списку — --fl-w (перетягування краю, 220–400px; рейка 68px),
+     зміна ширини анімується тим самим easing, що й у головного sidebar. */
+  .sf-body { flex: 1 1 0; min-height: 0; min-width: 0; display: grid; gap: 18px 24px;
     grid-template-columns: var(--fl-w, 264px) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas: "list tb" "list cs";
+    grid-template-areas: "tb tb" "list cs";
     transition: grid-template-columns .22s cubic-bezier(.4, 0, .2, 1); }
   .sf-body.resizing { transition: none; }
   .sf-body > :global(.fl) { grid-area: list; }
@@ -167,12 +167,11 @@
 
   /* ≤720px: одна панель за раз. */
   @container sf (max-width: 720px) {
-    .sf-body, .sf-body.rail { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tb" "main"; transition: none; }
+    .sf-body, .sf-body.rail { grid-template-columns: minmax(0, 1fr); grid-template-areas: "tb" "main"; transition: none; gap: 10px; }
     .sf-body > :global(.fl), .sf-body > :global(.cs) { grid-area: main; }
     .sf-body > :global(.cs) { display: none; }
     .sf.chat-open .sf-body > :global(.fl) { display: none; }
     .sf.chat-open .sf-body > :global(.cs) { display: flex; }
     .sf.chat-open .sf-tb { display: none; }
-    .sf-body > :global(.fl) { border-right: 0; }
   }
 </style>

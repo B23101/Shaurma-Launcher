@@ -641,7 +641,7 @@
   }
   .wiz-title-text { display: flex; flex-direction: column; gap: 1px; }
   .wt-main { font-size: 13.5px; font-weight: 800; }
-  .wt-sub { font-size: 10.5px; color: var(--text-mute); font-weight: 600; }
+  .wt-sub { font-size: var(--fs-min); color: var(--text-mute); font-weight: 600; }
   .wiz-ctrls { display: flex; align-items: center; gap: 6px; --wails-draggable: no-drag; }
   .wiz-ctrl-btn {
     width: 30px; height: 30px; border-radius: 9px;
@@ -671,7 +671,7 @@
   }
   .wiz-step-dot.active .wsd-circle { background: var(--orange); border-color: var(--orange); color: #000; }
   .wiz-step-dot.done .wsd-circle { background: var(--green); border-color: var(--green); color: #000; }
-  .wsd-label { font-size: 9.5px; font-weight: 700; color: var(--text-mute); letter-spacing: .2px; text-align: center; }
+  .wsd-label { font-size: var(--fs-min); font-weight: 700; color: var(--text-mute); letter-spacing: .2px; text-align: center; }
   .wiz-step-dot.active .wsd-label { color: #fff; }
   .wiz-step-line { position: absolute; top: 13px; left: calc(-50% + 13px); width: calc(100% - 26px); height: 2px; background: var(--border-hi); z-index: -1; }
   .wiz-step-line-fill { height: 100%; background: var(--green); width: 0%; transition: width .25s ease; }
@@ -730,7 +730,7 @@
     border-radius: var(--r-md); font-size: 11px; margin-bottom: 14px;
   }
   .sys-info-strip div { display: flex; flex-direction: column; gap: 2px; }
-  .sis-label { color: var(--text-dim); font-size: 9.5px; text-transform: uppercase; letter-spacing: .4px; }
+  .sis-label { color: var(--text-dim); font-size: var(--fs-min); text-transform: uppercase; letter-spacing: .4px; }
   .sis-val { font-weight: 700; font-family: var(--font-mono); }
 
   /* ── RAM slider: підписи стоять точно під значеннями (перекриваємо
@@ -741,7 +741,7 @@
   .ram-track:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; border-radius: 6px; }
   .ram-ticks {
     position: relative; height: 14px; margin-top: 8px;
-    font-size: 9.5px; color: var(--text-dim); font-family: var(--font-mono);
+    font-size: var(--fs-min); color: var(--text-dim); font-family: var(--font-mono);
     display: block;
   }
   .ram-ticks span { position: absolute; transform: translateX(-50%); }
@@ -774,7 +774,7 @@
   }
   .account-signed-in .user-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
   .asi-name { font-size: 13px; font-weight: 700; text-align: left; }
-  .asi-sub { font-size: 10.5px; color: var(--text-mute); text-align: left; }
+  .asi-sub { font-size: var(--fs-min); color: var(--text-mute); text-align: left; }
 
   /* ── Крок 6: готово ── */
   .finish-hero {
@@ -808,12 +808,12 @@
   .wf-left { display: flex; align-items: center; gap: 10px; }
   .wf-skip { font-size: 11.5px; color: var(--text-mute); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
   .wf-skip:hover { color: var(--text); }
-  .wf-step-count { font-size: 10.5px; color: var(--text-dim); font-family: var(--font-mono); }
+  .wf-step-count { font-size: var(--fs-min); color: var(--text-dim); font-family: var(--font-mono); }
   .help {
     display: inline-flex; align-items: center; justify-content: center;
     width: 15px; height: 15px; border-radius: 50%;
     background: var(--bg-input-hi); color: var(--text-mute);
-    font-size: 9.5px; font-weight: 700; cursor: help; margin-left: 5px;
+    font-size: var(--fs-min); font-weight: 700; cursor: help; margin-left: 5px;
   }
 
   /* ── Одноразові появи (стримані, у стилі лаунчера) ── */

@@ -85,6 +85,87 @@ type BrowserProjectDetail struct {
 	AuthorID     string `json:"authorId"`
 	AuthorAvatar string `json:"authorAvatar"`
 	AuthorURL    string `json:"authorUrl"`
+	// Creators — усі автори проєкту, як ProjectSidebarCreators у Modrinth
+	// app: спершу організація-власник (якщо є), далі учасники команди
+	// (власник першим, решта за роллю й ім'ям). Для CurseForge — authors[].
+	Creators []BrowserCreator `json:"creators"`
+}
+
+// BrowserCreator — один автор проєкту (організація або учасник команди).
+type BrowserCreator struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Avatar  string `json:"avatar"`
+	Role    string `json:"role"`
+	IsOwner bool   `json:"isOwner"`
+	IsOrg   bool   `json:"isOrg"`
+	URL     string `json:"url"`
+}
+
+// modrinthCreators складає список авторів так само, як sortedMembers у
+// ProjectSidebarCreators Modrinth app: лише прийняті учасники; власник —
+// учасник, що є власником організації (для проєктів організації) або з
+// is_owner; решта — за роллю, потім за ім'ям.
+func modrinthCreators(org *api.ModrinthOrganization, members []api.ModrinthTeamMember) []BrowserCreator {
+	out := []BrowserCreator{}
+	if org != nil && org.ID != "" {
+		out = append(out, BrowserCreator{
+			ID: org.ID, Name: org.Name, Avatar: org.IconURL, IsOrg: true,
+			URL: "https://modrinth.com/organization/" + org.Slug,
+		})
+	}
+	accepted := make([]api.ModrinthTeamMember, 0, len(members))
+	for _, m := range members {
+		if (m.Accepted == nil || *m.Accepted) && m.User.Username != "" {
+			accepted = append(accepted, m)
+		}
+	}
+	isOwner := func(m api.ModrinthTeamMember) bool {
+		if org != nil && org.ID != "" {
+			for _, om := range org.Members {
+				if om.User.ID == m.User.ID && om.IsOwner {
+					return true
+				}
+			}
+			return false
+		}
+		return m.IsOwner
+	}
+	ownerIdx := -1
+	for i, m := range accepted {
+		if isOwner(m) {
+			ownerIdx = i
+			break
+		}
+	}
+	var owner *api.ModrinthTeamMember
+	rest := make([]api.ModrinthTeamMember, 0, len(accepted))
+	for i := range accepted {
+		if i == ownerIdx {
+			owner = &accepted[i]
+			continue
+		}
+		rest = append(rest, accepted[i])
+	}
+	sort.SliceStable(rest, func(i, j int) bool {
+		if rest[i].Role == rest[j].Role {
+			return rest[i].User.Username < rest[j].User.Username
+		}
+		return rest[i].Role < rest[j].Role
+	})
+	toCreator := func(m api.ModrinthTeamMember, own bool) BrowserCreator {
+		return BrowserCreator{
+			ID: m.User.ID, Name: m.User.Username, Avatar: m.User.AvatarURL, Role: m.Role, IsOwner: own,
+			URL: "https://modrinth.com/user/" + m.User.Username,
+		}
+	}
+	if owner != nil {
+		out = append(out, toCreator(*owner, true))
+	}
+	for _, m := range rest {
+		out = append(out, toCreator(m, false))
+	}
+	return out
 }
 
 // BrowserGalleryImage — один скріншот у галереї сторінки модпаку.
@@ -139,6 +220,10 @@ type BrowserSearchResult struct {
 	TotalHits int `json:"totalHits"`
 	// HasMore — чи є ще сторінки після поточної (offset+limit < total).
 	HasMore bool `json:"hasMore"`
+	// CFTotalHits / CFHasMore — те саме для CurseForge (окремо, бо джерела
+	// шукаються незалежними запитами і мають різну кількість результатів).
+	CFTotalHits int  `json:"cfTotalHits"`
+	CFHasMore   bool `json:"cfHasMore"`
 	// SmartSearchTerms — непорожньо, якщо запит розпізнано словником
 	// «розумного пошуку» (browsersearch.Expand) як тему (напр. «меблі»)
 	// і пошук був розширений цими англійськими термінами. UI показує
@@ -256,7 +341,7 @@ func (a *App) BrowserSearch(query, projectType, source, mcVersion, loader, categ
 		go func() {
 			defer crashguard.Recover("browser_api.go:254")
 			defer wg.Done()
-			cf := a.BrowserSearchCurseForge(query, projectType, mcVersion, loader, categories, sort, limit, "")
+			cf := a.BrowserSearchCurseForge(query, projectType, mcVersion, loader, categories, sort, limit, offset, "")
 			res.CurseForge = cf.CurseForge
 			res.CFDisabled = cf.CFDisabled
 			res.CFError = cf.CFError
@@ -433,7 +518,7 @@ func (a *App) BrowserSearchModrinth(query, projectType, mcVersion, loader, categ
 // до 4 запитів/сек — див. cfRateLimiter), не чекаючи на Modrinth і не
 // блокуючись на перевірці сумісності кожного хіту (та сама логіка
 // "покажи зараз, підтверди у фоні", що й BrowserSearchModrinth).
-func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, categoryIds, sort string, limit int, packID string) (res BrowserSearchResult) {
+func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, categoryIds, sort string, limit, offset int, packID string) (res BrowserSearchResult) {
 	defer func() {
 		if r := recover(); r != nil {
 			res.CFError = fmt.Sprintf("BrowserSearchCurseForge panic: %v\n%s", r, debug.Stack())
@@ -489,7 +574,7 @@ func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, cat
 	// (за ProjectID) з основним, замість того щоб ховати весь Fabric-
 	// контент від збірки, яка насправді може його запускати.
 	extraLoaders := a.extraLoadersForPack(packID, loader)
-	entries, err := a.cfClient().SearchProjects(smartQuery, projectType, mcVersion, cfLoader, sort, limit, cfCategoryIDs)
+	entries, total, err := a.cfClient().SearchProjectsPage(smartQuery, projectType, mcVersion, cfLoader, sort, limit, offset, cfCategoryIDs)
 	if err != nil {
 		res.CFError = err.Error()
 		return res
@@ -498,8 +583,8 @@ func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, cat
 	// дав нічого — пробуємо ЛИШЕ англійськими термінами словника.
 	if len(entries) == 0 && len(smartTerms) > 0 && smartQuery != query {
 		fallbackQuery := strings.Join(smartTerms, " ")
-		if fbEntries, fbErr := a.cfClient().SearchProjects(fallbackQuery, projectType, mcVersion, cfLoader, sort, limit, cfCategoryIDs); fbErr == nil && len(fbEntries) > 0 {
-			entries = fbEntries
+		if fbEntries, fbTotal, fbErr := a.cfClient().SearchProjectsPage(fallbackQuery, projectType, mcVersion, cfLoader, sort, limit, offset, cfCategoryIDs); fbErr == nil && len(fbEntries) > 0 {
+			entries, total = fbEntries, fbTotal
 		}
 	}
 	if smartTerms != nil {
@@ -514,9 +599,12 @@ func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, cat
 		if smartQuery == "" {
 			extraQuery = query
 		}
-		extraEntries, extraErr := a.cfClient().SearchProjects(extraQuery, projectType, mcVersion, extra, sort, limit, cfCategoryIDs)
+		extraEntries, extraTotal, extraErr := a.cfClient().SearchProjectsPage(extraQuery, projectType, mcVersion, extra, sort, limit, offset, cfCategoryIDs)
 		if extraErr != nil {
 			continue // додаткове джерело другорядне — мережева помилка не має гасити основний пошук
+		}
+		if extraTotal > total {
+			total = extraTotal
 		}
 		for _, h := range extraEntries {
 			if seenIDs[h.ID] {
@@ -538,6 +626,8 @@ func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, cat
 	// блокував решту запитів). Довіряємо серверному фільтру; точна
 	// перевірка відбувається на сторінці проєкту / при встановленні.
 	res.CurseForge = cfEntries
+	res.CFTotalHits = total
+	res.CFHasMore = offset+limit < total
 	return res
 }
 
@@ -1088,8 +1178,36 @@ func (a *App) GetBrowserProjectDetail(source, projectID string) (*BrowserProject
 		// другий. Тобто сторінка проєкту робила той самий запит
 		// /project/{id}/members ДВІЧІ — зайві 150–200 мс і ще одна точка
 		// відмови (мережа «блимає» → «не вдалося завантажити проєкт»).
-		authorFull, _ := a.modrinth.GetProjectAuthorFull(d.ID)
-		author := authorFull.Username
+		//
+		// Учасники команди й організація — паралельно, як у Modrinth app
+		// (get_team + get_organization): обидва потрібні для секції авторів.
+		var (
+			members []api.ModrinthTeamMember
+			org     *api.ModrinthOrganization
+			wg      sync.WaitGroup
+		)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			members, _ = a.modrinth.GetProjectMembers(d.ID)
+		}()
+		if d.Organization != "" {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				org, _ = a.modrinth.GetOrganizationProfile(d.Organization)
+			}()
+		}
+		wg.Wait()
+		creators := modrinthCreators(org, members)
+		// Головний автор (картки, «від …»): організація, інакше власник.
+		var author, authorID, authorAvatar, authorURL string
+		if len(creators) > 0 {
+			c := creators[0]
+			author, authorID, authorAvatar, authorURL = c.Name, c.ID, c.Avatar, c.URL
+		} else if af, err := a.modrinth.GetProjectAuthorFull(d.ID); err == nil {
+			author, authorID, authorAvatar, authorURL = af.Username, af.ID, af.AvatarURL, "https://modrinth.com/user/"+af.Username
+		}
 		out := &BrowserProjectDetail{
 			Source:       "modrinth",
 			ProjectID:    d.ID,
@@ -1115,9 +1233,10 @@ func (a *App) GetBrowserProjectDetail(source, projectID string) (*BrowserProject
 			DiscordURL:   d.DiscordURL,
 			WikiURL:      d.WikiURL,
 			Author:       author,
-			AuthorID:     authorFull.ID,
-			AuthorAvatar: authorFull.AvatarURL,
-			AuthorURL:    "https://modrinth.com/user/" + author,
+			AuthorID:     authorID,
+			AuthorAvatar: authorAvatar,
+			AuthorURL:    authorURL,
+			Creators:     creators,
 			// GameVersions/Loaders — тепер з /project (раніше лишались
 			// порожніми для Modrinth, і сайдбар сумісності був порожнім).
 			MCVersions: append([]string{}, d.GameVersions...),
@@ -1186,6 +1305,10 @@ func (a *App) GetBrowserProjectDetail(source, projectID string) (*BrowserProject
 			out.Author = d.Authors[0].Name
 			out.AuthorID = strconv.Itoa(d.Authors[0].ID)
 			out.AuthorURL = d.Authors[0].URL
+		}
+		out.Creators = []BrowserCreator{}
+		for _, au := range d.Authors {
+			out.Creators = append(out.Creators, BrowserCreator{ID: strconv.Itoa(au.ID), Name: au.Name, URL: au.URL})
 		}
 		return out, nil
 
@@ -1384,19 +1507,36 @@ func (a *App) GetBrowserCompatiblePacks(source, projectID, projectType, contentD
 		}
 	}
 
-	out := make([]BrowserCompatiblePack, 0, len(packs))
-	for _, p := range packs {
+	// Шаурма-збірки з білого списку перевіряються паралельно з кастомними.
+	var whitelisted []BrowserCompatiblePack
+	var wlDone chan struct{}
+	if projectType == "mod" {
+		wlDone = make(chan struct{})
+		go func() {
+			defer close(wlDone)
+			whitelisted = a.whitelistedShaurmaPacks(source, projectID, contentDir)
+		}()
+	}
+
+	// Відбір збірок локально (без мережі), далі — ОДИН запит версій на
+	// кожну унікальну пару (mc, loader), паралельно. Раніше на кожну збірку
+	// йшло два послідовні запити (projectHasVersionFor + browserLatestFileName),
+	// тож 10 збірок означали 20 запитів поспіль — модалка «довго думала».
+	type candidate struct {
+		pack   int
+		loader string
+		key    string
+	}
+	var cands []candidate
+	for i, p := range packs {
 		if p.MCVersion == "" {
 			continue
 		}
 		// ВАЖЛИВО (запит «ванільні збірки фізично не підтримують модінг»):
 		// для МОДІВ збірка з лоадером vanilla/datapack (або без лоадера)
 		// НЕ може бути сумісною — гра без мод-лоадера (Fabric/Forge/Quilt/
-		// NeoForge) фізично не запустить мод. Раніше ванільні збірки
-		// проходили перевірку (вони «приймали все»), і в діалозі
-		// встановлення мода з'являлись ванільні збірки, в які мод не
-		// встановиться. Для ресурспаків/датапаків/шейдерів ванільні збірки
-		// лишаються (лоадер-агностичні).
+		// NeoForge) фізично не запустить мод. Для ресурспаків/датапаків/
+		// шейдерів ванільні збірки лишаються (лоадер-агностичні).
 		if contentLoaderApplies(projectType) {
 			pl := strings.ToLower(p.Loader)
 			if pl == "" || pl == "vanilla" || pl == "datapack" {
@@ -1418,33 +1558,27 @@ func (a *App) GetBrowserCompatiblePacks(source, projectID, projectType, contentD
 				}
 			}
 		}
-
-		ok, err := a.projectHasVersionFor(source, projectID, projectType, p.MCVersion, loader)
-		// Повтор: мережева помилка не має перетворюватись на «не знаю».
-		for retry := 1; err != nil && retry < 4 && !strings.Contains(err.Error(), "API-ключ"); retry++ {
-			time.Sleep(time.Duration(retry) * 400 * time.Millisecond)
-			ok, err = a.projectHasVersionFor(source, projectID, projectType, p.MCVersion, loader)
-		}
-		// err != nil означає, що ЗАПИТ провалився (мережа, відсутній
-		// CurseForge API-ключ, rate limit) — це НЕ те саме, що «сервер
-		// підтвердив: сумісної версії немає» (ok=false, err=nil). Раніше
-		// обидва випадки трактувались однаково (continue), тому нестабільний
-		// CurseForge ховав збірку зі списку так, ніби мод дійсно
-		// непідтримуваний. Тепер: підтверджена несумісність і далі
-		// пропускає збірку, а непідтверджена (помилка запиту) — включає її
-		// з прапорцем Unconfirmed, щоб користувач сам вирішив (спробувати
-		// встановити чи почекати).
-		// Остаточно: або підтверджено сумісна, або ні. Якщо після повторів
-		// відповіді все одно нема (немає ключа/мережі) — збірку ховаємо
-		// лише коли лоадер збірки явно не збігається з лоадерами проєкту
-		// (немає даних — вважаємо сумісною, бо встановлення перевірить
-		// це ще раз і поверне зрозумілу помилку).
-		if err == nil && !ok {
-			continue
-		}
 		// Збірка, чиї моди повністю дзеркалять теку-джерело іншої збірки, —
 		// не ціль для встановлення модів (дзеркало зітре встановлене).
 		if contentDir == "mods" && a.modsLockedErr(p.ID, "") != nil {
+			continue
+		}
+		cands = append(cands, candidate{pack: i, loader: loader, key: p.MCVersion + "|" + strings.ToLower(loader)})
+	}
+
+	results := versionsForTargets(a, source, projectID, projectType, cands, func(c candidate) (string, string, string) {
+		return c.key, packs[c.pack].MCVersion, c.loader
+	})
+
+	out := make([]BrowserCompatiblePack, 0, len(cands))
+	for _, c := range cands {
+		p := packs[c.pack]
+		r := results[c.key]
+		// err != nil — ЗАПИТ провалився (мережа, немає ключа CurseForge,
+		// rate limit), а не «сумісної версії немає»: збірку лишаємо
+		// (встановлення перевірить ще раз і поверне зрозумілу помилку).
+		// Підтверджена несумісність (err == nil, версій нема) — ховаємо.
+		if r.err == nil && len(r.versions) == 0 {
 			continue
 		}
 		cp := BrowserCompatiblePack{
@@ -1455,10 +1589,10 @@ func (a *App) GetBrowserCompatiblePacks(source, projectID, projectType, contentD
 			Color:       p.Color,
 			MCVersion:   p.MCVersion,
 			Loader:      p.Loader,
+			Unconfirmed: r.err != nil,
 		}
-		if contentDir != "" {
-			fileName := a.browserLatestFileName(source, projectID, projectType, p.MCVersion, loader)
-			if fileName != "" {
+		if contentDir != "" && len(r.versions) > 0 {
+			if fileName := r.versions[0].FileName; fileName != "" {
 				abs := filepath.Join(a.gameDir(p.ID), contentDir, fileName)
 				if st, err := os.Stat(abs); err == nil && !st.IsDir() {
 					cp.AlreadyInstalled = true
@@ -1471,14 +1605,61 @@ func (a *App) GetBrowserCompatiblePacks(source, projectID, projectType, contentD
 
 	// Шаурма-збірки, де ЦЕЙ САМЕ проєкт (source+projectID) явно дозволений
 	// автором через Pack Manager → Білий список: додаємо кандидатів лише
-	// для типу "mod" (whitelist — суто мод-концепція; ресурспаки/шейдери/
-	// датапаки синк збірки й так не чистить так суворо, окремого дозволу
-	// для них не існує). Мод, якого НЕМАЄ у білому списку жодної
-	// шаурма-збірки, тут ніяк не з'явиться — «як і раніше, качати не
-	// можна» (запит користувача).
-	if projectType == "mod" {
-		out = append(out, a.whitelistedShaurmaPacks(source, projectID, contentDir)...)
+	// для типу "mod" (whitelist — суто мод-концепція). Мод, якого НЕМАЄ у
+	// білому списку жодної шаурма-збірки, тут ніяк не з'явиться.
+	if wlDone != nil {
+		<-wlDone
+		out = append(out, whitelisted...)
 	}
+	return out
+}
+
+// targetVersions — версії проєкту під одну пару (mc, loader) цілі.
+type targetVersions struct {
+	versions []BrowserVersionView
+	err      error
+}
+
+// browserCompatWorkers — скільки пар (mc, loader) перевіряємо одночасно.
+const browserCompatWorkers = 6
+
+// versionsForTargets робить ОДИН запит версій на кожну унікальну пару
+// (mc, loader) цілей, паралельно (до browserCompatWorkers одночасно), з
+// коротким повтором на мережевій помилці. keyOf повертає ключ пари, mc і
+// лоадер для цілі.
+func versionsForTargets[T any](a *App, source, projectID, projectType string, targets []T, keyOf func(T) (string, string, string)) map[string]targetVersions {
+	type job struct{ key, mc, loader string }
+	seen := map[string]bool{}
+	var jobs []job
+	for _, t := range targets {
+		key, mc, loader := keyOf(t)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		jobs = append(jobs, job{key, mc, loader})
+	}
+	out := make(map[string]targetVersions, len(jobs))
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, browserCompatWorkers)
+	for _, j := range jobs {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(j job) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			versions, err := a.GetBrowserProjectVersions(source, projectID, projectType, j.mc, j.loader)
+			for retry := 1; err != nil && retry < 3 && !strings.Contains(err.Error(), "API-ключ"); retry++ {
+				time.Sleep(time.Duration(retry) * 300 * time.Millisecond)
+				versions, err = a.GetBrowserProjectVersions(source, projectID, projectType, j.mc, j.loader)
+			}
+			mu.Lock()
+			out[j.key] = targetVersions{versions: versions, err: err}
+			mu.Unlock()
+		}(j)
+	}
+	wg.Wait()
 	return out
 }
 

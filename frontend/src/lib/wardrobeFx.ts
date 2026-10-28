@@ -76,10 +76,13 @@ function effectsSuppressed(): boolean {
   return el.getAttribute('data-performance-mode') === 'on' || el.getAttribute('data-animations') === 'off'
 }
 
-/** М'яка кругла пляма для спрайтів (одна на весь модуль). */
-let softGlowTex: THREE.CanvasTexture | null = null
-function getSoftGlow(): THREE.CanvasTexture {
-  if (softGlowTex) return softGlowTex
+// Текстури плям і кільця — СВОЇ для кожного екземпляра ефектів і звільняються в dispose().
+// Раніше вони були спільні на модуль і ніколи не звільнялись: three.js вішає на текстуру
+// слухач dispose від кожного рендерера, що її використав, і через нього спільна текстура
+// назавжди тримала кожен закритий переглядач гардероба разом із WebGL-контекстом.
+
+/** М'яка кругла пляма для спрайтів. */
+function makeSoftGlow(): THREE.CanvasTexture {
   const c = document.createElement('canvas')
   c.width = c.height = 64
   const g = c.getContext('2d')!
@@ -89,15 +92,13 @@ function getSoftGlow(): THREE.CanvasTexture {
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   g.fillStyle = grad
   g.fillRect(0, 0, 64, 64)
-  softGlowTex = new THREE.CanvasTexture(c)
-  softGlowTex.colorSpace = THREE.SRGBColorSpace
-  return softGlowTex
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
 }
 
 /** Кільце-хвиля: прозорий центр, світлий обідок. */
-let ringTex: THREE.CanvasTexture | null = null
-function getRingTex(): THREE.CanvasTexture {
-  if (ringTex) return ringTex
+function makeRingTex(): THREE.CanvasTexture {
   const c = document.createElement('canvas')
   c.width = c.height = 128
   const g = c.getContext('2d')!
@@ -108,9 +109,9 @@ function getRingTex(): THREE.CanvasTexture {
   grad.addColorStop(1, 'rgba(255,255,255,0)')
   g.fillStyle = grad
   g.fillRect(0, 0, 128, 128)
-  ringTex = new THREE.CanvasTexture(c)
-  ringTex.colorSpace = THREE.SRGBColorSpace
-  return ringTex
+  const tex = new THREE.CanvasTexture(c)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
 }
 
 // IBL-карта: PMREM дорогий (десятки мс), тому рахуємо один раз на renderer.
@@ -167,7 +168,8 @@ export function createWardrobeFx(renderer: THREE.WebGLRenderer, scene: THREE.Sce
   renderer.toneMappingExposure = 0.95
 
   const env = getEnv(renderer)
-  const glow = getSoftGlow()
+  const glow = makeSoftGlow()
+  const ringTex = makeRingTex()
 
   const fxGroup = new THREE.Group()
   fxGroup.name = 'wardrobeFx'
@@ -185,7 +187,7 @@ export function createWardrobeFx(renderer: THREE.WebGLRenderer, scene: THREE.Sce
 
   // ── Хвиля-кільце ──
   const ringMat = new THREE.MeshBasicMaterial({
-    map: getRingTex(),
+    map: ringTex,
     color: 0xd8e8ff,
     transparent: true,
     opacity: 0,
@@ -475,13 +477,10 @@ export function createWardrobeFx(renderer: THREE.WebGLRenderer, scene: THREE.Sce
       for (const p of pool) (p.sprite.material as THREE.SpriteMaterial).dispose()
       ring.geometry.dispose()
       ringMat.dispose()
-      // glow/ring-текстури й env-кеш спільні — їх не чіпаємо.
-      // env-кеш лежить у WeakMap і зникне разом із renderer.
-      const rt = envCache.get(renderer)
-      if (rt) {
-        rt.dispose()
-        envCache.delete(renderer)
-      }
+      glow.dispose()
+      ringTex.dispose()
+      // env-карту НЕ звільняємо: рендерер повертається в пул (wardrobe3d.ts) і
+      // наступний переглядач візьме її з envCache без повторного PMREM.
     },
   }
 

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Portal from './Portal.svelte'
   import UiModal from './UiModal.svelte'
   // ── Експорт збірки у .mrpack / .zip ────────────────────────────────────
   // Модалка (патерн ModMigrationDialog): дерево вибору папок/файлів з
@@ -166,17 +165,18 @@
     tree = root
   }
 
-  function nodeState(n: ExportTreeNodeData, includedSet: Set<string>, excludedSet: Set<string>): 'checked' | 'unchecked' | 'indeterminate' {
-    if (n.type === 'file' || n.children.length === 0) {
-      if (excludedSet.has(n.path)) return 'unchecked'
-      return includedSet.has(n.path) ? 'checked' : 'unchecked'
-    }
+  // nodeState — стан вузла з УСПАДКУВАННЯМ, як на бекенді
+  // (export.exportSelection / PathFilter: найглибше правило перемагає,
+  // excluded сильніше за included на тому ж шляху). inherited — рішення
+  // найближчої батьківської папки. Раніше файл був вибраний лише якщо
+  // його шлях ЯВНО лежав у included, тож новий мод, доданий у вже
+  // вибрану папку mods/, показувався знятим (хоча бекенд його пакував),
+  // а папка ставала «частково вибраною».
+  function nodeState(n: ExportTreeNodeData, own: boolean): 'checked' | 'unchecked' | 'indeterminate' {
+    if (n.type === 'file' || n.children.length === 0) return own ? 'checked' : 'unchecked'
     const childStates = n.children.map(c => c.state)
-    if (childStates.length === 0) return includedSet.has(n.path) ? 'checked' : 'unchecked'
     if (childStates.every(s => s === 'checked')) return 'checked'
-    if (childStates.every(s => s === 'unchecked')) {
-      return includedSet.has(n.path) ? 'checked' : 'unchecked'
-    }
+    if (childStates.every(s => s === 'unchecked')) return 'unchecked'
     return 'indeterminate'
   }
 
@@ -203,13 +203,22 @@
   function syncChecks() {
     const includedSet = new Set(included)
     const excludedSet = new Set(excluded)
-    const walk = (nodes: ExportTreeNodeData[]) => {
+    let files = 0
+    let bytes = 0
+    const walk = (nodes: ExportTreeNodeData[], inherited: boolean) => {
       for (const n of nodes) {
-        walk(n.children)
-        n.state = nodeState(n, includedSet, excludedSet)
+        const own = excludedSet.has(n.path) ? false : includedSet.has(n.path) ? true : inherited
+        walk(n.children, own)
+        n.state = nodeState(n, own)
+        if (n.children.length === 0 && own) {
+          files++
+          bytes += n.size ?? 0
+        }
       }
     }
-    walk(tree)
+    walk(tree, false)
+    selectedFiles = files
+    selectedBytes = bytes
   }
 
   function collectPaths(n: ExportTreeNodeData): string[] {
@@ -222,34 +231,45 @@
     return out
   }
 
+  // toggleNode ставить ОДНЕ правило на сам вузол і прибирає правила його
+  // нащадків: папка покриває весь свій вміст, зокрема файли, які
+  // з'являться в ній пізніше (новий мод у mods/ одразу вибраний).
   function toggleNode(n: ExportTreeNodeData) {
     const nowChecked = n.state !== 'checked'
-    const paths = collectPaths(n)
-    const pathSet = new Set(paths)
-    if (nowChecked) {
-      included = [...new Set([...included, ...paths])]
-      excluded = excluded.filter(p => !pathSet.has(p))
-    } else {
-      excluded = [...new Set([...excluded, ...paths])]
-      included = included.filter(p => !pathSet.has(p))
-    }
+    const pathSet = new Set(collectPaths(n))
+    included = included.filter(p => !pathSet.has(p))
+    excluded = excluded.filter(p => !pathSet.has(p))
+    if (nowChecked) included = [...included, n.path]
+    else excluded = [...excluded, n.path]
     syncChecks()
   }
 
   function selectAll() {
-    included = candidates.map(c => c.path)
+    included = tree.map(n => n.path)
     excluded = []
     syncChecks()
   }
 
   function clearAll() {
     included = []
-    excluded = candidates.map(c => c.path)
+    excluded = tree.map(n => n.path)
     syncChecks()
   }
 
-  const selectedCount = $derived(included.length)
-  const canExport = $derived(!exporting && name.trim() !== '' && formats.length > 0 && outDir.trim() !== '')
+  function fmtBytes(size: number): string {
+    if (size >= 1024 * 1024 * 1024) return (size / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
+    if (size >= 1024 * 1024) return (size / (1024 * 1024)).toFixed(1) + ' MB'
+    if (size >= 1024) return (size / 1024).toFixed(0) + ' KB'
+    return size + ' B'
+  }
+
+  let selectedFiles = $state(0)
+  let selectedBytes = $state(0)
+  const canExport = $derived(!exporting && name.trim() !== '' && formats.length > 0 && outDir.trim() !== '' && selectedFiles > 0)
+
+  function toggleFormat(f: string, on2: boolean) {
+    formats = on2 ? [...new Set([...formats, f])] : formats.filter(x => x !== f)
+  }
 
   async function startExport(force = false) {
     if (exporting) return
@@ -390,40 +410,29 @@
 
 {#if exporting}
   <!-- ── Живий прогрес-оверлей ── -->
-  <Portal>
-<div class="modal-overlay" style="z-index:2100000">
-    <div class="modal export-progress-modal" onclick={(e: any) => e.stopPropagation()}>
-      <div class="modal-head">
-        <h3><i class="ti ti-package-export" style="color:var(--violet)"></i> {t('export.title')}</h3>
-      </div>
-      <div class="modal-body">	        <div class="ep-stage">{stageLabel || (progress ? '' : '…')}</div>
-	        <div class="ep-track">
-	          <div class="ep-fill" style="width:{progress ? stagePct : 0}%"></div>
-	        </div>
-	        <div class="ep-pct">{progress ? `${stagePct}%` : '…'}</div>
-
-        <div class="ep-stream">
-          {#each recentFiles as f}
-            <div class="ep-stream-item">
-              {#if f.iconUrl}
-                <img src={f.iconUrl} alt="" class="ep-icon" loading="lazy" />
-              {:else}
-                <i class="ti ti-file"></i>
-              {/if}
-              <span class="ep-fname" title={f.file}>{f.modName || f.file.split('/').pop()}</span>
-            </div>
-          {/each}
-          {#if recentFiles.length === 0}
-            <div class="ep-stream-empty"><i class="ti ti-loader" style="animation:spin 1s linear infinite"></i></div>
-          {/if}
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" disabled>{t('export.cancelBtn')}</button>
-      </div>
+  <UiModal open={true} dismissible={false} zIndex="2100000" icon="ti-package-export" color="var(--violet)" title={t('export.title')}>
+    <div class="ep-stage">{stageLabel || (progress ? '' : '…')}</div>
+    <div class="ep-track">
+      <div class="ep-fill" style="width:{progress ? stagePct : 0}%"></div>
     </div>
-  </div>
-</Portal>
+    <div class="ep-pct">{progress ? `${stagePct}%` : '…'}</div>
+
+    <div class="ep-stream">
+      {#each recentFiles as f}
+        <div class="ep-stream-item">
+          {#if f.iconUrl}
+            <img src={f.iconUrl} alt="" class="ep-icon" loading="lazy" />
+          {:else}
+            <i class="ti ti-file"></i>
+          {/if}
+          <span class="ep-fname" title={f.file}>{f.modName || f.file.split('/').pop()}</span>
+        </div>
+      {/each}
+      {#if recentFiles.length === 0}
+        <div class="ep-stream-empty"><i class="ti ti-loader" style="animation:spin 1s linear infinite"></i></div>
+      {/if}
+    </div>
+  </UiModal>
 {:else}
   <!-- ── Форма експорту ── -->
   <UiModal
@@ -435,8 +444,6 @@
     color="var(--violet)"
     onclose={onClose}
   >
-        <p class="ep-subtitle">{t('export.subtitle')}</p>
-
         <div class="ep-grid">
           <div class="ep-tree-col">
             <div class="ep-tree-head">
@@ -458,7 +465,11 @@
                 {/each}
               </div>
             {/if}
-            <div class="ep-selected-count">{t('export.selected', { n: selectedCount })}</div>
+            <div class="ep-selected-count" class:ep-selected-none={selectedFiles === 0}>
+              <i class="ti {selectedFiles === 0 ? 'ti-alert-triangle' : 'ti-files'}"></i>
+              {selectedFiles === 0 ? t('export.selectedNone') : t('export.selected', { n: selectedFiles })}
+              {#if selectedBytes > 0}<span class="ep-selected-size">{fmtBytes(selectedBytes)}</span>{/if}
+            </div>
           </div>
 
           <div class="ep-settings-col">
@@ -480,29 +491,19 @@
             <div class="ep-field">
               <span>{t('export.format')}</span>
               <div class="ep-formats">
-                <label class="ep-check">
-                  <input type="checkbox" checked={formats.includes('mrpack')} onclick={(e) => {
-                    const on2 = (e.currentTarget as HTMLInputElement).checked
-                    formats = on2 ? [...new Set([...formats, 'mrpack'])] : formats.filter(f => f !== 'mrpack')
-                  }} />
-                  <span class="ep-format-chip chip-mrpack"><i class="ti ti-box"></i> {t('export.mrpack')}</span>
-                </label>
-                <label class="ep-check">
-                  <input type="checkbox" checked={formats.includes('curseforge')} onclick={(e) => {
-                    const on2 = (e.currentTarget as HTMLInputElement).checked
-                    formats = on2 ? [...new Set([...formats, 'curseforge'])] : formats.filter(f => f !== 'curseforge')
-                  }} />
-                  <span class="ep-format-chip chip-cf"><i class="ti ti-flame"></i> {t('export.curseforge')}</span>
-                </label>
-                <label class="ep-check">
-                  <input type="checkbox" checked={formats.includes('shaurmpack')} onclick={(e) => {
-                    const on2 = (e.currentTarget as HTMLInputElement).checked
-                    formats = on2 ? [...new Set([...formats, 'shaurmpack'])] : formats.filter(f => f !== 'shaurmpack')
-                  }} />
-                  <span class="ep-format-chip chip-shaurmpack"><i class="ti ti-package"></i> {t('export.shaurmpack')}</span>
-                </label>
+                {#each [
+                  { id: 'mrpack', icon: 'ti-box', cls: 'chip-mrpack', label: t('export.mrpack') },
+                  { id: 'curseforge', icon: 'ti-flame', cls: 'chip-cf', label: t('export.curseforge') },
+                  { id: 'shaurmpack', icon: 'ti-package', cls: 'chip-shaurmpack', label: t('export.shaurmpack') }
+                ] as f (f.id)}
+                  <label class="ep-check" class:on={formats.includes(f.id)}>
+                    <input type="checkbox" checked={formats.includes(f.id)} onclick={(e) => toggleFormat(f.id, (e.currentTarget as HTMLInputElement).checked)} />
+                    <span class="ep-format-chip {f.cls}"><i class="ti {f.icon}"></i> {f.label}</span>                  </label>
+                {/each}
               </div>
-              <div class="ep-format-hint">{t('export.cfHint')}</div>
+              {#if formats.includes('curseforge')}
+                <div class="ep-format-hint">{t('export.cfHint')}</div>
+              {/if}
               {#if formats.includes('shaurmpack')}
                 <div class="ep-format-hint">{t('export.shaurmpackHint')}</div>
               {/if}

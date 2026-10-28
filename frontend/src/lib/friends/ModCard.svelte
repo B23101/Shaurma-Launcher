@@ -192,7 +192,7 @@
   .mc-cover-fade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,0) 40%, var(--bg-input) 100%); }
   @keyframes mc-fade { from { opacity: 0; } }
   .mc-pill { position: absolute; top: 8px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
-    font: 700 10px/1.4 var(--font-ui); letter-spacing: .2px; color: #fff; background: rgba(0,0,0,.55);
+    font: 700 var(--fs-min)/1.4 var(--font-ui); letter-spacing: .2px; color: #fff; background: rgba(0,0,0,.55);
     border: 1px solid rgba(255,255,255,.14); }
   .mc-pill.type { left: 8px; }
   .mc-pill.src { right: 8px; background: rgba(27, 217, 106, .22); border-color: rgba(27, 217, 106, .5); }
@@ -209,7 +209,7 @@
   .mc-by { display: flex; align-items: center; gap: 6px; min-width: 0; font: 600 11.5px/1.2 var(--font-ui); color: var(--text-mute); }
   .mc-auth { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mc-ava { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; flex: 0 0 auto; }
-  .mc-ava.ph { display: inline-flex; align-items: center; justify-content: center; background: rgba(var(--orange-rgb), .2); color: var(--orange); font: 800 9px/1 var(--font-ui); text-transform: uppercase; }
+  .mc-ava.ph { display: inline-flex; align-items: center; justify-content: center; background: rgba(var(--orange-rgb), .2); color: var(--orange); font: 800 var(--fs-min)/1 var(--font-ui); text-transform: uppercase; }
 
   .mc-pad { padding: 9px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
   .mc-pad.fail { flex-direction: row; align-items: center; gap: 10px; padding: 12px; }
@@ -221,7 +221,7 @@
   .mc-stat i { font-size: 13px; color: var(--orange); }
 
   .mc-tags { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
-  .mc-tags span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font: 650 10.5px/1.3 var(--font-ui); }
+  .mc-tags span { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font: 650 var(--fs-min)/1.3 var(--font-ui); }
   .mc-tags .ld { text-transform: capitalize; background: rgba(var(--orange-rgb), .12); color: var(--text); border: 1px solid rgba(var(--orange-rgb), .3); }
   .mc-tags .ver { background: var(--bg-panel); color: var(--text-mute); border: 1px solid var(--border-hi); font-family: var(--font-mono); }
   .mc-tags .env { padding: 3px 7px; background: var(--bg-panel); color: var(--text-dim); border: 1px solid var(--border-hi); cursor: default; }

@@ -25,7 +25,7 @@
   import { t } from '../../i18n.svelte'
   import { toast } from '../../toast.svelte'
   import { p2pErr } from '../p2pErr'
-  import Portal from '../../Portal.svelte'
+  import UiModal from '../../UiModal.svelte'
   import P2PHealthCard from './P2PHealthCard.svelte'
   import type { P2PHostStatus, P2PConnection, P2PClaimedAddress } from '../../types'
 
@@ -495,14 +495,8 @@
 {/if}
 
 <!-- ── Вибір зі збережених адрес ── -->
-{#if pickerOpen}
-  <Portal>
-    <div class="spw-ov" onclick={() => (pickerOpen = false)} role="presentation">
-      <div class="spw-modal" onclick={(e: MouseEvent) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={t('servers.p2p.pickTitle')}>
-        <div class="spw-modal-h">
-          <i class="ti ti-list"></i> {t('servers.p2p.pickTitle')}
-          <button class="spw-icon-btn" onclick={() => (pickerOpen = false)} aria-label={t('cancel')}><i class="ti ti-x"></i></button>
-        </div>
+<UiModal open={pickerOpen} onclose={() => (pickerOpen = false)} icon="ti-list" title={t('servers.p2p.pickTitle')}
+         width="min(640px, 94vw)" maxHeight="82vh" bodyClass="no-pad">
         <div class="spw-modal-b">
           <div class="spw-sec">{t('servers.p2p.pickMine')}</div>
           {#each ownAddresses as a (a.subdomain)}
@@ -517,7 +511,7 @@
                 <span class="spw-tag">{t('servers.p2p.pickUsed')}</span>
               {/if}
               {#if !cur}
-                <button class="spw-btn" onclick={() => pickAddress(a.subdomain)} disabled={busy}>
+                <button class="btn btn-ghost btn-sm" onclick={() => pickAddress(a.subdomain)} disabled={busy}>
                   <i class="ti ti-corner-down-left"></i> {t('servers.p2p.pickUse')}
                 </button>
               {/if}
@@ -536,10 +530,7 @@
             <div class="spw-hint pad">{t('servers.p2p.pickMineEmpty')}</div>
           {/each}
         </div>
-      </div>
-    </div>
-  </Portal>
-{/if}
+</UiModal>
 
 <style>
   /* Герой-картка адреси */
@@ -553,10 +544,10 @@
   .spw-bar.on { background: #22c55e; box-shadow: 0 0 18px rgba(34, 197, 94, .55); }
   .spw-head { display: flex; align-items: center; gap: 8px; margin-top: 4px; flex-wrap: wrap; }
   .spw-tt { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
-  .spw-label { font: 700 10.5px/1 var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--text-mute); }
+  .spw-label { font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .12em; text-transform: uppercase; color: var(--text-mute); }
   .spw-own {
     display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 999px;
-    font: 700 10px/1 var(--font-ui); color: var(--pcol, var(--orange));
+    font: 700 var(--fs-min)/1 var(--font-ui); color: var(--pcol, var(--orange));
     background: color-mix(in srgb, var(--pcol, var(--orange)) 12%, transparent);
   }
   .spw-pill {
@@ -581,7 +572,7 @@
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 9px; border-radius: 999px; cursor: pointer;
     background: var(--bg-input); border: 1px solid var(--border);
-    font: 700 10.5px/1 var(--font-ui); color: var(--text-mute);
+    font: 700 var(--fs-min)/1 var(--font-ui); color: var(--text-mute);
     transition: color .14s, border-color .14s, background .14s; flex-shrink: 0;
   }
   .spw-auto:hover { color: var(--text); border-color: var(--border-hi); }
@@ -657,13 +648,8 @@
 
 
   /* Вікно «Вибрати зі збережених» */
-  .spw-ov { position: fixed; inset: 0; z-index: 420; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .62); backdrop-filter: blur(3px); }
-  .spw-modal { width: min(640px, 94vw); max-height: 82vh; display: flex; flex-direction: column; background: var(--bg-panel); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; box-shadow: 0 18px 60px rgba(0, 0, 0, .55); }
-  .spw-modal-h { display: flex; align-items: center; gap: 9px; padding: 16px 18px; font: 700 15px/1 var(--font-ui); color: var(--text); border-bottom: 1px solid var(--border); }
-  .spw-modal-h i.ti-list { color: var(--text-mute); }
-  .spw-modal-h .spw-icon-btn { margin-left: auto; }
   .spw-modal-b { padding: 8px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
-  .spw-sec { padding: 10px 10px 4px; font: 700 10px/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+  .spw-sec { padding: 10px 10px 4px; font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
   .spw-del:hover { color: #ef4444; }
   .spw-del.armed { color: #fff; background: #ef4444; width: auto; padding: 0 10px; gap: 6px; }
   .spw-del.armed:hover { background: #dc2626; color: #fff; }
@@ -674,7 +660,6 @@
   .spw-pr > i.ti-world { color: var(--text-dim); font-size: 16px; }
   .spw-pr.cur > i.ti-world { color: var(--pcol, var(--orange)); }
   .spw-pr-addr { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 12.5px/1.3 var(--font-mono); color: var(--text); }
-  .spw-tag { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 7px; font: 700 9.5px/1 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--text-mute); background: var(--bg-input); border: 1px solid var(--border); }
+  .spw-tag { flex-shrink: 0; display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 7px; font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--text-mute); background: var(--bg-input); border: 1px solid var(--border); }
   .spw-tag.cur { color: var(--pcol, var(--orange)); background: color-mix(in srgb, var(--pcol, var(--orange)) 12%, transparent); border-color: transparent; }
-  .spw-pr .spw-btn { padding: 6px 11px; font-size: 11px; border-radius: 9px; }
 </style>

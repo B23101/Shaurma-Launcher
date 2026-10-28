@@ -41,6 +41,9 @@ func isWrongLoader(mod modgraph.ModFile, loader string, byID map[string]modgraph
 		return false
 	}
 	_, connector := byID["connector"]
+	if _, ok := byID["connectormod"]; ok {
+		connector = true // новіші збірки Sinytra Connector
+	}
 	switch loader {
 	case "fabric":
 		return !has("fabric")

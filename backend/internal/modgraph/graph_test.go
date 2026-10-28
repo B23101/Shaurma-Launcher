@@ -264,3 +264,31 @@ func TestMTimeAndPackages(t *testing.T) {
 		t.Fatalf("%+v", mods[0].Manifest)
 	}
 }
+
+func TestSinytraConnectorWrapper(t *testing.T) {
+	dir := t.TempDir()
+	// Connector: зовнішній jar без метаданих, сам мод — вкладений jar з
+	// MANIFEST.MF → Embedded-Dependencies-Mod.
+	var inner bytes.Buffer
+	zw := zip.NewWriter(&inner)
+	w, _ := zw.Create("META-INF/mods.toml")
+	w.Write([]byte("modLoader=\"javafml\"\n[[mods]]\nmodId=\"connectormod\"\nversion=\"1.0\"\n"))
+	zw.Close()
+	writeJar(t, dir, "Connector-1.0.jar", map[string]string{
+		"META-INF/MANIFEST.MF":                  "Manifest-Version: 1.0\r\nEmbedded-Dependencies-Mod: META-INF/jarjar/Connector-1.0-\r\n mod.jar\r\n",
+		"META-INF/jarjar/Connector-1.0-mod.jar": inner.String(),
+	})
+	writeJar(t, dir, "axiom.jar", map[string]string{"fabric.mod.json": fabricJSON(map[string]any{"id": "axiom"})})
+	writeJar(t, dir, "create.jar", map[string]string{"META-INF/mods.toml": "[[mods]]\nmodId=\"create\"\n"})
+	g, _ := BuildGraph(dir)
+	if !g.Connector {
+		t.Fatal("connector not detected")
+	}
+	via := map[string]bool{}
+	for _, n := range g.Nodes {
+		via[n.ID] = n.ViaConnector
+	}
+	if !via["axiom"] || via["create"] || via["connectormod"] {
+		t.Fatalf("unexpected viaConnector flags: %+v", via)
+	}
+}

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Portal from './Portal.svelte'
   import UiModal from './UiModal.svelte'
   // ── Дублювання збірки (повністю переписано) ─────────────────────────────
   // Сучасна модалка копії збірки: дві панелі — дерево вибору файлів (як в
@@ -408,41 +407,26 @@
 
 {#if duplicating}
   <!-- ── Живий прогрес-оверлей ── -->
-  <Portal>
-<div class="modal-overlay" style="z-index:2100000">
-    <div class="dup-progress" onclick={(e: any) => e.stopPropagation()}>
-      <div class="dup-prog-head">
-        <div class="dup-prog-ic"><i class="ti ti-copy"></i></div>
-        <div class="dup-prog-ttl">
-          <h3>{t('duplicate.title')}</h3>
-          <p>
-            {#if progress?.stage === 'done'}
-              <i class="ti ti-check" style="color:var(--green)"></i> {t('duplicate.stage.done')}
-            {:else}
-              {t('duplicate.stage.copy')}
-            {/if}
-          </p>
-        </div>
-        <span class="dup-prog-pct">{stagePct}%</span>
-      </div>
-      <div class="dup-prog-track"><div class="dup-prog-fill" style="width:{stagePct}%"></div></div>
-      <div class="dup-prog-meta">
-        <span>{progress?.current ?? 0} / {progress?.total ?? 0}</span>
-      </div>
-      <div class="dup-prog-list">
-        {#each recentFiles as f}
-          <div class="dup-prog-file">
-            <i class="ti ti-file"></i>
-            <span title={f}>{f.split('/').pop()}</span>
-          </div>
-        {/each}
-        {#if recentFiles.length === 0}
-          <div class="dup-prog-wait"><i class="ti ti-loader-2 spin"></i></div>
-        {/if}
-      </div>
+  <UiModal open={true} dismissible={false} zIndex="2100000" size="sm" icon="ti-copy" color="var(--violet)"
+           title={t('duplicate.title')}
+           subtitle={progress?.stage === 'done' ? t('duplicate.stage.done') : t('duplicate.stage.copy')}>
+    <div class="dup-prog-meta">
+      <span>{progress?.current ?? 0} / {progress?.total ?? 0}</span>
+      <span class="dup-prog-pct">{stagePct}%</span>
     </div>
-  </div>
-</Portal>
+    <div class="dup-prog-track"><div class="dup-prog-fill" style="width:{stagePct}%"></div></div>
+    <div class="dup-prog-list">
+      {#each recentFiles as f}
+        <div class="dup-prog-file">
+          <i class="ti ti-file"></i>
+          <span title={f}>{f.split('/').pop()}</span>
+        </div>
+      {/each}
+      {#if recentFiles.length === 0}
+        <div class="dup-prog-wait"><i class="ti ti-loader-2 spin"></i></div>
+      {/if}
+    </div>
+  </UiModal>
 {:else}
   <UiModal
     open={true}
@@ -771,7 +755,7 @@
     position: relative; width: 22px; height: 22px; border-radius: 50%; overflow: hidden;
     border: 1.5px dashed var(--text-dim); cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    color: var(--text-dim); font-size: 10px; transition: color .12s;
+    color: var(--text-dim); font-size: var(--fs-min); transition: color .12s;
   }
   .dup-ccustom:hover { color: var(--text); }
   .dup-ccustom input[type='color'] { position: absolute; inset: -6px; opacity: 0; cursor: pointer; width: 40px; height: 40px; }
@@ -800,7 +784,7 @@
   }
   .dup-settings-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .dup-settings-title { font-size: 12px; font-weight: 700; color: var(--text); }
-  .dup-settings-desc { font-size: 10.5px; color: var(--text-mute); line-height: 1.4; }
+  .dup-settings-desc { font-size: var(--fs-min); color: var(--text-mute); line-height: 1.4; }
 
   /* Кастомний перемикач */
   .dup-switch { flex: none; position: relative; width: 36px; height: 20px; }
@@ -835,25 +819,9 @@
   .dup-cta:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
 
   /* ── Прогрес ── */
-  .dup-progress {
-    width: min(440px, 92vw); background: var(--bg-panel);
-    border: 1px solid var(--border-hi); border-radius: 16px;
-    box-shadow: 0 24px 64px rgba(0, 0, 0, .55);
-    padding: 18px 20px;
-  }
-  .dup-prog-head { display: flex; align-items: center; gap: 12px; }
-  .dup-prog-ic {
-    flex: none; width: 38px; height: 38px; border-radius: 11px;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(135deg, var(--orange), color-mix(in srgb, var(--orange) 55%, #ff4d6d));
-    color: #fff; font-size: 17px;
-  }
-  .dup-prog-ttl { flex: 1; min-width: 0; }
-  .dup-prog-ttl h3 { font-size: 14.5px; font-weight: 800; margin: 0; color: var(--text); }
-  .dup-prog-ttl p { font-size: 11.5px; color: var(--text-mute); margin: 2px 0 0; display: flex; align-items: center; gap: 5px; }
-  .dup-prog-pct { font-size: 16px; font-weight: 800; color: var(--orange); }
+  .dup-prog-pct { font-size: 13px; font-weight: 800; color: var(--orange); }
   .dup-prog-track {
-    height: 8px; margin-top: 14px; border-radius: 99px;
+    height: 8px; margin-top: 8px; border-radius: 99px;
     background: var(--bg-input); overflow: hidden;
   }
   .dup-prog-fill {
@@ -861,7 +829,7 @@
     background: linear-gradient(90deg, var(--violet), var(--orange));
     transition: width .25s ease;
   }
-  .dup-prog-meta { display: flex; justify-content: space-between; margin-top: 7px; font-size: 11px; color: var(--text-dim); font-weight: 600; }
+  .dup-prog-meta { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--text-dim); font-weight: 600; }
   .dup-prog-list {
     margin-top: 12px; max-height: 180px; overflow-y: auto;
     display: flex; flex-direction: column; gap: 4px;

@@ -8,12 +8,19 @@
     onStart = () => {},
     onStop = () => {},
     onKill = () => {},
+    // Сервер друга: лише ті дії, на які є право; Kill — ніколи.
+    canStart = true,
+    canStop = true,
+    canKill = true,
   }: {
     displayStatus?: string
     actionBusy?: boolean
     onStart?: () => void
     onStop?: () => void
     onKill?: () => void
+    canStart?: boolean
+    canStop?: boolean
+    canKill?: boolean
   } = $props()
 
   const isRunning = $derived(displayStatus === 'running')
@@ -22,14 +29,18 @@
 
 <div class="sab">
   {#if isRunning}
-    <button class="sab-btn stop" onclick={onStop} disabled={actionBusy} title={t('servers.actions.stopTitle')}><i class="ti ti-player-stop"></i> {t('servers.actions.stop')}</button>
-    <button class="sab-btn kill" onclick={onKill} title={t('servers.actions.kill')} aria-label={t('servers.actions.kill')}><i class="ti ti-skull"></i></button>
-  {:else if isBusyState}
-    <button class="sab-btn busy" disabled><i class="ti ti-loader-2 spin"></i> {displayStatus === 'stopping' ? t('servers.status.stopping') : t('servers.actions.working')}</button>
-    {#if displayStatus !== 'stopping'}
+    {#if canStop}
+      <button class="sab-btn stop" onclick={onStop} disabled={actionBusy} title={t('servers.actions.stopTitle')}><i class="ti ti-player-stop"></i> {t('servers.actions.stop')}</button>
+    {/if}
+    {#if canKill}
       <button class="sab-btn kill" onclick={onKill} title={t('servers.actions.kill')} aria-label={t('servers.actions.kill')}><i class="ti ti-skull"></i></button>
     {/if}
-  {:else}
+  {:else if isBusyState}
+    <button class="sab-btn busy" disabled><i class="ti ti-loader-2 spin"></i> {displayStatus === 'stopping' ? t('servers.status.stopping') : t('servers.actions.working')}</button>
+    {#if displayStatus !== 'stopping' && canKill}
+      <button class="sab-btn kill" onclick={onKill} title={t('servers.actions.kill')} aria-label={t('servers.actions.kill')}><i class="ti ti-skull"></i></button>
+    {/if}
+  {:else if canStart}
     <button class="sab-btn primary" onclick={onStart} disabled={actionBusy}><i class="ti ti-player-play"></i> {t('servers.actions.start')}</button>
   {/if}
 </div>

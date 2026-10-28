@@ -369,7 +369,7 @@ func (a *App) p2pAutoSync(serverID string) {
 		a.emit("p2p:autostart", map[string]any{"serverId": serverID, "ok": true})
 	case "stopped", "crashed", "error":
 		if active {
-			_ = a.p2pAPI.StopP2PHost(sub)
+			_ = a.StopP2PHost(sub)
 		}
 		setP2PAutoErr(serverID, "")
 	}

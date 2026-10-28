@@ -32,6 +32,7 @@
   import Portal from '../Portal.svelte'
   import FolderViewModal from '../FolderViewModal.svelte'
   import FolderEditorModal from '../FolderEditorModal.svelte'
+  import FolderTile from '../FolderTile.svelte'
   import { safeFolderIcon } from '../folderMeta'
   import { serverIcon } from './utils'
   import { remote as rs, remoteKey, remoteAsView, remoteAct, startRemote } from './remoteServers.svelte'
@@ -73,8 +74,12 @@
 
   const runningServers = $derived(servers.filter(s => s.status === 'running'))
   const runningCount = $derived(runningServers.length)
-  const onlineCount = $derived(servers.filter(s => ONLINE_STATUSES.has(s.status)).length)
-  const offlineCount = $derived(servers.length - onlineCount)
+  // Сервери друзів, до яких мені дали доступ, — у бібліотеці як свої: рахуються у вкладках
+  // «Усі / Онлайн / Офлайн» і не дають показати «серверів ще немає».
+  const remoteOn = (r: RemoteServer) => r.ownerOnline && ONLINE_STATUSES.has(r.state)
+  const totalCount = $derived(servers.length + rs.servers.length)
+  const onlineCount = $derived(servers.filter(s => ONLINE_STATUSES.has(s.status)).length + rs.servers.filter(remoteOn).length)
+  const offlineCount = $derived(totalCount - onlineCount)
   const busyCount = $derived(servers.filter(s => ['running', 'starting', 'stopping', 'installing'].includes(s.status)).length)
 
   // ── Живі показники ──────────────────────────────────────────────────
@@ -245,9 +250,8 @@
       result = result.filter(r => r.name.toLowerCase().includes(q) || (rs.nicks[r.ownerId] ?? '').toLowerCase().includes(q))
     }
     if (filterCore !== 'all') result = result.filter(r => r.core === filterCore)
-    const on = (r: RemoteServer) => r.ownerOnline && ONLINE_STATUSES.has(r.state)
-    if (filterStatus === 'online') result = result.filter(on)
-    else if (filterStatus === 'offline') result = result.filter(r => !on(r))
+    if (filterStatus === 'online') result = result.filter(remoteOn)
+    else if (filterStatus === 'offline') result = result.filter(r => !remoteOn(r))
     return [...result].sort((a, b) => (statusRank[a.state] ?? 9) - (statusRank[b.state] ?? 9) || a.name.localeCompare(b.name))
   })
   $effect(() => startRemote())
@@ -505,7 +509,7 @@
   // Папки видно лише без активних фільтрів/пошуку — інакше плоский список.
   const filtersActive = $derived(search !== '' || filterCore !== 'all' || filterStatus !== 'all')
   // Вкладка «Онлайн» порожня сама по собі (жодного запущеного) — не «нічого не знайдено».
-  const noneOnline = $derived(servers.length > 0 && filterStatus === 'online' && !search && filterCore === 'all')
+  const noneOnline = $derived(totalCount > 0 && filterStatus === 'online' && !search && filterCore === 'all')
   const looseServers = $derived(filtered.filter(s => !inFolder.has(s.id)))
   const openView = $derived(folderViews.find(fv => fv.folder.id === openFolderId) ?? null)
 
@@ -863,7 +867,7 @@
     <div class="sl-bar">
       <div class="tabbar sl-tabs" role="group" aria-label={t('servers.lib.filter.aria')}>
         <button class="tab-btn" class:active={filterStatus === 'all'} onclick={() => filterStatus = 'all'}>
-          <i class="ti ti-server-2"></i> {t('servers.lib.filter.all')} <span class="num">{servers.length}</span>
+          <i class="ti ti-server-2"></i> {t('servers.lib.filter.all')} <span class="num">{totalCount}</span>
         </button>
         <button class="tab-btn" class:active={filterStatus === 'online'} onclick={() => filterStatus = 'online'}>
           <i class="ti ti-player-play"></i> {t('servers.lib.filter.online')} <span class="num">{onlineCount}</span>
@@ -893,11 +897,11 @@
     <!-- ═══ СІТКА ═══ -->
     {#if loading}
       <div class="sl-loading"><i class="ti ti-loader spin"></i> {t('servers.lib.loading')}</div>
-    {:else if filtered.length === 0}
+    {:else if filtered.length === 0 && remoteVisible.length === 0}
       <div class="sl-empty">
         <div class="sl-empty-ic"><i class="ti ti-server-2"></i></div>
-        <div class="sl-empty-t">{servers.length === 0 ? t('servers.lib.empty') : noneOnline ? t('servers.lib.noneOnline') : t('servers.lib.nothing')}</div>
-        {#if servers.length === 0}
+        <div class="sl-empty-t">{totalCount === 0 ? t('servers.lib.empty') : noneOnline ? t('servers.lib.noneOnline') : t('servers.lib.nothing')}</div>
+        {#if totalCount === 0}
           <div class="sl-empty-s">{t('servers.lib.emptySub')}</div>
           <button class="btn btn-primary" onclick={onCreateServer}><i class="ti ti-plus"></i> {t('servers.lib.create')}</button>
         {:else if filtersActive}
@@ -914,43 +918,37 @@
             {@const f = fv.folder}
             {@const col = f.color || '#ff8a00'}
             {@const live = fv.servers.filter(s => ONLINE_STATUSES.has(s.status)).length}
-            <div class="inst-tile folder-tile rise-in" class:folder-drop={dropFolderId === f.id} data-srv-folder={f.id}
-                 style="--pcol:{col}" role="button" tabindex="0" title={f.name}
-                 onclick={() => (openFolderId = f.id)}
-                 onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFolderId = f.id } }}
-                 oncontextmenu={(e) => openFolderCtx(e, f.id)}>
-              <div class="ft-stack" aria-hidden="true">
-                {#if fv.servers.length === 0}
-                  <span class="ft-stack-fallback ft-stack-empty" style="--pcol:{col}"><i class="ti {safeFolderIcon(f.icon)}"></i></span>
-                {:else}
-                  {#each fv.servers.slice(0, 3) as s (s.id)}
-                    {@const ic = serverIcon(s)}
-                    {#if ic.src}<img src={ic.src} alt="" />{:else}<span class="ft-stack-fallback" style="--pcol:{ic.color || col}"><i class="ti {ic.ti}"></i></span>{/if}
-                  {/each}
-                  {#if fv.servers.length > 3}<span class="ft-more" style="--pcol:{col}">+{fv.servers.length - 3}</span>{/if}
-                {/if}
-              </div>
-              <div class="ft-info">
-                <div class="ft-name">{f.name}</div>
-                <div class="ft-sub">
-                  {fv.servers.length} {t('folder.servers.count')}{#if live > 0}<span class="ft-live"> · <i class="ti ti-circle-filled"></i> {live}</span>{/if}
-                </div>
-              </div>
-            </div>
+            <FolderTile class="rise-in {dropFolderId === f.id ? 'folder-drop' : ''}" data-srv-folder={f.id}
+                        name={f.name} color={col} icon={f.icon} total={fv.servers.length}
+                        icons={fv.servers.slice(0, 3).map(s => { const ic = serverIcon(s); return { src: ic.src, pcol: ic.color || col, preset: ic.ti } })}
+                        role="button" tabindex="0"
+                        onclick={() => (openFolderId = f.id)}
+                        onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFolderId = f.id } }}
+                        oncontextmenu={(e: MouseEvent) => openFolderCtx(e, f.id)}>
+              {#snippet sub()}
+                {fv.servers.length} {t('folder.servers.count')}{#if live > 0}<span class="ft-live"> · <i class="ti ti-circle-filled"></i> {live}</span>{/if}
+              {/snippet}
+            </FolderTile>
           {/each}
         </div>
       {/if}
+      <!-- Сервери друзів — у тій самій сітці, що й власні: друг бачить їх як свої картки. -->
       <div class="sl-grid">
         {#each (filtersActive ? filtered : looseServers) as srv (srv.id)}
           {@render srvCard(srv, false)}
         {/each}
-      </div>
-    {/if}
-    {#if remoteVisible.length > 0}
-      <div class="sl-grid sl-remote">
         {#each remoteVisible as r (remoteKey(r))}
           {@render remoteCard(r)}
         {/each}
+        {#if servers.length === 0 && !filtersActive}
+          <!-- Власних серверів немає, але є сервери друзів: замість банера «серверів ще немає» —
+               тиха плитка «створити свій» поруч із ними. -->
+          <button class="sl-newtile" onclick={onCreateServer}>
+            <span class="sl-newtile-ic"><i class="ti ti-plus"></i></span>
+            <b>{t('servers.lib.createOwn')}</b>
+            <span>{t('servers.lib.createOwnSub')}</span>
+          </button>
+        {/if}
       </div>
     {/if}
   </div>
@@ -1106,12 +1104,14 @@
   .sl-actions { margin: 0; padding-top: 2px; }
 
   /* ── Аналітика ── */
-  .sl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  /* 148px — усі п'ять плиток лишаються в одному рядку вже з ~790px вмісту
+     (ноутбук 1100–1280px із sidebar), а не 4+1, що з'їдало пів екрана. */
+  .sl-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
   .sls {
     display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 12px 14px 10px;
     border-radius: var(--r-lg); background: var(--bg-card); border: 1px solid var(--border);
   }
-  .sls-h { display: flex; align-items: center; gap: 6px; font: 700 10px/1 var(--font-ui); letter-spacing: .5px; text-transform: uppercase; color: var(--text-dim); }
+  .sls-h { display: flex; align-items: center; gap: 6px; font: 700 var(--fs-min)/1 var(--font-ui); letter-spacing: .5px; text-transform: uppercase; color: var(--text-dim); }
   .sls-h i { font-size: 14px; color: var(--orange); }
   .sls-v { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; overflow: hidden; }
   .sls-v b { font: 800 22px/1.05 var(--font-mono); letter-spacing: -.5px; color: var(--text); }
@@ -1125,7 +1125,7 @@
   .sls-f .line { fill: none; stroke: var(--orange); stroke-width: 1.6; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
   .sls-f .line.dim { stroke: var(--border); }
   .sls-f .area { fill: color-mix(in srgb, var(--orange) 16%, transparent); stroke: none; }
-  .sls-sub { font: 600 10px/1.2 var(--font-mono); color: var(--text-dim); }
+  .sls-sub { font: 600 var(--fs-min)/1.2 var(--font-mono); color: var(--text-dim); }
   .sls-sub.bad { color: var(--red); }
   .sls-bar { width: 100%; height: 6px; border-radius: 3px; background: var(--hover); overflow: hidden; }
   .sls-bar > div { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #22c55e, #86efac); transition: width .45s; }
@@ -1188,7 +1188,15 @@
   .sl-reset:hover { color: var(--orange); }
 
   /* ── Сітка / стани ── */
-  .sl-remote { margin-top: 14px; }
+  .sl-newtile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 180px;
+    padding: 18px; border-radius: var(--r-lg); cursor: pointer; text-align: center; color: var(--text-mute);
+    background: transparent; border: 1px dashed var(--border-hi, var(--border)); font: 500 11.5px/1.4 var(--font-ui);
+    transition: border-color .15s, color .15s, background .15s;
+  }
+  .sl-newtile b { font: 700 13px/1.2 var(--font-ui); color: var(--text); }
+  .sl-newtile:hover { border-color: rgba(var(--orange-rgb), .55); background: rgba(var(--orange-rgb), .05); color: var(--text); }
+  .sl-newtile-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; color: var(--orange); background: rgba(var(--orange-rgb), .1); }
   .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; align-content: start; }
   .sl-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 60px 0; color: var(--text-mute); font-size: 13px; }
   .sl-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 20px; text-align: center; }

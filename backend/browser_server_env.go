@@ -86,8 +86,8 @@ const cfEnvCacheTTL = 10 * time.Minute
 // той самий пошук, що BrowserSearchCurseForge, але без суто клієнтських
 // модів. Окремий метод (а не новий параметр), щоб не міняти сигнатуру
 // існуючого й не чіпати інших викликачів.
-func (a *App) BrowserSearchCurseForgeForServer(query, projectType, mcVersion, loader, categoryIds, sort string, limit int, packID string) BrowserSearchResult {
-	res := a.BrowserSearchCurseForge(query, projectType, mcVersion, loader, categoryIds, sort, limit, packID)
+func (a *App) BrowserSearchCurseForgeForServer(query, projectType, mcVersion, loader, categoryIds, sort string, limit, offset int, packID string) BrowserSearchResult {
+	res := a.BrowserSearchCurseForge(query, projectType, mcVersion, loader, categoryIds, sort, limit, offset, packID)
 	// Плагіни й не-моди не фільтруємо: для плагінів CF не шукається взагалі,
 	// а ресурспаки/шейдери сервер не тримає.
 	if projectType != "mod" || len(res.CurseForge) == 0 {

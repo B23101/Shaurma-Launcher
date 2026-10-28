@@ -23,9 +23,11 @@
   // Modrinth app): зум колесом миші, панорама перетягуванням, prev/next,
   // навігація клавіатурою (←/→/Esc/+/-), підпис і опис під зображенням.
   import { t, getLanguage } from './i18n.svelte'
+  import { projectTags, tagLabel } from './browserTags'
   import { App, on, withCallTimeout } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import { packAsset } from './packAssets.svelte'
+  import type { BrowserServerCompat } from './types'
   import type { BrowserProjectDetail, BrowserVersionView, BrowserCompatiblePack, BrowserInstalledItem, BrowserInstalledInPack, BrowserProgress, BrowserTranslation, BrowserReview, BrowserEntry } from './types'
   import PackPicker from './PackPicker.svelte'
   import ServerTargetList from './servers/ServerTargetList.svelte'
@@ -324,7 +326,7 @@
   // користувач обирає ВЕРСІЮ контенту, а список збірок фільтрується під
   // саме цю версію (запит GetBrowserCompatiblePacks з versionID) — так
   // «розділ версії» живе всередині діалогу встановлення, а не на сторінці.
-  let packDialog = $state<{ packs: BrowserCompatiblePack[]; versions: BrowserVersionView[]; loading: boolean; selectedVersionId: string } | null>(null)
+  let packDialog = $state<{ packs: BrowserCompatiblePack[]; versions: BrowserVersionView[]; loading: boolean; selectedVersionId: string; serverCompat?: BrowserServerCompat | null; serverChecking?: boolean } | null>(null)
   // Пошук по збірках у діалозі вибору (як StyledInput у ContentInstallModal
   // Modrinth app) — корисно, коли збірок багато.
   let packDialogFilter = $state('')
@@ -1136,8 +1138,16 @@
     if (!detail) return
     packDialogFilter = ''
     dialogTab = 'packs'
-    packDialog = { packs: [], versions: [], loading: true, selectedVersionId: '' }
+    packDialog = { packs: [], versions: [], loading: true, selectedVersionId: '', serverCompat: null, serverChecking: false }
     const dialog = packDialog
+    // Сервери (версія під mc/ядро + сторона мода) — паралельно зі збірками.
+    if (canPickServer) {
+      dialog.serverChecking = true
+      App.GetBrowserServerCompat(source, detail.projectId, projectServerTab)
+        .then((r) => { if (packDialog === dialog) packDialog.serverCompat = r })
+        .catch(() => { /* без перевірки — сервери лишаються доступними */ })
+        .finally(() => { if (packDialog === dialog) packDialog.serverChecking = false })
+    }
     try {
       // Версії НЕ завантажуємо: вибір версії прибрано з модалки — завжди
       // «авто» (''), лаунчер підбирає версію під (mc, loader) обраної збірки
@@ -1553,8 +1563,8 @@
             </div>
             {#if (d.categories ?? []).length > 0}
               <div class="mp-cat-row">
-                {#each (d.categories ?? []).slice(0, 6) as cat}
-                  <span class="ib-tag">{cat}</span>
+                {#each projectTags(d.categories).slice(0, 6) as cat}
+                  <span class="ib-tag">{tagLabel(cat)}</span>
                 {/each}
               </div>
             {/if}
@@ -2021,7 +2031,35 @@
           </div>
         {/if}
 
-        {#if detail.author}
+        {#if detail.creators && detail.creators.length > 0}
+          <div class="mp-side-sec">
+            <div class="mp-side-title"><i class="ti {detail.creators.length > 1 ? 'ti-users' : 'ti-user'}"></i> {t(detail.creators.length > 1 ? 'browser.project.sidebar.creators' : 'browser.project.sidebar.author')}</div>
+            {#each detail.creators as c, i (c.id + ':' + i)}
+              {#if i > 0 && detail.creators[i - 1].isOrg}<div class="mp-author-sep"></div>{/if}
+              <svelte:element this={onAuthor && c.id ? 'button' : 'div'} class="mp-author-row" class:static={!onAuthor || !c.id}
+                              role={onAuthor && c.id ? undefined : 'listitem'}
+                              onclick={() => { if (onAuthor && c.id) onAuthor(c.id, c.name) }}>
+                {#if c.avatar}
+                  <img class="mp-author-avatar" class:org={c.isOrg} src={c.avatar} alt="" onerror={(e) => ((e.currentTarget as HTMLElement).style.display = 'none')} />
+                {:else}
+                  <span class="mp-author-avatar mp-author-avatar-fallback" class:org={c.isOrg}><i class="ti {c.isOrg ? 'ti-building' : 'ti-user'}"></i></span>
+                {/if}
+                <span class="mp-author-text">
+                  <span class="mp-author-name">
+                    <span class="mp-author-nm">{c.name}</span>
+                    {#if c.isOwner}<i class="ti ti-crown mp-author-crown" title={t('browser.project.sidebar.owner')}></i>{/if}
+                  </span>
+                  {#if c.isOrg}
+                    <span class="mp-author-role"><i class="ti ti-building"></i> {t('browser.author.organization')}</span>
+                  {:else if c.role}
+                    <span class="mp-author-role">{c.role}</span>
+                  {/if}
+                </span>
+                {#if onAuthor && c.id}<i class="ti ti-chevron-right"></i>{/if}
+              </svelte:element>
+            {/each}
+          </div>
+        {:else if detail.author}
           <div class="mp-side-sec">
             <div class="mp-side-title"><i class="ti ti-user"></i> {t('browser.project.sidebar.author')}</div>
             {#if detail.authorId && onAuthor}
@@ -2064,8 +2102,8 @@
           <div class="mp-side-sec">
             <div class="mp-side-title"><i class="ti ti-tags"></i> {t('browser.project.sidebar.tags')}</div>
             <div class="mp-side-tags">
-              {#each detail.categories as cat}
-                <span class="ib-tag">{cat}</span>
+              {#each projectTags(detail.categories) as cat}
+                <span class="ib-tag">{tagLabel(cat)}</span>
               {/each}
             </div>
           </div>
@@ -2163,6 +2201,9 @@
         </div>
       {/if}
       {#if dialogTab === 'servers' && canPickServer}
+        {#if packDialog.serverCompat?.clientOnly || (projectServerTab === 'mod' && detail?.serverSide === 'unsupported')}
+          <div class="mp-side-note bad"><i class="ti ti-device-desktop"></i> {t('browser.target.clientOnlyMod')}</div>
+        {/if}
         <ServerTargetList
           servers={servers}
           tab={detail?.projectType ?? 'mod'}
@@ -2170,8 +2211,13 @@
           onpick={installToPickedServer}
           variant="row"
           name="mp-dlg-target"
+          compat={packDialog.serverCompat?.servers ?? null}
+          checking={!!packDialog.serverChecking}
         />
       {:else}
+      {#if projectServerTab === 'mod' && detail?.clientSide === 'unsupported'}
+        <div class="mp-side-note"><i class="ti ti-server"></i> {t('browser.target.serverOnlyMod')}</div>
+      {/if}
       {#if !packDialog.loading && packDialog.packs.length > 0}
         <div class="cb-modal-search">
           <i class="ti ti-search"></i>
@@ -2549,7 +2595,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .mp-tb-sub {
-    font-size: 10.5px; color: var(--text-mute);
+    font-size: var(--fs-min); color: var(--text-mute);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .mp-tb-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
@@ -2577,7 +2623,7 @@
   .mp-col-menu-wrap { position: relative; }
   .mp-col-menu { position: absolute !important; top: calc(100% + 6px); right: 0; left: auto !important; min-width: 220px; }
   .mp-col-menu-count {
-    font-size: 10.5px; color: var(--text-mute);
+    font-size: var(--fs-min); color: var(--text-mute);
     background: var(--bg); padding: 1px 7px; border-radius: 999px;
   }
 
@@ -2906,7 +2952,7 @@
     box-shadow: 0 0 10px rgba(var(--orange-rgb), .5);
   }
   .mp-tab .num {
-    font: 800 10px/1 var(--font-mono);
+    font: 800 var(--fs-min)/1 var(--font-mono);
     color: var(--text-dim);
     background: var(--bg-input);
     border-radius: 999px;
@@ -3175,7 +3221,7 @@
     display: inline-flex; align-items: center; gap: 5px;
     padding: 4px 9px; border-radius: 999px;
     background: rgba(15, 15, 18, .75); border: 1px solid rgba(255, 255, 255, .16);
-    color: #fff; font: 700 10.5px/1 var(--font-ui); text-decoration: none;
+    color: #fff; font: 700 var(--fs-min)/1 var(--font-ui); text-decoration: none;
     opacity: .9; transition: opacity .15s, background .15s;
   }
   .mp-video-fallback:hover { opacity: 1; background: rgba(30, 30, 36, .92); }
@@ -3326,7 +3372,7 @@
   }
   .mp-target-sub {
     width: 100%; /* завжди власний рядок під іконкою+назвою+кнопками */
-    font: 600 10.5px/1.2 var(--font-mono);
+    font: 600 var(--fs-min)/1.2 var(--font-mono);
     color: var(--text-mute);
     padding-left: 21px;
   }
@@ -3431,13 +3477,13 @@
   .mp-vd-ic { width: 16px; height: 16px; border-radius: 4px; object-fit: contain; }
   .mp-version-detail span { display: inline-flex; align-items: center; gap: 5px; }
   .mp-version-detail i { color: var(--text-dim); }
-  .mp-vd-size { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); }
+  .mp-vd-size { font-family: var(--font-mono); font-size: var(--fs-min); color: var(--text-dim); }
   .chip.g {
     background: rgba(16, 185, 129, .13);
     border: 1px solid rgba(16, 185, 129, .35);
     color: var(--green);
     padding: 2px 9px; border-radius: 999px;
-    font: 700 10.5px/1.2 var(--font-ui);
+    font: 700 var(--fs-min)/1.2 var(--font-ui);
   }
 
   /* ── Секції сайдбару (сумісність/деталі/автор/посилання/теги) ── */
@@ -3462,7 +3508,7 @@
   .mp-side-title {
     display: flex; align-items: center; gap: 8px;
     margin-bottom: 11px;
-    font: 800 10.5px/1 var(--font-ui);
+    font: 800 var(--fs-min)/1 var(--font-ui);
     color: var(--text-mute);
     text-transform: uppercase; letter-spacing: .6px;
   }
@@ -3535,7 +3581,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .mp-installed-ver {
-    font: 500 10.5px/1 var(--font-mono);
+    font: 500 var(--fs-min)/1 var(--font-mono);
     color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .mp-installed-more {
@@ -3546,6 +3592,13 @@
     transition: background .15s;
   }
   .mp-installed-more:hover { background: var(--hover-strong); }
+
+  .mp-side-note {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 8px; padding: 8px 10px;
+    border-radius: 9px; border: 1px solid var(--border);
+    font: 500 12px/1.4 var(--font-ui); color: var(--text-mute);
+  }
+  .mp-side-note.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--border)); }
 
   /* Автор */
   .mp-author-row {
@@ -3579,6 +3632,15 @@
     font: 700 13px/1 var(--font-ui);
   }
   .mp-author-row > i { color: var(--text-mute); font-size: 15px; }
+  .mp-author-row.static { cursor: default; }
+  .mp-author-row.static:hover { background: transparent; border-color: transparent; transform: none; }
+  .mp-author-avatar.org { border-radius: 9px; }
+  .mp-author-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .mp-author-text .mp-author-name { display: flex; align-items: center; gap: 5px; line-height: 1.15; }
+  .mp-author-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-author-crown { color: var(--orange); font-size: 13px; flex: none; }
+  .mp-author-role { font: 500 11.5px/1.2 var(--font-ui); color: var(--text-mute); display: flex; align-items: center; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-author-sep { height: 1px; background: var(--border); margin: 4px 10px; }
   .mp-author-row:hover > i { color: var(--tacc, var(--orange)); transform: translateX(3px); }
 
   /* ═════════════════════════════════════════════════════════════════════
@@ -3681,7 +3743,7 @@
     text-decoration: none; word-break: break-all;
     transition: opacity .15s;
   }
-  .mp-review-src::before { content: '🔗'; font-size: 10px; }
+  .mp-review-src::before { content: '🔗'; font-size: var(--fs-min); }
   .mp-review-src:hover { text-decoration: underline; }
 
   /* ═════════════════════════════════════════════════════════════════════
@@ -3739,7 +3801,7 @@
   }
   .cb-warn {
     display: flex; align-items: center; gap: 6px;
-    font-size: 10.5px; color: var(--orange);
+    font-size: var(--fs-min); color: var(--orange);
     margin-top: 4px;
   }
   .cb-hint {
@@ -3932,5 +3994,10 @@
     .mp-banner, .mp-tabs, .mp-tab-content,
     .mp-side-sec, .mp-review, .mp-ai-bar, .mp-install-card,
     .mp-type-badge { animation: none !important; }
+  }
+  /* Низьке вікно ноутбука (спільний брейкпоінт, див. кінець style.css). */
+  @media (max-height: 760px) {
+    .mp-banner { min-height: 196px; padding: 20px 24px 18px; }
+    .mp-banner-full { min-height: 184px; padding: 28px 30px 22px; }
   }
 </style>

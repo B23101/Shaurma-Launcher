@@ -291,9 +291,9 @@
     transition: background-color .12s ease;
   }
   .line:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-  .line .l-ts { color: var(--text-dim); flex-shrink: 0; font-size: 10.5px; user-select: none; -webkit-user-select: none; opacity: .8; font-variant-numeric: tabular-nums; }
+  .line .l-ts { color: var(--text-dim); flex-shrink: 0; font-size: var(--fs-min); user-select: none; -webkit-user-select: none; opacity: .8; font-variant-numeric: tabular-nums; }
   .line .l-lvl {
-    flex-shrink: 0; width: 40px; text-align: center; font-weight: 800; font-size: 9.5px; letter-spacing: .4px;
+    flex-shrink: 0; width: 40px; text-align: center; font-weight: 800; font-size: var(--fs-min); letter-spacing: .4px;
     line-height: 16px; height: 16px; border-radius: 5px; align-self: center;
     background: color-mix(in srgb, currentColor 14%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
@@ -317,7 +317,7 @@
     display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%;
     margin: 0 0 6px; padding: 4px; cursor: pointer; border-radius: 8px;
     background: var(--hover); border: 1px dashed var(--border-hi); color: var(--text-dim);
-    font: 600 10.5px/1 var(--font-ui);
+    font: 600 var(--fs-min)/1 var(--font-ui);
   }
   .cv-earlier:hover { color: var(--text); }
   .cv-empty {
@@ -334,7 +334,7 @@
     padding: 5px 10px; border-radius: 20px; cursor: pointer;
     background: color-mix(in srgb, var(--pcol, var(--orange)) 18%, var(--bg-panel));
     border: 1px solid color-mix(in srgb, var(--pcol, var(--orange)) 40%, transparent);
-    color: var(--text); font: 600 10.5px/1 var(--font-ui);
+    color: var(--text); font: 600 var(--fs-min)/1 var(--font-ui);
     box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
     transition: background .14s, color .14s;
   }

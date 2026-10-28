@@ -292,11 +292,13 @@ func RecommendRAMMB(totalPhysMB int, core string) int {
 	if core == CorePaper || core == CorePurpur {
 		base += 512
 	}
-	// Velocity потребує менше.
+	// Проксі не тримає світів: Velocity рекомендує 512 МБ, на великих
+	// мережах (сотні гравців) — 1 ГБ.
 	if core == CoreVelocity {
-		if base > 2048 {
-			base = 2048
+		if totalPhysMB >= 16384 {
+			return 1024
 		}
+		return 512
 	}
 
 	// Не виділяємо більше 75% фізичної.

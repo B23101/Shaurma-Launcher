@@ -136,13 +136,39 @@ function frameCamera(camera: THREE.PerspectiveCamera, box: THREE.Box3, aspect: n
   camera.lookAt(center.x, center.y, center.z)
 }
 
+// ── Пул WebGL-рендерерів переглядачів ─────────────────────────────────────
+// three.js тримає у внутрішній спільній «порожній» текстурі (WebGLUniforms:
+// emptyTexture) слухач dispose від КОЖНОГО рендерера, що її використав, і
+// ніколи її не звільняє. Тож renderer.dispose() не робить рендерер досяжним
+// для GC: кожне відкриття гардероба/профілю/редактора назавжди лишало
+// WebGL-контекст у GPU-процесі. Тому рендерери не знищуємо, а повертаємо в
+// пул і даємо наступному переглядачу: живих контекстів стільки, скільки
+// переглядачів відкрито одночасно, а не скільки разів їх відкривали.
+const RENDERER_POOL_MAX = 3
+const rendererPool: THREE.WebGLRenderer[] = []
+
+function acquireRenderer(): THREE.WebGLRenderer {
+  return rendererPool.pop() ?? new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
+}
+
+function releaseRenderer(renderer: THREE.WebGLRenderer) {
+  renderer.domElement.remove()
+  renderer.renderLists.dispose()
+  if (rendererPool.length < RENDERER_POOL_MAX) {
+    rendererPool.push(renderer)
+    return
+  }
+  renderer.dispose()
+  renderer.forceContextLoss()
+}
+
 export function createWardrobeViewer(container: HTMLElement): Promise<WardrobeViewerHandle> {
   const scene = new THREE.Scene()
 
   const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100)
   camera.position.set(0, 1.55, 5.5)
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
+  const renderer = acquireRenderer()
   // 1.5 замість 2: на 4K/Retina різниця непомітна, а кількість пікселів
   // падає майже вдвічі — саме це прибирає секундний фриз при відкритті.
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5))
@@ -513,8 +539,7 @@ export function createWardrobeViewer(container: HTMLElement): Promise<WardrobeVi
       currentTexture?.dispose()
       currentCapeTexture?.dispose()
       fx.dispose()
-      renderer.dispose()
-      renderer.domElement.remove()
+      releaseRenderer(renderer)
     },
   }))
 }

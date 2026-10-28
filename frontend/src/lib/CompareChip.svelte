@@ -1,12 +1,8 @@
 <script lang="ts">
   // ── CompareChip — спільна картка СТОРОНИ порівняння ────────────────────
   //
-  // Використовується ОБОМА порівнювачами лаунчера: PackCompareDialog
-  // (збірки, через обгортку PackCompareChip) і ServerCompareDialog
-  // (сервери). Раніше кожен малював свою шапку власними класами/версткою —
-  // через це порівняння серверів виглядало «чужим» поруч із порівнянням
-  // збірок, а будь-яка зміна дизайну в одному місці не доходила до іншого.
-  // Тепер вигляд шапки визначається ОДНИМ компонентом.
+  // Шапка сторони в PackCompareDialog (через обгортку PackCompareChip) —
+  // єдиному порівнювачі модів: і збірки, і сервери порівнюються ним.
   //
   // Джерело картинки не задається тут — його обчислює викликач (збірки:
   // packAsset(iconUrl) → пресет; сервери: serverVisual()) і передає готовим
@@ -93,7 +89,7 @@
   .cc-info { flex: 1; min-width: 0; }
   .cc-name { font-size: 12.5px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cc-placeholder { color: var(--text-dim); font-weight: 500; }
-  .cc-meta { font: 500 10.5px/1.2 var(--font-mono); color: var(--text-mute); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .cc-meta { font: 500 var(--fs-min)/1.2 var(--font-mono); color: var(--text-mute); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .cc-chev { color: var(--text-dim); font-size: 14px; flex-shrink: 0; }
 </style>

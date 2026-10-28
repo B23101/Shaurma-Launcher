@@ -418,7 +418,7 @@
     box-shadow: 0 8px 22px rgba(var(--orange-rgb), 0.35);
   }
   .an-name { font-size: 15px; font-weight: 800; letter-spacing: -0.2px; color: var(--text); }
-  .an-sub { font-size: 10.5px; color: var(--text-mute); margin-top: 1px; letter-spacing: 0.4px; }
+  .an-sub { font-size: var(--fs-min); color: var(--text-mute); margin-top: 1px; letter-spacing: 0.4px; }
 
   .an-body {
     position: relative; z-index: 1;
@@ -450,7 +450,7 @@
   }
   .an-hero-label {
     display: inline-flex; align-items: center; gap: 7px;
-    font-size: 10.5px; font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase;
+    font-size: var(--fs-min); font-weight: 800; letter-spacing: 2.5px; text-transform: uppercase;
     color: var(--orange);
   }
   .an-hero-value {
@@ -462,7 +462,7 @@
     -webkit-text-fill-color: transparent;
   }
   .an-hero-caption {
-    font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
+    font-size: var(--fs-min); font-weight: 700; letter-spacing: 2px; text-transform: uppercase;
     color: var(--text-dim);
   }
   .an-hero-empty {
@@ -550,7 +550,7 @@
     filter: drop-shadow(0 0 6px rgba(255, 209, 102, 0.5));
   }
   .an-col-label {
-    font-size: 9.5px; font-weight: 700; letter-spacing: 0.3px;
+    font-size: var(--fs-min); font-weight: 700; letter-spacing: 0.3px;
     color: var(--text-mute);
     white-space: nowrap;
   }
@@ -558,7 +558,7 @@
   .an-chart-note {
     margin-top: 8px;
     text-align: center;
-    font-size: 10.5px; color: var(--text-dim);
+    font-size: var(--fs-min); color: var(--text-dim);
   }
 
   /* ═══════════ TOP INSTANCES ═══════════ */
@@ -574,7 +574,7 @@
     font-size: 12.5px; font-weight: 800; color: var(--text);
   }
   .an-top-title i { color: var(--yellow); font-size: 14px; }
-  .an-top-sub { font-size: 10.5px; color: var(--text-dim); }
+  .an-top-sub { font-size: var(--fs-min); color: var(--text-dim); }
 
   .an-top-list { display: flex; flex-direction: column; gap: 8px; }
   .an-top-row {
@@ -623,14 +623,14 @@
   }
   .an-top-meta {
     display: flex; align-items: center; gap: 8px;
-    font-size: 10px; color: var(--text-dim); margin-top: 2px;
+    font-size: var(--fs-min); color: var(--text-dim); margin-top: 2px;
   }
   .an-top-sessions {
     padding: 1px 7px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--text) 5%, transparent);
     color: var(--text-mute);
-    font-size: 9px; font-weight: 700;
+    font-size: var(--fs-min); font-weight: 700;
   }
   .an-top-track {
     height: 3px; margin-top: 6px;
@@ -692,7 +692,7 @@
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .an-tile-label {
-    font-size: 9.5px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+    font-size: var(--fs-min); font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
     color: var(--text-dim);
   }
 

@@ -217,6 +217,12 @@
   let viewer: WardrobeViewerHandle | null = $state(null)
 
   let viewerCtor: ((container: HTMLElement) => Promise<WardrobeViewerHandle>) | null = null
+  // Сторінку вже закрито: переглядач, що доробляється асинхронно, одразу звільняємо.
+  // Без цього вихід із гардероба до кінця завантаження моделі лишав живий
+  // WebGL-контекст і нескінченний цикл рендеру (ніхто не кликав dispose).
+  let destroyed = false
+  let editorViewerPending = false
+  let copyViewerPending = false
   let viewerCtorPromise: Promise<void> | null = null
   function ensureViewerModule(): Promise<void> {
     if (!viewerCtorPromise) {
@@ -238,7 +244,10 @@
       if (!viewerContainer) return
       ensureViewerModule().then(() => {
         if (viewerCtor && viewerContainer) {
-          viewerCtor(viewerContainer).then((h) => { viewer = h })
+          viewerCtor(viewerContainer).then((h) => {
+            if (destroyed) h.dispose()
+            else viewer = h
+          })
         }
       })
     }
@@ -264,6 +273,7 @@
   // списку пресетів — застосовується в loadPresets після підвантаження.
   let pendingSelectId = ''
   onDestroy(() => {
+    destroyed = true
     viewer?.dispose()
     viewer = null
     editorViewer?.dispose()
@@ -371,14 +381,16 @@
       return
     }
     const el = editorViewerContainer
-    if (el && !editorViewer) {
+    // pending: швидке повторне відкриття не запускає другий переглядач поверх першого.
+    if (el && !editorViewer && !editorViewerPending) {
+      editorViewerPending = true
       ensureViewerModule().then(() => {
-        if (viewerCtor && el) {
-          viewerCtor(el).then((h) => {
-            if (editorOpen) editorViewer = h
-            else h.dispose()
-          })
-        }
+        if (!viewerCtor || !el) { editorViewerPending = false; return }
+        viewerCtor(el).then((h) => {
+          editorViewerPending = false
+          if (editorOpen && !destroyed && !editorViewer) editorViewer = h
+          else h.dispose()
+        }, () => { editorViewerPending = false })
       })
     }
   })
@@ -459,14 +471,15 @@
       return
     }
     const el = copyViewerContainer
-    if (el && !copyViewer) {
+    if (el && !copyViewer && !copyViewerPending) {
+      copyViewerPending = true
       ensureViewerModule().then(() => {
-        if (viewerCtor && el) {
-          viewerCtor(el).then((h) => {
-            if (copyModalOpen && copyResult) copyViewer = h
-            else h.dispose()
-          })
-        }
+        if (!viewerCtor || !el) { copyViewerPending = false; return }
+        viewerCtor(el).then((h) => {
+          copyViewerPending = false
+          if (copyModalOpen && copyResult && !destroyed && !copyViewer) copyViewer = h
+          else h.dispose()
+        }, () => { copyViewerPending = false })
       })
     }
   })
@@ -891,9 +904,8 @@
   <!-- ── Ліворуч: 3D-сцена ── -->
   <section class="wr2-scene">
     <div class="wr2-scene-card">
-      <!-- Динамічний акцентний градієнт-фон з подихом. -->
+      <!-- Легке акцентне світло за моделлю. -->
       <div class="wr2-scene-bg"></div>
-      <div class="wr2-scene-grid"></div>
 
       <!-- КОНТЕЙНЕР 3D — те саме монтування, як і раніше -->
       <div class="wr2-3d-wrap {sceneFade ? 'fading' : ''}">
@@ -947,7 +959,12 @@
     <!-- Кнопка «Скопіювати скін гравця» переїхала сюди (на картку пресетів,
          на місце колишнього перемикача Скіни/Плащі — вкладку «Плащі» прибрано). -->
     <div class="wr2-grid-head">
-      <button class="wr2-copy-btn wr2-copy-in-head" onclick={openCopyModal} title={t('wardrobe.copySkin')}>
+      <span class="wr2-head-ic"><i class="ti ti-hanger"></i></span>
+      <div class="wr2-head-tx">
+        <h3>{t('nav.wardrobe')}</h3>
+        <p>{skinsCount} {t('wardrobe.skins').toLowerCase()}</p>
+      </div>
+      <button class="wr2-btn wr2-btn-ghost wr2-btn-sm wr2-copy-btn" onclick={openCopyModal} title={t('wardrobe.copySkin')}>
         <i class="ti ti-user-search"></i>
         <span class="wr2-copy-label">{t('wardrobe.copySkin')}</span>
       </button>
@@ -956,7 +973,6 @@
            Керування Google-сесією скін-системи та ніком офлайн-акаунта
            перенесено в Налаштування → Основне → «Скін-акаунт»
            (SkinAccountPanel рендериться там же, у SettingsPage.svelte). -->
-      <div class="wr2-grid-head-count">{skinsCount} {t('wardrobe.skins').toLowerCase()}</div>
     </div>
 
     <div class="wr2-grid-scroll" in:fade={{ duration: 220 }}>
@@ -1033,7 +1049,7 @@
         </div>
 
         <!-- Секція: усталені -->
-        <div class="wr2-section-head" style="margin-top: 26px;">
+        <div class="wr2-section-head wr2-section-gap">
           <div class="wr2-section-title">
             <i class="ti ti-crown"></i>
             {t('wardrobe.defaultSkins')}
@@ -1285,8 +1301,8 @@
       від глобальних токенів теми. Імена --wr2-* унікальні, тож глобально
       вони ні з ким не конфліктують. */
   :global(:root) {
-    --wr2-radius: 18px;
-    --wr2-radius-sm: 12px;
+    --wr2-radius: var(--r-lg);
+    --wr2-radius-sm: var(--r-md);
     --wr2-accent: var(--orange);
     --wr2-accent-2: var(--orange-2);
     --wr2-violet: #7b4dff;
@@ -1310,31 +1326,9 @@
     --wr2-stage-cape-b: #16161a;
   }
 
-  /* ══════════════ КОПІЮВАННЯ СКІНА (компактна кнопка в сцені) ══════════════ */
-  .wr2-copy-btn {
-    position: absolute; top: 12px; right: 12px; z-index: 5;
-    overflow: hidden;
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 9px 16px;
-    border: 1px solid rgba(var(--orange-rgb), 0.55);
-    border-radius: 11px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--orange) 88%, #000), color-mix(in srgb, var(--orange-2) 88%, #000));
-    color: #fff; font-size: 11.5px; font-weight: 800; letter-spacing: 0.4px;
-    font-family: inherit;
-    cursor: pointer;
-    box-shadow: 0 8px 26px rgba(var(--orange-rgb), 0.4);
-    transition: transform 0.18s cubic-bezier(.22,1.2,.36,1), box-shadow 0.2s, filter 0.2s;
-  }
-  .wr2-copy-btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 34px rgba(var(--orange-rgb), 0.55);
-    filter: brightness(1.08);
-  }
-  .wr2-copy-btn:active { transform: translateY(0) scale(0.97); }
-  .wr2-copy-btn i { font-size: 14px; }
-  /* У шапці панелі пресетів (замість перемикача Скіни/Плащі) — кнопка
-     статична, не накладена на сцену. */
-  .wr2-copy-in-head { position: static; flex: 0 0 auto; }
+  /* ══════════════ КОПІЮВАННЯ СКІНА ══════════════ */
+  /* Звичайна ghost-кнопка в шапці картки пресетів (як дії в .st-card-head). */
+  .wr2-copy-btn { flex: 0 0 auto; }
 
   /* ══════════════ БАНЕР РОЗБІЖНОСТІ НІКІВ ══════════════ */
   .wr2-mismatch-banner {
@@ -1343,15 +1337,15 @@
     gap: 12px;
     padding: 12px 16px;
     margin-bottom: 12px;
-    border-radius: var(--wr2-radius-sm);
-    background: color-mix(in srgb, #f59e0b 12%, transparent);
-    border: 1px solid color-mix(in srgb, #f59e0b 35%, transparent);
+    border-radius: var(--r-md);
+    background: rgba(245, 158, 11, .1);
+    border: 1px solid rgba(245, 158, 11, .32);
     color: var(--text);
     font-size: 13px;
     line-height: 1.5;
   }
   .wr2-mismatch-banner > .ti-alert-triangle {
-    color: #f59e0b;
+    color: var(--yellow);
     font-size: 20px;
     flex-shrink: 0;
     margin-top: 1px;
@@ -1368,46 +1362,21 @@
     flex: 1; min-height: 0;
   }
 
-  /* ══════════════ ШАПКА ПРАВОЇ ПАНЕЛІ (перемикач Скіни/Плащі) ══════════════ */
+  /* ══════════════ ШАПКА ПРАВОЇ ПАНЕЛІ (як .st-card-head) ══════════════ */
   .wr2-grid-head {
-    display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 12px 14px;
-    border-bottom: 1px solid var(--wr2-border);
+    display: flex; align-items: center; gap: 12px;
+    padding: 15px 20px 12px;
+    border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
-  .wr2-seg {
-    position: relative;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-    padding: 4px;
-    background: var(--bg-input);
-    border: 1px solid var(--wr2-border);
-    border-radius: 12px;
+  .wr2-head-ic {
+    width: 34px; height: 34px; border-radius: 10px; flex: none; font-size: 17px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(var(--orange-rgb), .13); color: var(--orange);
   }
-  .wr2-seg-thumb {
-    position: absolute; top: 4px; bottom: 4px; left: 4px;
-    width: calc(50% - 4px);
-    border-radius: 9px;
-    background: linear-gradient(135deg, var(--orange), var(--orange-2));
-    box-shadow: 0 6px 18px rgba(var(--orange-rgb), 0.35);
-    transition: transform 320ms cubic-bezier(.22,1.2,.36,1);
-    pointer-events: none;
-  }
-  .wr2-seg-btn {
-    position: relative; z-index: 1;
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-    padding: 8px 14px;
-    background: transparent; border: none;
-    color: var(--wr2-text-mute);
-    font-family: inherit; font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px;
-    border-radius: 9px; cursor: pointer;
-    transition: color 0.2s;
-  }
-  .wr2-seg-btn i { font-size: 14px; }
-  .wr2-seg-btn.active { color: #fff; }
-  .wr2-seg-btn:hover:not(.active) { color: color-mix(in srgb, var(--wr2-white) 85%, transparent); }
-  .wr2-grid-head-count {
-    font-size: 10.5px; color: var(--wr2-text-dim); letter-spacing: 0.4px; white-space: nowrap;
-  }
+  .wr2-head-tx { flex: 1; min-width: 0; }
+  .wr2-head-tx h3 { margin: 0; font-size: 14.5px; font-weight: 700; }
+  .wr2-head-tx p { margin: 2px 0 0; font-size: 12px; color: var(--text-mute); }
 
   /* ══════════════ SCENE (центр) ══════════════ */
   .wr2-scene {
@@ -1416,38 +1385,18 @@
   }
   .wr2-scene-card {
     position: relative; flex: 1; min-height: 320px;
-    border-radius: var(--wr2-radius);
+    border-radius: var(--r-lg);
     overflow: hidden;
     background: linear-gradient(180deg, var(--wr2-stage-a) 0%, var(--wr2-stage-b) 100%);
-    border: 1px solid var(--wr2-border);
+    border: 1px solid var(--border);
     cursor: grab;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
   }
   .wr2-scene-card:active { cursor: grabbing; }
 
-  /* Дихаючий градієнт */
+  /* Легке акцентне світло за моделлю — статичне, без «дихання», сітки й різнокольорових плям. */
   .wr2-scene-bg {
     position: absolute; inset: 0;
-    background:
-      radial-gradient(70% 55% at 50% 25%, rgba(var(--orange-rgb), 0.18), transparent 60%),
-      radial-gradient(60% 50% at 15% 90%, rgba(123, 77, 255, 0.10), transparent 60%),
-      radial-gradient(50% 40% at 85% 90%, rgba(59, 130, 246, 0.08), transparent 60%);
-    pointer-events: none;
-    animation: wr2-breathe 9s ease-in-out infinite;
-  }
-  @keyframes wr2-breathe {
-    0%, 100% { opacity: 0.85; transform: scale(1); }
-    50% { opacity: 1; transform: scale(1.05); }
-  }
-  /* Grid overlay */
-  .wr2-scene-grid {
-    position: absolute; inset: 0;
-    background-image:
-      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
-    background-size: 32px 32px;
-    mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
-    -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+    background: radial-gradient(60% 50% at 50% 30%, rgba(var(--orange-rgb), 0.12), transparent 65%);
     pointer-events: none;
   }
 
@@ -1459,86 +1408,84 @@
   .wr2-scene-hint {
     position: absolute; bottom: 12px; left: 0; right: 0;
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    font-size: 10.5px; color: rgba(255, 255, 255, 0.4); pointer-events: none;
+    font-size: 11px; color: rgba(255, 255, 255, 0.4); pointer-events: none;
   }
 
-  /* Anim toggle glass pill */
+  /* Перемикач анімацій — як .st-seg у налаштуваннях (активна — тонована, без градієнта). */
   .wr2-anim {
     position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-    display: flex; gap: 4px; padding: 4px;
-    background: rgba(20, 20, 24, 0.66);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex; gap: 3px; padding: 3px;
+    background: rgba(12, 12, 14, 0.72);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 12px;
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
   }
   .wr2-anim-btn {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 7px 11px;
-    background: transparent; border: none;
-    color: rgba(255, 255, 255, 0.65);
-    font-size: 10.5px; font-weight: 700; letter-spacing: 0.3px;
-    border-radius: 8px; cursor: pointer;
-    transition: background 0.2s, color 0.2s, transform 0.2s;
-    font-family: inherit;
+    background: transparent; border: 1px solid transparent;
+    color: rgba(255, 255, 255, 0.6);
+    font: 600 12px var(--font-ui);
+    border-radius: 9px; cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
-  .wr2-anim-btn i { font-size: 12px; }
-  .wr2-anim-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+  .wr2-anim-btn i { font-size: 14px; }
+  .wr2-anim-btn:hover { color: #fff; }
   .wr2-anim-btn.active {
-    background: linear-gradient(135deg, var(--orange), var(--orange-2));
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(var(--orange-rgb), 0.35);
+    background: rgba(var(--orange-rgb), 0.16);
+    border-color: rgba(var(--orange-rgb), 0.5);
+    color: var(--orange);
   }
 
   .wr2-scene-actions { display: flex; gap: 10px; }
 
-  /* ══════════════ КНОПКИ ══════════════ */
+  /* ══════════════ КНОПКИ (як .btn лаунчера) ══════════════ */
   .wr2-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 12px 20px;
+    padding: 10px 16px;
     border: 1px solid transparent;
-    border-radius: 12px;
-    font-family: inherit; font-size: 12.5px; font-weight: 700; letter-spacing: 0.2px;
+    border-radius: var(--r-md);
+    font: 600 12.5px var(--font-ui);
     cursor: pointer;
-    transition: transform 0.18s cubic-bezier(.22,1.2,.36,1),
-                background 0.18s, border-color 0.18s, box-shadow 0.2s;
+    transition: background 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.2s;
     flex: 1;
   }
   .wr2-btn i { font-size: 15px; }
-  .wr2-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none !important; }
-  .wr2-btn:not(:disabled):hover { transform: translateY(-2px); }
+  .wr2-btn:disabled { opacity: 0.6; cursor: default; transform: none !important; }
+  .wr2-btn:not(:disabled):hover { transform: translateY(-1px); }
+  .wr2-btn:not(:disabled):active { transform: scale(.97); }
+  .wr2-btn-sm { padding: 7px 12px; font-size: 12px; }
+  .wr2-btn-sm i { font-size: 14px; }
   .wr2-btn-primary {
-    background: linear-gradient(135deg, var(--orange) 0%, var(--orange-2) 100%);
+    background: var(--orange);
     color: #fff;
-    box-shadow: 0 8px 22px rgba(var(--orange-rgb), 0.35);
+    box-shadow: 0 6px 16px rgba(var(--orange-rgb), 0.3);
   }
-  .wr2-btn-primary:hover { box-shadow: 0 12px 30px rgba(var(--orange-rgb), 0.5); }
+  .wr2-btn-primary:hover { background: var(--orange-2, var(--orange)); }
   .wr2-btn-ghost {
-    background: color-mix(in srgb, var(--wr2-white) 4%, transparent);
-    color: color-mix(in srgb, var(--wr2-white) 85%, transparent);
-    border-color: var(--wr2-border-hi);
+    background: var(--hover);
+    color: var(--text);
+    border-color: var(--border);
   }
-  .wr2-btn-ghost:hover { background: color-mix(in srgb, var(--wr2-white) 8%, transparent); border-color: var(--wr2-border-hi); }
+  .wr2-btn-ghost:hover { background: var(--hover-strong); border-color: var(--border-hi); }
   .wr2-btn-danger {
-    background: rgba(239, 68, 68, 0.10);
-    color: #ef4444;
-    border-color: rgba(239, 68, 68, 0.32);
+    background: transparent;
+    color: var(--red);
+    border-color: rgba(239, 68, 68, 0.4);
   }
-  .wr2-btn-danger:hover { background: rgba(239, 68, 68, 0.20); border-color: rgba(239, 68, 68, 0.6); }
+  .wr2-btn-danger:hover { background: rgba(239, 68, 68, 0.1); border-color: var(--red); }
 
   /* ══════════════ ПРАВА ПАНЕЛЬ (grid wrap) ══════════════ */
   .wr2-grid-wrap {
     display: flex; flex-direction: column; min-height: 0;
-    background: var(--bg-panel);
-    border: 1px solid var(--wr2-border);
-    border-radius: var(--wr2-radius);
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
     overflow: hidden;
   }
   .wr2-grid-scroll {
     flex: 1; min-height: 0;
     overflow-y: auto;
-    padding: 18px 20px 24px;
+    padding: 16px 20px 22px;
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--wr2-white) 10%, transparent) transparent;
   }
@@ -1546,22 +1493,23 @@
   .wr2-grid-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--wr2-white) 8%, transparent); border-radius: 4px; }
 
   .wr2-section-head {
-    display: flex; align-items: center; gap: 10px;
-    padding: 4px 2px 12px;
+    display: flex; align-items: center; gap: 8px;
+    padding: 2px 2px 10px;
   }
+  .wr2-section-gap { margin-top: 22px; }
   .wr2-section-title {
-    flex: 1;
-    display: inline-flex; align-items: center; gap: 8px;
-    font-size: 13px; font-weight: 800;
-    color: var(--text);
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: var(--fs-min); font-weight: 700; letter-spacing: .9px; text-transform: uppercase;
+    color: var(--text-dim);
   }
-  .wr2-section-title i { color: var(--orange); font-size: 15px; }
+  .wr2-section-title i { color: var(--orange); font-size: 14px; }
   .wr2-section-count {
-    font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
-    padding: 3px 9px;
+    display: inline-flex; align-items: center;
+    padding: 2px 8px;
+    font-size: 11px; font-weight: 600;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--wr2-white) 5%, transparent);
-    color: var(--wr2-text-mute);
+    background: var(--hover-strong);
+    color: var(--text-mute);
   }
 
   .wr2-grid {
@@ -1577,24 +1525,23 @@
     display: flex; flex-direction: column;
     /* Пресет-картки ЗАВЖДИ портретні (3:4), незалежно від ширини колонки. */
     aspect-ratio: 3 / 4;
-    border-radius: 14px;
-    background: linear-gradient(170deg, color-mix(in srgb, var(--wr2-white) 4%, transparent), color-mix(in srgb, var(--wr2-white) 1%, transparent));
-    border: 1px solid var(--wr2-border);
+    border-radius: 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
     overflow: hidden;
     cursor: pointer;
-    transition: transform 0.22s cubic-bezier(.22,1.2,.36,1),
-                border-color 0.2s, box-shadow 0.25s, background 0.2s;
+    transition: transform 0.18s ease, border-color 0.15s, box-shadow 0.2s;
   }
   .wr2-card:hover {
-    transform: translateY(-4px);
-    border-color: var(--wr2-border-hi);
-    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px);
+    border-color: var(--border-hi);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
   }
   .wr2-card:hover .wr2-card-halo { opacity: 1; }
   .wr2-card:hover .wr2-card-actions { opacity: 1; transform: translateY(0); }
   .wr2-card.active {
-    border-color: rgba(var(--orange-rgb), 0.7);
-    box-shadow: 0 0 0 1px rgba(var(--orange-rgb), 0.35), 0 14px 34px rgba(var(--orange-rgb), 0.22);
+    border-color: var(--orange);
+    box-shadow: 0 0 0 1px rgba(var(--orange-rgb), 0.35);
   }
   .wr2-card.busy { opacity: 0.55; pointer-events: none; }
 
@@ -1636,9 +1583,9 @@
        не обрізається нею — щоб градієнт-стадія тут не «вилазив» за округлення
        картки, округлюємо верхні кути прев'ю сам/себе (і overflow:hidden тримає
        halo/скелетон всередині своєї округленої області). */
-    border-radius: 14px 14px 0 0;
+    border-radius: 11px 11px 0 0;
     background:
-      radial-gradient(60% 50% at 50% 40%, rgba(var(--orange-rgb), 0.10), transparent 70%),
+      radial-gradient(60% 50% at 50% 40%, rgba(var(--orange-rgb), 0.08), transparent 70%),
       linear-gradient(180deg, var(--wr2-stage-prev-a) 0%, var(--wr2-stage-prev-b) 100%);
   }
   .wr2-card-halo {
@@ -1652,11 +1599,11 @@
     position: absolute; top: 8px; left: 8px;
     width: 22px; height: 22px;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--orange), var(--orange-2));
+    background: var(--orange);
     color: #fff;
     display: flex; align-items: center; justify-content: center;
     font-size: 12px;
-    box-shadow: 0 4px 10px rgba(var(--orange-rgb), 0.5);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
     z-index: 3;
     animation: wr2-pop-in 0.35s cubic-bezier(.22,1.6,.36,1);
   }
@@ -1666,7 +1613,7 @@
     padding: 10px 12px 12px;
   }
   .wr2-card-name {
-    font-size: 12.5px; font-weight: 700; color: var(--text);
+    font-size: 13px; font-weight: 600; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .wr2-card-meta {
@@ -1675,18 +1622,16 @@
   }
   .wr2-chip {
     display: inline-flex; align-items: center; gap: 4px;
-    padding: 3px 8px;
-    font-size: 9.5px; font-weight: 700; letter-spacing: 0.4px; text-transform: uppercase;
-    color: var(--wr2-text-mute);
-    background: color-mix(in srgb, var(--wr2-white) 4%, transparent);
-    border: 1px solid var(--wr2-border);
+    padding: 2px 8px;
+    font-size: 11px; font-weight: 600;
+    color: var(--text-mute);
+    background: var(--hover-strong);
     border-radius: 999px;
   }
-  .wr2-chip i { font-size: 10px; }
+  .wr2-chip i { font-size: 11px; }
   .wr2-chip-violet {
-    color: var(--wr2-violet-l);
-    background: rgba(123, 77, 255, 0.12);
-    border-color: rgba(123, 77, 255, 0.3);
+    color: var(--violet-l, #9d7cff);
+    background: rgba(123, 77, 255, 0.14);
   }
 
   .wr2-card-actions {
@@ -1699,16 +1644,15 @@
   .wr2-icon-btn {
     width: 30px; height: 30px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 9px;
-    background: rgba(20, 20, 24, 0.75);
-    backdrop-filter: blur(8px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: var(--r-sm);
+    background: rgba(12, 12, 14, 0.8);
+    border: 1px solid rgba(255, 255, 255, 0.12);
     color: #fff;
-    font-size: 13px;
+    font-size: 14px;
     cursor: pointer;
-    transition: background 0.15s, transform 0.15s, border-color 0.15s;
+    transition: background 0.15s, border-color 0.15s;
   }
-  .wr2-icon-btn:hover { background: rgba(255, 255, 255, 0.14); transform: scale(1.08); }
+  .wr2-icon-btn:hover { background: rgba(40, 40, 46, 0.95); border-color: rgba(255, 255, 255, 0.22); }
   .wr2-icon-danger { color: #ff8a8a; }
   .wr2-icon-danger:hover { background: rgba(239, 68, 68, 0.28); border-color: rgba(239, 68, 68, 0.5); }
 
@@ -1717,12 +1661,12 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 10px;
     aspect-ratio: 3 / 4; min-height: 0;
-    border: 1.5px dashed var(--wr2-border-hi);
-    border-radius: 14px;
-    background: color-mix(in srgb, var(--wr2-white) 1.5%, transparent);
-    color: var(--wr2-text-mute);
+    border: 1.5px dashed var(--border-hi);
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-mute);
     cursor: pointer;
-    transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.2s;
+    transition: background 0.15s, border-color 0.15s, color 0.15s;
     font-family: inherit;
     padding: 12px;
   }
@@ -1730,22 +1674,17 @@
     border-color: rgba(var(--orange-rgb), 0.6);
     color: var(--orange);
     background: rgba(var(--orange-rgb), 0.05);
-    transform: translateY(-3px);
   }
   .wr2-add-icon {
-    width: 44px; height: 44px;
+    width: 42px; height: 42px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--wr2-white) 5%, transparent);
+    border-radius: 10px;
+    background: rgba(var(--orange-rgb), 0.13);
+    color: var(--orange);
     font-size: 20px;
-    transition: background 0.2s, transform 0.35s cubic-bezier(.22,1.6,.36,1);
   }
-  .wr2-add-card:hover .wr2-add-icon {
-    background: rgba(var(--orange-rgb), 0.18);
-    transform: rotate(90deg);
-  }
-  .wr2-add-title { font-size: 12px; font-weight: 700; }
-  .wr2-add-sub { font-size: 10px; color: var(--wr2-text-dim); text-align: center; }
+  .wr2-add-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .wr2-add-sub { font-size: 11.5px; color: var(--text-mute); text-align: center; line-height: 1.4; }
 
   .wr2-empty {
     grid-column: 1 / -1;
@@ -1831,7 +1770,7 @@
     font-size: 20px;
   }
   .wr2-cape-name {
-    font-size: 10.5px; font-weight: 700;
+    font-size: var(--fs-min); font-weight: 700;
     color: color-mix(in srgb, var(--wr2-white) 75%, transparent);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -1848,24 +1787,24 @@
   }
 
   /* ══════════════ MODAL CONTENT STYLES ══════════════ */
-  .wm-desc { color: var(--wr2-text-mute); font-size: 12px; line-height: 1.55; margin: 0 0 14px; }
+  .wm-desc { color: var(--text-mute); font-size: 13px; line-height: 1.5; margin: 0 0 14px; }
   .wm-input-row { position: relative; }
   .wm-input-row i {
     position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
     color: var(--wr2-text-mute); font-size: 15px; pointer-events: none;
   }
   .wm-input-row input {
-    width: 100%; padding: 11px 14px 11px 40px;
+    width: 100%; height: 38px; box-sizing: border-box; padding: 0 12px 0 38px;
     background: var(--bg-input);
-    border: 1px solid var(--wr2-border-hi);
-    border-radius: 12px;
-    color: var(--text); font-size: 13px; font-family: inherit;
-    transition: border-color 0.15s, background 0.15s;
+    border: 1px solid var(--border-hi);
+    border-radius: var(--r-md);
+    color: var(--text); font: 500 13px var(--font-ui);
+    transition: border-color 0.15s, box-shadow 0.15s;
   }
   .wm-input-row input:focus {
     outline: none;
-    border-color: var(--orange);
-    background: rgba(var(--orange-rgb), 0.08);
+    border-color: rgba(var(--orange-rgb), .7);
+    box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .13);
   }
 
   .wm-status {
@@ -1875,16 +1814,16 @@
     min-height: 16px;
     transition: color 0.2s;
   }
-  .wm-status.err { color: #ff6b6b; }
-  .wm-status.ok  { color: #10b981; }
+  .wm-status.err { color: var(--red); }
+  .wm-status.ok  { color: var(--green); }
   .wm-status i { font-size: 14px; }
 
   .wm-copy-result {
     display: flex; gap: 16px; margin-top: 16px;
     padding: 14px;
-    background: var(--bg-input);
-    border: 1px solid var(--wr2-border);
-    border-radius: 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
   }
   .wm-copy-3d {
     width: 150px; height: 200px; flex-shrink: 0;
@@ -1905,7 +1844,7 @@
     gap: 8px; padding: 10px; text-align: center;
     background: color-mix(in srgb, #0f0f12 78%, transparent);
     backdrop-filter: blur(2px);
-    font: 500 10px/1.35 var(--font-ui); color: color-mix(in srgb, var(--wr2-white) 78%, transparent);
+    font: 500 var(--fs-min)/1.35 var(--font-ui); color: color-mix(in srgb, var(--wr2-white) 78%, transparent);
     pointer-events: none;
   }
   .wm-copy-loading i { font-size: 22px; color: var(--orange); }
@@ -1914,9 +1853,9 @@
   .wm-copy-player {
     display: flex; align-items: center; gap: 14px;
     padding: 12px;
-    background: color-mix(in srgb, var(--wr2-white) 3%, transparent);
-    border: 1px solid var(--wr2-border);
-    border-radius: 12px;
+    background: var(--bg-input);
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
   }
   .wm-copy-avatar {
     width: 52px; height: 52px; flex-shrink: 0;
@@ -1928,29 +1867,29 @@
     color: #fff; font-size: 22px;
   }
   .wm-copy-name { font-size: 13.5px; font-weight: 800; color: var(--text); }
-  .wm-copy-sub { font-size: 10.5px; color: var(--wr2-text-mute); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .wm-copy-sub { font-size: 12px; color: var(--text-mute); margin-top: 2px; }
 
   .wm-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .wm-toggle-label { font-size: 12px; font-weight: 700; color: var(--text); }
-  .wm-toggle-hint { font-size: 10.5px; color: var(--wr2-text-mute); margin-top: 2px; }
+  .wm-toggle-label { font-size: 13.5px; font-weight: 600; color: var(--text); }
+  .wm-toggle-hint { font-size: 12px; color: var(--text-mute); margin-top: 2px; line-height: 1.45; }
   .wm-toggle {
     position: relative;
-    width: 46px; height: 26px;
+    width: 42px; height: 24px; min-width: 42px; padding: 0;
     border-radius: 999px;
-    background: color-mix(in srgb, var(--wr2-white) 8%, transparent);
-    border: 1px solid var(--wr2-border-hi);
+    background: var(--bg-input-hi, var(--bg-input));
+    border: 1px solid var(--border-hi);
     cursor: pointer;
-    transition: background 0.22s, border-color 0.22s;
+    transition: background 0.18s, border-color 0.18s;
     flex-shrink: 0;
   }
   .wm-toggle::after {
-    content: ''; position: absolute; top: 2px; left: 3px;
+    content: ''; position: absolute; top: 2px; left: 2px;
     width: 18px; height: 18px; border-radius: 50%;
-    background: #888; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
-    transition: transform 0.24s cubic-bezier(.22,1.4,.36,1), background 0.22s;
+    background: #8c8c8c; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transition: transform 0.2s, background 0.2s;
   }
-  .wm-toggle.on { background: rgba(var(--orange-rgb), 0.28); border-color: rgba(var(--orange-rgb), 0.55); }
-  .wm-toggle.on::after { transform: translateX(20px); background: var(--orange); box-shadow: 0 2px 8px rgba(var(--orange-rgb), 0.5); }
+  .wm-toggle.on { background: rgba(var(--orange-rgb), 0.3); border-color: rgba(var(--orange-rgb), 0.55); }
+  .wm-toggle.on::after { transform: translateX(18px); background: var(--orange); }
   .wm-toggle.disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Editor: тіло модалки (bodyNoScroll) віддає всю висоту, тому картка
@@ -1963,7 +1902,7 @@
     flex: 1;
     min-height: 0;
     height: 100%;
-    padding: 18px;
+    padding: 16px 20px;
   }
   .wm-editor-left { display: flex; min-height: 0; }
   .wm-editor-3d-card {
@@ -1972,10 +1911,12 @@
     /* Мінімум лише щоб превʼю не перетворилось на смужку на дуже низькій
        модалці; в іншому картка розтягується/стискається під доступне місце. */
     min-height: 140px;
-    border-radius: 14px;
+    border-radius: var(--r-lg);
     overflow: hidden;
-    background: #101013;
-    border: 1px solid var(--wr2-border);
+    background:
+      radial-gradient(60% 50% at 50% 30%, rgba(var(--orange-rgb), 0.1), transparent 65%),
+      linear-gradient(180deg, var(--wr2-stage-a), var(--wr2-stage-b));
+    border: 1px solid var(--border);
     cursor: grab;
   }
   .wm-editor-3d-card:active { cursor: grabbing; }
@@ -1992,55 +1933,55 @@
   .wm-editor-right::-webkit-scrollbar { width: 6px; }
   .wm-editor-right::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--wr2-white) 10%, transparent); border-radius: 3px; }
   .wm-label {
-    font-size: 10.5px; font-weight: 700;
-    color: var(--wr2-text-mute);
-    letter-spacing: 1.5px; text-transform: uppercase;
-    display: block; margin-bottom: 6px;
+    font-size: 13px; font-weight: 600;
+    color: var(--text);
+    display: block; margin-bottom: 8px;
   }
   .wm-name-warn {
     display: flex; align-items: center; gap: 6px;
     margin-top: 6px;
-    font-size: 11px; color: #ffb454; font-weight: 600;
+    font-size: 12px; color: var(--yellow); font-weight: 600;
   }
   .wm-name-warn i { font-size: 13px; }
 
   /* Segmented control з sliding thumb */
   .wm-seg {
     position: relative;
-    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-    padding: 4px;
+    display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+    padding: 3px;
     background: var(--bg-input);
-    border: 1px solid var(--wr2-border);
+    border: 1px solid var(--border-hi);
     border-radius: 12px;
   }
   .wm-seg-thumb {
-    position: absolute; top: 4px; bottom: 4px; left: 4px;
-    width: calc(50% - 4px);
+    position: absolute; top: 3px; bottom: 3px; left: 3px;
+    width: calc(50% - 3px);
+    box-sizing: border-box;
     border-radius: 9px;
-    background: linear-gradient(135deg, var(--orange), var(--orange-2));
-    box-shadow: 0 6px 18px rgba(var(--orange-rgb), 0.35);
-    transition: transform 320ms cubic-bezier(.22,1.2,.36,1);
+    background: var(--bg-card);
+    border: 1px solid rgba(var(--orange-rgb), 0.5);
+    transition: transform 220ms ease;
     pointer-events: none;
   }
   .wm-seg-btn {
     position: relative; z-index: 1;
-    padding: 9px 12px;
+    padding: 8px 12px;
     background: transparent; border: none;
-    color: var(--wr2-text-mute);
-    font-family: inherit; font-size: 11.5px; font-weight: 700; letter-spacing: 0.3px;
+    color: var(--text-mute);
+    font: 600 13px var(--font-ui);
     border-radius: 9px; cursor: pointer;
-    transition: color 0.2s;
+    transition: color 0.15s;
   }
-  .wm-seg-btn.active { color: #fff; }
-  .wm-seg-btn:hover:not(.active) { color: color-mix(in srgb, var(--wr2-white) 85%, transparent); }
+  .wm-seg-btn.active { color: var(--orange); }
+  .wm-seg-btn:hover:not(.active) { color: var(--text); }
 
   /* Dropzone */
   .wm-drop {
     display: flex; align-items: center; gap: 12px;
-    width: 100%; padding: 14px;
-    background: color-mix(in srgb, var(--wr2-white) 2%, transparent);
-    border: 1.5px dashed var(--wr2-border-hi);
-    border-radius: 12px;
+    width: 100%; padding: 12px 13px;
+    background: var(--bg-input);
+    border: 1.5px dashed var(--border-hi);
+    border-radius: var(--r-md);
     color: inherit; font-family: inherit;
     cursor: pointer;
     transition: background 0.2s, border-color 0.2s;
@@ -2055,8 +1996,8 @@
     color: var(--orange);
     font-size: 18px;
   }
-  .wm-drop-title { font-size: 12px; font-weight: 700; color: var(--text); }
-  .wm-drop-sub { font-size: 10.5px; color: var(--wr2-text-dim); margin-top: 2px; }
+  .wm-drop-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .wm-drop-sub { font-size: 12px; color: var(--text-mute); margin-top: 2px; }
 
   /* Editor cape grid */
   .wm-editor-capes {
@@ -2086,7 +2027,7 @@
     transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
   }
   .wm-cape:hover { transform: translateY(-1px); border-color: var(--wr2-border-hi); }
-  .wm-cape.sel { border-color: var(--wr2-violet); box-shadow: 0 0 0 2px rgba(123, 77, 255, 0.28); }
+  .wm-cape.sel { border-color: var(--orange); box-shadow: 0 0 0 2px rgba(var(--orange-rgb), 0.25); }
   .wm-cape-swatch {
     position: absolute; inset: 0;
     background-repeat: no-repeat;
@@ -2104,9 +2045,9 @@
   .wm-cape-check {
     position: absolute; top: 4px; right: 4px;
     width: 14px; height: 14px; border-radius: 50%;
-    background: var(--wr2-violet); color: #fff;
+    background: var(--orange); color: #fff;
     display: none; align-items: center; justify-content: center;
-    font-size: 9px;
+    font-size: var(--fs-min);
   }
   .wm-cape.sel .wm-cape-check { display: flex; }
   .wm-cape-empty {
@@ -2121,7 +2062,7 @@
     .wr2-shell { grid-template-columns: minmax(300px, 1fr) minmax(0, 1.35fr); }
     /* На вузькій сцені кнопка «Скопіювати» лишає текст — круглий знак */
     .wr2-copy-btn .wr2-copy-label { display: none; }
-    .wr2-copy-btn { padding: 10px; border-radius: 50%; }
+    .wr2-copy-btn { padding: 7px 9px; }
   }
   @media (max-width: 900px) {
     .wr2-shell { grid-template-columns: 1fr; grid-template-rows: minmax(340px, 46%) 1fr; }
@@ -2131,7 +2072,11 @@
     .wm-editor { grid-template-columns: 1fr; grid-template-rows: minmax(280px, 42%) 1fr; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .wr2-copy-shine, .wr2-scene-bg { animation: none; }
+    .wr2-copy-shine { animation: none; }
     .wr2-card, .wr2-seg-btn, .wr2-btn { transition: none; }
+  }
+  /* Низьке вікно ноутбука: сцена не розпирає сторінку вище за вікно. */
+  @media (max-height: 760px) {
+    .wr2-scene-card { min-height: 240px; }
   }
 </style>

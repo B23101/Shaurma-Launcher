@@ -55,6 +55,14 @@ func (c *ModrinthClient) fetch(path string, params map[string]string) ([]byte, e
 	return c.fetchJSON("GET", path, params, nil)
 }
 
+// fetchV3 — GET до API v3 (організації та is_owner у командах є лише там;
+// v2 на /organization/* відповідає 404).
+func (c *ModrinthClient) fetchV3(path string, params map[string]string) ([]byte, error) {
+	v3 := *c
+	v3.baseURL = strings.TrimSuffix(c.baseURL, "/v2") + "/v3"
+	return v3.fetchJSON("GET", path, params, nil)
+}
+
 // fetchJSON виконує HTTP-запит (GET/POST/...) до Modrinth API. Для POST
 // body серіалізується в JSON і кладеться в тіло запиту; для GET
 // використовуються params. 429 (rate limit) — повторюємо з паузою до 3
@@ -317,10 +325,12 @@ func (c *ModrinthClient) GetProjectsBatch(ids []string) (map[string]*ModrinthPro
 			return nil, err
 		}
 		var raw []struct {
-			ID      string `json:"id"`
-			Slug    string `json:"slug"`
-			Title   string `json:"title"`
-			IconURL string `json:"icon_url"`
+			ID         string `json:"id"`
+			Slug       string `json:"slug"`
+			Title      string `json:"title"`
+			IconURL    string `json:"icon_url"`
+			ClientSide string `json:"client_side"`
+			ServerSide string `json:"server_side"`
 		}
 		if err := json.Unmarshal(data, &raw); err != nil {
 			return nil, err
@@ -329,7 +339,8 @@ func (c *ModrinthClient) GetProjectsBatch(ids []string) (map[string]*ModrinthPro
 			if r.ID == "" {
 				continue
 			}
-			p := &ModrinthProjectInfo{ID: r.ID, Slug: r.Slug, Title: r.Title, IconURL: r.IconURL}
+			p := &ModrinthProjectInfo{ID: r.ID, Slug: r.Slug, Title: r.Title, IconURL: r.IconURL,
+				ClientSide: r.ClientSide, ServerSide: r.ServerSide}
 			out[r.ID] = p
 			projectCacheMu.Lock()
 			projectCache[r.ID] = p
@@ -389,6 +400,10 @@ type ModrinthProjectInfo struct {
 	Slug    string `json:"slug"`
 	Title   string `json:"title"`
 	IconURL string `json:"iconUrl"`
+	// ClientSide/ServerSide — "required" | "optional" | "unsupported" |
+	// "unknown".
+	ClientSide string `json:"clientSide,omitempty"`
+	ServerSide string `json:"serverSide,omitempty"`
 }
 
 // projectCache — in-memory кеш проєктів (іконки/слаги), щоб не бити API
@@ -415,15 +430,18 @@ func (c *ModrinthClient) GetProject(projectID string) (*ModrinthProjectInfo, err
 		return nil, err
 	}
 	var raw struct {
-		ID      string `json:"id"`
-		Slug    string `json:"slug"`
-		Title   string `json:"title"`
-		IconURL string `json:"icon_url"`
+		ID         string `json:"id"`
+		Slug       string `json:"slug"`
+		Title      string `json:"title"`
+		IconURL    string `json:"icon_url"`
+		ClientSide string `json:"client_side"`
+		ServerSide string `json:"server_side"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, err
 	}
-	p := &ModrinthProjectInfo{ID: raw.ID, Slug: raw.Slug, Title: raw.Title, IconURL: raw.IconURL}
+	p := &ModrinthProjectInfo{ID: raw.ID, Slug: raw.Slug, Title: raw.Title, IconURL: raw.IconURL,
+		ClientSide: raw.ClientSide, ServerSide: raw.ServerSide}
 	projectCacheMu.Lock()
 	projectCache[projectID] = p
 	projectCacheMu.Unlock()
@@ -553,20 +571,22 @@ func (c *ModrinthClient) AllVersionsFor(projectID, gameVersion, loader string) (
 // саме project_id, а не лише slug).
 
 type mrBrowserHit struct {
-	ProjectID    string   `json:"project_id"`
-	Title        string   `json:"title"`
-	Slug         string   `json:"slug"`
-	ProjectType  string   `json:"project_type"`
-	Description  string   `json:"description"`
-	Versions     []string `json:"versions"`
-	Downloads    int64    `json:"downloads"`
-	Followers    int64    `json:"follows"`
-	IconURL      string   `json:"icon_url"`
-	Categories   []string `json:"categories"`
-	Loaders      []string `json:"loaders"`
-	Author       string   `json:"author"`
-	DateCreated  string   `json:"date_created"`
-	DateModified string   `json:"date_modified"`
+	ProjectID   string   `json:"project_id"`
+	Title       string   `json:"title"`
+	Slug        string   `json:"slug"`
+	ProjectType string   `json:"project_type"`
+	Description string   `json:"description"`
+	Versions    []string `json:"versions"`
+	Downloads   int64    `json:"downloads"`
+	Followers   int64    `json:"follows"`
+	IconURL     string   `json:"icon_url"`
+	Categories  []string `json:"categories"`
+	Loaders     []string `json:"loaders"`
+	Author      string   `json:"author"`
+	// Organization — назва організації-власника (порожньо, якщо проєкт особистий).
+	Organization string `json:"organization"`
+	DateCreated  string `json:"date_created"`
+	DateModified string `json:"date_modified"`
 	// featured_gallery — обране зображення галереї (може бути null),
 	// gallery — усі зображення; беремо перше доступне як банер картки.
 	FeaturedGallery string   `json:"featured_gallery"`
@@ -716,7 +736,7 @@ func (c *ModrinthClient) SearchBrowser(p BrowserSearchParams) ([]model.BrowserEn
 			Followers:    h.Followers,
 			IconURL:      h.IconURL,
 			Source:       "modrinth",
-			Author:       h.Author,
+			Author:       firstNonEmptyStr(h.Organization, h.Author),
 			Categories:   h.Categories,
 			Loaders:      h.Loaders,
 			DateCreated:  h.DateCreated,
@@ -916,12 +936,43 @@ func (c *ModrinthClient) GetUserProjects(userID string) ([]ModrinthUserProject, 
 
 // ModrinthOrganization — профіль організації (GET /organization/{id}, v3).
 type ModrinthOrganization struct {
-	ID          string `json:"id"`
-	Slug        string `json:"slug"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	IconURL     string `json:"icon_url"`
-	Created     string `json:"created"`
+	ID          string               `json:"id"`
+	Slug        string               `json:"slug"`
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	IconURL     string               `json:"icon_url"`
+	Created     string               `json:"created"`
+	Members     []ModrinthTeamMember `json:"members"`
+}
+
+// ModrinthTeamMember — учасник команди проєкту чи організації (v3).
+type ModrinthTeamMember struct {
+	User struct {
+		ID        string `json:"id"`
+		Username  string `json:"username"`
+		AvatarURL string `json:"avatar_url"`
+	} `json:"user"`
+	Role     string `json:"role"`
+	IsOwner  bool   `json:"is_owner"`
+	Accepted *bool  `json:"accepted"`
+	Ordering int64  `json:"ordering"`
+}
+
+// GetProjectMembers повертає всіх учасників команди проєкту
+// (GET /v3/project/{id}/members) — як get_team у Modrinth app.
+func (c *ModrinthClient) GetProjectMembers(projectID string) ([]ModrinthTeamMember, error) {
+	if projectID == "" {
+		return nil, fmt.Errorf("порожній projectID")
+	}
+	data, err := c.fetchV3("/project/"+url.PathEscape(projectID)+"/members", nil)
+	if err != nil {
+		return nil, err
+	}
+	var out []ModrinthTeamMember
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // GetOrganizationProfile повертає профіль організації (GET /organization/{id}).
@@ -929,7 +980,7 @@ func (c *ModrinthClient) GetOrganizationProfile(orgID string) (*ModrinthOrganiza
 	if orgID == "" {
 		return nil, fmt.Errorf("порожній orgID")
 	}
-	data, err := c.fetch("/organization/"+url.PathEscape(orgID), nil)
+	data, err := c.fetchV3("/organization/"+url.PathEscape(orgID), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -946,13 +997,44 @@ func (c *ModrinthClient) GetOrganizationProjects(orgID string) ([]ModrinthUserPr
 	if orgID == "" {
 		return nil, fmt.Errorf("порожній orgID")
 	}
-	data, err := c.fetch("/organization/"+url.PathEscape(orgID)+"/projects", nil)
+	// v3 віддає проєкти в іншому форматі (name/summary/project_types), тож
+	// беремо лише ID і дочитуємо самі проєкти через v2 /projects?ids=.
+	data, err := c.fetchV3("/organization/"+url.PathEscape(orgID)+"/projects", nil)
 	if err != nil {
 		return nil, err
 	}
-	var out []ModrinthUserProject
-	if err := json.Unmarshal(data, &out); err != nil {
+	var ids []struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &ids); err != nil {
 		return nil, err
+	}
+	out := []ModrinthUserProject{}
+	for start := 0; start < len(ids); start += 100 {
+		end := min(start+100, len(ids))
+		list := make([]string, 0, end-start)
+		for _, it := range ids[start:end] {
+			list = append(list, it.ID)
+		}
+		raw, _ := json.Marshal(list)
+		page, err := c.fetch("/projects", map[string]string{"ids": string(raw)})
+		if err != nil {
+			return nil, err
+		}
+		var part []struct {
+			ModrinthUserProject
+			Followers int64  `json:"followers"`
+			Team      string `json:"team"`
+		}
+		if err := json.Unmarshal(page, &part); err != nil {
+			return nil, err
+		}
+		for _, p := range part {
+			if p.Follows == 0 {
+				p.Follows = p.Followers
+			}
+			out = append(out, p.ModrinthUserProject)
+		}
 	}
 	return out, nil
 }
@@ -975,13 +1057,15 @@ type ModrinthProjectDetail struct {
 	Categories           []string               `json:"categories"`
 	AdditionalCategories []string               `json:"additional_categories"`
 	Gallery              []ModrinthGalleryImage `json:"gallery"`
-	ClientSide           string                 `json:"client_side"`
-	ServerSide           string                 `json:"server_side"`
-	IssuesURL            string                 `json:"issues_url"`
-	SourceURL            string                 `json:"source_url"`
-	DiscordURL           string                 `json:"discord_url"`
-	WikiURL              string                 `json:"wiki_url"`
-	License              ModrinthLicense        `json:"license"`
+	// Organization — ID організації-власника (порожньо для особистих проєктів).
+	Organization string          `json:"organization"`
+	ClientSide   string          `json:"client_side"`
+	ServerSide   string          `json:"server_side"`
+	IssuesURL    string          `json:"issues_url"`
+	SourceURL    string          `json:"source_url"`
+	DiscordURL   string          `json:"discord_url"`
+	WikiURL      string          `json:"wiki_url"`
+	License      ModrinthLicense `json:"license"`
 	// GameVersions/Loaders — версії гри та лоадери, під які проєкт має
 	// версії (те саме, що ProjectPage веб-апки показує у сайдбарі
 	// «Сумісність»). Раніше їх тут НЕ було — сторінка проєкту Modrinth
@@ -1115,4 +1199,14 @@ func (c *ModrinthClient) GetVersionByHash(sha1hex string) (*mrVersion, error) {
 		return nil, err
 	}
 	return &v, nil
+}
+
+// firstNonEmptyStr повертає перший непорожній рядок.
+func firstNonEmptyStr(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

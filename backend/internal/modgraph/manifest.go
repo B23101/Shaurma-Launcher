@@ -172,6 +172,10 @@ func readArchive(zr *zip.Reader, withNested bool) Manifest {
 		m.Provides = primary.Provides
 	}
 
+	embedPath := ""
+	if m.ModID == "" && len(nested) > 0 {
+		embedPath = embeddedModPath(files)
+	}
 	for _, f := range nested {
 		if f.UncompressedSize64 > maxNestedJarBytes {
 			continue
@@ -190,12 +194,37 @@ func readArchive(zr *zip.Reader, withNested bool) Manifest {
 			continue
 		}
 		im := readArchive(inner, false)
+		// Обгортка без власних метаданих (Sinytra Connector): сам мод — це
+		// вкладений jar з Embedded-Dependencies-Mod у MANIFEST.MF.
+		if m.ModID == "" && im.ModID != "" && embedPath != "" && f.Name == embedPath {
+			m.ModID, m.Name, m.Version, m.Description = im.ModID, im.Name, im.Version, im.Description
+			m.Loader, m.Loaders = im.Loader, im.Loaders
+			m.Dependencies, m.Breaks, m.Provides = im.Dependencies, im.Breaks, im.Provides
+			continue
+		}
 		if im.ModID != "" {
 			m.Embedded = append(m.Embedded, im.ModID)
 		}
 		m.Embedded = append(m.Embedded, im.Provides...)
 	}
 	return m
+}
+
+// embeddedModPath — шлях вкладеного jar-мода з MANIFEST.MF
+// (Embedded-Dependencies-Mod) або "", якщо такого ключа немає.
+func embeddedModPath(files map[string]*zip.File) string {
+	f := files["META-INF/MANIFEST.MF"]
+	if f == nil {
+		return ""
+	}
+	text := strings.ReplaceAll(string(readMember(f)), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\n ", "")
+	for _, line := range strings.Split(text, "\n") {
+		if v, ok := strings.CutPrefix(line, "Embedded-Dependencies-Mod:"); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	return ""
 }
 
 func readMember(f *zip.File) []byte {

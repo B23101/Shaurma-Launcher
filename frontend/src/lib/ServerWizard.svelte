@@ -22,14 +22,21 @@
   //    Minecraft при створенні, а лише при запуску гри.
   //  · «Додати з папки» — вказати наявну теку сервера, лаунчер сам
   //    визначає ядро/версію/порт (DetectServerCore) і реєструє її.
+  import { onMount } from 'svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
   import { t } from './i18n.svelte'
   import VersionPickerModal from './VersionPickerModal.svelte'
+  import UiModal from './UiModal.svelte'
   import AppearanceEditor from './AppearanceEditor.svelte'
   import { packAsset } from './packAssets.svelte'
   import { flexverCompare } from './flexver'
-  import type { MCVersionEntry, NewServerRequest, CoreDetectResult, ServerView, ServerFolderCheck } from './types'
+  import MigrationPanel from './MigrationPanel.svelte'
+  import ServerCard from './servers/components/ServerCard.svelte'
+  import ServerBanner from './servers/components/ServerBanner.svelte'
+  import { ModMigrationFlow } from './modMigrationFlow.svelte'
+  import { serverModTarget } from './modTarget'
+  import type { MCVersionEntry, NewServerRequest, CoreDetectResult, ServerView, ServerFolderCheck, NetworkFolderInfo } from './types'
   import vanillaIcon from '../assets/images/vanilla_icon.png'
   import fabricIcon from '../assets/images/fabric_icon.png'
   import forgeIcon from '../assets/images/forge_icon.png'
@@ -37,7 +44,6 @@
   import quiltIcon from '../assets/images/quilt_icon.png'
   import papermcIcon from '../assets/images/papermc.svg'
   import purpurIcon from '../assets/images/purpur.png'
-  import velocityIcon from '../assets/images/velocity.webp'
 
   // onCreated отримує ID сервера і launchNow: сторінка сервера, побачивши
   // launchNow=true, одразу викликає StartServer сама (щоб install-прогрес
@@ -256,19 +262,37 @@
   let folderInput = $state('')
   let folderCheck = $state<ServerFolderCheck | null>(null)
   let folderChecking = $state(false)
+  // autoFolder — вільний ID, виведений з назви (коли поле ID порожнє). Якщо ID з
+  // назви зайнятий, додаємо « 2», « 3»… — створення не впирається в помилку.
+  let autoFolder = $state('')
   let folderSeq = 0
   $effect(() => {
-    const probe = (folderInput.trim() || effectiveName).trim()
+    const typed = folderInput.trim()
+    const probe = (typed || effectiveName).trim()
     // Порожньо і назви немає — питати нічого (бекенд теж віддасть дефолт).
-    if (!probe) { folderCheck = null; return }
+    if (!probe) { folderCheck = null; autoFolder = ''; return }
     const seq = ++folderSeq
     folderChecking = true
     // Невелика затримка: перевірка на кожну літеру — це зайвий виклик
     // бекенду (сканування теки серверів) на кожне натискання клавіші.
-    const timer = setTimeout(() => {
-      App.CheckServerFolder(folderInput.trim())
-        .then(res => { if (seq === folderSeq) { folderCheck = res; folderChecking = false } })
-        .catch(() => { if (seq === folderSeq) { folderCheck = null; folderChecking = false } })
+    const timer = setTimeout(async () => {
+      try {
+        let res = await App.CheckServerFolder(probe)
+        if (!typed) {
+          const base = res.folder || probe
+          for (let n = 2; !res.free && n <= 99; n++) {
+            if (seq !== folderSeq) return
+            res = await App.CheckServerFolder(`${base} ${n}`)
+          }
+          if (seq !== folderSeq) return
+          autoFolder = res.free ? res.folder : ''
+        } else if (seq === folderSeq) {
+          autoFolder = ''
+        }
+        if (seq === folderSeq) { folderCheck = res; folderChecking = false }
+      } catch {
+        if (seq === folderSeq) { folderCheck = null; autoFolder = ''; folderChecking = false }
+      }
     }, 220)
     return () => { clearTimeout(timer); folderChecking = false }
   })
@@ -280,10 +304,13 @@
   // наступний вільний і ми покажемо це в «Властивості»).
   let port = $state(serverType === 'proxy' ? 25577 : 0)
 
-  const ramMin = 1024
-  const ramMax = 16384
-  const ramStep = 256
+  // Проксі не тримає світів: свої межі RAM і 512 МБ за замовчуванням
+  // (рекомендація Velocity), а не 1–16 ГБ ігрового сервера.
+  const ramMin = $derived(serverType === 'proxy' ? 256 : 1024)
+  const ramMax = $derived(serverType === 'proxy' ? 4096 : 16384)
+  const ramStep = $derived(serverType === 'proxy' ? 128 : 256)
   let ramMB = $state(2048)
+  $effect(() => { ramMB = serverType === 'proxy' ? 512 : 2048 })
   let ramDragging = $state(false)
   const ramPct = $derived(((ramMB - ramMin) / (ramMax - ramMin)) * 100)
   let ramWarn = $state('')
@@ -345,6 +372,16 @@
   // запуску — install-прогрес і старт java йдуть суцільним потоком.
   let launchAfterCreate = $state(true)
 
+  // ── Моди з іншої збірки чи сервера (як у створенні збірки) ──
+  // Той самий ModMigrationFlow і та сама панель, що в CreatePackPage. Ціль
+  // "srv:" — сервер, що створюється: бекенд позначає сторону кожного мода,
+  // клієнтські не переносяться, невизначені обирає користувач.
+  const modCore = $derived(serverType === 'mc' && selectedCore.group === 'mod')
+  const migration = new ModMigrationFlow({ target: () => serverModTarget(''), mcVersion: () => mcVersion, loader: () => core })
+  let migrationExpanded = $state(false)
+  migration.loadPacks('')
+  onMount(() => migration.listen())
+
   // ── Створення ──
   async function submitCreate() {
     if (serverType === 'mc') {
@@ -367,7 +404,7 @@
         loaderVer: serverType === 'proxy' ? coreVersion : (needsCoreVersion ? coreVersion : ''),
         name: effectiveName,
         // Порожній ID = бекенд виведе теку з назви (SanitizeServerFolder).
-        id: folderInput.trim(),
+        id: folderInput.trim() || autoFolder,
         dir: '',
         ramMB,
         port,
@@ -377,6 +414,16 @@
         programArgs: '',
       }
       const srv = await App.CreateServer(req)
+      // Обрані моди копіюємо ДО першого запуску (синхронно): інакше сервер
+      // стартував би з порожньою mods/, поки йде копіювання.
+      if (modCore && migration.selectedItems.length > 0) {
+        try {
+          const res = await App.MigrateMods(serverModTarget(srv.id), migration.selectedItems)
+          if (res.failed.length > 0) toast(t('mods.migrateDoneWithErrors', { n: res.migrated.length, total: migration.selectedItems.length }), 'error')
+        } catch (e: any) {
+          toast(t('error.withMessage', { message: e }), 'error')
+        }
+      }
       // Проксі — «платформа»: одразу приєднуємо обрані сервери в мережу
       // (NetworkSave пише network.json + velocity.toml і «клеїть» forwarding).
       let attached = 0
@@ -387,11 +434,9 @@
           const members = (view.members ?? []).map((m: any) => {
             const on = attachSelected.has(m.serverId)
             if (on) order += 1
-            return {
-              serverId: m.serverId, name: m.name, core: m.core, mcVersion: m.mcVersion,
-              port: m.port, running: m.running,
-              inNetwork: on, order: on ? order : m.order, delaySec: on ? 0 : m.delaySec,
-            }
+            // Решта ролей (ім'я в мережі, вхід, автозапуск) — з типових
+            // значень, які вже підставив NetworkGetView.
+            return { ...m, inNetwork: on, order: on ? order : m.order }
           })
           await App.NetworkSave(srv.id, members)
           attached = order
@@ -465,13 +510,38 @@
     } catch { /* вигляд застосується наступного разу в налаштуваннях */ }
   }
 
+  // ── Тека мережі: проксі й сервери в підтеках (CYBERCLUB/velocity, /hub…) ──
+  // Додаються всі разом, мережа береться з velocity.toml проксі.
+  let netFolder = $state<NetworkFolderInfo | null>(null)
+  let importingNet = $state(false)
+  const isNetworkFolder = $derived(!!netFolder && netFolder.hasProxy && netFolder.servers.length >= 2)
+  async function detectNetworkFolder() {
+    netFolder = null
+    if (!folderPath) return
+    try { netFolder = await App.DetectNetworkFolder(folderPath) } catch { netFolder = null }
+  }
+  async function importNetwork() {
+    if (!netFolder || importingNet) return
+    importingNet = true
+    try {
+      const res = await App.ImportNetworkFolder(netFolder.dir)
+      for (const e of res.errors ?? []) toast(e, 'error')
+      toast(t('servers.wizard.netImported', { n: res.added }), 'success')
+      onCreated(res.proxyId, false)
+    } catch (e: any) {
+      toast(String(e), 'error')
+    } finally {
+      importingNet = false
+    }
+  }
+
   async function pickFolder() {
     try {
       const p = await App.BrowseFolder()
       if (!p) return
       folderPath = p
       if (!folderName) folderName = p.split(/[\\/]/).pop() ?? ''
-      await runDetect()
+      await Promise.all([runDetect(), detectNetworkFolder()])
     } catch { /* діалог скасовано */ }
   }
 
@@ -522,12 +592,6 @@
   }
 
   // ── Прев'ю ──
-  function previewIconMeta() {
-    if (tab === 'folder') return { icon: undefined as string | undefined, ti: 'ti-server-2', color: folderColor || '#8b8b8b' }
-    if (serverType === 'proxy') return { icon: velocityIcon as string | undefined, ti: '', color: '#3b82f6' }
-    const c = selectedCore
-    return { icon: c.icon, ti: c.ti, color: c.color }
-  }
   function previewLabel(): string {
     if (tab === 'folder') return folderName || 'Сервер із папки'
     if (serverType === 'proxy') return effectiveName || 'Velocity'
@@ -538,25 +602,38 @@
     if (serverType === 'proxy') return 'Velocity · проксі'
     return `${selectedCore.label}${mcVersion ? ' · ' + mcVersion : ''}`
   }
+
+  // Синтетичний ServerView для превʼю: ті самі компоненти, що показують готовий сервер.
+  const previewSrv = $derived<ServerView>({
+    id: 'preview',
+    name: previewLabel(),
+    dir: '',
+    core: tab === 'folder' ? (detected?.core || '') : serverType === 'proxy' ? 'velocity' : core,
+    coreLabel: '',
+    mcVersion: tab === 'folder' || serverType === 'proxy' ? '' : mcVersion,
+    loaderVer: tab !== 'folder' && (serverType === 'proxy' || needsCoreVersion) ? coreVersion : '',
+    javaMajor: 0, // підбирається бекендом при створенні — до того не показуємо
+    javaInstalled: false,
+    coreInstalled: tab === 'folder',
+    ramMB: tab === 'folder' ? folderRamMB : ramMB,
+    port: tab !== 'folder' && serverType === 'proxy' ? port : 0,
+    status: 'stopped',
+    hasWorlds: false, hasMods: false, hasPlugins: false,
+    createdAt: 0,
+    color: tab === 'folder' ? folderColor : undefined,
+    icon: tab === 'folder' && folderIcon ? folderIcon : undefined,
+    launcherIconData: tab === 'folder' && folderIconPreview ? folderIconPreview : undefined,
+    autoBackup: { enabled: false, intervalMin: 60, keepCount: 10, keepDays: 7, maxPerDay: 0, worldDir: '' },
+  } as ServerView)
 </script>
 
 {#snippet previewBlock()}
-  {@const pv = previewIconMeta()}
   <div>
     <div class="section-label" style="margin:2px 2px 8px;display:block">ПРЕВʼЮ</div>
-    <div class="inst-tile pv-tile" style="--pcol:{pv.color}">
-      <div class="it-ic has-icon" style="--pcol:{pv.color}">
-        {#if pv.icon}
-          <img src={pv.icon} alt="" />
-        {:else}
-          <i class="ti {pv.ti}" style="color:{pv.color}"></i>
-        {/if}
-      </div>
-      <div class="it-info">
-        <div class="it-name">{previewLabel()}</div>
-        <div class="it-sub"><span>{previewSub()}</span></div>
-      </div>
-      <div class="it-st st-check"><i class="ti ti-download"></i></div>
+    <!-- Справжні картка бібліотеки й банер сторінки сервера (а не окрема «імітація»):
+         превʼю завжди збігається з тим, що з'явиться після створення. Лише для перегляду — без кліків. -->
+    <div class="pv-real" aria-hidden="true" inert>
+      <ServerCard srv={previewSrv} />
     </div>
     <div class="rl-sub" style="margin-top:10px">
       <i class="ti ti-info-circle"></i>
@@ -570,23 +647,8 @@
         {#if launchAfterCreate} Після створення сервер одразу почне встановлення й стартує сам.{/if}
       {/if}
     </div>
-    <div
-      class="inst-banner"
-      style="margin-top:14px;height:110px"
-      style:background={`linear-gradient(135deg, color-mix(in srgb, ${pv.color} 55%, #241a10), color-mix(in srgb, ${pv.color} 22%, #120c06))`}
-    >
-      <div class="ib-title">
-        <span class="ib-ic">
-          {#if pv.icon}
-            <img src={pv.icon} alt="" />
-          {:else}
-            <i class="ti {pv.ti}" style="color:#fff"></i>
-          {/if}
-        </span>
-        <div class="ib-meta">
-          <div class="ib-name">{previewLabel()}</div>
-        </div>
-      </div>
+    <div class="pv-real" style="margin-top:14px" aria-hidden="true" inert>
+      <ServerBanner srv={previewSrv} hideToolbar />
     </div>
   </div>
 {/snippet}
@@ -745,6 +807,12 @@
           </div>
         </div>
         {/if}
+
+        <!-- МОДИ З ІНШОЇ ЗБІРКИ ЧИ СЕРВЕРА (лише модові ядра) — та сама
+             панель, що в створенні збірки -->
+        {#if modCore && mcVersion}
+          <MigrationPanel flow={migration} bind:expanded={migrationExpanded} {submitting} />
+        {/if}
       {/if}
 
       <!-- ПРИЄДНАННЯ СЕРВЕРІВ (тільки проксі): Velocity-сторінка — це
@@ -809,7 +877,7 @@
           <div class="rl-name">ID сервера (тека)</div>
           <input
             class="input"
-            placeholder={suggestedName || 'id-сервера'}
+            placeholder={autoFolder || suggestedName || 'id-сервера'}
             bind:value={folderInput}
           />
           <div class="field-hint" style="margin-top:6px">
@@ -829,12 +897,12 @@
             {/if}
           </div>
         </div>
-        <div class="field-hint" style="margin-top:6px">
+        <div class="card-note">
           <i class="ti ti-info-circle"></i>
-          {t('servers.wizard.portHint')}
+          <span>{t('servers.wizard.portHint')}</span>
         </div>
         {#if serverType === 'proxy'}
-          <div class="field-hint" style="margin-top:6px"><i class="ti ti-info-circle"></i> {t('servers.wizard.velocityPortHint')}</div>
+          <div class="card-note"><i class="ti ti-info-circle"></i><span>{t('servers.wizard.velocityPortHint')}</span></div>
         {/if}
       </div>
 
@@ -896,7 +964,31 @@
           </div>
         </div>
 
-        {#if detecting}
+        {#if isNetworkFolder && netFolder}
+          <!-- Тека мережі: проксі + сервери в підтеках — одним кроком -->
+          <div class="row col">
+            <div class="detected-pack">
+              <i class="ti ti-topology-star-3 ok" style="color:var(--green)"></i>
+              <div>
+                <div class="dp-name">{t('servers.wizard.netFound', { n: netFolder.servers.length })}</div>
+                {#each netFolder.servers as s (s.dir)}
+                  <div class="rl-sub" style="margin-top:4px">
+                    <i class="ti {s.core === 'velocity' ? 'ti-router' : 'ti-server-2'}"></i>
+                    <b>{s.name}</b> · {s.core}{#if s.mcVersion} {s.mcVersion}{/if} · :{s.port}
+                    {#if s.known} · {t('servers.wizard.netKnown')}{/if}
+                    {#if s.skip}<span style="color:var(--yellow)"> · {s.skip}</span>{/if}
+                  </div>
+                {/each}
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-label"><div class="rl-name">{t('servers.wizard.netImport')}</div><div class="rl-sub">{t('servers.wizard.netImportHint')}</div></div>
+            <button class="btn btn-primary" onclick={importNetwork} disabled={importingNet}>
+              {#if importingNet}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-topology-star-3"></i>{/if} {t('servers.wizard.netImportBtn')}
+            </button>
+          </div>
+        {:else if detecting}
           <div class="row"><div class="rl-sub"><i class="ti ti-loader spin"></i> Визначення ядра…</div></div>
         {:else if detectError}
           <div class="row"><div class="rl-sub" style="color:var(--red)">{detectError}</div></div>
@@ -989,30 +1081,18 @@
 <!-- EULA-модалка: зʼявляється при натисканні «Створити сервер» / «Додати
      сервер», якщо EULA ще не прийнята — не окремий крок-картка. -->
 {#if eulaModal || folderEulaModal}
-  <div
-    class="modal-overlay"
-    role="presentation"
-    onclick={(e) => { if (e.target === e.currentTarget) { eulaModal = false; folderEulaModal = false } }}
-    onkeydown={(e) => { if (e.key === 'Escape') { eulaModal = false; folderEulaModal = false } }}
-  >
-    <div class="modal" style="max-width:460px" role="dialog" aria-modal="true" aria-label="Угода Minecraft EULA" tabindex="-1" onclick={(e) => e.stopPropagation()}>
-      <div class="modal-head">
-        <h3><i class="ti ti-file-text" style="color:var(--yellow);margin-right:8px"></i>Угода Minecraft EULA</h3>
-        <button class="md-close" onclick={() => { eulaModal = false; folderEulaModal = false }} aria-label="Закрити"><i class="ti ti-x"></i></button>
-      </div>
-      <div class="modal-body">
-        <div style="font-size:12.5px;line-height:1.6;color:var(--text)">
-          Щоб запускати сервер Minecraft, ти маєш прийняти
-          <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener" style="color:var(--blue)">End User License Agreement</a>
-          від Mojang. Без прийняття сервер не запуститься.
-        </div>
-      </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" onclick={() => { eulaModal = false; folderEulaModal = false }}>Скасувати</button>
-        <button class="btn btn-primary" onclick={eulaConfirm}><i class="ti ti-check"></i> Я приймаю EULA</button>
-      </div>
+  <UiModal open={true} onclose={() => { eulaModal = false; folderEulaModal = false }} icon="ti-file-text" color="var(--yellow)"
+           width="460px" title="Угода Minecraft EULA">
+    <div style="font-size:12.5px;line-height:1.6;color:var(--text)">
+      Щоб запускати сервер Minecraft, ти маєш прийняти
+      <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener" style="color:var(--blue)">End User License Agreement</a>
+      від Mojang. Без прийняття сервер не запуститься.
     </div>
-  </div>
+    {#snippet footer()}
+      <button class="btn btn-ghost" onclick={() => { eulaModal = false; folderEulaModal = false }}>Скасувати</button>
+      <button class="btn btn-primary" onclick={eulaConfirm}><i class="ti ti-check"></i> Я приймаю EULA</button>
+    {/snippet}
+  </UiModal>
 {/if}
 
 <style>
@@ -1034,7 +1114,7 @@
   .type-seg-btn.sel:has(i.ti-router) { border-color: rgba(59,130,246,.55); background: color-mix(in srgb, #3b82f6 9%, var(--bg-card)); }
   .type-seg-btn > i { font-size: 22px; }
   .ts-name { font: 700 12.5px/1 var(--font-ui); color: var(--text); }
-  .ts-sub { font: 400 10.5px/1.25 var(--font-ui); color: var(--text-mute); }
+  .ts-sub { font: 400 var(--fs-min)/1.25 var(--font-ui); color: var(--text-mute); }
 
   /* Приєднання серверів до мережі при створенні проксі */
   .attach-list { display: flex; flex-direction: column; gap: 4px; max-height: 200px; overflow-y: auto; }
@@ -1054,6 +1134,6 @@
   .attach-ic img { width: 100%; height: 100%; object-fit: contain; }
   .attach-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .attach-name { font: 600 11.5px/1.2 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .attach-sub { font: 400 10px/1.2 var(--font-mono); color: var(--text-mute); }
+  .attach-sub { font: 400 var(--fs-min)/1.2 var(--font-mono); color: var(--text-mute); }
   .attach-row input[type=checkbox] { accent-color: var(--acol); width: 15px; height: 15px; flex-shrink: 0; }
 </style>

@@ -5,7 +5,10 @@
   // залежать інші (Fabric API, Sodium…), нижче — те, що на них спирається.
   // Вузол — лише іконка мода. Наведення показує назву, версію, опис і смужки
   // кольорів модів, від яких він залежить (колір береться з іконки — його
-  // рахує бекенд). Клік по моду — що зламається, якщо його прибрати.
+  // рахує бекенд). Клік по моду — його сторінка в Браузері контенту, правий
+  // клік — що зламається, якщо його прибрати. Полотно тягається мишею.
+  // Fabric-моди, які у Forge/NeoForge-збірці запускає Sinytra Connector,
+  // позначені окремою міткою.
   // Відсутні обов'язкові залежності показані «привидами» (пунктирне коло) —
   // їх можна одразу встановити/увімкнути в блоці нижче.
   import UiModal from './UiModal.svelte'
@@ -14,7 +17,7 @@
   import { App } from './wails'
   import { toast } from './toast.svelte'
   import { modIcon } from './modIcon'
-  import type { ModDependencyGraph, ModGraphNode, ModGraphMissing, ModRemovalImpact } from './types'
+  import type { ModDependencyGraph, ModGraphNode, ModGraphMissing, ModRemovalImpact, ModEntry } from './types'
 
   let {
     packId,
@@ -23,7 +26,11 @@
     loader = '',
     onclose = () => {},
     // Викликається, коли набір модів змінився (встановили/увімкнули) — батько перечитує список.
-    onchanged = () => {}
+    onchanged = () => {},
+    // Відкрити сторінку мода в Браузері контенту; null — вузли не клікабельні.
+    onOpenModPage = null as null | ((source: string, projectId: string) => void),
+    // Моди збірки з уже відомим source/projectId (з перевірки оновлень).
+    mods = [] as ModEntry[]
   } = $props<{
     packId: string
     packName?: string
@@ -31,6 +38,8 @@
     loader?: string
     onclose?: () => void
     onchanged?: () => void
+    onOpenModPage?: null | ((source: string, projectId: string) => void)
+    mods?: ModEntry[]
   }>()
 
   let graph = $state<ModDependencyGraph | null>(null)
@@ -59,6 +68,7 @@
   const missing = $derived(graph?.missing ?? [])
   const cycles = $derived(graph?.cycles ?? [])
   const required = $derived(missing.filter((m: ModGraphMissing) => !m.optional))
+  const viaCount = $derived(nodes.filter((n: ModGraphNode) => n.viaConnector).length)
   const optional = $derived(missing.filter((m: ModGraphMissing) => m.optional))
   const byId = $derived(new Map(nodes.map((n: ModGraphNode) => [n.id, n])))
   const nameOf = (id: string) => byId.get(id)?.displayName || id
@@ -75,6 +85,7 @@
     enabled: boolean
     corrupted: boolean
     ghost: boolean            // залежності немає в збірці взагалі
+    via: boolean              // Fabric-мод, що працює через Sinytra Connector
     color: string
     dependents: number
     level: number
@@ -109,7 +120,7 @@
       tn.set(key, {
         key, id: n.id, name: n.displayName || n.id, version: n.version, file: n.file,
         desc: n.description ?? '', loader: n.loader, enabled: n.enabled, corrupted: n.corrupted,
-        ghost: false, color: n.color || fallbackColor(n.id), dependents: n.dependents,
+        ghost: false, via: !!n.viaConnector, color: n.color || fallbackColor(n.id), dependents: n.dependents,
         level: 0, x: 0, y: 0,
       })
     }
@@ -135,7 +146,7 @@
         if (!tn.has(target)) {
           tn.set(target, {
             key: target, id: m.id, name: m.id, version: '', file: '', desc: '', loader: '',
-            enabled: false, corrupted: false, ghost: true, color: fallbackColor(m.id),
+            enabled: false, corrupted: false, ghost: true, via: false, color: fallbackColor(m.id),
             dependents: m.requiredByAll?.length ?? 1, level: 0, x: 0, y: 0,
           })
         }
@@ -286,6 +297,72 @@
     }
   }
 
+  // Клік по вузлу — сторінка мода. source/projectId беремо з уже відомих
+  // (перевірка оновлень), інакше бекенд шукає мод на Modrinth/CurseForge.
+  let opening = $state('')
+  async function openMod(n: TNode) {
+    if (n.ghost || !onOpenModPage || opening) return
+    hoverKey = ''
+    const known = mods.find((m: ModEntry) => m.fileName === n.file)
+    if (known?.projectId && known.source && known.source !== 'unknown') {
+      onOpenModPage(known.source, known.projectId)
+      onclose()
+      return
+    }
+    opening = n.key
+    try {
+      const ref = await App.GetModProjectRef(packId, n.file, mcVersion, loader)
+      if (!ref?.projectId || !ref.source) {
+        toast(t('modgraph.pageNotFound', { name: n.name }), 'error')
+        return
+      }
+      onOpenModPage(ref.source, ref.projectId)
+      onclose()
+    } catch (e: any) {
+      toast(String(e?.message ?? e), 'error')
+    } finally {
+      opening = ''
+    }
+  }
+
+  // ── Перетягування полотна ─────────────────────────────────────────────
+  // Затиснута ліва кнопка зсуває прокрутку полотна. Якщо мишу зсунули більше
+  // ніж на кілька пікселів, наступний клік (по вузлу) ігнорується.
+  let canvasEl = $state<HTMLElement | undefined>()
+  let panning = $state(false)
+  let pan: { id: number; x: number; y: number; sl: number; st: number; moved: boolean } | null = null
+  let swallowClick = false
+  function panStart(ev: PointerEvent) {
+    if (ev.button !== 0 || !canvasEl) return
+    pan = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, sl: canvasEl.scrollLeft, st: canvasEl.scrollTop, moved: false }
+  }
+  function panMove(ev: PointerEvent) {
+    if (!pan || ev.pointerId !== pan.id || !canvasEl) return
+    const dx = ev.clientX - pan.x, dy = ev.clientY - pan.y
+    if (!pan.moved && Math.hypot(dx, dy) < 5) return
+    if (!pan.moved) {
+      pan.moved = true
+      panning = true
+      hoverKey = ''
+      canvasEl.setPointerCapture(ev.pointerId)
+    }
+    canvasEl.scrollLeft = pan.sl - dx
+    canvasEl.scrollTop = pan.st - dy
+  }
+  function panEnd(ev: PointerEvent) {
+    if (!pan || ev.pointerId !== pan.id) return
+    if (pan.moved) swallowClick = true
+    if (canvasEl?.hasPointerCapture(ev.pointerId)) canvasEl.releasePointerCapture(ev.pointerId)
+    pan = null
+    panning = false
+  }
+  function canvasClick(ev: MouseEvent) {
+    if (!swallowClick) return
+    swallowClick = false
+    ev.stopPropagation()
+    ev.preventDefault()
+  }
+
   async function showImpact(n: TNode) {
     if (n.ghost) return
     hoverKey = ''
@@ -324,6 +401,10 @@
 
       {#if required.length === 0 && cycles.length === 0}
         <div class="mg-ok"><i class="ti ti-circle-check"></i> {t('modgraph.allGood')}</div>
+      {/if}
+
+      {#if graph?.connector}
+        <div class="mg-conn"><i class="ti ti-plug-connected"></i> {t('modgraph.connector', { n: viaCount })}</div>
       {/if}
 
       {#if required.length}
@@ -371,7 +452,10 @@
         {#if model.treeNodes.length === 0}
           <div class="mg-empty mg-empty-sm"><i class="ti ti-unlink"></i> {t('modgraph.noLinks')}</div>
         {:else}
-          <div class="mg-canvas">
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div class="mg-canvas" class:panning bind:this={canvasEl}
+               onpointerdown={panStart} onpointermove={panMove} onpointerup={panEnd} onpointercancel={panEnd}
+               onclickcapture={canvasClick}>
             <div class="mg-stage" style="width:{model.W}px;height:{model.H}px">
               <svg class="mg-edges" width={model.W} height={model.H} viewBox="0 0 {model.W} {model.H}" aria-hidden="true">
                 <defs>
@@ -397,11 +481,14 @@
                         style="left:{n.x - R}px;top:{n.y - R}px;--c:{n.color}"
                         onmouseenter={(ev) => enter(n, ev)} onmouseleave={leave}
                         onfocus={(ev) => enter(n, ev)} onblur={leave}
-                        onclick={() => showImpact(n)} aria-label={n.name}>
+                        onclick={() => openMod(n)} oncontextmenu={(ev) => { ev.preventDefault(); showImpact(n) }}
+                        aria-label={n.name}>
                   {@render ico(n, R * 2)}
-                  {#if n.ghost}<i class="mg-badge ti ti-question-mark"></i>
+                  {#if opening === n.key}<i class="mg-badge busy ti ti-loader spin"></i>
+                  {:else if n.ghost}<i class="mg-badge ti ti-question-mark"></i>
                   {:else if !n.enabled}<i class="mg-badge off ti ti-player-pause"></i>
-                  {:else if n.corrupted}<i class="mg-badge bad ti ti-alert-triangle"></i>{/if}
+                  {:else if n.corrupted}<i class="mg-badge bad ti ti-alert-triangle"></i>
+                  {:else if n.via}<i class="mg-badge conn ti ti-plug-connected"></i>{/if}
                 </button>
               {/each}
             </div>
@@ -411,6 +498,7 @@
             <span><i class="mg-ln"></i> {t('modgraph.legend.req')}</span>
             <span><i class="mg-ln dash"></i> {t('modgraph.legend.opt')}</span>
             <span><i class="mg-ln red"></i> {t('modgraph.legend.miss')}</span>
+            {#if graph?.connector}<span><i class="ti ti-plug-connected mg-conn-ico"></i> {t('modgraph.viaConnector')}</span>{/if}
             <span class="mg-legend-hint"><i class="ti ti-pointer"></i> {t('modgraph.legend.hint')}</span>
           </div>
         {/if}
@@ -426,9 +514,12 @@
                 <button class="mg-node sm" class:off={!n.enabled} class:bad={n.corrupted} class:dim={dimmed(n)} class:hit={!!q && matches(n)}
                         style="--c:{n.color}"
                         onmouseenter={(ev) => enter(n, ev)} onmouseleave={leave} onfocus={(ev) => enter(n, ev)} onblur={leave}
-                        onclick={() => showImpact(n)} aria-label={n.name}>
+                        onclick={() => openMod(n)} oncontextmenu={(ev) => { ev.preventDefault(); showImpact(n) }}
+                        aria-label={n.name}>
                   {@render ico(n, 36)}
-                  {#if !n.enabled}<i class="mg-badge off ti ti-player-pause"></i>{/if}
+                  {#if opening === n.key}<i class="mg-badge busy ti ti-loader spin"></i>
+                  {:else if !n.enabled}<i class="mg-badge off ti ti-player-pause"></i>
+                  {:else if n.via}<i class="mg-badge conn ti ti-plug-connected"></i>{/if}
                 </button>
               {/each}
             </div>
@@ -473,6 +564,7 @@
           <div class="mgt-sub">
             {#if hovered.version}<span class="mono">{hovered.version}</span>{/if}
             {#if hovered.loader}<span class="mgt-tag">{hovered.loader}</span>{/if}
+            {#if hovered.via}<span class="mgt-tag conn">{t('modgraph.viaConnector')}</span>{/if}
             {#if hovered.ghost}<span class="mgt-tag bad">{t('modgraph.notInstalled')}</span>
             {:else if !hovered.enabled}<span class="mgt-tag warn">{t('modgraph.off')}</span>{/if}
             {#if hovered.corrupted}<span class="mgt-tag bad">{t('modgraph.corrupted')}</span>{/if}
@@ -545,6 +637,8 @@
   .mg-empty i { font-size: 28px; }
   .mg-bad { color: var(--red); }
   .mg-ok { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--green); }
+  .mg-conn { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: #0ea5e9; }
+  .mg-conn-ico { color: #0ea5e9; font-size: 14px; }
   .mg-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
   .mg-stats div { border: 1px solid var(--border); border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; }
   .mg-stats b { font-size: 20px; font-family: var(--font-mono); }
@@ -584,6 +678,9 @@
       radial-gradient(circle at 1px 1px, color-mix(in srgb, var(--text-mute) 22%, transparent) 1px, transparent 0) 0 0 / 22px 22px,
       color-mix(in srgb, var(--bg) 70%, transparent);
   }
+  .mg-canvas { cursor: grab; touch-action: none; }
+  .mg-canvas.panning { cursor: grabbing; user-select: none; }
+  .mg-canvas.panning .mg-node { cursor: grabbing; }
   .mg-stage { position: relative; margin: 0 auto; min-width: 100%; }
   .mg-edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
   .mg-edge { stroke-width: 2; stroke-linecap: round; opacity: .42; transition: opacity .18s, stroke-width .18s; }
@@ -625,6 +722,8 @@
   }
   .mg-badge.off { background: var(--orange); }
   .mg-badge.bad { background: var(--red); }
+  .mg-badge.conn { background: #0ea5e9; }
+  .mg-badge.busy { background: var(--violet-l); }
 
   .mg-legend { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; font-size: 11.5px; color: var(--text-mute); }
   .mg-legend > span { display: inline-flex; align-items: center; gap: 7px; }
@@ -654,19 +753,20 @@
   :global(.mgt-title) { min-width: 0; }
   :global(.mgt-name) { font-size: 14px; font-weight: 700; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.mgt-sub) { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin-top: 3px; color: var(--text-mute); font-size: 11px; }
-  :global(.mgt-tag) { font-size: 10px; padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.08); color: var(--text-mute); }
+  :global(.mgt-tag) { font-size: var(--fs-min); padding: 1px 6px; border-radius: 5px; background: rgba(255,255,255,.08); color: var(--text-mute); }
   :global(.mgt-tag.bad) { background: rgba(239,68,68,.16); color: var(--red); }
   :global(.mgt-tag.warn) { background: rgba(255,138,0,.16); color: var(--orange); }
+  :global(.mgt-tag.conn) { background: rgba(14,165,233,.16); color: #0ea5e9; }
   :global(.mgt-desc) { padding: 6px 14px 0; color: var(--text-mute); line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 4; line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-  :global(.mgt-file) { padding: 6px 14px 0; color: var(--text-dim); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  :global(.mgt-lbl) { margin: 10px 14px 4px; font-size: 10px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-mute); }
+  :global(.mgt-file) { padding: 6px 14px 0; color: var(--text-dim); font-size: var(--fs-min); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.mgt-lbl) { margin: 10px 14px 4px; font-size: var(--fs-min); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--text-mute); }
   :global(.mgt-lbl b) { color: var(--text); font-family: var(--font-mono); margin-left: 3px; }
   :global(.mgt-row) { display: flex; align-items: center; gap: 8px; padding: 3px 14px; }
   :global(.mgt-row.dim) { opacity: .65; }
   :global(.mgt-bar) { width: 4px; align-self: stretch; min-height: 20px; border-radius: 3px; background: var(--c); flex: none; }
   :global(.mgt-bar.dash) { background: repeating-linear-gradient(180deg, var(--c) 0 4px, transparent 4px 7px); }
   :global(.mgt-rn) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  :global(.mgt-cs) { font-size: 10px; color: var(--text-dim); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.mgt-cs) { font-size: var(--fs-min); color: var(--text-dim); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(.mgt-more) { padding: 3px 14px; color: var(--text-dim); font-size: 11px; }
   :global(.mgt .mono) { font-family: var(--font-mono); }
   :global(.mgt .mg-ico) { background: linear-gradient(145deg, color-mix(in srgb, var(--c) 38%, #14141a), color-mix(in srgb, var(--c) 14%, #14141a)); }

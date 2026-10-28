@@ -119,7 +119,7 @@
   .mp-ic img { width: 100%; height: 100%; object-fit: cover; }
   .mp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .mp-name { font: 700 12.5px/1.25 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .mp-sub { font: 500 10.5px/1.2 var(--font-ui); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-sub { font: 500 var(--fs-min)/1.2 var(--font-ui); color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mp-sub i { font-size: 10px; }
   .mp-send { flex: 0 0 auto; color: var(--orange); opacity: 0; transform: translateX(-6px); transition: opacity .14s, transform .18s cubic-bezier(.2,1.2,.4,1); }
   .mp-row:hover .mp-send { opacity: 1; transform: none; }

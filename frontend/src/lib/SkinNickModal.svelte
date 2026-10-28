@@ -1,12 +1,12 @@
 <script lang="ts">
-  import Portal from './Portal.svelte'
+  import UiModal from './UiModal.svelte'
+  import './settings/settings.css'
   // Окреме модальне вікно «придумайте нік» для скін-акаунта. Відкривається
   // батьком ЛИШЕ після Google-входу, якщо в акаунта ще нема ніка на сервері.
   // Нік валідується тими самими правилами, що й офлайн-нік (lib/validation).
   import { App } from './wails'
   import { t } from './i18n.svelte'
   import { pirateNicknameError, sanitizeNick } from './validation'
-  import steveHead from '../assets/images/steve-head.png'
 
   let {
     open = false,
@@ -78,60 +78,43 @@
   })
 </script>
 
-{#if open}
-  <Portal>
-    <!-- Клік поза вікном НЕ закриває його: щоб випадково не втратити крок
-         входу. Вийти можна лише кнопкою «Скасувати». -->
-    <div class="modal-overlay">
-      <div class="modal" style="max-width:420px">
-        <div class="modal-head">
-          <div class="nick-av"><img src={steveHead} alt=""/></div>
-          <h3>{t('skinNickModalTitle')}</h3>
-        </div>
-        <div class="modal-body">
-          <div class="nick-hint"><i class="ti ti-brand-google"></i>
-            <span>{t(identity === 'microsoft' ? 'skinNickModalHintMs' : 'skinNickModalHint')}{#if email} <b>{email}</b>{/if}</span>
-          </div>
-          <div class="wiz-field-row" style="margin-top:12px">
-            <!-- svelte-ignore a11y_autofocus -->
-            <input class="input mono {(nickErr && touched) || check === 'taken' ? 'input-err' : ''}" style="flex:1"
-                   placeholder={t('nickname')} value={nick} maxlength="16" autofocus
-                   oninput={(e: any) => { nick = sanitizeNick(e.target.value); touched = true; scheduleCheck() }}
-                   onkeydown={(e: any) => e.key === 'Enter' && submit()}
-                   aria-invalid={!!((nickErr && touched) || check === 'taken')} />
-          </div>
-          {#if nickErr && touched}
-            <div class="field-err"><i class="ti ti-alert-triangle"></i> {nickErr}</div>
-          {:else if check === 'taken'}
-            <div class="field-err"><i class="ti ti-alert-triangle"></i> {checkMsg}</div>
-          {:else if check === 'checking'}
-            <div class="nick-note"><i class="ti ti-loader-2"></i> {t('skinNickChecking')}</div>
-          {:else if check === 'ok' && mojangOwned}
-            <!-- Нік вільний у нас, але належить ліцензійному акаунту:
-                 попереджаємо, що скіном у грі керує він і редагувати
-                 скін під цим ніком зі Шаурма-акаунта не вийде. -->
-            <div class="nick-warn"><i class="ti ti-alert-triangle"></i> {t('skinNickMojangWarn')}</div>
-          {:else if check === 'ok'}
-            <div class="nick-ok"><i class="ti ti-circle-check"></i> {t('skinNickFree')}</div>
-          {/if}
-        </div>
-        <div class="modal-foot">
-          <button class="btn btn-ghost" onclick={oncancel} disabled={busy}>{t('cancel')}</button>
-          <button class="btn btn-primary" disabled={busy || !nick.trim() || !!nickErr} onclick={submit}>
-            <i class="ti ti-check"></i> {t('skinNickContinue')}
-          </button>
-        </div>
-      </div>
-    </div>
-  </Portal>
-{/if}
+<!-- Клік поза вікном НЕ закриває його: щоб випадково не втратити крок
+     входу. Вийти можна лише кнопкою «Скасувати». -->
+<UiModal {open} dismissible={false} size="sm" icon="ti-user-edit" title={t('skinNickModalTitle')}>
+  <div class="nick-hint"><i class="ti ti-brand-google"></i>
+    <span>{t(identity === 'microsoft' ? 'skinNickModalHintMs' : 'skinNickModalHint')}{#if email} <b>{email}</b>{/if}</span>
+  </div>
+  <div class="wiz-field-row" style="margin-top:12px">
+    <!-- svelte-ignore a11y_autofocus -->
+    <input class="st-input mono grow {(nickErr && touched) || check === 'taken' ? 'input-err' : ''}"
+           placeholder={t('nickname')} value={nick} maxlength="16" autofocus
+           oninput={(e: any) => { nick = sanitizeNick(e.target.value); touched = true; scheduleCheck() }}
+           onkeydown={(e: any) => e.key === 'Enter' && submit()}
+           aria-invalid={!!((nickErr && touched) || check === 'taken')} />
+  </div>
+  {#if nickErr && touched}
+    <div class="field-err"><i class="ti ti-alert-triangle"></i> {nickErr}</div>
+  {:else if check === 'taken'}
+    <div class="field-err"><i class="ti ti-alert-triangle"></i> {checkMsg}</div>
+  {:else if check === 'checking'}
+    <div class="nick-note"><i class="ti ti-loader-2"></i> {t('skinNickChecking')}</div>
+  {:else if check === 'ok' && mojangOwned}
+    <!-- Нік вільний у нас, але належить ліцензійному акаунту:
+         попереджаємо, що скіном у грі керує він і редагувати
+         скін під цим ніком зі Шаурма-акаунта не вийде. -->
+    <div class="nick-warn"><i class="ti ti-alert-triangle"></i> {t('skinNickMojangWarn')}</div>
+  {:else if check === 'ok'}
+    <div class="nick-ok"><i class="ti ti-circle-check"></i> {t('skinNickFree')}</div>
+  {/if}
+  {#snippet footer()}
+    <button class="btn btn-ghost" onclick={oncancel} disabled={busy}>{t('cancel')}</button>
+    <button class="btn btn-primary" disabled={busy || !nick.trim() || !!nickErr} onclick={submit}>
+      <i class="ti ti-check"></i> {t('skinNickContinue')}
+    </button>
+  {/snippet}
+</UiModal>
 
 <style>
-  .nick-av {
-    width:40px; height:40px; border-radius:10px; overflow:hidden;
-    border:1px solid var(--border); flex-shrink:0;
-  }
-  .nick-av img { width:100%; height:100%; object-fit:cover; display:block; }
   .nick-hint {
     display:flex; align-items:flex-start; gap:8px;
     font-size:12.5px; color:var(--text-mute); line-height:1.5;

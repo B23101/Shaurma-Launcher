@@ -2,7 +2,9 @@
   // Верхня панель лаунчера: іконка/назва розділу, крихти вкладеності
   // (відкрита збірка / «Нова збірка» / аналітика), глобальний пошук і
   // віконні кнопки. Усі значення приходять пропсами від App.svelte.
+  // Індикатор довгих операцій (TransferWidget) живе тут же, поруч із пошуком.
   import { t } from './i18n.svelte'
+  import TransferWidget from './TransferWidget.svelte'
 
   // Крихта: текст + режим «назад» (для аналітики — кнопка-повернення
   // в «Мої збірки»); null = крихт немає.
@@ -17,7 +19,8 @@
     onsearch = null as null | (() => void),
     onmin = null as null | (() => void),
     onmax = null as null | (() => void),
-    onclose = null as null | (() => void)
+    onclose = null as null | (() => void),
+    onopenmod = null as null | ((source: string, projectId: string) => void)
   }: {
     icon?: string
     title?: string
@@ -28,6 +31,7 @@
     onmin?: null | (() => void)
     onmax?: null | (() => void)
     onclose?: null | (() => void)
+    onopenmod?: null | ((source: string, projectId: string) => void)
   } = $props()
 </script>
 
@@ -60,6 +64,7 @@
     <span>{t('topbar.search')}</span>
     <kbd>Ctrl+K</kbd>
   </div>
+  <TransferWidget onOpenMod={onopenmod} />
   <div class="ctrl-box">
     <button class="ctrl-btn" title={t('win.minimize')} onclick={onmin}><i class="ti ti-minus"></i></button>
     <button class="ctrl-btn" title={t('win.maximize')} onclick={onmax}><i class="ti {isMaximized ? 'ti-copy' : 'ti-square'}"></i></button>
@@ -132,4 +137,12 @@
   .ctrl-btn:hover { background:var(--hover-strong); color:var(--text); }
   .ctrl-btn.close:hover { background:var(--red); color:#fff; }
   .no-drag { --wails-draggable: no-drag; }
+  /* Низьке вікно ноутбука (спільний брейкпоінт, див. кінець style.css):
+     нижча панель віддає місце вмісту сторінки. */
+  @media (max-height: 760px) {
+    .topbar { height:60px; min-height:60px; }
+    .tb-icon { width:34px; height:34px; font-size:24px; }
+    .ctrl-box { padding:4px; }
+    .ctrl-btn { width:30px; height:30px; }
+  }
 </style>

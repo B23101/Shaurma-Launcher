@@ -118,7 +118,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .wlp-modid {
-    font-family: ui-monospace, monospace; font-size: 10.5px; color: var(--text-dim);
+    font-family: ui-monospace, monospace; font-size: var(--fs-min); color: var(--text-dim);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .wlp-link {

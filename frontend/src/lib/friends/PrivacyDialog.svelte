@@ -4,7 +4,7 @@
   // «Хто що бачить», «Сповіщення», «Заблоковані».
   import { useFriendsStore, clean } from './FriendsStore.svelte'
   import { t } from '../i18n.svelte'
-  import FModal from './FModal.svelte'
+  import UiModal from '../UiModal.svelte'
   import SelectField from '../SelectField.svelte'
   import type { SocialShowTo, SocialFriendRequests, SocialWhoCanMessage } from '../types'
 
@@ -31,7 +31,7 @@
   ])
 </script>
 
-<FModal {open} {onclose} icon="ti-lock" title={t('social.priv.title')} subtitle={t('ff.priv.sub')} width={540}>
+<UiModal {open} {onclose} icon="ti-lock" title={t('social.priv.title')} subtitle={t('ff.priv.sub')} width="540px" zIndex={1000001}>
   {#if !s.st.privacyLoaded}
     <div class="pv-warn"><i class="ti ti-shield-exclamation"></i>{t('social.priv.notLoaded')}</div>
   {/if}
@@ -89,7 +89,7 @@
   {#snippet footer()}
     <button class="btn btn-primary btn-sm" onclick={onclose}>{t('ff.done')}</button>
   {/snippet}
-</FModal>
+</UiModal>
 
 <style>
   .pv-warn { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; padding: 10px 12px; border-radius: 11px; font: 400 12px/1.5 var(--font-ui); color: var(--text);

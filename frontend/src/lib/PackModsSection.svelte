@@ -10,6 +10,12 @@
   //   · зміна версії мода (модалка зі списком версій під версію гри/лоадер);
   //   · залежності: пошук відсутніх + встановлення знайдених;
   //   · «Оновити всі» з резервною копією старих версій та відновленням.
+  //
+  // Той самий менеджер обслуговує і сервери: packId тоді — ID таргету
+  // сервера ("srv:<id>" моди, "srvp:<id>" плагіни, див. modTarget.ts), а
+  // бекенд резолвить теку за ним. Відмінності лише там, де вони реальні:
+  // тимчасові моди — лише збірка, плагіни без дерева залежностей і
+  // рекомендацій, «Портувати зі збірки» — лише на сервер.
   import { onMount, untrack } from 'svelte'
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
@@ -21,10 +27,12 @@
   import ModListExportDialog from './ModListExportDialog.svelte'
   import ModSourcesDialog from './ModSourcesDialog.svelte'
   import ModDependencyDialog from './ModDependencyDialog.svelte'
+  import { isServerModTarget, isPluginModTarget, withMigrationTargets } from './modTarget'
   import SelectField from './SelectField.svelte'
+  import { tip } from './friends/tooltip'
   import modrinthIcon from '../assets/images/Modrinth_icon.png'
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
-  import type { ModEntry, ModVersionOption, ModBackupEntry, SuggestedMod, TempModInfo } from './types'
+  import type { ModEntry, ModVersionOption, ModBackupEntry, SuggestedMod, TempModInfo, MigrationPack } from './types'
   import type { PackPickerItem, PackRow, PackFolderRow } from './PackPicker.svelte'
 
   let {
@@ -95,11 +103,18 @@
   // ДО виклику бекенду (який теж перевіряє errPackRunning — подвійний
   // захист від "used by another process").
   let runningLocked = $state(false)
-  function guardNotRunning(): boolean {
+  // touched — моди, яких торкається дія. Сервер вимкнений jar не
+  // завантажує, тож міняти його можна й на запущеному сервері; у збірки
+  // гра тримає всю теку, тому там блокується будь-яка заміна.
+  function guardNotRunning(touched: ModEntry[] = []): boolean {
     if (!running) return true
+    if (isServer && touched.length > 0 && touched.every(m => !m.enabled)) return true
     runningLocked = true
     return false
   }
+
+  const isServer = $derived(isServerModTarget(packId))
+  const isPlugins = $derived(isPluginModTarget(packId))
 
   // ── Стан списку ──
   let mods = $state.raw<ModEntry[]>([])
@@ -115,6 +130,7 @@
   // це лише дефолт чекбокса, який завжди можна змінити вручну в діалозі).
   let settingsTempModsDeleteByDefault = $state(false)
   async function loadTempMods() {
+    if (isServer) return // тимчасові моди — властивість збірки
     try {
       const list = (await App.GetTempMods(packId)) ?? []
       const map: Record<string, TempModInfo> = {}
@@ -217,9 +233,9 @@
 
   async function bulkDelete() {
     if (bulkWorking || selected.size === 0) return
-    if (!guardNotRunning()) return
     const names = [...selected].filter(f => !mods.find(x => x.fileName === f)?.sourceKind)
     if (names.length === 0) { toast(t('modsrc.lockedHint'), 'info'); return }
+    if (!guardNotRunning(mods.filter(m => names.includes(m.fileName)))) return
     const ok = await confirmDialog(t('mods.bulkDeleteConfirm', { n: names.length }), names.join(', '), {
       confirmLabel: t('mods.delete'), cancelLabel: t('cancel'), danger: true
     })
@@ -264,9 +280,11 @@
   let importing = $state(false)
   let dragOver = $state(false)
 
+  // Новий jar запущений сервер не підхопить до рестарту — на сервер
+  // додавати можна завжди; у збірки гра тримає теку модів.
   async function pickAndImportFiles() {
     if (importing) return
-    if (!guardNotRunning()) return
+    if (!isServer && !guardNotRunning()) return
     try {
       const paths = await App.PickModFiles()
       if (!paths || paths.length === 0) return
@@ -277,7 +295,7 @@
   }
 
   async function importFiles(paths: string[]) {
-    if (!guardNotRunning()) return
+    if (!isServer && !guardNotRunning()) return
     importing = true
     try {
       const res = await App.ImportModFiles(packId, paths)
@@ -551,7 +569,7 @@
   let dismissedSuggestIds = $state<Set<string>>(new Set())
 
   async function loadSuggestedMods(scanId = packId) {
-    if (!mcVersion || !loader) { suggestedMods = []; return }
+    if (!mcVersion || !loader || isPlugins) { suggestedMods = []; return }
     suggestedLoading = true
     try {
       const list = (await App.GetSuggestedMods(scanId, mcVersion, loader)) || []
@@ -639,25 +657,35 @@
       const changed = await App.VerifyIncompatibleMods(scanId, mcVersion, loader)
       if (scanId !== packId || !changed || changed.length === 0) return
       const byFile = new Map(changed.map(m => [m.fileName, m]))
-      guardScroll()
       mods = mods.map(m => byFile.get(m.fileName) ?? m)
     } catch { /* мережевий збій — позначки лишаються як були */ }
   }
 
-  // ── Захист скролу під час/після перевірки оновлень ───────────────────
-  // Оновлення списку (патчі рядків, завершення перевірки, сумісність) не
-  // повинні відкидати сторінку на початок. Запам'ятовуємо останню позицію
-  // скролу користувача; якщо протягом перевірки (і ~1.5 с після) контейнер
-  // раптом стрибнув у 0, повертаємо збережену позицію.
+  // ── Захист скролу ─────────────────────────────────────────────────────
+  // Фонові оновлення списку (перевірка оновлень, сумісність, пересканування,
+  // оновлення мода) не повинні відкидати сторінку на початок. Раніше захист
+  // діяв лише ~1.5 с після перевірки і лише для .content — стрибки від інших
+  // оновлень проходили. Тепер: якщо скрол-контейнер списку стрибнув у 0 БЕЗ
+  // дії користувача (коліщатко, тач, клавіша, клік за останні 600 мс) —
+  // повертаємо останню позицію.
   let lastScrollTop = 0
-  let scrollGuardUntil = 0
-  function guardScroll(ms = 1500) { scrollGuardUntil = Date.now() + ms }
+  let userScrollAt = 0
+  let rootEl = $state<HTMLElement | undefined>()
+  function scrollParentOf(el: HTMLElement | undefined): HTMLElement | null {
+    let p = el?.parentElement ?? null
+    while (p && p !== document.body) {
+      const oy = getComputedStyle(p).overflowY
+      if (oy === 'auto' || oy === 'scroll' || oy === 'overlay') return p
+      p = p.parentElement
+    }
+    return document.querySelector('.content') as HTMLElement | null
+  }
   $effect(() => {
-    const el = document.querySelector('.content') as HTMLElement | null
+    const el = scrollParentOf(rootEl)
     if (!el) return
+    const markUser = () => { userScrollAt = Date.now() }
     const onScr = () => {
-      const guarded = updateChecking || Date.now() < scrollGuardUntil
-      if (guarded && el.scrollTop < 4 && lastScrollTop > 40) {
+      if (el.scrollTop < 4 && lastScrollTop > 40 && Date.now() - userScrollAt > 600) {
         const want = lastScrollTop
         requestAnimationFrame(() => { if (el.scrollTop < 4) el.scrollTop = want })
         return
@@ -665,11 +693,17 @@
       lastScrollTop = el.scrollTop
     }
     el.addEventListener('scroll', onScr, { passive: true })
-    return () => el.removeEventListener('scroll', onScr)
-  })
-  $effect(() => {
-    // Перехід updateChecking true→false також захищаємо.
-    if (!updateChecking) untrack(() => guardScroll())
+    window.addEventListener('wheel', markUser, { passive: true })
+    window.addEventListener('touchmove', markUser, { passive: true })
+    window.addEventListener('keydown', markUser)
+    window.addEventListener('pointerdown', markUser)
+    return () => {
+      el.removeEventListener('scroll', onScr)
+      window.removeEventListener('wheel', markUser)
+      window.removeEventListener('touchmove', markUser)
+      window.removeEventListener('keydown', markUser)
+      window.removeEventListener('pointerdown', markUser)
+    }
   })
 
   async function checkUpdates(force = false, scanId = packId) {
@@ -692,7 +726,6 @@
       // Та сама гонка, що й у loadMods: якщо збірку вже перемкнули,
       // результат застарілої мережевої перевірки в UI не підмішуємо.
       if (scanId === currentScanId || scanId === packId) {
-        guardScroll()
         setModsQuiet(list)
         haveCheckedOnce = true
       }
@@ -728,14 +761,23 @@
     untrack(() => startScanCycle(id))
   })
 
+  let lastCyclePack = ''
   function startScanCycle(id: string) {
     currentScanId = id
-    mods = []
-    dateMemo.clear()
-    animateRows = true
-    clearTimeout(animateTimer); animateTimer = undefined
+    // Список очищуємо лише при переході на ІНШУ збірку. Зміна версії гри чи
+    // лоадера тієї самої збірки пересканує тихо (setModsQuiet у loadMods):
+    // раніше `mods = []` прибирало весь список, висота сторінки падала і
+    // скрол відлітав на початок.
+    const samePack = id === lastCyclePack
+    lastCyclePack = id
+    if (!samePack) {
+      mods = []
+      dateMemo.clear()
+      animateRows = true
+      clearTimeout(animateTimer); animateTimer = undefined
+      dismissedSuggestIds = new Set()
+    }
     haveCheckedOnce = false
-    dismissedSuggestIds = new Set()
     tempMods = {}
     loadTempMods()
     loadMods(id).then(list => {
@@ -820,7 +862,7 @@
         if (upd.iconUrl !== undefined) m.iconUrl = upd.iconUrl
         next[idx] = m
       }
-      if (next) { guardScroll(); mods = next }
+      if (next) mods = next
     })
     // Реальний час: тека модів може змінитись поза лаунчером (юзер кинув
     // .jar вручну) або з'явитись новий файл після встановлення залежності
@@ -874,7 +916,7 @@
   }
 
   async function openVersion(m: ModEntry) {
-    if (!guardNotRunning()) return
+    if (!guardNotRunning([m])) return
     versionMod = m
     versionOpts = []
     selectedVersionKey = ''
@@ -891,7 +933,7 @@
 
   async function installVersion(opt: ModVersionOption) {
     if (!versionMod || installingVersion) return
-    if (!guardNotRunning()) return
+    if (!guardNotRunning([versionMod])) return
     installingVersion = true
     try {
       await App.InstallModVersion(packId, versionMod.fileName, opt)
@@ -910,14 +952,14 @@
   // файлу (так само, як робить «Оновити всі»), щоб оновлення одного
   // мода можна було безпечно відкотити через ListModBackups.
   function updateOne(m: ModEntry) {
-    if (!guardNotRunning()) return
+    if (!guardNotRunning([m])) return
     updateOneMod = m
     updateOneBackup = true
   }
 
   async function confirmUpdateOne() {
     if (!updateOneMod || updateOneRunning) return
-    if (!guardNotRunning()) return
+    if (!guardNotRunning([updateOneMod])) return
     const m = updateOneMod
     updateOneRunning = true
     try {
@@ -935,7 +977,7 @@
 
   async function deleteMod(m: ModEntry) {
     if (m.sourceKind) { toast(t('modsrc.lockedHint'), 'info'); return }
-    if (!guardNotRunning()) return
+    if (!guardNotRunning([m])) return
     const ok = await confirmDialog(t('mods.deleteConfirm', { name: m.name }), m.fileName, {
       confirmLabel: t('mods.delete'), cancelLabel: t('cancel'), danger: true
     })
@@ -1078,8 +1120,17 @@
 
   // ── Міграція модів ──
   let migrateOpen = $state(false)
-  // ── Порівняння модів двох збірок ──
+  // ── Портування зі збірки (лише сервер-моди): ті самі jar без клієнтських ──
+  let portOpen = $state(false)
+  // ── Порівняння модів двох збірок/серверів ──
   let compareOpen = $state(false)
+  // Сервери (а на сторінці сервера — ще й збірки) для пікера порівняння:
+  // ті самі таргети, що й у міграції (GetMigrationPacks).
+  let migrationTargets = $state<MigrationPack[]>([])
+  const comparePicker = $derived(withMigrationTargets(packPicker, migrationTargets.filter(p => packPicker ? p.kind === 'server' : true)))
+  onMount(() => {
+    App.GetMigrationPacks(packId).then(list => { migrationTargets = list ?? [] }).catch(() => {})
+  })
   let exportOpen = $state(false)
   // Поточне виділення передається в діалог як ДЖЕРЕЛО для режиму «лише
   // вибрані». Обсяг (усі/лише вибрані) вибирається вже в самому діалозі —
@@ -1166,7 +1217,7 @@
   }
 </script>
 
-<div class="mods">
+<div class="mods" bind:this={rootEl}>
   <!-- ═══ Тулбар ═══ -->
   <div class="mods-toolbar" onclick={closeRowMenu} style={`--mt-top:${stickyTop}px`}>
     <div class="mt-group mt-group-main">
@@ -1199,19 +1250,28 @@
       />
     </div>
     <div class="mt-group mt-group-actions">
-      <!-- Усі дії тулбара — прямими кнопками в один рядок, без «⋯»-меню
-           (раніше рідкісні дії ховались у overflow-меню — незручно, коли
-           потрібно швидко дістатись резервних копій/міграції/порівняння/
-           експорту). Перевірку оновлень з тулбара прибрано: вона й так
-           запускається автоматично при відкритті збірки (див. $effect
-           вище) і за кнопкою «Оновити все» — окремий ручний пункт був
-           зайвим. -->
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={() => loadMods()} title={t('mods.refresh')}>
-        <i class="ti ti-refresh"></i>
-      </button>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={openModsFolder} title={t('mods.openFolder')}>
-        <i class="ti ti-folder"></i>
-      </button>
+      <!-- Рідкісні інструменти — один компактний блок іконок з підказками;
+           головні дії (знайти, додати, оновити всі) — підписаними кнопками.
+           Раніше всі дев'ять дій були великими кнопками з текстом і
+           розповзались на два-три рядки. -->
+      <div class="tool-cluster" role="toolbar" aria-label={t('mods.tools')}>
+        <button onclick={() => loadMods()} use:tip={t('mods.refresh')} aria-label={t('mods.refresh')}><i class="ti ti-refresh"></i></button>
+        <button onclick={openModsFolder} use:tip={t('mods.openFolder')} aria-label={t('mods.openFolder')}><i class="ti ti-folder"></i></button>
+        <span class="tc-sep"></span>
+        <button onclick={() => sourcesOpen = true} use:tip={t('modsrc.title')} aria-label={t('modsrc.title')}><i class="ti ti-link"></i></button>
+        {#if !isPlugins}
+          <button onclick={() => graphOpen = true} use:tip={t('modgraph.title')} aria-label={t('modgraph.title')}><i class="ti ti-hierarchy-3"></i></button>
+        {/if}
+        <button onclick={openBackups} use:tip={t('mods.backups')} aria-label={t('mods.backups')}><i class="ti ti-archive"></i></button>
+        <button onclick={() => migrateOpen = true} use:tip={t('mods.migrate')} aria-label={t('mods.migrate')}><i class="ti ti-arrows-right-left"></i></button>
+        {#if isServer && !isPlugins}
+          <button onclick={() => portOpen = true} use:tip={t('mods.port.title')} aria-label={t('mods.port.title')}><i class="ti ti-server-bolt"></i></button>
+        {/if}
+        {#if comparePicker.items.length > 0}
+          <button onclick={() => compareOpen = true} use:tip={t('mods.compare')} aria-label={t('mods.compare')}><i class="ti ti-git-compare"></i></button>
+        {/if}
+        <button onclick={() => { exportSelectedFiles = [...selected]; exportOpen = true }} use:tip={t('mods.export.title')} aria-label={t('mods.export.title')}><i class="ti ti-list-details"></i></button>
+      </div>
       {#if onSearchMods}
         <button class="btn btn-ghost btn-sm" onclick={onSearchMods} title={t('mods.searchOnline')}>
           <i class="ti ti-world-search"></i> {t('mods.searchOnline')}
@@ -1219,26 +1279,6 @@
       {/if}
       <button class="btn btn-ghost btn-sm" onclick={pickAndImportFiles} disabled={importing} title={t('mods.addMod')}>
         {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-file-plus"></i>{/if} {t('mods.addMod')}
-      </button>
-      <button class="btn btn-ghost btn-sm" onclick={() => sourcesOpen = true} title={t('modsrc.title')}>
-        <i class="ti ti-link"></i> {t('modsrc.button')}
-      </button>
-      <button class="btn btn-ghost btn-sm" onclick={() => graphOpen = true} title={t('modgraph.title')}>
-        <i class="ti ti-hierarchy-3"></i> {t('modgraph.button')}
-      </button>
-      <button class="btn btn-ghost btn-sm" onclick={openBackups} title={t('mods.backups')}>
-        <i class="ti ti-archive"></i> {t('mods.backups')}
-      </button>
-      <button class="btn btn-ghost btn-sm" onclick={() => migrateOpen = true} title={t('mods.migrate')}>
-        <i class="ti ti-arrows-right-left"></i> {t('mods.migrate')}
-      </button>
-      {#if packPicker && packPicker.items.length > 0}
-        <button class="btn btn-ghost btn-sm" onclick={() => compareOpen = true} title={t('mods.compare')}>
-          <i class="ti ti-git-compare"></i> {t('mods.compare')}
-        </button>
-      {/if}
-      <button class="btn btn-ghost btn-sm" onclick={() => { exportSelectedFiles = [...selected]; exportOpen = true }} title={t('mods.export.title')}>
-        <i class="ti ti-list-details"></i> {t('mods.export.title')}
       </button>
       <button class="btn btn-primary btn-sm" onclick={() => updateAllOpen = true}
               disabled={updatesCount === 0 || updateChecking || updateAllRunning}
@@ -1254,7 +1294,7 @@
     {#if scanning}
       <span class="ms-item"><i class="ti ti-loader spin"></i> {t('mods.scanning')}</span>
     {:else}
-      <span class="ms-item">{t('mods.count', { n: mods.length })}</span>
+      <span class="ms-item">{isPlugins ? t('servers.content.countPlugins', { n: mods.length }) : t('mods.count', { n: mods.length })}</span>
       {#if updatesCount > 0}<span class="ms-item acc"><i class="ti ti-arrow-up"></i> {t('mods.withUpdates', { n: updatesCount })}</span>{/if}
       {#if disabledCount > 0}<span class="ms-item dim">{t('mods.disabledCount', { n: disabledCount })}</span>{/if}
       {#if incompatibleCount > 0}<span class="ms-item err"><i class="ti ti-alert-triangle"></i> {t('mods.incompatibleCount', { n: incompatibleCount })}</span>{/if}
@@ -1486,6 +1526,16 @@
                     <i class="ti ti-plug-x"></i> {t('mods.incompatible')}
                   </span>
                 {/if}
+                {#if m.viaConnector && !m.incompatible}
+                  <span class="badge connector" title={t('mods.viaConnectorHint', { loader: m.loader ?? 'fabric' })}>
+                    <i class="ti ti-plug-connected"></i> {t('mods.viaConnector')}
+                  </span>
+                {/if}
+                {#if isServer && m.environment === 'client'}
+                  <span class="badge client" title={t('servers.content.clientOnlyHint')}>
+                    <i class="ti ti-device-desktop"></i> {t('servers.content.clientOnly')}
+                  </span>
+                {/if}
                 {#if tempModFor(m.fileName)}
                   {@const tm = tempModFor(m.fileName)!}
                   <span class="badge temp" title={t(tm.action === 'delete' ? 'mods.temp.willDeleteAt' : 'mods.temp.willDisableAt', { date: fmtDate(tm.expiresAt) })}>
@@ -1539,7 +1589,7 @@
                       <button onclick={() => { closeRowMenu(); removeTempMod(m) }}>
                         <i class="ti ti-clock-off"></i> {t('mods.temp.removeMenu')}
                       </button>
-                    {:else}
+                    {:else if !isServer}
                       <button onclick={() => { closeRowMenu(); openTempModDialog(m) }}>
                         <i class="ti ti-clock-plus"></i> {t('mods.temp.setMenu')}
                       </button>
@@ -1594,20 +1644,20 @@
 {/if}
 
 {#if graphOpen}
-  <ModDependencyDialog {packId} {packName} {mcVersion} {loader} onclose={() => graphOpen = false} onchanged={() => loadMods()} />
+  <ModDependencyDialog {packId} {packName} {mcVersion} {loader} {mods} {onOpenModPage} onclose={() => graphOpen = false} onchanged={() => loadMods()} />
 {/if}
 
 {#if runningLocked}
   <UiModal
     open={true}
     size="sm"
-    title={t('content.lockedWhileRunning')}
+    title={isServer ? t('servers.content.lockedTitle') : t('content.lockedWhileRunning')}
     subtitle={t('content.lockedWhileRunningHint')}
     icon="ti-lock"
     color="var(--orange)"
     onclose={() => runningLocked = false}
   >
-    <p class="mods-empty" style="text-align:left;padding:0 4px">{t('content.lockedWhileRunningBody')}</p>
+    <p class="mods-empty" style="text-align:left;padding:0 4px">{isServer ? t('servers.content.lockEnabled') : t('content.lockedWhileRunningBody')}</p>
     {#snippet footer()}
       <button class="btn btn-primary" onclick={() => runningLocked = false}>{t('content.lockedOk')}</button>
     {/snippet}
@@ -1877,13 +1927,14 @@
 {/if}
 
 <!-- ═══ Модалка: міграція модів ═══ -->
-{#if migrateOpen}
+{#if migrateOpen || portOpen}
   <ModMigrationDialog
     {packId}
     {packName}
     {mcVersion}
     {loader}
-    onClose={() => { migrateOpen = false; loadMods() }}
+    mode={portOpen ? 'port' : 'migrate'}
+    onClose={() => { migrateOpen = false; portOpen = false; loadMods() }}
   />
 {/if}
 
@@ -1897,7 +1948,7 @@
     {iconUrl}
     {icon}
     {color}
-    {packPicker}
+    packPicker={comparePicker}
     onClose={() => { compareOpen = false; loadMods() }}
   />
 {/if}
@@ -1930,7 +1981,7 @@
      переносяться по flex-wrap, зберігаючи нормальний розмір, замість
      стиснення в один рядок. */
   .mods-toolbar {
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
     position: sticky; top: var(--mt-top, 0px); z-index: 18;
     margin: -4px -4px 8px; padding: 8px 4px 10px;
     background: linear-gradient(180deg,
@@ -1939,27 +1990,27 @@
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border-radius: 0 0 var(--r-lg) var(--r-lg);
   }
-  .mt-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .mt-group-main { width: 100%; min-width: 0; }
-  .mt-group-actions { width: 100%; justify-content: flex-end; }
-  /* Компактні іконкові кнопки тулбара (без текстового підпису) — лише
-     іконка по центру, щоб рядок дій не розтягувався. Трохи більший
-     розмір (36px, було 32px), щоб кнопки не виглядали дрібними поряд з
-     текстовими кнопками того самого рядка. */
-  .icon-tb { width: 36px; height: 36px; padding: 0; justify-content: center; }
-  .mt-group-actions .btn { height: 36px; }
+  /* Один рядок: пошук і фільтри зліва (тягнуться), дії справа. Якщо не
+     влазить — дії переходять на другий рядок цілим блоком, праворуч. */
+  .mt-group { display: flex; align-items: center; gap: 8px; }
+  .mt-group-main { flex: 1 1 360px; min-width: 0; }
+  .mt-group-actions { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
+  .mt-group-actions .btn { height: 36px; white-space: nowrap; }
   .mt-search {
     display: flex; align-items: center; gap: 8px;
-    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
-    padding: 0 11px; height: 32px; flex: 1 1 220px; min-width: 150px;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0 12px; height: 36px; flex: 1 1 200px; min-width: 140px;
+    transition: border-color .15s, box-shadow .15s;
   }
-  .mt-search i { color: var(--text-dim); font-size: 14px; }
-  .mt-search input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-size: 12.5px; }
+  .mt-search:focus-within { border-color: rgba(var(--orange-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
+  .mt-search i { color: var(--text-dim); font-size: 15px; }
+  .mt-search:focus-within i { color: var(--orange); }
+  .mt-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 13px; }
   .mt-spacer { flex: 1; }
   .upd-badge {
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
-    background: rgba(255,255,255,.22); font-size: 10.5px; font-weight: 800; margin-left: 2px;
+    background: rgba(255,255,255,.22); font-size: var(--fs-min); font-weight: 800; margin-left: 2px;
   }
 
   /* ── Статус ── */
@@ -2020,9 +2071,9 @@
   .dup-group-ic img { width: 100%; height: 100%; object-fit: cover; }
   .dup-group-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .dup-group-name { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dup-group-sub { font-size: 10.5px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dup-group-sub { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .dup-group-count {
-    font-size: 10.5px; font-weight: 800; color: #ef4444; font-family: var(--font-mono);
+    font-size: var(--fs-min); font-weight: 800; color: #ef4444; font-family: var(--font-mono);
     background: rgba(239,68,68,.1); padding: 3px 9px; border-radius: 999px; flex-shrink: 0;
   }
   .dup-group-del { flex-shrink: 0; }
@@ -2034,9 +2085,9 @@
   .dup-file:hover { background: var(--hover); }
   .dup-file + .dup-file { border-top: 1px solid var(--border-dim, var(--border)); }
   .dup-file > .ti-file { color: var(--text-dim); font-size: 12px; flex-shrink: 0; }
-  .dup-file-name { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: 10.5px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .dup-file-meta { font-size: 10px; color: var(--text-mute); font-family: var(--font-mono); flex-shrink: 0; }
-  .dup-keep-badge { font-size: 9.5px; font-weight: 800; color: var(--green); background: rgba(16,185,129,.12); padding: 2px 7px; border-radius: 999px; flex-shrink: 0; }
+  .dup-file-name { flex: 1; min-width: 0; font-family: var(--font-mono); font-size: var(--fs-min); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dup-file-meta { font-size: var(--fs-min); color: var(--text-mute); font-family: var(--font-mono); flex-shrink: 0; }
+  .dup-keep-badge { font-size: var(--fs-min); font-weight: 800; color: var(--green); background: rgba(16,185,129,.12); padding: 2px 7px; border-radius: 999px; flex-shrink: 0; }
   .dup-file.keep { background: rgba(16,185,129,.05); }
   .dup-file:not(.keep) { color: var(--text-mute); }
   /* Радіо-«лишити цю копію» + кнопка видалення файлу — у стилі лаунчера
@@ -2140,12 +2191,12 @@
   .mod-name-btn:hover { color: var(--violet-l); text-decoration: underline; }
   .mod-checking { font-size: 12px; color: var(--text-mute); }
   .mod-meta {
-    font-size: 10.5px; color: var(--text-mute); margin-top: 2px;
+    font-size: var(--fs-min); color: var(--text-mute); margin-top: 2px;
     font-family: var(--font-mono);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
 
-  .badge { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 5px; font-family: var(--font-mono); letter-spacing: .3px; }
+  .badge { font-size: var(--fs-min); font-weight: 700; padding: 2px 7px; border-radius: 5px; font-family: var(--font-mono); letter-spacing: .3px; }
   .badge.upd { background: rgba(16,185,129,.15); color: var(--green); }
   .badge.dep { background: rgba(245,158,11,.15); color: var(--yellow); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
   .badge.dep:hover { background: rgba(245,158,11,.25); }
@@ -2238,12 +2289,12 @@
   .vr-ver { font-size: 12.5px; font-weight: 700; color: var(--text); font-family: var(--font-mono); }
   .vr-meta { display: flex; align-items: center; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
   .chip {
-    font-size: 10px; font-weight: 600; color: var(--text-mute);
+    font-size: var(--fs-min); font-weight: 600; color: var(--text-mute);
     background: var(--bg-panel); border: 1px solid var(--border);
     padding: 2px 7px; border-radius: 999px;
   }
-  .vr-date { font-size: 10.5px; color: var(--text-dim); }
-  .vr-current { font-size: 10.5px; font-weight: 700; color: var(--green); }
+  .vr-date { font-size: var(--fs-min); color: var(--text-dim); }
+  .vr-current { font-size: var(--fs-min); font-weight: 700; color: var(--green); }
   .vr-icon { color: var(--orange); font-size: 15px; }
   .md-working { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-mute); margin-right: auto; }
   .md-close {
@@ -2260,9 +2311,9 @@
     font-size: 12px;
   }
   .ua-name { flex: 1; min-width: 0; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .ua-old { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-dim); text-decoration: line-through; }
+  .ua-old { font-family: var(--font-mono); font-size: var(--fs-min); color: var(--text-dim); text-decoration: line-through; }
   .ua-arr { color: var(--text-dim); font-size: 12px; }
-  .ua-new { font-family: var(--font-mono); font-size: 10.5px; color: var(--green); }
+  .ua-new { font-family: var(--font-mono); font-size: var(--fs-min); color: var(--green); }
   .ua-backup {
     display: flex; align-items: center; gap: 8px; margin-top: 12px;
     font-size: 12px; color: var(--text); cursor: pointer; user-select: none;
@@ -2302,6 +2353,8 @@
     50% { box-shadow: 0 0 0 3px rgba(239,68,68,.3); }
   }
   .badge.incompat { background: rgba(239,68,68,.15); color: #ef4444; }
+  .badge.connector { background: rgba(14,165,233,.15); color: #0ea5e9; }
+  .badge.client { background: rgba(245, 158, 11, .15); color: var(--yellow); }
   /* Тимчасовий мод: жовтий/бурштиновий (той самий колір, що зірочка
      закладок у браузері контенту) — «час іде», не помилка й не тривога. */
   .badge.temp { background: rgba(245,197,66,.15); color: #f5c542; }
@@ -2476,7 +2529,7 @@
   :global(.ver-modal-body .ver-row) { cursor: pointer; }
   :global(.ver-modal-body .ver-row.active) { border-color: var(--orange); background: rgba(255,138,0,.08); }
   .vr-type {
-    font-size: 9px; font-weight: 800; letter-spacing: .3px; text-transform: uppercase;
+    font-size: var(--fs-min); font-weight: 800; letter-spacing: .3px; text-transform: uppercase;
     padding: 2px 6px; border-radius: 5px; background: rgba(16,185,129,.15); color: var(--green);
     flex-shrink: 0;
   }

@@ -701,6 +701,14 @@ func DefaultJVMArgs(javaMajor, ramMB int) string {
 		ramMB, ramMB)
 }
 
+// DefaultProxyJVMArgs — рекомендовані прапорці Velocity (docs.papermc.io/
+// velocity/tuning): проксі не тримає світів, тож Aikar-набір для ігрових
+// серверів (великі регіони G1, 30–40% young gen) йому не підходить.
+func DefaultProxyJVMArgs(ramMB int) string {
+	return fmt.Sprintf("-Xms%dM -Xmx%dM -XX:+UseG1GC -XX:G1HeapRegionSize=4M -XX:+UnlockExperimentalVMOptions -XX:+ParallelRefProcEnabled -XX:+AlwaysPreTouch -XX:MaxInlineLevel=15",
+		ramMB, ramMB)
+}
+
 // NowMs повертає поточний час як Unix milliseconds.
 func NowMs() int64 {
 	return time.Now().UnixMilli()

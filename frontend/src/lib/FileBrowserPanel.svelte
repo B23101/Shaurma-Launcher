@@ -643,7 +643,7 @@
   .fp-viewer-title { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
   .fp-viewer-name { font-size:13px; font-weight:700; color:var(--text); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .fp-viewer-lang {
-    font-size:10px; font-weight:700; letter-spacing:.06em; padding:2px 7px; border-radius:6px;
+    font-size:var(--fs-min); font-weight:700; letter-spacing:.06em; padding:2px 7px; border-radius:6px;
     background:var(--orange); color:#fff; flex-shrink:0; font-family:var(--font-mono);
   }
   .fp-viewer-path { font-size:11px; color:var(--text-mute); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--font-mono); }

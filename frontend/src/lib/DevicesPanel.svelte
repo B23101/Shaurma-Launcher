@@ -285,7 +285,7 @@
   .dv-main { min-width:0; display:flex; flex-direction:column; gap:7px; }
   .dv-name { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
   .dv-name b { font:700 14px/1.2 var(--font-ui); color:var(--text); overflow-wrap:anywhere; }
-  .dv-badge { display:inline-flex; align-items:center; gap:5px; font:600 10.5px/1 var(--font-ui); padding:4px 8px; border-radius:999px; background:var(--bg-panel); color:var(--text-mute); }
+  .dv-badge { display:inline-flex; align-items:center; gap:5px; font:600 var(--fs-min)/1 var(--font-ui); padding:4px 8px; border-radius:999px; background:var(--bg-panel); color:var(--text-mute); }
   .dv-badge.cur { background:rgba(var(--orange-rgb),.15); color:var(--orange); }
   .dv-badge.on { background:rgba(46,204,113,.14); color:#2ecc71; }
   .dv-badge.off { color:var(--text-dim); }

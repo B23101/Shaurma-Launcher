@@ -808,7 +808,7 @@
   .etool:hover { background:var(--hover-strong); color:var(--text); }
   .etool.active { background:var(--orange); color:#fff; border-color:var(--orange); }
   .etool-sep { width:100%; height:1px; background:var(--border); margin:2px 0; }
-  .etool-label { font-size:9px; color:var(--text-mute); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
+  .etool-label { font-size:var(--fs-min); color:var(--text-mute); text-transform:uppercase; letter-spacing:.04em; margin-top:2px; }
   .etool-colors { display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; }
   .ecolor { width:20px; height:20px; border-radius:50%; border:2px solid var(--border); cursor:pointer; }
   .ecolor.active { border-color:var(--text); box-shadow:0 0 0 2px var(--orange); }

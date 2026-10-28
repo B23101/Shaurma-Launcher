@@ -7,7 +7,7 @@
   import { tip } from './tooltip'
 
   let {
-    title, kind = '', temp = false, dead = false, deadText = '', addr,
+    title, kind = '', temp = false, status = '', dead = false, deadText = '', addr,
     version = '', players = 0, max = 0,
     host = false, own = false, canJoin = false, joining = false,
     onJoin, onPlay, onCopy,
@@ -15,6 +15,8 @@
     title: string
     kind?: string
     temp?: boolean
+    // Постійна P2P-кімната сервера: online | offline | deleted (порожньо — звичайне запрошення).
+    status?: string
     dead?: boolean
     deadText?: string
     addr: string
@@ -29,6 +31,9 @@
     onPlay: () => void
     onCopy: () => void
   } = $props()
+
+  const perm = $derived(!!status)
+  const offline = $derived(perm && status === 'offline')
 </script>
 
 <article class="ic" class:dead>
@@ -36,9 +41,15 @@
     <i class="ti ti-server-2 ic-deco" aria-hidden="true"></i>
     <div class="ic-cover-fade"></div>
     <span class="ic-pill type"><i class="ti {temp ? 'ti-door-enter' : 'ti-device-gamepad-2'}"></i> {temp ? 'Тимчасовий доступ' : t('social.chat.invite.title')}</span>
-    <span class="ic-pill st" class:off={dead}>
-      <i class="ti {dead ? 'ti-circle-x' : 'ti-circle-check-filled'}"></i> {dead ? 'закрито' : 'працює'}
-    </span>
+    {#if perm && !dead}
+      <span class="ic-pill st" class:idle={offline}>
+        <i class="ti {offline ? 'ti-circle-dashed' : 'ti-circle-check-filled'}"></i> {offline ? 'офлайн' : 'онлайн'}
+      </span>
+    {:else}
+      <span class="ic-pill st" class:off={dead}>
+        <i class="ti {dead ? 'ti-circle-x' : 'ti-circle-check-filled'}"></i> {dead ? 'закрито' : 'працює'}
+      </span>
+    {/if}
   </div>
 
   <div class="ic-main">
@@ -55,6 +66,16 @@
         <span class="ic-stat"><i class="ti ti-cube"></i> {version || '—'}</span>
         <span class="ic-stat"><i class="ti ti-users"></i> {max ? `${players}/${max}` : '—'}</span>
         <span class="ic-stat"><i class="ti ti-lock"></i> лише для запрошених</span>
+      </div>
+    {:else if perm && !dead}
+      <div class="ic-stats">
+        {#if offline}
+          <span class="ic-stat"><i class="ti ti-moon"></i> сервер зараз вимкнено</span>
+        {:else}
+          <span class="ic-stat"><i class="ti ti-cube"></i> {version || '—'}</span>
+          <span class="ic-stat"><i class="ti ti-users"></i> {max ? `${players}/${max}` : '—'}</span>
+        {/if}
+        <span class="ic-stat"><i class="ti ti-infinity"></i> постійна адреса</span>
       </div>
     {/if}
 
@@ -101,10 +122,11 @@
   .ic-deco { position: absolute; right: 16px; top: 50%; transform: translateY(-50%) rotate(-8deg); font-size: 64px; color: rgba(255, 255, 255, .09); pointer-events: none; }
   .ic-cover-fade { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,0) 40%, var(--bg-input) 100%); }
   .ic-pill { position: absolute; top: 8px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 999px;
-    font: 700 10px/1.4 var(--font-ui); letter-spacing: .2px; color: #fff; background: rgba(0,0,0,.55);
+    font: 700 var(--fs-min)/1.4 var(--font-ui); letter-spacing: .2px; color: #fff; background: rgba(0,0,0,.55);
     border: 1px solid rgba(255,255,255,.14); }
   .ic-pill.type { left: 8px; }
   .ic-pill.st { right: 8px; background: rgba(27, 217, 106, .22); border-color: rgba(27, 217, 106, .5); }
+  .ic-pill.st.idle { background: rgba(0,0,0,.55); border-color: rgba(255,255,255,.22); }
   .ic-pill.st.off { background: rgba(239, 68, 68, .24); border-color: rgba(239, 68, 68, .5); }
 
   .ic-main { display: flex; align-items: flex-end; gap: 12px; padding: 0 12px; margin-top: -26px; position: relative; }

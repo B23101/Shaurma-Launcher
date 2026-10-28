@@ -405,7 +405,7 @@
   .inv-num.done { background: var(--orange); border-color: var(--orange); color: #111; transform: scale(1.06); }
   .inv-num i { font-size: 13px; }
   .inv-ht { font: 700 13px/1 var(--font-ui); color: var(--text); }
-  .inv-ht em { font-style: normal; margin-left: 4px; padding: 2px 7px; border-radius: 999px; background: rgba(var(--orange-rgb), .14); color: var(--orange); font: 800 10.5px/1.2 var(--font-ui); }
+  .inv-ht em { font-style: normal; margin-left: 4px; padding: 2px 7px; border-radius: 999px; background: rgba(var(--orange-rgb), .14); color: var(--orange); font: 800 var(--fs-min)/1.2 var(--font-ui); }
   .inv-h-act { margin-left: auto; }
 
   .inv-src { display: grid; gap: 7px; align-content: start; flex: 1; min-height: 0; overflow-y: auto; padding: 8px 2px 10px 0; }
@@ -429,10 +429,10 @@
   .inv-main small { color: var(--text-mute); font: 400 11px/1.3 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inv-pick { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--border-hi); color: transparent; font-size: 12px; transition: all .18s cubic-bezier(.34,1.56,.64,1); }
   .inv-card.sel .inv-pick { background: var(--orange); border-color: var(--orange); color: #111; transform: scale(1.08); }
-  .inv-group { display: flex; align-items: center; gap: 6px; padding: 6px 2px 0; font: 800 10px/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
+  .inv-group { display: flex; align-items: center; gap: 6px; padding: 6px 2px 0; font: 800 var(--fs-min)/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
   .inv-group:first-child { padding-top: 0; }
   .inv-group i { font-size: 13px; }
-  .inv-group small { margin-left: auto; font: 600 10px/1 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--text-dim); }
+  .inv-group small { margin-left: auto; font: 600 var(--fs-min)/1 var(--font-ui); letter-spacing: 0; text-transform: none; color: var(--text-dim); }
   .inv-dot { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--text-dim); vertical-align: 0; }
   .inv-dot.on { background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
 
@@ -476,7 +476,7 @@
   .inv-fr.invited { opacity: .5; cursor: default; border-style: dashed; }
   .inv-fr-txt { display: grid; gap: 3px; min-width: 0; flex: 1; }
   .inv-nick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 650 12.5px/1.2 var(--font-ui); }
-  .inv-fr-txt small { color: var(--text-mute); font: 400 10.5px/1.2 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inv-fr-txt small { color: var(--text-mute); font: 400 var(--fs-min)/1.2 var(--font-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .inv-fr-ck { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; border: 1.5px solid var(--border-hi); color: transparent; font-size: 12px; transition: all .18s cubic-bezier(.34,1.56,.64,1); }
   .inv-fr.on .inv-fr-ck { background: var(--orange); border-color: var(--orange); color: #111; transform: scale(1.08); }
   .inv-fr.invited .inv-fr-ck { color: var(--text-mute); border-style: dashed; }
@@ -494,7 +494,7 @@
   .inv-stack { display: inline-flex; }
   .inv-st { margin-left: -8px; border-radius: 9px; box-shadow: 0 0 0 2px var(--bg-window); display: inline-flex; animation: inv-pop .24s cubic-bezier(.34,1.56,.64,1); }
   .inv-st:first-child { margin-left: 0; }
-  .inv-st.more { width: 24px; height: 24px; border-radius: 9px; background: var(--hover-strong); color: var(--text); font: 800 9.5px/24px var(--font-ui); justify-content: center; }
+  .inv-st.more { width: 24px; height: 24px; border-radius: 9px; background: var(--hover-strong); color: var(--text); font: 800 var(--fs-min)/24px var(--font-ui); justify-content: center; }
   @keyframes inv-pop { from { transform: scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
   @media (max-width: 700px) {
     .inv-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; }

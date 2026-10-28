@@ -1136,6 +1136,9 @@ type ModEntry struct {
 	// у грі просто не завантажиться, тож рядок у списку модів блимає.
 	Incompatible       bool   `json:"incompatible"`
 	IncompatibleReason string `json:"incompatibleReason,omitempty"`
+	// ViaConnector — мод іншого лоадера (Fabric/Quilt), що працює в
+	// Forge/NeoForge-збірці лише завдяки встановленому Sinytra Connector.
+	ViaConnector bool `json:"viaConnector,omitempty"`
 	// Loaders — ПОВНИЙ список лоадерів, під які jar реально придатний
 	// (з усіх знайдених у ньому файлів метаданих: mods.toml/
 	// neoforge.mods.toml/fabric.mod.json/quilt.mod.json/mcmod.info).
@@ -1257,6 +1260,9 @@ type MigrationPack struct {
 	// ModCount — кількість увімкнених .jar у теці модів (для підказки в
 	// селекторі: "зі збірки X можна перенести N модів").
 	ModCount int `json:"modCount"`
+	// Kind — "server" для таргету-сервера (ID "srv:"/"srvp:", див.
+	// mod_target.go); порожньо для збірки.
+	Kind string `json:"kind,omitempty"`
 }
 
 // MigrationItem — один мод зі звіту аналізу міграції.
@@ -1306,6 +1312,10 @@ type MigrationItem struct {
 	// MigrateMods/StartModMigration — так installMigratedMod може
 	// знайти jar на диску без зміни сигнатури цих публічних методів.
 	SourcePackID string `json:"sourcePackId,omitempty"`
+	// Side — де працює мод (лише при портуванні на сервер, AnalyzeModPort):
+	// "server" (потрібен серверу), "client" (лише клієнт — на сервер не
+	// переноситься), "unknown" (не визначено — вирішує користувач).
+	Side string `json:"side,omitempty"`
 }
 
 // ModMigrationReport — результат аналізу міграції (звіт для UI).

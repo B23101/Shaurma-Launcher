@@ -37,6 +37,10 @@ type API struct {
 	// реальна, а результат — побитий архів замість двох бекапів.
 	backupLocksMu sync.Mutex
 	backupLocks   map[string]*sync.Mutex
+	// netNotify — повідомлення фонових ланцюгів запуску мережі Velocity
+	// (network_api.go → app.go → подія "server:network-event").
+	netNotifyMu sync.RWMutex
+	netNotify   func(proxyID, serverID, message string)
 	// versions — той самий провайдер MC-версій/лоадер-версій, що юзає
 	// створення збірок (custompack.VersionsProvider): переліки vanilla/
 	// fabric/forge/neoforge/quilt для UI створення сервера НЕ дублюються,
@@ -100,8 +104,9 @@ func (a *API) AddServerFromFolder(dir string, name string, ramMB int, acceptEULA
 		return ServerView{}, fmt.Errorf("низька впевненість у визначенні ядра: %s", strings.Join(det.Messages, "; "))
 	}
 
-	// EULA.
-	if !acceptEULA {
+	// EULA — лише для серверів Minecraft: Velocity не запускає server.jar
+	// Mojang і eula.txt не має.
+	if !acceptEULA && det.Core != CoreVelocity {
 		eulaPath := filepath.Join(dir, "eula.txt")
 		if _, err := os.Stat(eulaPath); os.IsNotExist(err) {
 			return ServerView{}, fmt.Errorf("прийміть EULA Minecraft (створіть eula.txt з eula=true)")
@@ -385,7 +390,11 @@ func (a *API) DeleteServer(id string) error {
 	if a.manager.IsRunning(id) {
 		_ = a.manager.Stop(id, false)
 	}
-	return a.store.Delete(id)
+	if err := a.store.Delete(id); err != nil {
+		return err
+	}
+	a.SyncNetworksFor(id) // проксі забуває видалений сервер
+	return nil
 }
 
 // DeleteServerWithFiles зупиняє сервер, прибирає його з бібліотеки І
@@ -403,6 +412,7 @@ func (a *API) DeleteServerWithFiles(id string) error {
 	if err := a.store.Delete(id); err != nil {
 		return err
 	}
+	a.SyncNetworksFor(id) // проксі забуває видалений сервер
 	return os.RemoveAll(srv.Dir)
 }
 
@@ -487,6 +497,9 @@ func (a *API) SaveServerConfig(id string, patch ServerConfigPatch) (ServerView, 
 
 	if err := a.store.Save(srv); err != nil {
 		return ServerView{}, err
+	}
+	if patch.Port != nil || patch.Name != nil {
+		a.SyncNetworksFor(id) // проксі одразу знає новий порт сервера
 	}
 	return a.toView(srv), nil
 }
@@ -731,7 +744,22 @@ func (a *API) StartServer(id string) error {
 	// Знаходимо/встановлюємо Java → ліниво ставимо ядро → запускаємо.
 	// (Спільний шлях з NetworkStart — кожен сервер мережі стартує через
 	// той самий prepareAndStart, щоб логіка не дублювалась.)
-	return a.prepareAndStart(srv)
+	// Проксі стартує зі свіжим конфігом мережі (порти й імена серверів
+	// могли змінитись, поки він стояв).
+	if srv.Core == CoreVelocity {
+		if net, err := LoadNetwork(srv.Dir); err == nil {
+			if err := a.applyNetwork(srv, net); err != nil {
+				log.Printf("[network] %s: %v", srv.Name, err)
+			}
+		}
+	}
+	if err := a.prepareAndStart(srv); err != nil {
+		return err
+	}
+	// Ланцюги мережі Velocity: проксі піднімає свої сервери, сервер із
+	// «запускає мережу» — проксі (network_api.go).
+	a.afterUserStart(srv)
+	return nil
 }
 
 // effectiveServerPort повертає АКТУАЛЬНИЙ порт сервера: server-port із
@@ -861,6 +889,11 @@ func (a *API) prepareAndStart(srv *Server) error {
 // може лишити світ у недописаному стані, і мовчки знімати таку копію
 // означало б плодити бекапи, які неможливо відновити.
 func (a *API) StopServer(id string, graceful bool) error {
+	if graceful {
+		if srv, ok := a.store.GetNoErr(id); ok {
+			a.beforeUserStop(srv) // проксі спершу зупиняє свою мережу
+		}
+	}
 	err := a.manager.Stop(id, graceful)
 	if err != nil || !graceful {
 		return err
@@ -951,6 +984,7 @@ func (a *API) SaveServerProperties(id string, updates []PropUpdate) error {
 			if n == 1 && p > 0 {
 				srv.Port = p
 				_ = a.store.Save(srv)
+				a.SyncNetworksFor(id) // проксі одразу знає новий порт сервера
 			}
 		}
 	}
@@ -1364,6 +1398,31 @@ func (a *API) HasCrashReport(serverID string) bool {
 func (a *API) GetPackServerLinks(packID string) []PackServerLink {
 	store := NewPackLinkStore(a.store.dataDir)
 	return store.GetLinksForPack(packID)
+}
+
+// GetServerPackLinks — збірки, з якими запускається сервер.
+func (a *API) GetServerPackLinks(serverID string) []PackServerLink {
+	store := NewPackLinkStore(a.store.dataDir)
+	return store.GetLinksForServer(serverID)
+}
+
+// SavePackServerLink додає або оновлює один зв'язок збірка ↔ сервер.
+func (a *API) SavePackServerLink(link PackServerLink) error {
+	if link.PackID == "" || link.ServerID == "" {
+		return fmt.Errorf("оберіть збірку і сервер")
+	}
+	srv, err := a.store.Get(link.ServerID)
+	if err != nil {
+		return err
+	}
+	link.ServerName = srv.Name
+	link.ServerAddr = FormatServerAddress(srv)
+	return NewPackLinkStore(a.store.dataDir).AddLink(link)
+}
+
+// RemovePackServerLink прибирає зв'язок збірка ↔ сервер.
+func (a *API) RemovePackServerLink(packID, serverID string) error {
+	return NewPackLinkStore(a.store.dataDir).RemoveLink(packID, serverID)
 }
 
 func (a *API) SetPackServerLinks(packID string, links []PackServerLink) error {

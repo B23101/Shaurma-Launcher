@@ -363,11 +363,32 @@ func (h CFProjectSummary) logoURL() string {
 }
 
 func (c *CurseForgeClient) SearchProjects(query, projectType, gameVersion, loader string, sort string, limit int, categoryIDs []int) ([]CFProjectSummary, error) {
+	hits, _, err := c.SearchProjectsPage(query, projectType, gameVersion, loader, sort, limit, 0, categoryIDs)
+	return hits, err
+}
+
+// cfSearchMaxIndex — CurseForge /mods/search відмовляє, якщо index+pageSize
+// більше за 10 000 (обмеження API), тож далі цієї межі сторінок немає.
+const cfSearchMaxIndex = 10000
+
+// SearchProjectsPage — те саме, що SearchProjects, але для конкретної
+// сторінки видачі: offset іде в параметр index (зсув у результатах), а
+// другим значенням повертається загальна кількість хітів
+// (pagination.totalCount, обрізана межею API) — для пагінації браузера.
+// Раніше index не передавався зовсім, і будь-яка сторінка CurseForge
+// показувала ту саму першу сторінку.
+func (c *CurseForgeClient) SearchProjectsPage(query, projectType, gameVersion, loader string, sort string, limit, offset int, categoryIDs []int) ([]CFProjectSummary, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	u := fmt.Sprintf("%s/mods/search?searchFilter=%s&gameId=432&classId=%d&sortField=%d&sortOrder=desc&pageSize=%d",
-		curseForgeAPIBase, url.QueryEscape(query), cfClassID(projectType), cfSortField(sort), limit)
+	if offset < 0 {
+		offset = 0
+	}
+	if offset+limit > cfSearchMaxIndex {
+		return []CFProjectSummary{}, cfSearchMaxIndex, nil
+	}
+	u := fmt.Sprintf("%s/mods/search?searchFilter=%s&gameId=432&classId=%d&sortField=%d&sortOrder=desc&pageSize=%d&index=%d",
+		curseForgeAPIBase, url.QueryEscape(query), cfClassID(projectType), cfSortField(sort), limit, offset)
 	if gameVersion != "" {
 		u += "&gameVersion=" + url.QueryEscape(gameVersion)
 	}
@@ -413,13 +434,20 @@ func (c *CurseForgeClient) SearchProjects(query, projectType, gameVersion, loade
 		return io.ReadAll(resp.Body)
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	var parsed struct {
-		Data []CFProjectSummary `json:"data"`
+		Data       []CFProjectSummary `json:"data"`
+		Pagination struct {
+			TotalCount int `json:"totalCount"`
+		} `json:"pagination"`
 	}
 	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	total := parsed.Pagination.TotalCount
+	if total > cfSearchMaxIndex {
+		total = cfSearchMaxIndex
 	}
 	// ЗАХИСТ ВІД «ТИХ САМИХ ПРОЄКТІВ ПІД УСІМА ВКЛАДКАМИ»: якщо CurseForge
 	// проігнорував classId (наприклад, разом із categoryId від ІНШОГО
@@ -434,7 +462,7 @@ func (c *CurseForgeClient) SearchProjects(query, projectType, gameVersion, loade
 		}
 		filtered = append(filtered, h)
 	}
-	return filtered, nil
+	return filtered, total, nil
 }
 
 // CFProjectDetail — повний опис проєкту CurseForge (сторінка модпаку).

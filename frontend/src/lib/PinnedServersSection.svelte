@@ -429,7 +429,7 @@
   }
   .pss-title i { color: var(--orange); font-size: 14px; }
   .pss-count {
-    font-family: var(--font-mono); font-size: 10px; background: var(--bg-input-hi);
+    font-family: var(--font-mono); font-size: var(--fs-min); background: var(--bg-input-hi);
     color: var(--text-mute); border-radius: 999px; padding: 1px 7px;
   }
   .pss-refresh {
@@ -594,7 +594,7 @@
     background: color-mix(in srgb, var(--pcol) 25%, var(--bg-card));
     border: 1.5px solid var(--bg-card); cursor: pointer; z-index: 3;
     display: flex; align-items: center; justify-content: center;
-    font-size: 10px; color: var(--pcol);
+    font-size: var(--fs-min); color: var(--pcol);
     box-shadow: 0 2px 6px rgba(0,0,0,.3);
     transition: transform .15s;
   }
@@ -624,7 +624,7 @@
 
   .pss-info { flex: 1; min-width: 0; }
   .pss-name { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pss-addr { font-size: 10.5px; color: var(--text-mute); font-family: var(--font-mono); margin-top: 1px; }
+  .pss-addr { font-size: var(--fs-min); color: var(--text-mute); font-family: var(--font-mono); margin-top: 1px; }
   .pss-motd {
     margin-top: 3px; font-size: 11px; color: var(--text-mute); line-height: 1.35;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;
@@ -643,7 +643,7 @@
     padding: 4px 9px; border-radius: 999px; cursor: pointer;
     background: color-mix(in srgb, var(--pcol) 12%, var(--bg-input));
     border: 1px solid color-mix(in srgb, var(--pcol) 30%, transparent);
-    font-size: 10.5px; font-weight: 700; color: var(--text); flex-shrink: 0;
+    font-size: var(--fs-min); font-weight: 700; color: var(--text); flex-shrink: 0;
     max-width: 160px; transition: border-color .15s, background .15s;
   }
   .pss-pack:hover { background: color-mix(in srgb, var(--pcol) 22%, var(--bg-input)); }
@@ -664,7 +664,7 @@
   .pss-state-updating { color: var(--text-mute); background: var(--hover); }
   .pss-state-launching { color: var(--orange); background: rgba(var(--orange-rgb), .1); }
   .pss-state-stage {
-    font-family: var(--font-mono); font-size: 10px; opacity: .75;
+    font-family: var(--font-mono); font-size: var(--fs-min); opacity: .75;
     background: rgba(255,255,255,.07); border-radius: 4px; padding: 1px 5px;
   }
   .pss-state-pct { opacity: .7; }

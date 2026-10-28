@@ -439,6 +439,7 @@ func (a *App) ShareStart(req ShareStartRequest) (ShareOutView, error) {
 
 	var root, name string
 	var meta map[string]string
+	var extra map[string]string // файли поза теком гри (іконка збірки)
 	var filter func(string, bool) bool
 	switch req.Kind {
 	case share.KindBuild:
@@ -458,6 +459,7 @@ func (a *App) ShareStart(req ShareStartRequest) (ShareOutView, error) {
 		if b.UseCustomRAM {
 			meta["minRam"], meta["maxRam"] = strconv.Itoa(b.MinRAMMB), strconv.Itoa(b.MaxRAMMB)
 		}
+		extra = a.shareBuildLook(req.RefID, meta)
 		inc := shareInclude(req.Kind)
 		pf := newSharePathFilter(req.Included, req.Excluded)
 		filter = func(rel string, isDir bool) bool { return inc(rel, isDir) && (isDir || pf(rel)) }
@@ -516,7 +518,7 @@ func (a *App) ShareStart(req ShareStartRequest) (ShareOutView, error) {
 				a.finishShareOut(o)
 			}
 		}()
-		if err := a.runShareOut(ctx, o, svc, accountID, root, meta, filter, friendIDs); err != nil {
+		if err := a.runShareOut(ctx, o, svc, accountID, root, meta, extra, filter, friendIDs); err != nil {
 			o.mu.Lock()
 			if errors.Is(err, context.Canceled) {
 				// Відправник сам закрив передачу під час підготовки — це не помилка.
@@ -647,12 +649,13 @@ func newSharePathFilter(included, excluded []string) func(rel string) bool {
 	}
 }
 
-func (a *App) runShareOut(ctx context.Context, o *shareOut, svc *social.Service, accountID, root string, meta map[string]string, filter func(string, bool) bool, friends []string) error {
+func (a *App) runShareOut(ctx context.Context, o *shareOut, svc *social.Service, accountID, root string, meta, extra map[string]string, filter func(string, bool) bool, friends []string) error {
 	var lastEmit time.Time
 	var sha1Mu sync.Mutex
 	sha1s := map[string]string{}
 	m, skipped, err := share.BuildManifest(ctx, root, o.view.Kind, o.view.Name, meta, share.BuildOptions{
 		Include:  filter,
+		Extra:    extra,
 		WantSHA1: shareWantSHA1,
 		OnSHA1: func(rel, sum string) {
 			sha1Mu.Lock()
@@ -709,6 +712,7 @@ func (a *App) runShareOut(ctx context.Context, o *shareOut, svc *social.Service,
 	if err != nil {
 		return err
 	}
+	host.SetExtraFiles(extra)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return err
@@ -779,6 +783,77 @@ func (a *App) runShareOut(ctx context.Context, o *shareOut, svc *social.Service,
 
 // shareContentDirs — теки вмісту, файли з яких шукаємо на Modrinth і показуємо списком.
 var shareContentDirs = map[string]bool{"mods": true, "resourcepacks": true, "shaderpacks": true, "plugins": true, "datapacks": true}
+
+// ── Вигляд збірки в передачі: колір, пресет іконки, файл іконки ─────────────
+
+var (
+	shareColorRe = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+	shareIconRe  = regexp.MustCompile(`^ti-[a-z0-9-]{1,48}$`)
+)
+
+// shareIconMaxBytes — більші іконки (напр. довгі GIF) не передаємо: збірка прийде з пресетом.
+const shareIconMaxBytes = 4 << 20
+
+var shareIconExts = map[string]bool{".png": true, ".gif": true, ".webp": true, ".jpg": true, ".jpeg": true}
+
+// shareBuildLook дописує в meta колір і пресет іконки збірки та повертає її файл іконки
+// (лежить поруч із .minecraft, тож у передачу йде як додатковий файл під share.SharedIconDir).
+func (a *App) shareBuildLook(packID string, meta map[string]string) map[string]string {
+	cp, ok := a.customPacks.Get(packID)
+	if !ok {
+		return nil
+	}
+	if shareColorRe.MatchString(cp.Color) {
+		meta["color"] = cp.Color
+	}
+	if shareIconRe.MatchString(cp.Icon) {
+		meta["icon"] = cp.Icon
+	}
+	if cp.IconPath == "" {
+		return nil
+	}
+	ext := strings.ToLower(filepath.Ext(cp.IconPath))
+	if !shareIconExts[ext] {
+		return nil
+	}
+	abs := cp.IconPath
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(a.packDir(packID, string(builds.KindCustom)), cp.IconPath)
+	}
+	if st, err := os.Stat(abs); err != nil || !st.Mode().IsRegular() || st.Size() > shareIconMaxBytes {
+		return nil
+	}
+	return map[string]string{share.SharedIconDir + "/icon" + ext: abs}
+}
+
+// sharedIconRel — шлях іконки збірки в маніфесті ("" — іконки немає).
+func sharedIconRel(m *share.Manifest) string {
+	prefix := share.SharedIconDir + "/icon"
+	for _, f := range m.Files {
+		if strings.HasPrefix(f.Path, prefix) && shareIconExts[strings.ToLower(filepath.Ext(f.Path))] && f.Size <= shareIconMaxBytes {
+			return f.Path
+		}
+	}
+	return ""
+}
+
+// applySharedLook ставить прийнятій збірці колір, пресет і файл іконки відправника.
+// Файл іконки переноситься з gameDir/.shaurma-share у теку збірки (поруч із .minecraft).
+func applySharedLook(pack *custompack.Pack, m *share.Manifest, gameDir string) {
+	if c := m.Meta["color"]; shareColorRe.MatchString(c) {
+		pack.Color = c
+	}
+	if ic := m.Meta["icon"]; shareIconRe.MatchString(ic) {
+		pack.Icon = ic
+	}
+	if rel := sharedIconRel(m); rel != "" {
+		name := "icon" + strings.ToLower(filepath.Ext(rel))
+		if os.Rename(filepath.Join(gameDir, filepath.FromSlash(rel)), filepath.Join(filepath.Dir(gameDir), name)) == nil {
+			pack.IconPath = name
+		}
+	}
+	_ = os.RemoveAll(filepath.Join(gameDir, share.SharedIconDir))
+}
 
 func shareTopDir(rel string) string {
 	if i := strings.IndexByte(rel, '/'); i > 0 {
@@ -866,7 +941,7 @@ func (a *App) shareResolveModrinth(ctx context.Context, m *share.Manifest, sha1s
 
 func shareCardMeta(m map[string]string) map[string]string {
 	out := map[string]string{}
-	for _, k := range []string{"mc", "loader", "core"} {
+	for _, k := range []string{"mc", "loader", "core", "color", "icon"} {
 		if v := m[k]; v != "" && len(v) <= 32 {
 			out[k] = v
 		}
@@ -1627,6 +1702,7 @@ func (a *App) installSharedBuild(in *shareIn, m *share.Manifest, files string) (
 		MCVersion: m.Meta["mc"], Loader: m.Meta["loader"], LoaderVersion: m.Meta["loaderVersion"],
 		Source: "manual", SharedFrom: in.view.From,
 	}
+	applySharedLook(&pack, m, dst)
 	if mx, e := strconv.Atoi(m.Meta["maxRam"]); e == nil && mx > 0 {
 		mn, _ := strconv.Atoi(m.Meta["minRam"])
 		pack.UseCustomRAM, pack.MinRAMMB, pack.MaxRAMMB = true, mn, mx
@@ -2024,6 +2100,10 @@ func buildSharePreview(sid string, m *share.Manifest) SharePreviewView {
 	groups := map[string]*SharePreviewGroup{}
 	var order []string
 	for _, f := range m.Files {
+		// Іконка збірки — службовий файл, у вмісті передачі її не показуємо.
+		if shareTopDir(f.Path) == share.SharedIconDir {
+			continue
+		}
 		g := sharePreviewGroup(m.Kind, f.Path)
 		if groups[g] == nil {
 			groups[g] = &SharePreviewGroup{Key: g}
