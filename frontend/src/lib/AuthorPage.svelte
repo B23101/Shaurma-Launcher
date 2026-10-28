@@ -178,7 +178,13 @@
 </div>
 
 <style>
-  .ap-wrap { display: flex; flex-direction: column; gap: 14px; }
+  /* На сторінці браузера .content не скролиться (content-no-scroll), тож
+     скрол — тут, як у .mp-wrap. Діти не стискаються (flex-shrink:0), інакше
+     банер з overflow:hidden схлопувався б замість прокрутки. */
+  .ap-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
+  .ap-wrap > * { flex-shrink: 0; }
+  .ap-wrap::-webkit-scrollbar { width: 6px; }
+  .ap-wrap::-webkit-scrollbar-thumb { background: var(--hover-strong); border-radius: 3px; }
 
   .ap-topbar { display: flex; align-items: center; justify-content: space-between; }
   .ap-external { display: inline-flex; align-items: center; gap: 6px; color: var(--text-mute); font-size: 12px; text-decoration: none; }
@@ -240,14 +246,14 @@
     display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff;
     background: linear-gradient(135deg, var(--violet), var(--orange));
   }
-  .ap-card-body { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .ap-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .ap-card-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
   .ap-src-dot { width: 7px; height: 7px; min-width: 7px; border-radius: 50%; }
   .ap-src-dot.mr { background: #1bd96a; }
   .ap-src-dot.cf { background: #f16436; }
   .ap-card-title { font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ap-card-tags { display: flex; align-items: center; gap: 5px; }
-  .ap-card-type, .ap-card-src { font-size: var(--fs-min); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border-radius: 4px; padding: 1px 5px; }
+  .ap-card-tags { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 5px; min-width: 0; }
+  .ap-card-type, .ap-card-src { font-size: var(--fs-min); font-weight: 700; text-transform: uppercase; letter-spacing: .4px; border-radius: 4px; padding: 1px 5px; white-space: nowrap; }
   .ap-card-type { background: rgba(255,255,255,.07); color: var(--text-mute); }
   .ap-card-src.mr { background: rgba(27,217,106,.15); color: #1bd96a; }
   .ap-card-src.cf { background: rgba(241,100,54,.15); color: #f16436; }
