@@ -2005,8 +2005,23 @@
   // SearchSidebarFilter Modrinth). «Оптимізація» з Modrinth і CurseForge
   // потрапляють в одну групу performance-impact завдяки Header з бекенду.
   const categoryHeaderOrder = ['category', 'feature', 'performance-impact', 'resolutions']
+  // Modrinth віддає header як «categories» / «features» / «performance impact»
+  // (множина, пробіли), а ключі перекладів — «category» / «feature» /
+  // «performance-impact». Нормалізуємо до ключів перекладів.
+  function normalizeCategoryHeader(header: string | undefined | null): string {
+    const k = (header || 'category').trim().toLowerCase().replace(/[\s_]+/g, '-')
+    if (k === 'categories') return 'category'
+    if (k === 'features') return 'feature'
+    return k
+  }
+  // t() повертає сам ключ, коли перекладу немає — тож `|| header` ніколи
+  // не спрацьовував і в UI з'являвся сирий ключ. Порівнюємо з ключем.
   function categoryHeaderLabel(header: string): string {
-    return t('browser.categoryHeader.' + header) || header
+    const key = 'browser.categoryHeader.' + header
+    const v = t(key)
+    if (v !== key) return v
+    const pretty = header.replace(/[-_]+/g, ' ')
+    return pretty.charAt(0).toUpperCase() + pretty.slice(1)
   }
 
   // Групуємо категорії по header і сортуємо назви всередині групи —
@@ -2015,7 +2030,7 @@
   const groupedCategories = $derived.by(() => {
     const groups = new Map<string, BrowserCategory[]>()
     for (const c of categories) {
-      const h = c.header || 'category'
+      const h = normalizeCategoryHeader(c.header)
       if (!groups.has(h)) groups.set(h, [])
       groups.get(h)!.push(c)
     }
@@ -2872,6 +2887,8 @@
           name="cb-dlg-target"
           compat={dlg.serverCompat?.servers ?? null}
           checking={dlg.serverChecking}
+          installButton={true}
+          class="cb-pp cb-pp-install"
         />
       {:else}
       {#if dlg.serverCompat?.serverOnly && packPickType === 'mod'}

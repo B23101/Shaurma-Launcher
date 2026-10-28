@@ -6,8 +6,12 @@
   //   • реальна іконка сервера (власна або іконка його ядра) і колір;
   //   • показуємо ЛИШЕ сервери, що підтримують поточний вид контенту
   //     (моди → мод-ядра, плагіни → плагін-ядра).
+  import { onMount } from 'svelte'
+  import { App } from '../wails'
   import { t } from '../i18n.svelte'
-  import type { BrowserServerCompatEntry } from '../types'
+  import type { BrowserServerCompatEntry, ServerFolder } from '../types'
+  import PackPicker from '../PackPicker.svelte'
+  import type { PackRow, PackFolderRow, PackPickerItem } from '../PackPicker.svelte'
   import {
     kindForTab, serversForTab, serverVisual, coreName,
     type BrowserServer,
@@ -34,6 +38,14 @@
     compat = null as BrowserServerCompatEntry[] | null,
     // checking — перевірка ще йде (рядки з індикатором, клік недоступний).
     checking = false,
+    // installButton — діалог встановлення: у кожному рядку кнопка «Встановити»
+    // (як у списку збірок), клік по самому рядку нічого не робить.
+    installButton = false,
+    // installedDisabled — (лише з installButton) уже встановлений сервер: кнопка
+    // «Встановлено» вимкнена. Інакше — зелена галочка + «Перевстановити».
+    installedDisabled = false,
+    // class — додатковий CSS-клас списку (ті самі, що й у PackPicker збірок).
+    class: cls = '',
   }: {
     servers?: BrowserServer[]
     tab?: string
@@ -44,6 +56,9 @@
     allKinds?: boolean
     compat?: BrowserServerCompatEntry[] | null
     checking?: boolean
+    installButton?: boolean
+    installedDisabled?: boolean
+    class?: string
   } = $props()
 
   const compatById = $derived(new Map((compat ?? []).map(c => [c.serverId, c])))
@@ -68,7 +83,80 @@
   })
   const kind = $derived(kindForTab(tab))
 
+  // Папки серверів — ті самі, що на сторінці «Сервери» (App.GetServerFolders).
+  let folders = $state<ServerFolder[]>([])
+  onMount(() => {
+    App.GetServerFolders().then(f => { folders = f ?? [] }).catch(() => {})
+  })
+
+  const off = (id: string) => blocked(id) || checking
+
+  // Дані для PackPicker: рядок на сервер (іконка/колір з serverVisual — те
+  // саме джерело правди, що й раніше) + папки лише з показаних серверів.
+  const picker = $derived.by(() => {
+    const rowById = new Map<string, PackRow>()
+    for (const s of shown) {
+      const vis = serverVisual(s)
+      const cs = compatById.get(s.id)
+      let note: PackRow['note'] | undefined
+      if (checking) note = { text: t('browser.compatChecking'), kind: 'busy' }
+      else if (blocked(s.id)) note = { text: reasonText(s.id), kind: 'bad', icon: 'ti-ban' }
+      else if (cs?.unconfirmed) note = { text: t('browser.target.unconfirmed'), kind: 'warn', icon: 'ti-help-circle' }
+      else if (cs?.alreadyInstalled && !installButton) note = { text: t('browser.alreadyInstalled', { file: cs.installedFileName ?? '' }), kind: 'warn', icon: 'ti-alert-triangle' }
+      rowById.set(s.id, {
+        name: s.name,
+        color: vis.color,
+        iconSrc: vis.src,
+        icon: vis.ti || 'ti-server-2',
+        loader: coreName(s),
+        mcVersion: s.mcVersion,
+        note,
+        disabled: off(s.id),
+      })
+    }
+    const folderById = new Map<string, PackFolderRow>()
+    const items: PackPickerItem[] = []
+    const inFolder = new Set<string>()
+    for (const f of folders) {
+      const members = new Set(f.serverIds)
+      const packIds = shown.filter(s => members.has(s.id) && !inFolder.has(s.id)).map(s => s.id)
+      if (packIds.length === 0) continue
+      packIds.forEach(id => inFolder.add(id))
+      folderById.set(f.id, { name: f.name, color: f.color, packIds })
+      items.push({ kind: 'folder', id: f.id })
+    }
+    for (const s of shown) if (!inFolder.has(s.id)) items.push({ kind: 'pack', id: s.id })
+    return { items, rowById, folderById }
+  })
+
+  function pickById(id: string) {
+    const s = shown.find(x => x.id === id)
+    if (s && !off(id)) onpick(s)
+  }
+
+  // Лишаємо cb-pp для компактного вигляду в сайдбарі (variant="radio").
+  const listClass = $derived([cls, variant === 'radio' ? 'cb-pp' : ''].filter(Boolean).join(' '))
 </script>
+
+{#snippet srvActions(id: string)}
+  {@const cs = compatById.get(id)}
+  {#if cs?.alreadyInstalled && installedDisabled}
+    <button class="btn btn-ghost btn-sm" disabled><i class="ti ti-check"></i> {t('browser.installed.short')}</button>
+  {:else}
+    {#if cs?.alreadyInstalled}
+      <span class="stl-installed-badge" title={t('browser.alreadyInstalled', { file: cs.installedFileName ?? '' })}>
+        <i class="ti ti-circle-check"></i>
+      </span>
+    {/if}
+    <button class="btn btn-primary btn-sm" onclick={() => pickById(id)} disabled={off(id)}>
+      {#if cs?.alreadyInstalled}
+        <i class="ti ti-refresh"></i> {t('browser.install.reinstall')}
+      {:else}
+        <i class="ti ti-download"></i> {t('browser.install')}
+      {/if}
+    </button>
+  {/if}
+{/snippet}
 
 {#if servers.length === 0}
   <div class="stl-empty">{t('browser.target.noServers')}</div>
@@ -78,45 +166,16 @@
     <div>{kind === 'plugins' ? t('browser.target.noPluginServers') : t('browser.target.noModServers')}</div>
   </div>
 {:else}
-  {#each shown as s (s.id)}
-    {@const vis = serverVisual(s)}
-    {@const off = blocked(s.id) || checking}
-    {@const cs = compatById.get(s.id)}
-      <div
-        class="pp-row"
-        class:compact={variant === 'radio'}
-        class:sel={selectedId === s.id}
-        class:off={blocked(s.id)}
-        style="--pcol:{vis.color}"
-        role="button"
-        tabindex={off ? -1 : 0}
-        aria-disabled={off}
-        title={blocked(s.id) ? reasonText(s.id) : undefined}
-        onclick={() => { if (!off) onpick(s) }}
-        onkeydown={(e) => { if (!off && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); onpick(s) } }}
-      >
-        <span class="pp-ic" class:has-icon={!!vis.src}>
-          {#if vis.src}<img src={vis.src} alt="" />{:else}<i class="ti {vis.ti || 'ti-server-2'}"></i>{/if}
-        </span>
-        <span class="pp-info">
-          <span class="pp-name">{s.name}</span>
-          <span class="pp-sub">{coreName(s)} · {s.mcVersion}</span>
-          {#if checking}
-            <span class="pp-note"><i class="ti ti-loader spin"></i> {t('browser.compatChecking')}</span>
-          {:else if blocked(s.id)}
-            <span class="pp-note bad"><i class="ti ti-ban"></i> {reasonText(s.id)}</span>
-          {:else if cs?.alreadyInstalled}
-            <span class="pp-note warn"><i class="ti ti-alert-triangle"></i> {t('browser.alreadyInstalled', { file: cs.installedFileName ?? '' })}</span>
-          {:else if cs?.unconfirmed}
-            <span class="pp-note warn"><i class="ti ti-help-circle"></i> {t('browser.target.unconfirmed')}</span>
-          {/if}
-        </span>
-        {#if selectedId === s.id}
-          <i class="ti ti-check pp-check"></i>
-        {/if}
-      </div>
-  {/each}
-
+  <PackPicker
+    items={picker.items}
+    rowById={picker.rowById}
+    folderById={picker.folderById}
+    selected={selectedId}
+    onselect={pickById}
+    selectable={!installButton}
+    rowActions={installButton ? srvActions : null}
+    class={listClass}
+  />
 {/if}
 
 <style>
@@ -128,46 +187,5 @@
     display: flex; flex-direction: column; align-items: center; gap: 4px;
   }
   .stl-empty i { font-size: 18px; opacity: .7; }
-
-
-  /* Рядок сервера (variant="row") — 1-в-1 стилі рядка збірки з PackPicker,
-     щоб сервери в списку цілей виглядали точно як збірки, без власного
-     дизайну. Svelte scope'ить CSS до файлу, тому клас однакового імені
-     треба продублювати тут (спільного стилю між компонентами нема). */
-  .pp-row {
-    display: flex; align-items: center; gap: 9px;
-    padding: 6px 8px; border-radius: var(--r-md);
-    cursor: pointer; user-select: none;
-    transition: background .15s, box-shadow .15s;
-  }
-  .pp-row.compact { padding: 6px 10px; font-size: 12px; }
-  .pp-row:hover { background: var(--hover); }
-  .pp-row.sel {
-    background: color-mix(in srgb, var(--pcol, var(--orange)) 12%, var(--hover));
-    box-shadow: inset 2px 0 0 0 var(--pcol, var(--orange));
-  }
-  .pp-ic {
-    width: 28px; height: 28px; min-width: 28px; border-radius: 7px;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--bg-input); overflow: hidden;
-  }
-  .pp-ic img {
-    width: 100%; height: 100%;
-    max-width: 100%; max-height: 100%;
-    object-fit: cover; display: block;
-  }
-  .pp-ic:not(.has-icon) { color: var(--pcol, var(--orange)); }
-  .pp-ic i { font-size: 14px; }
-  .pp-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .pp-name {
-    font-size: 12.5px; font-weight: 700; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-  }
-  .pp-sub { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pp-check { color: var(--pcol, var(--orange)); font-size: 15px; flex-shrink: 0; }
-  .pp-row.off { cursor: not-allowed; opacity: .55; }
-  .pp-row.off:hover { background: transparent; }
-  .pp-note { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-min); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .pp-note.bad { color: var(--red); }
-  .pp-note.warn { color: var(--orange); }
+  .stl-installed-badge { display: inline-flex; align-items: center; justify-content: center; color: var(--green); font-size: 15px; }
 </style>

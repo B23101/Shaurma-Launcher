@@ -2213,6 +2213,9 @@
           name="mp-dlg-target"
           compat={packDialog.serverCompat?.servers ?? null}
           checking={!!packDialog.serverChecking}
+          installButton={true}
+          installedDisabled={true}
+          class="mp-pp"
         />
       {:else}
       {#if projectServerTab === 'mod' && detail?.clientSide === 'unsupported'}

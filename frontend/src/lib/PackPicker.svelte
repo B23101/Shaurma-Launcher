@@ -21,6 +21,13 @@
     icon?: string
     loader?: string
     mcVersion?: string
+    // iconSrc — ГОТОВА картинка (data URL чи локальний asset), показується як є,
+    // без packAsset (для серверів: іконка ядра/сервера не йде через CDN).
+    iconSrc?: string
+    // note — додатковий рядок під підписом (причина несумісності, «перевірка…»).
+    note?: { text: string; kind?: 'bad' | 'warn' | 'busy'; icon?: string }
+    // disabled — рядок не клікабельний і приглушений.
+    disabled?: boolean
   }
   export interface PackFolderRow {
     name: string
@@ -136,12 +143,13 @@
   // Клік по рядку: multi — toggle, інакше — звичайний onselect.
   function handleRowClick(id: string) {
     if (!selectable) return
+    if (rowById.get(id)?.disabled) return
     if (multi) ontoggle(id)
     else onselect(id)
   }
 
   function iconFor(r: PackRow) {
-    return packAsset(r.iconUrl)
+    return r.iconSrc || packAsset(r.iconUrl)
   }
 </script>
 
@@ -201,6 +209,7 @@
                     <div
                       class="pp-row pp-in-folder"
                       class:sel={sel}
+                      class:off={r.disabled}
                       style="--pcol:{pcol}"
                       role={selectable ? 'button' : undefined}
                       onclick={() => handleRowClick(pid)}
@@ -217,6 +226,9 @@
                       <span class="pp-info">
                         <span class="pp-name">{r.name}</span>
                         <span class="pp-sub">{subtitle(r, pid)}</span>
+                        {#if r.note}
+                          <span class="pp-note {r.note.kind ?? ''}"><i class="ti {r.note.icon ?? (r.note.kind === 'busy' ? 'ti-loader spin' : '')}"></i> {r.note.text}</span>
+                        {/if}
                       </span>
                       {#if rowActions}
                         <span class="pp-actions" onclick={(e: any) => e.stopPropagation()}>
@@ -243,6 +255,7 @@
           <div
             class="pp-row"
             class:sel={sel}
+            class:off={r.disabled}
             style="--pcol:{pcol}"
             role={selectable ? 'button' : undefined}
             onclick={() => handleRowClick(item.id)}
@@ -259,6 +272,9 @@
             <span class="pp-info">
               <span class="pp-name">{r.name}</span>
               <span class="pp-sub">{subtitle(r, item.id)}</span>
+              {#if r.note}
+                <span class="pp-note {r.note.kind ?? ''}"><i class="ti {r.note.icon ?? (r.note.kind === 'busy' ? 'ti-loader spin' : '')}"></i> {r.note.text}</span>
+              {/if}
             </span>
             {#if rowActions}
               <span class="pp-actions" onclick={(e: any) => e.stopPropagation()}>
@@ -388,4 +404,9 @@
   .pp-sub { font-size: var(--fs-min); color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .pp-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .pp-check { color: var(--pcol, var(--orange)); font-size: 15px; flex-shrink: 0; }
+  .pp-row.off { cursor: not-allowed; opacity: .55; }
+  .pp-row.off:hover { background: transparent; }
+  .pp-note { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-min); color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pp-note.bad { color: var(--red); }
+  .pp-note.warn { color: var(--orange); }
 </style>

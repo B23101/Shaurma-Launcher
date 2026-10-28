@@ -631,7 +631,7 @@ type CFCategory struct {
 	Slug     string `json:"slug"`
 	IconURL  string `json:"iconUrl"`
 	ClassID  int    `json:"classId"`
-	ParentID int    `json:"parentGameCategoryId"`
+	ParentID int    `json:"parentCategoryId"`
 	IsClass  bool   `json:"isClass"`
 }
 
