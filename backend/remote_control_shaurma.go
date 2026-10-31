@@ -84,7 +84,12 @@ func (a *App) remote() *remoteRT {
 			}
 		}
 		svc := func() *social.Service { return a.socialService() }
-		emit := func(event string, payload any) { a.emit(event, payload) } // a.emit — variadic
+		emit := func(event string, payload any) { // a.emit — variadic
+			a.emit(event, payload)
+			if event == remotehost.EventHostAction {
+				a.notifyRemoteHostAction(payload)
+			}
+		}
 		rt.host = remotehost.NewHost(remotehost.HostDeps{
 			Self:    func() string { return svc().RemoteSelf() },
 			VPSKey:  rt.vpsKey,

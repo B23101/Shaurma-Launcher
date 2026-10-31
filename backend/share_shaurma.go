@@ -1727,6 +1727,10 @@ func (a *App) installSharedServer(in *shareIn, m *share.Manifest, files string) 
 		folder = fmt.Sprintf("%s-%d", base, i)
 	}
 	dst := filepath.Join(a.cfg.Dir(), "servers", folder)
+	// .shaurma — службова тека лаунчера (launch_config.json визначає, що саме запускати з
+	// JVM). Відправник її не передає, але одержувач не вірить цьому на слово: чужий
+	// launch_config.json не має потрапити в сервер.
+	_ = os.RemoveAll(filepath.Join(files, ".shaurma"))
 	marker := share.InstallMarker{Dst: dst}
 	if err := share.BeginInstall(in.stage, marker); err != nil {
 		return "", fmt.Errorf("не вдалося почати встановлення: %w", err)

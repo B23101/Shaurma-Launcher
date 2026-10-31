@@ -21,10 +21,19 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"golang.org/x/image/draw"
 	_ "golang.org/x/image/webp" // реєструє декодер webp у image.Decode
 )
+
+// Ліміти завантаження зовнішніх зображень.
+const (
+	maxFetchImageBytes = 10 << 20 // 10 MiB
+	maxFetchImageSide  = 8192     // px по більшій стороні
+)
+
+var fetchImageClient = &http.Client{Timeout: 20 * time.Second}
 
 // ToPNG читає зображення (png/jpg/webp/gif — формат визначається за
 // магічними байтами через image.Decode) і переписує його у PNG.
@@ -208,7 +217,14 @@ func FetchImageToPNG(url, dir, baseName string) string {
 	if url == "" {
 		return ""
 	}
-	resp, err := http.Get(url)
+	// URL приходить із зовнішніх описів проєктів (Modrinth/CurseForge): лише https,
+	// з таймаутом, ліміт розміру і розмірів зображення (захист від зависання,
+	// величезних файлів і «бомб» декомпресії).
+	if !strings.HasPrefix(strings.ToLower(url), "https://") {
+		log.Printf("imageconvert: відхилено не-https URL для %q", baseName)
+		return ""
+	}
+	resp, err := fetchImageClient.Get(url)
 	if err != nil {
 		// Мовчазна відмова тут раніше означала, що картка збірки
 		// лишалась без іконки без жодного сліду в логах — важко було
@@ -221,7 +237,15 @@ func FetchImageToPNG(url, dir, baseName string) string {
 		log.Printf("imageconvert: %q (%s) відповів HTTP %d", baseName, url, resp.StatusCode)
 		return ""
 	}
-	data, err := io.ReadAll(resp.Body)
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchImageBytes+1))
+	if err == nil && int64(len(data)) > maxFetchImageBytes {
+		log.Printf("imageconvert: %q завеликий (> %d байт)", baseName, maxFetchImageBytes)
+		return ""
+	}
+	if cfg, _, cerr := image.DecodeConfig(bytes.NewReader(data)); cerr == nil && (cfg.Width > maxFetchImageSide || cfg.Height > maxFetchImageSide) {
+		log.Printf("imageconvert: %q має завеликі розміри %dx%d", baseName, cfg.Width, cfg.Height)
+		return ""
+	}
 	if err != nil || len(data) == 0 {
 		log.Printf("imageconvert: порожнє або пошкоджене тіло відповіді для %q (%s): %v", baseName, url, err)
 		return ""

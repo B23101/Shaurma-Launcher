@@ -71,6 +71,14 @@ type Account struct {
 	Gamertag   string `json:"gamertag"`
 }
 
+// Public повертає копію акаунта БЕЗ токенів — єдина форма, яку можна віддавати у WebView.
+// Токени (Minecraft/Microsoft access, refresh) потрібні лише бекенду; якщо XSS у фронтенді
+// їх прочитає, це повний доступ до акаунта.
+func (a Account) Public() Account {
+	a.AccessToken, a.MsAccessToken, a.RefreshToken, a.MsIDToken = "", "", "", ""
+	return a
+}
+
 // XboxFriend — друг з People Hub + присутність (одна сутність для UI).
 // State: "online" | "in-game" | "offline". Joinable — друг у грі Minecraft
 // (відомий titleId) — для кнопки «Приєднатися».

@@ -123,9 +123,27 @@ func (h *Host) audit(from, srv, op, result, cmd string) {
 	if len(cmd) > maxAuditCmd {
 		cmd = cmd[:maxAuditCmd]
 	}
+	nick := h.d.Friends.Nick(from)
+	ts := h.d.Now().UnixMilli()
 	h.d.Store.AddAudit(h.d.Self(), remotectl.AuditEntry{
-		TS: h.d.Now().UnixMilli(), Friend: from, Nick: h.d.Friends.Nick(from), Server: srv, Name: name, Op: op, Result: result, Cmd: cmd,
+		TS: ts, Friend: from, Nick: nick, Server: srv, Name: name, Op: op, Result: result, Cmd: cmd,
 	})
+	// Сповіщення власнику: хто і що робить з його сервером (команда cmd у подію не йде).
+	h.d.Emit(EventHostAction, HostAction{TS: ts, Friend: from, Nick: nick, Server: srv, Name: name, Op: op, Result: result})
+}
+
+// EventHostAction — подія для UI/трею: друг виконав (або спробував) дію над сервером власника.
+const EventHostAction = "remote:host_action"
+
+// HostAction — опис однієї дії друга над сервером (без тексту команд).
+type HostAction struct {
+	TS     int64  `json:"ts"`
+	Friend string `json:"friend"`
+	Nick   string `json:"nick"`
+	Server string `json:"server"`
+	Name   string `json:"name"`
+	Op     string `json:"op"`
+	Result string `json:"result"`
 }
 
 func (h *Host) seen(id string, now time.Time) bool {
@@ -397,6 +415,10 @@ func (h *Host) doExec(c *call, raw string, dec remotectl.Decision, now time.Time
 		return
 	}
 	h.audit(c.from, srv, "console_exec", "ok", cmd.Text)
+	if cmd.IsStop { // «stop» з консолі — теж зупинка сервера: власник має це побачити
+		name, _ := h.d.Servers.Exists(srv)
+		h.d.Emit(EventHostAction, HostAction{TS: h.d.Now().UnixMilli(), Friend: c.from, Nick: h.d.Friends.Nick(c.from), Server: srv, Name: name, Op: social.RemoteOpStop, Result: "accepted"})
+	}
 	c.reply(envelope{OK: true, Code: "sent", State: h.d.Servers.State(srv), Final: true})
 }
 

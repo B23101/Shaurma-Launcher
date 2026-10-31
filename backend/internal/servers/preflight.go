@@ -106,7 +106,7 @@ func (a *API) Preflight(id string) (PreflightResult, error) {
 			add(ServerWarning{
 				Kind:      WarnKindRAM,
 				Level:     "warn",
-				Message:   fmt.Sprintf("Мало вільної оперативки: серверу потрібно %d МБ, доступно %d МБ", srv.RAMMB, ramCheck.Available),
+				Message:   fmt.Sprintf("Мало вільної оперативки: серверу потрібно %d МБ, зараз вільно %d МБ", srv.RAMMB, ramCheck.Available),
 				Hint:      "Можливі крахи або зависання світу. Зменшіть RAM сервера або закрийте інші програми.",
 				Fatal:     false,
 				Ignorable: true,

@@ -37,6 +37,8 @@ func ensureForwardingSecret(proxyDir string) (string, error) {
 	if data, err := os.ReadFile(path); err == nil {
 		s := strings.TrimSpace(string(data))
 		if s != "" {
+			// Секрет, створений раніше з правами 0644, звужуємо до 0600 (best-effort).
+			_ = os.Chmod(path, 0600)
 			return s, nil
 		}
 	}
@@ -45,7 +47,7 @@ func ensureForwardingSecret(proxyDir string) (string, error) {
 		return "", fmt.Errorf("генерація forwarding.secret: %w", err)
 	}
 	secret := hex.EncodeToString(raw)
-	if err := writeFileAtomic(path, []byte(secret+"\n"), 0644); err != nil {
+	if err := writeFileAtomic(path, []byte(secret+"\n"), 0600); err != nil {
 		return "", fmt.Errorf("запис forwarding.secret: %w", err)
 	}
 	log.Printf("[servers] створено forwarding.secret для мережі (%s)", filepath.Dir(path))

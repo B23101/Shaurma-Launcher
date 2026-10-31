@@ -737,8 +737,11 @@ func (a *API) StartServer(id string) error {
 	// Перевірка RAM.
 	allRunning := a.getUsedRAM()
 	ramCheck := CheckRAM(srv.RAMMB, allRunning)
-	if !ramCheck.Ok {
-		return fmt.Errorf("недостатньо пам'яті: потрібно %d МБ, доступно %d МБ", srv.RAMMB, ramCheck.Available)
+	// Блокуємо лише коли сервер фізично не вміщується у вільну пам'ять.
+	// «Впритул» (з запасом менше ramSafetyMarginMB) — це попередження
+	// передстарту (preflight.go), а не відмова.
+	if srv.RAMMB > ramCheck.Available {
+		return fmt.Errorf("недостатньо вільної пам'яті: серверу потрібно %d МБ, зараз вільно %d МБ. Закрийте інші програми або зменште RAM сервера", srv.RAMMB, ramCheck.Available)
 	}
 
 	// Знаходимо/встановлюємо Java → ліниво ставимо ядро → запускаємо.

@@ -58,3 +58,27 @@ Pack Manager після успішної збірки сам зробить git 
 - [fix] Обмежено читання маніфестів CurseForge з ZIP та відхилено завеликі маніфести під час перегляду імпорту || bound CurseForge manifest reads and reject oversized previews
 - [fix] Обмежено запис, розпакування та очищення синхронізації коренем збірки через os.Root || contain sync filesystem mutations within the installation root
 - [chore] Додано перевірки перенаправлень, посилань назовні, першого встановлення та докачування || test sync containment redirects and download compatibility
+
+## 2026-10-31 22:40
+- [fix] Тимчасовий P2P-доступ тунелює голосовий UDP на порт голосового мода (-1/0 у конфігу = порт світу), а не завжди на порт світу || tunnel temporary invite voice on the voice mod UDP port
+- [feat] У вікні запрошення додано режими голосу «Авто / Свій порт / Вимк.» і зміну UDP-порту вже відкритого доступу без перезапуску || add per-invite voice UDP port selection and live update
+- [feat] Пошук Simple Voice Chat / Plasmo Voice у конфігах світу (saves/<світ>/serverconfig), збірки та сервера лаунчера || detect voice chat config for LAN worlds
+- [chore] Додано тести визначення голосового порту для LAN-світів || test voice port detection for LAN worlds
+- [refactor] Видалено систему кастомного дизайну сторінки збірки (клієнт, поля індексу, перевірку) || remove pack page design system from launcher
+
+## 2026-10-31 22:50
+- [fix] Токени акаунтів (Minecraft/Microsoft access і refresh) більше не передаються у WebView: GetAccounts і результат перейменування віддають акаунт без токенів || stop exposing account tokens to the webview
+- [chore] Додано тест, що Account.Public() прибирає токени й не змінює оригінал || test account token stripping
+
+## 2026-10-31 23:05
+- [fix] Прийом сервера від друга видаляє передану службову теку .shaurma, щоб чужий launch_config.json не потрапляв у сервер || drop received .shaurma folder when installing a shared server
+
+## 2026-10-31 18:20
+- [fix] CSP: прибрано unsafe-inline зі script-src та загальний http: з img/media/connect-src, лишено лише loopback 127.0.0.1 || tighten CSP by removing inline scripts and plain http sources
+- [fix] forwarding.secret створюється з правами 0600, наявний файл звужується до 0600 || write forwarding secret with owner-only permissions
+
+## 2026-10-31 19:10
+- [feat] Спливаюче сповіщення, коли друг дистанційно запускає/зупиняє сервер, вмикає P2P, відкриває консоль або отримує відмову || notify owner about remote server actions by friends
+- [fix] Зупинка сервера командою stop із віддаленої консолі теж сповіщає власника || notify owner when a friend stops a server via console
+- [fix] Завантаження зображень проєктів: лише https, таймаут 20 с, ліміт 10 МБ і 8192 px || harden external image download with https timeout and size limits
+- [chore] Тести тексту та тротлінгу сповіщень про віддалене керування || cover remote action notifications with tests

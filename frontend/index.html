@@ -8,16 +8,20 @@
       ModpackPage): сторінка проєкту рендерить {@html} з описів Modrinth
       (markdown) і CurseForge (HTML) — навіть якщо санатор пропустить щось
       шкідливе, CSP не дасть виконати зовнішні скрипти/iframe.
-        - script-src 'self': Wails runtime.js та бандл — same-origin.
-          Інлайн-скрипти дозволені лише для WebView2-моста (безпека від
-          ЗОВНІШНІХ скриптів лишається — https:// джерела заборонені).
+        - script-src 'self': лише same-origin бандл. Без 'unsafe-inline' і
+          без зовнішніх джерел: інлайн-скрипт, впроваджений через XSS, не
+          виконається. Інлайн-<script> є лише у віртуальних сторінках shell
+          (splash/помилка в shell/assetfs.go) — вони не використовують цей CSP.
         - style-src 'unsafe-inline': Svelte інжектить стилі інлайн.
-        - img/media https: — CDN Modrinth/CurseForge; blob: — кеш аватарів.
+        - img/media/connect: https: — CDN Modrinth/CurseForge; blob: — кеш
+          аватарів. Звичайний http: заборонено (витік у відкритому вигляді);
+          дозволено лише loopback http://127.0.0.1:* для локальних серверів
+          (іконки модів, backend/modicon_server.go).
         - frame-src youtube.com: вкладка «Відео» вбудовує YouTube.
         - object-src 'none' / form-action 'none' / base-uri 'self': блокуємо
           плагіни, фішингові форми та <base> (викрадення відносних URL).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; media-src 'self' blob: https: http:; font-src 'self' data:; connect-src 'self' ws: wss: https: http:; frame-src 'self' about: https://www.youtube.com https://www.youtube-nocookie.com http://www.youtube.com; object-src 'none'; base-uri 'self'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http://127.0.0.1:*; media-src 'self' blob: https: http://127.0.0.1:*; font-src 'self' data:; connect-src 'self' ws: wss: https: http://127.0.0.1:*; frame-src 'self' about: https://www.youtube.com https://www.youtube-nocookie.com; object-src 'none'; base-uri 'self'; form-action 'none'" />
     <title>Shaurma Launcher</title>
   </head>
   <body>

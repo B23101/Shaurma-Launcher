@@ -3672,7 +3672,14 @@ func (a *App) GetSystemInfo() model.SystemInfo {
 	return sysinfo.Collect(a.cfg.Dir())
 }
 func (a *App) GetAccounts() []model.Account {
-	accounts := a.cfg.GetAccounts()
+	// config.GetAccounts віддає внутрішній зріз менеджера (без копії) — тож токени
+	// прибираємо в НОВОМУ зрізі, а не на місці, інакше вони зникнуть із пам'яті лаунчера.
+	// У WebView токени не віддаємо ніколи (див. model.Account.Public).
+	src := a.cfg.GetAccounts()
+	accounts := make([]model.Account, len(src))
+	for i := range src {
+		accounts[i] = src[i].Public()
+	}
 	// Позначаємо офлайн-акаунт, що зараз відповідає ніку активної
 	// Google-сесії скін-системи, як «Шаурма-акаунт» (лише Shaurma-
 	// редакція; у base-збірці хук — no-op, поле лишається false).
@@ -5013,7 +5020,7 @@ func (a *App) RenameOfflineAccount(oldAccountID, newUsername string) (RenameOffl
 	}
 	a.invalidatePackCache()
 
-	result := RenameOfflineAccountResult{Account: *newAccount}
+	result := RenameOfflineAccountResult{Account: newAccount.Public()}
 	if skinErr != nil {
 		result.SkinWarning = fmt.Sprintf("нік акаунта змінено, але нік скін-акаунта — ні: %s (скін і надалі роздається за старим ніком; поправте вручну в «Скін-акаунт»)", skinErr.Error())
 	}

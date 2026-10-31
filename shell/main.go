@@ -173,6 +173,9 @@ func revealFromSecondInstance() {
 		windowOp("main", "show")
 		windowOp("main", "unminimise")
 		windowOp("main", "focus")
+		// Foreground lock: Show()+Focus() з фонового процесу Windows ігнорує —
+		// вікно з'являлось позаду інших. Піднімаємо примусово.
+		forceForeground(getWindow("main"))
 		backendDispatch("window:reveal", "")
 		return
 	}
@@ -329,6 +332,12 @@ func main() {
 	// безслідно вийти — «лаунчер запустився і зник». Деталі — relaunch_wait.go.
 	waitForPreviousInstance()
 
+	// Користувач щойно запустив нас (ярлик/Пуск): ми маємо право на foreground.
+	// Передаємо його всім, щоб уже працюючий екземпляр (у треї/фоні) зміг
+	// вивести своє вікно на передній план (foreground_windows.go). Робимо ДО
+	// нагляду: батьківський процес-наглядач теж «щойно запущений».
+	allowAnyForeground()
+
 	// Нагляд: батьківський процес лише стежить і перезапускає лаунчер після аварійного виходу (supervisor.go).
 	superviseIfParent()
 
@@ -479,6 +488,7 @@ func main() {
 					application.InvokeAsync(func() {
 						windowOp("main", "show")
 						windowOp("main", "focus")
+						forceForeground(getWindow("main"))
 						dispatchLaunchToBackend()
 						dispatchPackFileOpenToBackend()
 						dispatchFriendLinkToBackend()

@@ -252,20 +252,29 @@ type CheckRAMResult struct {
 	UsedByServers  int  `json:"usedByServers"`
 }
 
+// ramSafetyMarginMB — запас, який лишаємо системі поверх ВЖЕ вільної пам'яті,
+// щоб попередити (не заблокувати) про старт «впритул».
+const ramSafetyMarginMB = 512
+
 // CheckRAM перевіряє, чи вистачить RAM для сервера.
+//
+// Available — РЕАЛЬНО вільна фізична пам'ять зараз (на Windows це
+// ullAvailPhys, на Linux MemAvailable): вона вже враховує і ОС, і всі
+// запущені програми та сервери. Раніше від неї ще віднімали 1.5 ГБ «резерву
+// ОС» і заявлений обсяг запущених серверів — подвійний облік, через який
+// старт блокувався, хоча пам'яті було достатньо. usedByServers тепер лише
+// інформаційне поле. Ok = сервер вміщується з запасом ramSafetyMarginMB.
 func CheckRAM(ramMB int, usedByServers int) CheckRAMResult {
 	totalMB, availMB := getSystemRAM()
 
-	// Залишаємо ОС 1.5 ГБ.
-	osReserveMB := 1500
-	available := availMB - osReserveMB - usedByServers
-	if available < 0 {
-		available = 0
+	// Не вдалося дізнатись вільну пам'ять — не блокуємо старт хибним нулем.
+	if availMB <= 0 {
+		return CheckRAMResult{Ok: true, Available: totalMB, Total: totalMB, UsedByServers: usedByServers}
 	}
 
 	return CheckRAMResult{
-		Ok:            ramMB <= available,
-		Available:     available,
+		Ok:            ramMB+ramSafetyMarginMB <= availMB,
+		Available:     availMB,
 		Total:         totalMB,
 		UsedByServers: usedByServers,
 	}
