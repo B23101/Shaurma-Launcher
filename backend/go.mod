@@ -26,7 +26,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.28.13 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.41.5 // indirect
 	github.com/aws/smithy-go v1.24.0 // indirect
-	github.com/coder/websocket v1.8.12
+	github.com/coder/websocket v1.8.15
 	github.com/creachadair/msync v0.7.1 // indirect
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -60,7 +60,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.46.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
