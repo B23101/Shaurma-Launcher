@@ -49,7 +49,7 @@ func newPackProvider(a *App) PackProvider {
 // Шаурма лише там, де відповідні бекенд-методи реально скомпільовані.
 func (a *App) IsShaurmaEdition() bool { return true }
 
-// launcherEditionName — назва редакції для аналітики та install-ping.
+// launcherEditionName — назва редакції для аналітики.
 func launcherEditionName() string { return "shaurma" }
 
 type shaurmaProvider struct {

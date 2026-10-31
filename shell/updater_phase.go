@@ -131,6 +131,10 @@ func applyShellSelfUpdate() (bool, string) {
 	if _, err := os.Stat(newPath); err != nil {
 		return false, "" // нової версії немає
 	}
+	if err := verifyPendingComponent(dir, base); err != nil {
+		println("shell self-update: rejected unverified component:", err.Error())
+		return false, ""
+	}
 	if !looksLikeExecutable(newPath) {
 		println("shell self-update: .new не схожий на exe, пропускаю")
 		return false, ""
@@ -174,9 +178,26 @@ func applyPendingUpdates() {
 		if _, err := os.Stat(newPath); err != nil {
 			continue
 		}
-		_ = os.Remove(filepath.Join(dir, name))
-		if err := os.Rename(newPath, filepath.Join(dir, name)); err != nil {
+		if err := verifyPendingComponent(dir, name); err != nil {
+			println("pending update rejected:", name, err.Error())
+			continue
+		}
+		dest := filepath.Join(dir, name)
+		backup := dest + ".previous"
+		_ = os.Remove(backup)
+		hadOld := false
+		if err := os.Rename(dest, backup); err == nil {
+			hadOld = true
+		} else if !os.IsNotExist(err) {
+			continue
+		}
+		if err := os.Rename(newPath, dest); err != nil {
+			if hadOld {
+				_ = os.Rename(backup, dest)
+			}
 			println("не вдалось довстановити", name, ":", err.Error())
+		} else {
+			_ = os.Remove(newPath + ".proof")
 		}
 	}
 

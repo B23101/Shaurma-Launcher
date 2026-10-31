@@ -10,10 +10,10 @@
 package custompack
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"archive/zip"
 	"context"
 	"crypto/sha1"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/crashguard"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -232,6 +233,9 @@ func DetectArchive(archivePath string) (*DetectedPack, error) {
 
 	if f := findZipFile(&zr.Reader, "manifest.json"); f != nil {
 		m, err := readCFManifest(f)
+		if errors.Is(err, errCFManifestTooLarge) {
+			return nil, err
+		}
 		if err == nil && strings.EqualFold(m.ManifestType, "minecraftModpack") {
 			loader, loaderVer := detectCFLoader(m.Minecraft.ModLoaders)
 			name := m.Name
@@ -387,26 +391,41 @@ func readMrpackIndex(f *zip.File) (*mrpackIndex, error) {
 		return nil, err
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(rc)
+	data, err := io.ReadAll(io.LimitReader(rc, (16<<20)+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(data) > 16<<20 {
+		return nil, fmt.Errorf("mrpack index too large")
 	}
 	var idx mrpackIndex
 	if err := json.Unmarshal(data, &idx); err != nil {
 		return nil, fmt.Errorf("modrinth.index.json пошкоджено: %w", err)
 	}
+	if err := validateMrpackIndex(&idx); err != nil {
+		return nil, err
+	}
 	return &idx, nil
 }
 
+var errCFManifestTooLarge = errors.New("manifest.json перевищує ліміт 16 МіБ")
+
 func readCFManifest(f *zip.File) (*cfManifest, error) {
+	const maxManifestBytes = 16 << 20
+	if f.UncompressedSize64 > maxManifestBytes {
+		return nil, errCFManifestTooLarge
+	}
 	rc, err := f.Open()
 	if err != nil {
 		return nil, err
 	}
 	defer rc.Close()
-	data, err := io.ReadAll(rc)
+	data, err := io.ReadAll(io.LimitReader(rc, maxManifestBytes+1))
 	if err != nil {
 		return nil, err
+	}
+	if len(data) > maxManifestBytes {
+		return nil, errCFManifestTooLarge
 	}
 	var m cfManifest
 	if err := json.Unmarshal(data, &m); err != nil {
@@ -540,6 +559,8 @@ type importTask struct {
 	relPath  string
 	url      string
 	sha1     string
+	sha512   string
+	mrpack   bool
 	fileSize int64
 }
 
@@ -565,6 +586,8 @@ func planImport(zr *zip.Reader, detected *DetectedPack) (tasks []importTask, ove
 				relPath:  mf.Path,
 				url:      firstNonEmptyStr(mf.Downloads),
 				sha1:     mf.Hashes["sha1"],
+				sha512:   mf.Hashes["sha512"],
+				mrpack:   true,
 				fileSize: mf.FileSize,
 			})
 		}
@@ -1675,7 +1698,8 @@ func downloadImportTasks(ctx context.Context, tasks []importTask, gameDir string
 	// ніколи не відвисає». Тепер сервер, що прийняв TCP і не шле відповідь,
 	// обривається через downloadResponseHeaderTimeout.
 	client := &http.Client{
-		Timeout: 5 * time.Minute,
+		CheckRedirect: protectDownloadRedirect,
+		Timeout:       5 * time.Minute,
 		Transport: &http.Transport{
 			// Proxy — збереження поведінки дефолтного транспорту (див.
 			// NewCurseForgeClient: явний Transport не успадковує
@@ -1974,6 +1998,26 @@ func (s *stallReader) Close() error {
 // завислий мод висів на 0.0 МБ/с назавжди і валив весь імпорт по закінченню
 // 5-хвилинного таймауту HTTP-клієнта.
 func downloadOneFile(ctx context.Context, client *http.Client, task importTask, gameDir string, onBytes func(int64)) (int64, error) {
+	if task.mrpack {
+		if err := mrpackDownloadURL(task.url, false); err != nil {
+			return 0, err
+		}
+		cp := *client
+		previous := client.CheckRedirect
+		cp.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+			if err := mrpackDownloadURL(req.URL.String(), true); err != nil {
+				return err
+			}
+			if err := protectDownloadRedirect(req, via); err != nil {
+				return err
+			}
+			if previous != nil {
+				return previous(req, via)
+			}
+			return nil
+		}
+		client = &cp
+	}
 	cleanRel := filepath.Clean(task.relPath)
 	if cleanRel == "." || strings.HasPrefix(cleanRel, "..") || filepath.IsAbs(cleanRel) {
 		return 0, &fatalDownloadError{msg: fmt.Sprintf("недопустимий шлях файлу в маніфесті: %s", task.relPath)}
@@ -1992,7 +2036,7 @@ func downloadOneFile(ctx context.Context, client *http.Client, task importTask, 
 	// після скасування) перекачувало вже готові моди: .part немає (перейменований
 	// у dest), тож downloadOneAttempt стартував з Range=0 і качав весь файл заново.
 	// Тепер це ідемпотентно: вже скачаний мод пропускається миттєво.
-	if task.sha1 != "" && fileExists(dest) && fileMatchesSHA1(dest, task.sha1) {
+	if task.sha1 != "" && fileExists(dest) && fileMatchesImportTask(dest, task) {
 		if onBytes != nil {
 			onBytes(task.fileSize) // щоб прогрес-байт не «стрибав» назад при resume
 		}
@@ -2079,7 +2123,7 @@ func downloadOneAttempt(ctx context.Context, client *http.Client, task importTas
 		// на останньому кроці (до перейменування). Тоді 416 — це «файл уже
 		// повний»: перевіряємо SHA1 наявного .part і, якщо збігся, одразу
 		// перейменовуємо в фінальний — замість повторного качання з нуля.
-		if task.sha1 != "" && fileExists(tmp) && fileMatchesSHA1(tmp, task.sha1) {
+		if task.sha1 != "" && fileExists(tmp) && fileMatchesImportTask(tmp, task) {
 			if err := os.Rename(tmp, dest); err == nil {
 				return 0, nil
 			}
@@ -2139,7 +2183,16 @@ func downloadOneAttempt(ctx context.Context, client *http.Client, task importTas
 	body = newStallReader(ctx, body, downloadStallTimeout)
 	defer body.Close()
 
-	n, copyErr := io.Copy(writer, body)
+	var input io.Reader = body
+	if task.mrpack {
+		if resumeFrom > task.fileSize {
+			out.Close()
+			os.Remove(tmp)
+			return 0, &fatalDownloadError{msg: "partial file exceeds expected size"}
+		}
+		input = io.LimitReader(body, task.fileSize-resumeFrom+1)
+	}
+	n, copyErr := io.Copy(writer, input)
 	closeErr := out.Close()
 	if copyErr != nil {
 		if ctx.Err() != nil {
@@ -2161,8 +2214,29 @@ func downloadOneAttempt(ctx context.Context, client *http.Client, task importTas
 			return 0, &fatalDownloadError{msg: fmt.Sprintf("SHA1 не збігається (очікувано %s, отримано %s)", task.sha1, sum)}
 		}
 	}
+	if task.mrpack && !fileMatchesImportTask(tmp, task) {
+		os.Remove(tmp)
+		return 0, &fatalDownloadError{msg: "mrpack SHA512 or size mismatch"}
+	}
 	if err := os.Rename(tmp, dest); err != nil {
 		return 0, err
 	}
 	return n, nil
+}
+
+func fileMatchesImportTask(name string, task importTask) bool {
+	if task.sha1 != "" && !fileMatchesSHA1(name, task.sha1) {
+		return false
+	}
+	if task.sha512 == "" {
+		return true
+	}
+	f, err := os.Open(name)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	h := sha512.New()
+	n, err := io.Copy(h, f)
+	return err == nil && (!task.mrpack || n == task.fileSize) && strings.EqualFold(hex.EncodeToString(h.Sum(nil)), task.sha512)
 }

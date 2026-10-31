@@ -24,22 +24,19 @@ type PacksIndex struct {
 }
 
 type PacksIndexPack struct {
-	PageDesignPath      string   `json:"pageDesignPath,omitempty"`
-	PageDesignSHA256    string   `json:"pageDesignSha256,omitempty"`
-	PageDesignUpdatedAt string   `json:"pageDesignUpdatedAt,omitempty"`
-	ID                  string   `json:"id"`
-	Name                string   `json:"name"`
-	Description         string   `json:"description"`
-	MCVersion           string   `json:"mcVersion"`
-	Loader              string   `json:"loader"`
-	LoaderVersion       string   `json:"loaderVersion"`
-	IconPath            string   `json:"iconPath,omitempty"`
-	IconEtag            string   `json:"iconEtag,omitempty"`
-	BackgroundPath      string   `json:"backgroundPath,omitempty"`
-	BackgroundEtag      string   `json:"backgroundEtag,omitempty"`
-	Tags                []string `json:"tags,omitempty"`
-	AccentColor         string   `json:"accentColor,omitempty"`
-	ServerIP            string   `json:"serverIp,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Description    string   `json:"description"`
+	MCVersion      string   `json:"mcVersion"`
+	Loader         string   `json:"loader"`
+	LoaderVersion  string   `json:"loaderVersion"`
+	IconPath       string   `json:"iconPath,omitempty"`
+	IconEtag       string   `json:"iconEtag,omitempty"`
+	BackgroundPath string   `json:"backgroundPath,omitempty"`
+	BackgroundEtag string   `json:"backgroundEtag,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
+	AccentColor    string   `json:"accentColor,omitempty"`
+	ServerIP       string   `json:"serverIp,omitempty"`
 	// OfficialServerSync — «офіційний сервер завжди в servers.dat»: якщо true,
 	// лаунчер при кожному запуску збірки ставить/оновлює в servers.dat запис
 	// із ServerIP (актуальний IP із CDN). Пише Pack Manager.
@@ -253,9 +250,9 @@ func NewManifestClient(baseURL, token string) *ManifestClient {
 	return &ManifestClient{
 		BaseURL: baseURL,
 		Token:   token,
-		Client: &http.Client{
+		Client: clientWithSafeRedirects(&http.Client{
 			Timeout: 20 * time.Second,
-		},
+		}),
 	}
 }
 

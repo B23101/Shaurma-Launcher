@@ -3214,7 +3214,8 @@ export interface SocialNotifyPayload {
 
 // ── Тимчасові запрошення (tinvite_shaurma.go) ──
 export interface LocalServer { port: number; kind: 'lan' | 'server' | 'modded'; motd: string; version: string; players: number; max: number; lan: boolean }
-export interface TempInvite { id: string; address: string; subdomain: string; meta: LocalServer; guests: string[]; packId: string; packName: string }
+export interface TempInvite { id: string; address: string; subdomain: string; meta: LocalServer; guests: string[]; packId: string; packName: string; udpPort: number }
+export interface TempVoiceInfo { detected: boolean; source: '' | 'server' | 'game'; name: string; autoPort: number; sameAsWorld: boolean; configPath?: string; issues: { code: string; severity: 'info' | 'warn' | 'error'; message: string }[] }
 export interface TempInviteState { address: string; id: string; active: boolean; host: boolean; kind: string; motd: string; version: string; players: number; max: number; guests?: string[]; permanent?: boolean; status?: 'online' | 'offline' | 'deleted' }
 
 // ── Авто-починка / дерево залежностей / метрика ресурсів (порт з Nivora) ──

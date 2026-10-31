@@ -57,6 +57,47 @@ type Solution struct {
 
 // Detect сканує mods/ і plugins/ сервера. serverPort — порт Minecraft (для -1/0).
 func Detect(serverDir string, serverPort int) []Solution {
+	return detect(serverDir, serverPort, nil)
+}
+
+// DetectClient — те саме для теки гри (.minecraft) із відкритим LAN-світом: голосовий
+// мод працює на вбудованому сервері, тож його конфіг лежить не лише в config/, а й у
+// saves/<світ>/serverconfig/. Береться найсвіжіший світ (той, що зараз відкритий);
+// конфіг світу має пріоритет над загальним. serverPort — порт LAN-світу (для -1/0).
+func DetectClient(gameDir string, serverPort int) []Solution {
+	var extra []string
+	if w := newestSave(gameDir); w != "" {
+		extra = append(extra, filepath.Join(w, "serverconfig"))
+	}
+	return detect(gameDir, serverPort, extra)
+}
+
+// newestSave повертає теку світу з найновішим level.dat/session.lock (порожньо = світів нема).
+func newestSave(gameDir string) string {
+	entries, err := os.ReadDir(filepath.Join(gameDir, "saves"))
+	if err != nil {
+		return ""
+	}
+	best, bestT := "", int64(0)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		dir := filepath.Join(gameDir, "saves", e.Name())
+		var t int64
+		for _, f := range []string{"session.lock", "level.dat"} {
+			if fi, err := os.Stat(filepath.Join(dir, f)); err == nil && fi.ModTime().UnixNano() > t {
+				t = fi.ModTime().UnixNano()
+			}
+		}
+		if t > bestT {
+			best, bestT = dir, t
+		}
+	}
+	return best
+}
+
+func detect(serverDir string, serverPort int, extraCfgDirs []string) []Solution {
 	var out []Solution
 	for _, where := range []string{"mods", "plugins"} {
 		entries, err := os.ReadDir(filepath.Join(serverDir, where))
@@ -86,7 +127,7 @@ func Detect(serverDir string, serverPort int) []Solution {
 				w = "plugin"
 			}
 			s := Solution{Kind: kind, Name: label, Where: w, Enabled: enabled, File: name}
-			fillConfig(&s, serverDir, serverPort)
+			fillConfig(&s, serverDir, serverPort, extraCfgDirs)
 			out = append(out, s)
 		}
 	}
@@ -110,14 +151,20 @@ func classify(lowJar string) (Kind, string, bool) {
 	return "", "", false
 }
 
-func fillConfig(s *Solution, serverDir string, serverPort int) {
+func fillConfig(s *Solution, serverDir string, serverPort int, extraCfgDirs []string) {
 	switch s.Kind {
 	case KindSVC:
 		s.Port = DefaultSVCPort
-		for _, p := range []string{
+		var cands []string
+		for _, d := range extraCfgDirs {
+			cands = append(cands,
+				filepath.Join(d, "voicechat", "voicechat-server.properties"),
+				filepath.Join(d, "voicechat-server.properties"))
+		}
+		cands = append(cands,
 			filepath.Join(serverDir, "config", "voicechat", "voicechat-server.properties"),
-			filepath.Join(serverDir, "plugins", "voicechat", "voicechat-server.properties"),
-		} {
+			filepath.Join(serverDir, "plugins", "voicechat", "voicechat-server.properties"))
+		for _, p := range cands {
 			kv, ok := readProperties(p)
 			if !ok {
 				continue
@@ -142,12 +189,18 @@ func fillConfig(s *Solution, serverDir string, serverPort int) {
 		}
 	case KindPlasmo:
 		s.Port, s.SameAsServer = serverPort, true // дефолт Plasmo: port = 0 → порт сервера
-		for _, p := range []string{
+		var cands []string
+		for _, d := range extraCfgDirs {
+			cands = append(cands,
+				filepath.Join(d, "plasmovoice", "config.toml"),
+				filepath.Join(d, "plasmovoice", "server.toml"))
+		}
+		cands = append(cands,
 			filepath.Join(serverDir, "config", "plasmovoice", "config.toml"),
 			filepath.Join(serverDir, "plugins", "PlasmoVoice", "config.toml"),
 			filepath.Join(serverDir, "plugins", "plasmovoice", "config.toml"),
-			filepath.Join(serverDir, "config", "plasmovoice", "server.toml"),
-		} {
+			filepath.Join(serverDir, "config", "plasmovoice", "server.toml"))
+		for _, p := range cands {
 			port, ip, found, ok := readPlasmoHost(p)
 			if !ok {
 				continue

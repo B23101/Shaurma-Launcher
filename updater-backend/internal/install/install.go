@@ -23,6 +23,7 @@ package install
 import (
 	"archive/zip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -71,6 +72,34 @@ const pendingSuffix = PendingSuffix
 // НЕ переписується, і наступний запуск updater побачить той самий diff
 // і спробує ще раз.
 func Apply(ctx context.Context, installDir string, downloaded []download.DownloadedComponent, remote *manifest.Manifest, lang string, onStatus func(string)) error {
+	fs, err := openInstallFS(installDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
+	if remote == nil {
+		return fmt.Errorf("missing update manifest")
+	}
+	if err := remote.Validate(); err != nil {
+		return err
+	}
+	// Preflight the entire batch before changing an installed component.
+	for _, dc := range downloaded {
+		found := false
+		for _, c := range remote.Components {
+			if c == dc.Component {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("component is not in update manifest: %s", dc.Path)
+		}
+		if err := download.VerifyFile(dc.Component, dc.TempPath); err != nil {
+			return err
+		}
+	}
 	applied := make([]manifest.Component, 0, len(downloaded))
 
 	for _, dc := range downloaded {
@@ -93,6 +122,18 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 		// своєму наступному старті (applyPendingUpdates) або інсталятор.
 		if manifest.IsLockedComponent(dc.Path) {
 			pendingPath := filepath.Join(installDir, filepath.Base(dc.Path)+pendingSuffix)
+			if remote.Proof != nil {
+				proof, err := json.Marshal(remote.Proof)
+				if err != nil {
+					return err
+				}
+				if err := fs.WriteFile(pendingPath+".proof.tmp", proof, 0600); err != nil {
+					return err
+				}
+				if err := fs.Rename(pendingPath+".proof.tmp", pendingPath+".proof"); err != nil {
+					return err
+				}
+			}
 			if onStatus != nil {
 				if lang == "en" {
 					onStatus("Preparing component update...")
@@ -103,12 +144,12 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 			// Прибираємо застарілий .new з минулого разу (якщо shell
 			// чомусь не встиг його довстановити) — інакше Rename нижче
 			// впаде на Windows (rename поверх існуючого файлу заборонено).
-			os.Remove(pendingPath)
-			err := os.Rename(dc.TempPath, pendingPath)
+			fs.Remove(pendingPath)
+			err := fs.Rename(dc.TempPath, pendingPath)
 			if err != nil {
 				// Антивірус може тримати свіжий файл без FILE_SHARE_DELETE —
 				// читання дозволене, тож копіюємо замість переміщення.
-				err = copyFile(dc.TempPath, pendingPath)
+				err = copyFileRoot(fs, dc.TempPath, pendingPath)
 			}
 			if err != nil {
 				if lang == "en" {
@@ -137,7 +178,7 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 					onStatus(fmt.Sprintf("Встановлення %s...", dc.Path))
 				}
 			}
-			if err := extractArchive(dc.TempPath, filepath.Join(installDir, filepath.FromSlash(dc.ExtractTo))); err != nil {
+			if err := extractArchiveRoot(fs, dc.TempPath, filepath.Join(installDir, filepath.FromSlash(dc.ExtractTo))); err != nil {
 				if lang == "en" {
 					return fmt.Errorf("failed to extract %s: %w", dc.Path, err)
 				}
@@ -147,8 +188,8 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 			// (якщо лишився на диску) — installDir не смітиться багато-
 			// мегабайтними frontend.zip після кожного оновлення.
 			zipPath := filepath.Join(installDir, filepath.FromSlash(dc.Path))
-			_ = os.Remove(zipPath)
-			_ = os.Remove(zipPath + backupSuffix)
+			_ = fs.Remove(zipPath)
+			_ = fs.Remove(zipPath + backupSuffix)
 			_ = os.Remove(dc.TempPath)
 			applied = append(applied, dc.Component)
 			continue
@@ -163,7 +204,7 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 			}
 		}
 
-		if err := replaceFile(ctx, dc.TempPath, destPath); err != nil {
+		if err := replaceFileRoot(fs, ctx, dc.TempPath, destPath); err != nil {
 			if lang == "en" {
 				return fmt.Errorf("failed to install %s: %w", dc.Path, err)
 			}
@@ -182,7 +223,15 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 		ReleaseNotes: remote.ReleaseNotes,
 		Components:   remote.Components,
 	}
-	if err := manifest.Save(filepath.Join(installDir, "launcher-version.json"), newLocal); err != nil {
+	localData, err := json.MarshalIndent(newLocal, "", "  ")
+	if err != nil {
+		return err
+	}
+	localPath := filepath.Join(installDir, "launcher-version.json")
+	if err := fs.WriteFile(localPath+".tmp", localData, 0644); err != nil {
+		return err
+	}
+	if err := fs.Rename(localPath+".tmp", localPath); err != nil {
 		if lang == "en" {
 			return fmt.Errorf("writing launcher-version.json: %w", err)
 		}
@@ -196,7 +245,16 @@ func Apply(ctx context.Context, installDir string, downloaded []download.Downloa
 // replaceFile замінює destPath на srcPath атомарно (наскільки дозволяє
 // файлова система), з ретраями на випадок ERROR_SHARING_VIOLATION.
 func replaceFile(ctx context.Context, srcPath, destPath string) error {
-	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
+	fs, err := openInstallFS(filepath.Dir(destPath))
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+	return replaceFileRoot(fs, ctx, srcPath, destPath)
+}
+
+func replaceFileRoot(fs *installFS, ctx context.Context, srcPath, destPath string) error {
+	if err := fs.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return err
 	}
 
@@ -204,11 +262,11 @@ func replaceFile(ctx context.Context, srcPath, destPath string) error {
 	// просто перемістити, нема що заміняти. Якщо rename впав (антивірус
 	// ще тримає новий файл на скані без FILE_SHARE_DELETE) — копіюємо:
 	// читання під час сканування зазвичай дозволене.
-	if _, err := os.Stat(destPath); os.IsNotExist(err) {
-		if err := os.Rename(srcPath, destPath); err == nil {
+	if _, err := fs.Stat(destPath); os.IsNotExist(err) {
+		if err := fs.Rename(srcPath, destPath); err == nil {
 			return nil
 		}
-		return copyFile(srcPath, destPath)
+		return copyFileRoot(fs, srcPath, destPath)
 	}
 
 	backupPath := destPath + backupSuffix
@@ -226,18 +284,18 @@ func replaceFile(ctx context.Context, srcPath, destPath string) error {
 		// минулого разу (інакше наступний rename впаде на Windows,
 		// де rename поверх існуючого файлу забороняється, на відміну
 		// від POSIX).
-		os.Remove(backupPath)
+		fs.Remove(backupPath)
 
 		// Крок 2: старий файл -> .previous (rename, не delete —
 		// зберігаємо можливість відкату).
-		if err := os.Rename(destPath, backupPath); err != nil {
+		if err := fs.Rename(destPath, backupPath); err != nil {
 			lastErr = err
 			time.Sleep(replaceRetryInterval)
 			continue
 		}
 
 		// Крок 3: новий файл на місце старого.
-		if err := os.Rename(srcPath, destPath); err != nil {
+		if err := fs.Rename(srcPath, destPath); err != nil {
 			lastErr = err
 			// Rename не вдався — найчастіше антивірус тримає щойно скачаний
 			// файл на скані: хендл відкритий БЕЗ FILE_SHARE_DELETE, тож
@@ -246,10 +304,10 @@ func replaceFile(ctx context.Context, srcPath, destPath string) error {
 			// замість переміщення; старий файл лишається у .previous (той
 			// самий механізм відкату). Якщо і копія не йде (скан ще триває)
 			// — відкочуємо старий назад і пробуємо ще раз.
-			_ = os.Rename(backupPath, destPath)
-			if cerr := copyFile(srcPath, destPath); cerr == nil {
+			if cerr := copyFileRoot(fs, srcPath, destPath); cerr == nil {
 				return nil
 			}
+			_ = fs.Rename(backupPath, destPath)
 			time.Sleep(replaceRetryInterval)
 			continue
 		}
@@ -267,6 +325,15 @@ func replaceFile(ctx context.Context, srcPath, destPath string) error {
 // replaceFile, а тут ми просто забезпечуємо, що оновлення не вмирає через
 // кількасекундний скан антивіруса.
 func copyFile(srcPath, destPath string) error {
+	fs, err := openInstallFS(filepath.Dir(destPath))
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+	return copyFileRoot(fs, srcPath, destPath)
+}
+
+func copyFileRoot(fs *installFS, srcPath, destPath string) error {
 	in, err := os.Open(srcPath)
 	if err != nil {
 		return err
@@ -277,27 +344,30 @@ func copyFile(srcPath, destPath string) error {
 	// файл переносимо на місце: обірваний запис не лишає напівфайл
 	// під справжнім ім'ям (інакше це бита DLL/EXE, що не запуститься).
 	tmpPath := destPath + ".tmp"
-	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err := fs.Remove(tmpPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	out, err := fs.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o644)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
 		out.Close()
-		os.Remove(tmpPath)
+		fs.Remove(tmpPath)
 		return err
 	}
 	if err := out.Sync(); err != nil {
 		out.Close()
-		os.Remove(tmpPath)
+		fs.Remove(tmpPath)
 		return err
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(tmpPath)
+		fs.Remove(tmpPath)
 		return err
 	}
-	_ = os.Remove(destPath)
-	if err := os.Rename(tmpPath, destPath); err != nil {
-		os.Remove(tmpPath)
+	_ = fs.Remove(destPath)
+	if err := fs.Rename(tmpPath, destPath); err != nil {
+		fs.Remove(tmpPath)
 		return err
 	}
 	return nil
@@ -316,6 +386,15 @@ const (
 // з відкатом: стара версія видаляється лише після того, як нова вже
 // стала на місце.
 func extractArchive(zipPath, destDir string) error {
+	fs, err := openInstallFS(filepath.Dir(destDir))
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+	return extractArchiveRoot(fs, zipPath, destDir)
+}
+
+func extractArchiveRoot(fs *installFS, zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
@@ -327,13 +406,13 @@ func extractArchive(zipPath, destDir string) error {
 	}
 
 	tmp := destDir + ".new"
-	if err := os.RemoveAll(tmp); err != nil {
+	if err := fs.RemoveAll(tmp); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(tmp, 0o755); err != nil {
+	if err := fs.MkdirAll(tmp, 0o755); err != nil {
 		return err
 	}
-	cleanup := func(e error) error { _ = os.RemoveAll(tmp); return e }
+	cleanup := func(e error) error { _ = fs.RemoveAll(tmp); return e }
 
 	var total int64
 	for _, f := range r.File {
@@ -351,7 +430,7 @@ func extractArchive(zipPath, destDir string) error {
 		target := filepath.Join(tmp, rel)
 
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := fs.MkdirAll(target, 0o755); err != nil {
 				return cleanup(err)
 			}
 			continue
@@ -359,7 +438,7 @@ func extractArchive(zipPath, destDir string) error {
 		if f.UncompressedSize64 > maxArchiveFileBytes {
 			return cleanup(fmt.Errorf("archive entry too large: %s", f.Name))
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := fs.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return cleanup(err)
 		}
 		in, err := f.Open()
@@ -367,7 +446,7 @@ func extractArchive(zipPath, destDir string) error {
 			return cleanup(err)
 		}
 		// O_EXCL: дублікат імені в архіві не перезапише вже записаний файл.
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+		out, err := fs.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
 		if err != nil {
 			in.Close()
 			return cleanup(err)
@@ -394,13 +473,13 @@ func extractArchive(zipPath, destDir string) error {
 	// можуть тримати файли), нову ставимо на місце; якщо не вдалось —
 	// повертаємо стару назад.
 	old := destDir + ".old"
-	_ = os.RemoveAll(old)
+	_ = fs.RemoveAll(old)
 	hadOld := false
-	if _, err := os.Stat(destDir); err == nil {
+	if _, err := fs.Stat(destDir); err == nil {
 		hadOld = true
 		var rerr error
 		for i := 0; i < 20; i++ {
-			if rerr = os.Rename(destDir, old); rerr == nil {
+			if rerr = fs.Rename(destDir, old); rerr == nil {
 				break
 			}
 			time.Sleep(250 * time.Millisecond)
@@ -409,14 +488,14 @@ func extractArchive(zipPath, destDir string) error {
 			return cleanup(rerr)
 		}
 	}
-	if err := os.Rename(tmp, destDir); err != nil {
+	if err := fs.Rename(tmp, destDir); err != nil {
 		if hadOld {
-			_ = os.Rename(old, destDir)
+			_ = fs.Rename(old, destDir)
 		}
 		return cleanup(err)
 	}
 	if hadOld {
-		_ = os.RemoveAll(old)
+		_ = fs.RemoveAll(old)
 	}
 	return nil
 }
@@ -425,19 +504,27 @@ func extractArchive(zipPath, destDir string) error {
 // (UI) може запропонувати це користувачу, якщо новий launcher.exe не
 // запускається після оновлення (напр. HealthCheck після старту провалився).
 func Rollback(installDir, componentPath string) error {
+	fs, err := openInstallFS(installDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+	if !manifest.SafeRelPath(componentPath) {
+		return ErrUnsafePath
+	}
 	destPath := filepath.Join(installDir, filepath.FromSlash(componentPath))
 	backupPath := destPath + backupSuffix
-	if _, err := os.Stat(backupPath); err != nil {
+	if _, err := fs.Stat(backupPath); err != nil {
 		return fmt.Errorf("no saved previous version: %w", err)
 	}
 	tmp := destPath + ".rollback-tmp"
-	if err := os.Rename(destPath, tmp); err != nil {
+	if err := fs.Rename(destPath, tmp); err != nil {
 		return err
 	}
-	if err := os.Rename(backupPath, destPath); err != nil {
-		_ = os.Rename(tmp, destPath) // відкат відкату — лишаємось на биту, але наявну версію
+	if err := fs.Rename(backupPath, destPath); err != nil {
+		_ = fs.Rename(tmp, destPath) // відкат відкату — лишаємось на биту, але наявну версію
 		return err
 	}
-	os.Remove(tmp)
+	fs.Remove(tmp)
 	return nil
 }

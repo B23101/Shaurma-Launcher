@@ -358,8 +358,10 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 	// і заміна компонентів вмирала на першому ж rename. Той самий том =
 	// rename атомарний і безпечний. Тека чиститься на початку (залишки від
 	// обірваного оновлення) і після завершення (див. install.Apply).
-	tmpDir := filepath.Join(installDir, ".update-tmp")
-	_ = os.RemoveAll(tmpDir)
+	tmpDir, err := os.MkdirTemp(installDir, ".update-tmp-")
+	if err != nil {
+		return err
+	}
 	defer os.RemoveAll(tmpDir)
 	downloaded, err := download.Download(ctx, CDNBaseURL, token, tmpDir, toDownload, cb.Lang, func(p download.Progress) {
 		if cb.OnProgress != nil {
@@ -563,9 +565,11 @@ func fetchRemoteManifest(ctx context.Context, token, fileName string, cb Callbac
 	// і розбору JSON). Якщо в збірку вшито ключ — непідписаний або
 	// підроблений маніфест відхиляється і нічого з нього не качається.
 	if sigverify.Enabled() {
-		if err := verifyManifestSignature(ctx, token, fileName, data, cb); err != nil {
+		signature, err := verifyManifestSignature(ctx, token, fileName, data, cb)
+		if err != nil {
 			return nil, err
 		}
+		m.Proof = &manifest.UpdateProof{Payload: append([]byte(nil), data...), Signature: signature}
 	}
 	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	if err := json.Unmarshal(data, &m); err != nil {
@@ -671,29 +675,29 @@ func cleanupOtherEditionExe(installDir string, current Channel, cb Callbacks) {
 
 // verifyManifestSignature завантажує <fileName>.sig і перевіряє підпис
 // маніфесту довіреним публічним ключем.
-func verifyManifestSignature(ctx context.Context, token, fileName string, data []byte, cb Callbacks) error {
+func verifyManifestSignature(ctx context.Context, token, fileName string, data []byte, cb Callbacks) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, CDNBaseURL+"/"+manifest.ManifestURLPath(fileName)+".sig", nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/updater")
 	req.Header.Set("X-Shaurma-Token", token)
 	resp, err := cdnClient(20 * time.Second).Do(req)
 	if err != nil {
-		return neterr.Friendly(err, cb.tr2)
+		return "", neterr.Friendly(err, cb.tr2)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("%s: %w", cb.tr("підпис маніфесту відсутній на сервері", "manifest signature is missing on the server"), sigverify.ErrBadSignature)
+		return "", fmt.Errorf("%s: %w", cb.tr("підпис маніфесту відсутній на сервері", "manifest signature is missing on the server"), sigverify.ErrBadSignature)
 	}
 	sig, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
-		return err
+		return "", err
 	}
 	if err := sigverify.Verify(data, string(sig)); err != nil {
-		return fmt.Errorf("%s: %w", fileName, err)
+		return "", fmt.Errorf("%s: %w", fileName, err)
 	}
-	return nil
+	return string(sig), nil
 }
 
 // cdnClient — HTTP-клієнт для запитів до CDN з токеном каналу: редиректи

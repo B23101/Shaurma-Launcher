@@ -5,7 +5,7 @@ Their presence does not activate the service or confirm that an application was 
 
 | Configuration slug | File | Build visibility |
 |---|---|---|
-| components | artifact-configuration/components.xml | public Base |
+| components | artifact-configuration.xml | public Base |
 | installer | artifact-configuration/installer.xml | public Base |
 | components-team | artifact-configuration/components-team.xml | private Shaurma |
 | installer-team | artifact-configuration/installer-team.xml | private Shaurma |
@@ -29,3 +29,8 @@ or other upstream binaries under this project certificate.
 Source policy: https://signpath.org/terms
 Artifact syntax: https://docs.signpath.io/artifact-configuration/syntax
 Metadata restrictions: https://docs.signpath.io/artifact-configuration/reference
+
+Foundation eligibility requires open-source components without proprietary code:
+https://signpath.org/terms . A private build origin or a team configuration is not
+an exemption. Do not submit proprietary editions or dependencies under this subscription.
+Confirm eligibility with Foundation before enabling any additional origin.

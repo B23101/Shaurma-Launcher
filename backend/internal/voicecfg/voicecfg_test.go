@@ -97,3 +97,24 @@ func TestEvaluate(t *testing.T) {
 		t.Fatalf("expected conflict: %+v", v.Issues)
 	}
 }
+
+func TestDetectClientWorldConfigWins(t *testing.T) {
+	d := t.TempDir()
+	write(t, d, "mods/voicechat-fabric-1.20.1-2.5.0.jar", "x")
+	write(t, d, "config/voicechat/voicechat-server.properties", "port=24454\n")
+	write(t, d, "saves/World/level.dat", "x")
+	write(t, d, "saves/World/serverconfig/voicechat/voicechat-server.properties", "port=-1\n")
+	s := DetectClient(d, 53211)
+	if len(s) != 1 || s[0].Port != 53211 || !s[0].SameAsServer {
+		t.Fatalf("world -1 must follow LAN port: %+v", s)
+	}
+}
+
+func TestDetectClientFallsBackToInstanceConfig(t *testing.T) {
+	d := t.TempDir()
+	write(t, d, "mods/voicechat-forge-1.20.1-2.5.0.jar", "x")
+	write(t, d, "config/voicechat/voicechat-server.properties", "port=40001\n")
+	if s := DetectClient(d, 53211); len(s) != 1 || s[0].Port != 40001 {
+		t.Fatalf("got %+v", s)
+	}
+}

@@ -32,10 +32,12 @@ foreach ($ed in @('base', 'shaurma')) {
     Build-Backend $ed
     if ($ed -eq 'base' -and ($captured.Tags -ne 'production' -or $captured.Flags.Contains($TokenShaurma))) { throw 'Base skin build leaked private edition support' }
 }
+foreach ($RequireSecrets in @($true, $false)) {
 foreach ($invalid in @('', 'not-base64', [Convert]::ToBase64String((New-Object byte[] 31)), ($PubKeys + ','))) {
     $PubKeys = $invalid
     $rejected = $false
     try { Check-Secrets } catch { $rejected = $true }
     if (-not $rejected) { throw 'Invalid release manifest key was accepted' }
+}
 }
 Write-Output 'PASS: updater edition isolation and release public-key validation'

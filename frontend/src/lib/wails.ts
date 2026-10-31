@@ -67,7 +67,7 @@ import type {
   BrowserCollection, CollectionItemVersion, CollectionInstallPlanItem, TempModInfo, SearchHistoryItem,
   AutoPackView, WhitelistEntry, PackWikiDoc,
   SocialState, SocialInvite, SocialPrivacy, SocialBlockedAccount, SocialPeerProfile, SocialFriendProfile, SocialProfileVisibility, SocialUserHit, SocialChatPage, SocialNotifyPayload, ChatMuteState,
-  LocalServer, TempInvite, TempInviteState,
+  LocalServer, TempInvite, TempVoiceInfo, TempInviteState,
   RemoteServer, RemoteAccessView, RemoteAuditEntry
 } from './types'
 
@@ -508,7 +508,6 @@ export const App = {
   GetPackIndex: (): Promise<PackIndexEntry[]> => call('GetPackIndex'),
   // data URL асета збірки (іконка/фон) — качається через бекенд, бо браузер
   // не може додати токен-заголовки до <img> (див. lib/packAssets.svelte.ts).
-  GetPackPageDesign: (id: string): Promise<string> => call('GetPackPageDesign', id),
   GetPackAsset: (url: string): Promise<string> => call('GetPackAsset', url),
   // Динамічний банер головного екрана: data URL картинки останнього
   // офіційного оновлення Minecraft (бекенд сам питає Mojang-маніфест +
@@ -754,7 +753,10 @@ export const App = {
   ScanLocalServers: (): Promise<LocalServer[]> => call('ScanLocalServers'),
   ProbeLocalServer: (port: number): Promise<LocalServer> => call('ProbeLocalServer', port),
   ListTempInvites: (): Promise<TempInvite[]> => call('ListTempInvites'),
-  CreateTempInvite: (port: number, friendIds: string[], packId: string, packName: string): Promise<TempInvite> => call('CreateTempInvite', port, friendIds, packId, packName),
+  // udpPort: 0 = авто (порт голосового мода), -1 = без голосу, 1..65535 = свій UDP-порт.
+  CreateTempInvite: (port: number, friendIds: string[], packId: string, packName: string, udpPort = 0): Promise<TempInvite> => call('CreateTempInvite', port, friendIds, packId, packName, udpPort),
+  DetectTempVoice: (port: number): Promise<TempVoiceInfo> => call('DetectTempVoice', port),
+  SetTempInviteUDP: (id: string, udpPort: number): Promise<TempInvite> => call('SetTempInviteUDP', id, udpPort),
   InviteToTempInvite: (id: string, friendIds: string[]): Promise<TempInvite> => call('InviteToTempInvite', id, friendIds),
   CloseTempInvite: (id: string): Promise<void> => call('CloseTempInvite', id),
   TempInviteStates: (addresses: string[]): Promise<TempInviteState[]> => call('TempInviteStates', addresses),

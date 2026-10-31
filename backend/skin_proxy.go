@@ -281,9 +281,9 @@ func (p *skinProxy) metadataJSON() ([]byte, error) {
 	domains = append(domains, "textures.minecraft.net", ".minecraft.net")
 	return json.Marshal(map[string]any{
 		"meta": map[string]any{
-			"serverName":            "Shaurma (local)",
-			"implementationName":    "shaurma-skin-proxy",
-			"implementationVersion": "1.0.0",
+			"serverName":              "Shaurma (local)",
+			"implementationName":      "shaurma-skin-proxy",
+			"implementationVersion":   "1.0.0",
 			"feature.non_email_login": false,
 			"feature.username_check":  false,
 			// Дозволяє injector'у віддавати клієнту чат-ключ профілю (player/certificates)
@@ -376,6 +376,10 @@ func skinLearnLine(text string) {
 // ── HTTP ────────────────────────────────────────────────────────────────
 
 func (p *skinProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !hostAllowed(r.Host, p.port) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	path := r.URL.Path
 	switch {
 	case (path == "/" || path == "") && r.Method == http.MethodGet:
@@ -571,7 +575,7 @@ func (p *skinProxy) handleProfile(w http.ResponseWriter, rawUUID string) {
 
 	if len(merged.Textures) == 0 {
 		if up != nil { // профіль відомий, але без текстур — як віддала Shaurma
-				writeYgJSON(w, http.StatusOK, ygProfile{ID: uuidHex, Name: up.Name, Properties: []ygProp{}})
+			writeYgJSON(w, http.StatusOK, ygProfile{ID: uuidHex, Name: up.Name, Properties: []ygProp{}})
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)

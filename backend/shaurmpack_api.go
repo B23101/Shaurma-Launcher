@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -395,7 +396,7 @@ func (a *App) shaurmpackDownloadResolver() func(destPath string, pf shaurmpack.P
 		default:
 			return fmt.Errorf("немає робочого джерела для %s", pf.Path)
 		}
-		return shaurmpackDownloadToFile(url, destPath)
+		return shaurmpackDownloadToFile(url, destPath, pf.Size)
 	}
 }
 
@@ -406,7 +407,22 @@ func (a *App) shaurmpackDownloadResolver() func(destPath string, pf shaurmpack.P
 // — тут навмисно спрощена копія того самого протоколу запиту, оскільки
 // bundled fallback уже страхує від помилок мережі; повний ретрай/резюм
 // доречний для великих модпаків з чергою файлів, тут резолв послідовний).
-func shaurmpackDownloadToFile(url, destPath string) error {
+func validatePackDownloadURL(raw string) error {
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.User != nil || (u.Port() != "" && u.Port() != "443") {
+		return fmt.Errorf("invalid pack download URL")
+	}
+	if strings.EqualFold(u.Hostname(), "cdn.modrinth.com") || custompack.IsCurseForgeCDNURL(raw) {
+		return nil
+	}
+	return fmt.Errorf("untrusted pack download host")
+}
+
+func shaurmpackDownloadToFile(url, destPath string, size int64) error {
+	if err := validatePackDownloadURL(url); err != nil {
+		return err
+	}
+
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -415,7 +431,19 @@ func shaurmpackDownloadToFile(url, destPath string) error {
 	if custompack.IsCurseForgeCDNURL(url) && custompack.HasCurseForgeAPIKey() {
 		req.Header.Set("x-api-key", custompack.CurseForgeAPIKeyValue())
 	}
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("too many redirects")
+		}
+		if err := validatePackDownloadURL(req.URL.String()); err != nil {
+			return err
+		}
+		req.Header.Del("x-api-key")
+		if custompack.IsCurseForgeCDNURL(req.URL.String()) && custompack.HasCurseForgeAPIKey() {
+			req.Header.Set("x-api-key", custompack.CurseForgeAPIKeyValue())
+		}
+		return nil
+	}}
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
@@ -432,7 +460,15 @@ func shaurmpackDownloadToFile(url, destPath string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, resp.Body); err != nil {
+	limit := int64(2 << 30)
+	if size > 0 && size < limit {
+		limit = size
+	}
+	n, copyErr := io.Copy(out, io.LimitReader(resp.Body, limit+1))
+	if copyErr == nil && (n > limit || (size > 0 && n != size)) {
+		copyErr = fmt.Errorf("download size mismatch")
+	}
+	if err := copyErr; err != nil {
 		out.Close()
 		os.Remove(tmp)
 		return err
@@ -721,23 +757,23 @@ func (a *App) ExportShaurmpack(req ExportShaurmpackRequest) (ExportShaurmpackRes
 	}
 
 	result, err := shaurmpack.Export(shaurmpack.ExportOptions{
-		GameDir:           gameDir,
-		IconFile:          iconFile,
-		PackID:            req.PackID,
-		Name:              req.Name,
-		VersionID:         version,
-		Description:       firstNonEmpty(req.Description, cp.Description),
-		Authors:           req.Authors,
+		GameDir:     gameDir,
+		IconFile:    iconFile,
+		PackID:      req.PackID,
+		Name:        req.Name,
+		VersionID:   version,
+		Description: firstNonEmpty(req.Description, cp.Description),
+		Authors:     req.Authors,
 		// Вибір користувача з модалки експорту — інакше пакується вся тека.
-		IncludePaths:      req.Included,
-		ExcludePaths:      req.Excluded,
-		GameVersion:       cp.MCVersion,
-		Loader:            cp.Loader,
-		LoaderVersion:     cp.LoaderVersion,
-		Color:             cp.Color,
-		OutPath:           outPath,
-		LauncherName:      "Shaurma Launcher",
-		LauncherVersion:   appVersion,
+		IncludePaths:           req.Included,
+		ExcludePaths:           req.Excluded,
+		GameVersion:            cp.MCVersion,
+		Loader:                 cp.Loader,
+		LoaderVersion:          cp.LoaderVersion,
+		Color:                  cp.Color,
+		OutPath:                outPath,
+		LauncherName:           "Shaurma Launcher",
+		LauncherVersion:        appVersion,
 		ResolveModrinthBatch:   a.shaurmpackModrinthBatchResolver(),
 		ResolveCurseForgeBatch: a.shaurmpackCurseForgeBatchResolver(),
 		SHA1Of:                 a.shaurmpackSHA1Of(),

@@ -2,6 +2,7 @@ package shaurmpack
 
 import (
 	"fmt"
+	shsync "shaurma-launcher-backend/internal/sync"
 	"strconv"
 	"strings"
 )
@@ -82,6 +83,11 @@ func LauncherBuildInfo() LauncherMeta {
 func ValidateManifest(m *Manifest) error {
 	if m == nil {
 		return fmt.Errorf("маніфест порожній")
+	}
+	for _, f := range m.Files {
+		if err := shsync.ValidateRelPath(f.Path); err != nil {
+			return err
+		}
 	}
 	if m.Version < 1 || m.Version > FormatVersion {
 		return fmt.Errorf("непідтримувана версія формату: %d", m.Version)

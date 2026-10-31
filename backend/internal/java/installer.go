@@ -85,11 +85,11 @@ func guessComponentName(major int) string {
 		34: "java-runtime-xi",
 		35: "java-runtime-omicron",
 	}
-	
+
 	if name, ok := greekNames[major]; ok {
 		return name
 	}
-	
+
 	// Якщо major > 35, використовуємо універсальний формат
 	// (можливо Mojang перейде на просту нумерацію)
 	return fmt.Sprintf("java-runtime-major-%d", major)
@@ -383,12 +383,12 @@ func (j *Installer) installComponent(component string, major int, targetDir stri
 	j.status(fmt.Sprintf("Отримання маніфесту Java %d (%s)...", major, component))
 	j.reportProgress("manifest", 0, fmt.Sprintf("Отримання маніфесту Java %d...", major))
 
-	pkgManifestURL, err := j.resolvePackageManifestURL(component)
+	pkgManifestURL, manifestHash, err := j.resolvePackageManifestURL(component)
 	if err != nil {
 		return fmt.Errorf("java manifest для %s: %w", component, err)
 	}
 
-	pkg, err := j.fetchPackageManifest(pkgManifestURL)
+	pkg, err := j.fetchPackageManifest(pkgManifestURL, manifestHash)
 	if err != nil {
 		return fmt.Errorf("java package manifest для %s: %w", component, err)
 	}
@@ -418,60 +418,49 @@ func (j *Installer) installMajorTo(major int, targetDir string) error {
 
 // resolvePackageManifestURL тягне головний манифест Mojang і повертає URL
 // пакетного манифесту для потрібного компонента на поточній ОС/архітектурі.
-func (j *Installer) resolvePackageManifestURL(component string) (string, error) {
+func (j *Installer) resolvePackageManifestURL(component string) (string, string, error) {
 	req, err := http.NewRequest(http.MethodGet, javaRuntimeManifestURL, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
 
-	resp, err := j.client.Do(req)
+	resp, err := j.runtimeClient().Do(req)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP %d при отриманні маніфесту java-runtime", resp.StatusCode)
+		return "", "", fmt.Errorf("HTTP %d при отриманні маніфесту java-runtime", resp.StatusCode)
 	}
 
 	var all mojangAllManifest
-	if err := json.NewDecoder(resp.Body).Decode(&all); err != nil {
-		return "", fmt.Errorf("парсинг маніфесту java-runtime: %w", err)
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&all); err != nil {
+		return "", "", fmt.Errorf("парсинг маніфесту java-runtime: %w", err)
 	}
 
 	osKey := mojangOSKey()
 	osEntries, ok := all[osKey]
 	if !ok {
-		return "", fmt.Errorf("немає записів java-runtime для ОС %q у маніфесті Mojang", osKey)
+		return "", "", fmt.Errorf("немає записів java-runtime для ОС %q у маніфесті Mojang", osKey)
 	}
 	entries, ok := osEntries[component]
 	if !ok || len(entries) == 0 {
-		return "", fmt.Errorf("немає доступного компонента %q для ОС %q у маніфесті Mojang", component, osKey)
+		return "", "", fmt.Errorf("немає доступного компонента %q для ОС %q у маніфесті Mojang", component, osKey)
 	}
-	return entries[0].Manifest.URL, nil
+	return entries[0].Manifest.URL, entries[0].Manifest.SHA1, nil
 }
 
 // fetchPackageManifest завантажує і парсить пакетний манифест (список
 // окремих файлів з їхніми SHA1 та URL) для конкретного рантайму.
-func (j *Installer) fetchPackageManifest(url string) (*mojangPackageManifest, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+func (j *Installer) fetchPackageManifest(url, expectedHash string) (*mojangPackageManifest, error) {
+	data, err := j.runtimeBytes(url, expectedHash, 16<<20)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-
-	resp, err := j.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d при отриманні пакетного маніфесту", resp.StatusCode)
-	}
-
 	var pkg mojangPackageManifest
-	if err := json.NewDecoder(resp.Body).Decode(&pkg); err != nil {
-		return nil, fmt.Errorf("парсинг пакетного маніфесту: %w", err)
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return nil, err
 	}
 	return &pkg, nil
 }
@@ -480,10 +469,22 @@ func (j *Installer) fetchPackageManifest(url string) (*mojangPackageManifest, er
 // файл із пакетного манифесту в targetDir. Прогрес рахується від
 // кількості файлів (5→100% загального прогресу встановлення).
 func (j *Installer) downloadPackageFiles(pkg *mojangPackageManifest, targetDir string, major int) error {
+	if err := validateRuntimePackage(pkg); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(targetDir, 0755); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(targetDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+
 	// Спершу директорії (щоб MkdirAll файлів не гнався за порядком мапи).
 	for relPath, f := range pkg.Files {
 		if f.Type == "directory" {
-			if err := os.MkdirAll(filepath.Join(targetDir, filepath.FromSlash(relPath)), 0755); err != nil {
+			if err := root.MkdirAll(filepath.FromSlash(relPath), 0755); err != nil {
 				return err
 			}
 		}
@@ -510,15 +511,17 @@ func (j *Installer) downloadPackageFiles(pkg *mojangPackageManifest, targetDir s
 		if j.IsCancelRequested() {
 			return ErrInstallCancelled
 		}
-		dest := filepath.Join(targetDir, filepath.FromSlash(jb.relPath))
-		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+		dest := filepath.FromSlash(jb.relPath)
+		if err := root.MkdirAll(filepath.Dir(dest), 0755); err != nil {
 			return err
 		}
-		if err := j.downloadOneFile(jb.f.Downloads.Raw.URL, dest); err != nil {
+		if err := j.downloadRuntimeFile(root, dest, jb.f); err != nil {
 			return fmt.Errorf("файл %s: %w", jb.relPath, err)
 		}
 		if jb.f.Executable {
-			os.Chmod(dest, 0755)
+			if err := root.Chmod(dest, 0755); err != nil {
+				return err
+			}
 		}
 		done++
 		if time.Since(lastReport) >= 150*time.Millisecond || done == total {
@@ -531,49 +534,28 @@ func (j *Installer) downloadPackageFiles(pkg *mojangPackageManifest, targetDir s
 		}
 	}
 
-	// symlink-и — лише на *nix (Windows-манифест Mojang symlink не містить).
-	for relPath, f := range pkg.Files {
-		if f.Type == "link" && f.Target != "" {
-			dest := filepath.Join(targetDir, filepath.FromSlash(relPath))
-			os.MkdirAll(filepath.Dir(dest), 0755)
-			os.Remove(dest)
-			os.Symlink(f.Target, dest)
+	// Keep runtime links within the installation root.
+	for rel, f := range pkg.Files {
+		if f.Type == "link" {
+			dest := filepath.FromSlash(rel)
+			if err := root.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+				return err
+			}
+			if err := root.Remove(dest); err != nil && !os.IsNotExist(err) {
+				return err
+			}
+			if err := root.Symlink(filepath.FromSlash(f.Target), dest); err != nil {
+				return err
+			}
 		}
 	}
-
+	// Resolve complete link chains through the root before Java may be used.
+	for rel, f := range pkg.Files {
+		if f.Type == "link" {
+			if _, err := root.Stat(filepath.FromSlash(rel)); err != nil {
+				return fmt.Errorf("invalid Java link %s: %w", rel, err)
+			}
+		}
+	}
 	return nil
-}
-
-// downloadOneFile качає один файл з Mojang CDN (piston-data.mojang.com) у
-// dest. Файли зазвичай невеликі (найбільший — jvm.dll, кілька МБ), тому
-// окремий прогрес по кожному файлу не потрібен — прогрес рахується по
-// кількості завершених файлів (downloadPackageFiles).
-func (j *Installer) downloadOneFile(url, dest string) error {
-	// «Зупинити» до старту завантаження файлу — виходимо одразу.
-	if j.IsCancelRequested() {
-		return ErrInstallCancelled
-	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-
-	resp, err := j.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d (%s)", resp.StatusCode, url)
-	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
 }

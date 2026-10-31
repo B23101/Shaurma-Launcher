@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	shsync "shaurma-launcher-backend/internal/sync"
 )
 
 // ImportOptions — параметри імпорту .shaurmpack.
@@ -63,13 +65,13 @@ type ImportProgress struct {
 
 // ImportResult — результат імпорту.
 type ImportResult struct {
-	Manifest     *Manifest      // прочитаний маніфест
-	GameDir      string         // куди розпаковано
-	FilesTotal   int            // загальна кількість файлів
-	FilesLinked  int            // файли з онлайн-джерелом (download)
-	FilesCopied  int            // bundled файли (скопійовано з архіву)
-	FilesRemoved int            // видалені файли (при оновленні)
-	IsUpdate     bool           // чи це оновлення
+	Manifest      *Manifest      // прочитаний маніфест
+	GameDir       string         // куди розпаковано
+	FilesTotal    int            // загальна кількість файлів
+	FilesLinked   int            // файли з онлайн-джерелом (download)
+	FilesCopied   int            // bundled файли (скопійовано з архіву)
+	FilesRemoved  int            // видалені файли (при оновленні)
+	IsUpdate      bool           // чи це оновлення
 	InstalledInfo *InstalledInfo // для збереження в instance.json
 }
 
@@ -81,6 +83,9 @@ func ReadManifest(shaurmPackPath string) (*Manifest, error) {
 		return nil, fmt.Errorf("відкриття .shaurmpack: %w", err)
 	}
 	defer r.Close()
+	if err := validatePackArchive(r.File, 8<<30); err != nil {
+		return nil, err
+	}
 
 	for _, f := range r.File {
 		if f.Name == ManifestFile {
@@ -91,7 +96,7 @@ func ReadManifest(shaurmPackPath string) (*Manifest, error) {
 			defer rc.Close()
 
 			var manifest Manifest
-			if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
+			if err := json.NewDecoder(io.LimitReader(rc, 16<<20)).Decode(&manifest); err != nil {
 				return nil, fmt.Errorf("парсинг manifest.json: %w", err)
 			}
 			if manifest.Version == 0 {
@@ -134,6 +139,9 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 		return nil, fmt.Errorf("відкриття .shaurmpack: %w", err)
 	}
 	defer r.Close()
+	if err := validatePackArchive(r.File, 8<<30); err != nil {
+		return nil, err
+	}
 
 	// 1. Читаємо manifest з відкритого архіву
 	var manifest Manifest
@@ -145,7 +153,7 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 				return nil, err
 			}
 			defer rc.Close()
-			if err := json.NewDecoder(rc).Decode(&manifest); err != nil {
+			if err := json.NewDecoder(io.LimitReader(rc, 16<<20)).Decode(&manifest); err != nil {
 				return nil, fmt.Errorf("парсинг manifest.json: %w", err)
 			}
 			foundManifest = true
@@ -156,10 +164,33 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 		return nil, fmt.Errorf("manifest.json не знайдено")
 	}
 
+	// Reject all untrusted paths before extracting or invoking a resolver.
+	for _, pf := range manifest.Files {
+		if err := shsync.ValidateRelPath(pf.Path); err != nil {
+			return nil, err
+		}
+	}
+	for _, f := range r.File {
+		for _, prefix := range []string{OverridesDir, BundledDir} {
+			if strings.HasPrefix(f.Name, prefix) {
+				rel := strings.TrimSuffix(strings.TrimPrefix(f.Name, prefix), "/")
+				if rel == "" {
+					continue
+				}
+				if _, err := safeDestination(opts.TargetGameDir, rel); err != nil {
+					return nil, err
+				}
+				if f.Mode()&os.ModeSymlink != 0 {
+					return nil, fmt.Errorf("archive symlink: %s", f.Name)
+				}
+			}
+		}
+	}
+
 	result := &ImportResult{
-		Manifest:  &manifest,
-		GameDir:   opts.TargetGameDir,
-		IsUpdate:  opts.UpdateOf != nil,
+		Manifest: &manifest,
+		GameDir:  opts.TargetGameDir,
+		IsUpdate: opts.UpdateOf != nil,
 	}
 
 	// 2. Перевірка оновлення
@@ -244,9 +275,12 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 			if relPath == "" || skipExtract[relPath] {
 				continue
 			}
-			destPath := filepath.Join(opts.TargetGameDir, filepath.FromSlash(relPath))
+			_, err := safeDestination(opts.TargetGameDir, relPath)
+			if err != nil {
+				return nil, err
+			}
 
-			if err := extractFile(f, destPath); err != nil {
+			if err := extractFile(f, opts.TargetGameDir, relPath); err != nil {
 				return nil, fmt.Errorf("розпакування override %s: %w", relPath, err)
 			}
 			result.FilesCopied++
@@ -258,9 +292,12 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 			if relPath == "" {
 				continue
 			}
-			destPath := filepath.Join(opts.TargetGameDir, filepath.FromSlash(relPath))
+			_, err := safeDestination(opts.TargetGameDir, relPath)
+			if err != nil {
+				return nil, err
+			}
 
-			if err := extractFile(f, destPath); err != nil {
+			if err := extractFile(f, opts.TargetGameDir, relPath); err != nil {
 				return nil, fmt.Errorf("розпакування bundled %s: %w", relPath, err)
 			}
 			result.FilesCopied++
@@ -290,9 +327,18 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 	}
 	if len(toDownload) > 0 {
 		var mu sync.Mutex
+		var downloadErr error
 		runPool(ctx, len(toDownload), func(i int) {
 			pf := toDownload[i]
-			destPath := filepath.Join(opts.TargetGameDir, filepath.FromSlash(pf.Path))
+			destPath, pathErr := safeDestination(opts.TargetGameDir, pf.Path)
+			if pathErr != nil {
+				mu.Lock()
+				if downloadErr == nil {
+					downloadErr = pathErr
+				}
+				mu.Unlock()
+				return
+			}
 			// Відновлення після паузи: уже завантажений цілий файл не качаємо.
 			if opts.SkipExisting && fileMatches(destPath, pf) {
 				mu.Lock()
@@ -304,10 +350,11 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 			}
 			// Тека призначення може не існувати (з архіву моди більше не
 			// розпаковуються) — створюємо, щоб резолвер не мусив цього знати.
-			err := os.MkdirAll(filepath.Dir(destPath), 0755)
+			err := os.MkdirAll(opts.TargetGameDir, 0755)
 			if err == nil {
-				err = opts.ResolveDownload(destPath, pf)
+				err = resolveVerified(opts, pf)
 			}
+
 			// Старі паки: якщо завантаження не вдалось — беремо копію з
 			// архіву (bundled/ або overrides/), якщо вона там є.
 			copied := err != nil && extractArchiveFallback(r, pf.Path, opts.TargetGameDir)
@@ -318,12 +365,19 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 				result.FilesTotal++
 			case copied:
 				result.FilesCopied++
+			default:
+				if downloadErr == nil {
+					downloadErr = err
+				}
 			}
 			mu.Unlock()
 			report(ImportStageDownloading, pf.Path)
 		})
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if downloadErr != nil {
+			return nil, downloadErr
 		}
 	}
 	if opts.Progress != nil {
@@ -334,7 +388,10 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 	if opts.UpdateOf != nil && opts.DeleteRemoved {
 		for _, oldFile := range getInstalledFiles(opts.UpdateOf) {
 			if !newFiles[oldFile] {
-				delPath := filepath.Join(opts.TargetGameDir, filepath.FromSlash(oldFile))
+				delPath, err := safeDestination(opts.TargetGameDir, oldFile)
+				if err != nil {
+					return nil, err
+				}
 				if err := os.Remove(delPath); err == nil {
 					result.FilesRemoved++
 				}
@@ -362,8 +419,11 @@ func extractArchiveFallback(r *zip.ReadCloser, relPath, targetGameDir string) bo
 		want := prefix + relPath
 		for _, zf := range r.File {
 			if zf.Name == want {
-				destPath := filepath.Join(targetGameDir, filepath.FromSlash(relPath))
-				return extractFile(zf, destPath) == nil
+				_, err := safeDestination(targetGameDir, relPath)
+				if err != nil || zf.Mode()&os.ModeSymlink != 0 {
+					return false
+				}
+				return extractFile(zf, targetGameDir, relPath) == nil
 			}
 		}
 	}
@@ -384,9 +444,25 @@ func fileMatches(path string, pf PackFile) bool {
 }
 
 // extractFile витягує один файл з ZIP в указану теку.
-func extractFile(f *zip.File, destPath string) error {
+func extractFile(f *zip.File, base, rel string) error {
+	if _, err := safeDestination(base, strings.TrimSuffix(rel, "/")); err != nil {
+		return err
+	}
+	if f.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("archive symlink")
+	}
+	if err := os.MkdirAll(base, 0755); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	destPath := filepath.FromSlash(strings.ReplaceAll(rel, "\\", "/"))
+
 	// Створюємо директорію
-	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+	if err := root.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
 
@@ -401,7 +477,7 @@ func extractFile(f *zip.File, destPath string) error {
 	}
 	defer src.Close()
 
-	dst, err := os.Create(destPath)
+	dst, err := root.OpenFile(destPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -418,6 +494,9 @@ func ReadPersonalization(shaurmPackPath string) (*Personalization, error) {
 		return nil, err
 	}
 	defer r.Close()
+	if err := validatePackArchive(r.File, 8<<30); err != nil {
+		return nil, err
+	}
 
 	for _, f := range r.File {
 		if f.Name == MetadataDir+"personalization.json" {
@@ -428,7 +507,7 @@ func ReadPersonalization(shaurmPackPath string) (*Personalization, error) {
 			defer rc.Close()
 
 			var p Personalization
-			if err := json.NewDecoder(rc).Decode(&p); err != nil {
+			if err := json.NewDecoder(io.LimitReader(rc, 16<<20)).Decode(&p); err != nil {
 				return nil, err
 			}
 			return &p, nil
@@ -441,5 +520,89 @@ func ReadPersonalization(shaurmPackPath string) (*Personalization, error) {
 // Тимчасово повертає порожній список — реалізація залежить від store.
 func getInstalledFiles(info *InstalledInfo) []string {
 	_ = info
+	return nil
+}
+
+// safeDestination also rejects existing links, which lexical containment cannot detect.
+func safeDestination(base, rel string) (string, error) {
+	if err := shsync.ValidateRelPath(rel); err != nil {
+		return "", err
+	}
+	dest, err := shsync.SafeJoin(base, rel)
+	if err != nil {
+		return "", err
+	}
+	current := base
+	for _, part := range strings.Split(strings.ReplaceAll(rel, "\\", "/"), "/") {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil && !os.IsNotExist(err) {
+			return "", err
+		}
+		if err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("symlink destination: %s", rel)
+		}
+	}
+	return dest, nil
+}
+
+// Resolve into an isolated staging directory; publish only verified bytes through a root handle.
+func resolveVerified(opts ImportOptions, pf PackFile) error {
+	if pf.Hash == "" {
+		return fmt.Errorf("missing download hash: %s", pf.Path)
+	}
+	staging, err := os.MkdirTemp("", "shaurmpack-download-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(staging)
+	tmp := filepath.Join(staging, "download")
+	if err := opts.ResolveDownload(tmp, pf); err != nil {
+		return err
+	}
+	if !fileMatches(tmp, pf) {
+		return fmt.Errorf("download integrity mismatch: %s", pf.Path)
+	}
+	src, err := os.Open(tmp)
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+	root, err := os.OpenRoot(opts.TargetGameDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	rel := filepath.FromSlash(strings.ReplaceAll(pf.Path, "\\", "/"))
+	if err := root.MkdirAll(filepath.Dir(rel), 0755); err != nil {
+		return err
+	}
+	dst, err := root.OpenFile(rel, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(dst, src)
+	closeErr := dst.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}
+
+// Bound archive work before extraction or JSON allocation.
+func validatePackArchive(files []*zip.File, maxTotal uint64) error {
+	if len(files) > 100000 {
+		return fmt.Errorf("too many pack archive entries")
+	}
+	var total uint64
+	for _, f := range files {
+		if f.UncompressedSize64 > 2<<30 {
+			return fmt.Errorf("pack entry exceeds 2 GiB: %s", f.Name)
+		}
+		total += f.UncompressedSize64
+		if total > maxTotal {
+			return fmt.Errorf("pack archive exceeds size limit (%d bytes)", maxTotal)
+		}
+	}
 	return nil
 }

@@ -7,7 +7,8 @@ Windows and Linux. Official site: <https://shaurma-launcher.org/>
 ## Download
 
 Get installers from the [Releases](../../releases) page or the official site.
-Windows installers are code-signed (see below). Linux archives carry a GitHub build attestation:
+Signing is planned and requires SignPath approval. Check the signature of the actual download;
+unsigned dry runs are not signed releases. Linux release archives carry a GitHub build attestation:
 
 ```
 gh attestation verify shaurma-launcher-linux-shaurma.tar.gz -R B23101/Shaurma-Launcher
@@ -51,7 +52,7 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
   are submitted for signing. Build scripts and CI configuration are part of the signed source.
 - Every release is approved manually before it is signed.
 - Team roles
-  - Committers and reviewers: [B23101](https://github.com/B23101)
+  - Authors and reviewers: [B23101](https://github.com/B23101)
   - Approvers: [B23101](https://github.com/B23101)
 - Linux archives are not Authenticode-signed; they carry GitHub build-provenance attestations instead.
 
@@ -85,3 +86,13 @@ Base includes all launcher features: accounts, skins, friends, chat, P2P, sharin
 server access. Only the private modpack catalog and its download client require the full edition.
 The optional skin service can route game session requests through Shaurma for all account types.
 Review the privacy policy; it can be disabled during installation or in Settings.
+
+## Component downloads and verification
+
+The installer embeds a bootstrap; first launch downloads the shell, backend, updater and
+frontend archives from the Shaurma CDN. Production bootstrap, shell and updater require
+an Ed25519 signature over the exact manifest bytes with the domain prefix
+`shaurma-launcher-manifest-v1\n`, using public keys embedded at build time.
+Missing/invalid signatures or component SHA-256/size mismatches block installation of
+that update. A CDN channel token is not a substitute for a signature. Private signing
+keys are never included in the client. See [release preparation](scripts/RELEASING.md).

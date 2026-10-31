@@ -156,6 +156,7 @@ $GoogleSecret = Get-Secret 'SHAURMA_GOOGLE_CLIENT_SECRET'
 $PubKeys = Get-Secret 'SHAURMA_MANIFEST_PUBKEYS'
 
 function Check-Secrets {
+    if (-not $PubKeys) { Fail 'SHAURMA_MANIFEST_PUBKEYS is required for production builds' }
     if ($GoogleSecret -and (Get-Secret 'SHAURMA_GOOGLE_CLIENT_KIND') -ne 'desktop') {
         Fail 'Only public Desktop OAuth client credentials may be embedded; set SHAURMA_GOOGLE_CLIENT_KIND=desktop after verifying the client type'
     }
@@ -212,10 +213,19 @@ function New-WailsSyso([string]$DestDir) {
 # DLLs: version info only (no icon / manifest), via go-winres.
 function New-VersionSyso([string]$DestDir, [string]$OriginalName, [string]$Description) {
     $gw = Ensure-GoTool 'go-winres.exe' "github.com/tc-hib/go-winres@$GoWinresVersion"
-    Invoke-Native $gw @('simply', '--arch', 'amd64', '--manifest', 'none', '--out', 'rsrc',
-        '--product-name', $ProductName, '--file-description', $Description,
-        '--product-version', $ProductVersion, '--file-version', $ProductVersion,
-        '--original-filename', $OriginalName, '--copyright', $Copyright) $DestDir
+    $resourceFile = Join-Path $OutDir "_render/$OriginalName-version.json"
+    New-Item -ItemType Directory -Force (Split-Path -Parent $resourceFile) | Out-Null
+    $resource = @{ RT_VERSION = @{ '#1' = @{ '0000' = @{
+        fixed = @{ file_version = $ProductVersion; product_version = $ProductVersion }
+        info = @{ '0000' = @{
+            CompanyName = $CompanyName; ProductName = $ProductName
+            ProductVersion = $ProductVersion; FileVersion = $ProductVersion
+            OriginalFilename = $OriginalName; FileDescription = $Description
+            LegalCopyright = $Copyright
+        } }
+    } } } }
+    [IO.File]::WriteAllText($resourceFile, ($resource | ConvertTo-Json -Depth 10), [Text.UTF8Encoding]::new($false))
+    Invoke-Native $gw @('make', '--arch', 'amd64', '--in', $resourceFile, '--out', 'rsrc') $DestDir
     return (Join-Path $DestDir 'rsrc_windows_amd64.syso')
 }
 
@@ -227,7 +237,7 @@ function Build-Dll([string]$ModuleDir, [string]$Tags, [string]$Ldflags, [string]
         $goArgs = @('build')
         if ($Tags) { $goArgs += @('-tags', $Tags) }
         $goArgs += @('-buildmode=c-shared', '-trimpath', '-buildvcs=false')
-        if ($Ldflags) { $goArgs += @('-ldflags', $Ldflags) }
+        $goArgs += @('-ldflags', "-buildid= $Ldflags")
         $goArgs += @('-o', $Out, '.')
         $envs = @{ CGO_ENABLED = '1' }
         $cc = Find-CCompiler
@@ -317,7 +327,7 @@ function Test-PeMetadata([string]$Dir) {
     $bad = 0
     foreach ($f in Get-ChildItem $Dir -Recurse -Include *.exe, *.dll) {
         $vi = (Get-Item $f.FullName).VersionInfo
-        $ok = ($vi.ProductName -eq $ProductName) -and ($vi.ProductVersion -eq $ProductVersion)
+        $ok = ($vi.ProductName -eq $ProductName) -and ($vi.ProductVersion -eq $ProductVersion) -and ($vi.CompanyName -eq $CompanyName)
         $rel = $f.FullName.Substring($Dir.Length).TrimStart('\')
         Write-Host ("{0,-45} {1} / {2}  {3}" -f $rel, $vi.ProductName, $vi.ProductVersion, $(if ($ok) { 'OK' } else { 'MISMATCH' }))
         if (-not $ok) { $bad++ }

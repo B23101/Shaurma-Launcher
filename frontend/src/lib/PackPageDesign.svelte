@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte'
+  import { untrack, type Snippet } from 'svelte'
   import { App } from './wails'
   import mafia from './page-designs/mafia.html?raw'
   import './page-designs/mafia.css'
@@ -12,7 +12,10 @@
   let scene = $state('')
   let viewHeight = $state(720)
   const full = $derived(!!html && enabled && skin === 'mafia')
-  $effect(() => { onLayoutChange?.(full) })
+  $effect(() => {
+    const active = full
+    untrack(() => onLayoutChange?.(active))
+  })
   function measure(node: HTMLElement) {
     const viewport = node.closest('.content') || node.parentElement!
     const update = () => { viewHeight = viewport.clientHeight }
@@ -33,39 +36,44 @@
   $effect(() => {
     const id = packId
     const isOfficial = official
-    let cancelled = false
-    html = ''; palette = ''; skin = ''; scene = ''
-    enabled = true
-    designKey = `shaurma.page-design.disabled.${id}`
-    try { enabled = localStorage.getItem(designKey) !== 'true' } catch { /* optional preference */ }
-    function apply(source: string) {
-      if (cancelled || !source) return
-      const doc = new DOMParser().parseFromString(source, 'text/html')
-      skin = doc.querySelector('meta[name="shaurma-skin"]')?.getAttribute('content') === 'mafia' ? 'mafia' : ''
-      const image = doc.querySelector('img[data-shaurma-background]')?.getAttribute('src') || doc.querySelector('meta[name="shaurma-background"]')?.getAttribute('content') || ''
-      scene = /^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(image) ? image : ''
-      const tokens = ['bg-panel', 'bg-card', 'bg-input', 'bg-input-hi', 'text', 'text-mute', 'text-dim', 'orange', 'orange-2', 'border']
-      palette = tokens.map(key => {
-        const value = doc.querySelector(`meta[name="shaurma-${key}"]`)?.getAttribute('content') || ''
-        return /^#[0-9a-f]{6}$/i.test(value) ? `--${key}:${value}` : ''
-      }).filter(Boolean).join(';')
-      const accent = doc.querySelector('meta[name="shaurma-orange"]')?.getAttribute('content') || ''
-      if (/^#[0-9a-f]{6}$/i.test(accent)) palette += `;--orange-rgb:${[1,3,5].map(i => parseInt(accent.slice(i,i+2),16)).join(',')}`
-      doc.querySelectorAll('script,iframe,object,embed,base,link,form,meta[http-equiv]').forEach(el => el.remove())
-      doc.querySelectorAll('*').forEach(el => {
-        for (const attr of [...el.attributes]) if (/^on/i.test(attr.name) || ['href','action','formaction'].includes(attr.name)) el.removeAttribute(attr.name)
-      })
-      const csp = doc.createElement('meta')
-      csp.httpEquiv = 'Content-Security-Policy'
-      csp.content = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
-      doc.head.prepend(csp)
-      html = '<!doctype html>' + doc.documentElement.outerHTML
-    }
-    if (isOfficial) {
-      if (id.toLowerCase() === 'mafia') apply(mafia)
-      App.GetPackPageDesign(id).then(apply).catch(() => { /* standard or bundled design remains usable offline */ })
-    }
-    return () => { cancelled = true }
+    // Only pack identity should reload the design. Applying it writes several
+    // reactive fields; none of those fields may become reload dependencies.
+    return untrack(() => {
+      let cancelled = false
+      html = ''; palette = ''; skin = ''; scene = ''
+      enabled = true
+      designKey = `shaurma.page-design.disabled.${id}`
+      try { enabled = localStorage.getItem(designKey) !== 'true' } catch { /* optional preference */ }
+      function apply(source: string) {
+        if (cancelled || !source) return
+        const doc = new DOMParser().parseFromString(source, 'text/html')
+        skin = doc.querySelector('meta[name="shaurma-skin"]')?.getAttribute('content') === 'mafia' ? 'mafia' : ''
+        const image = doc.querySelector('img[data-shaurma-background]')?.getAttribute('src') || doc.querySelector('meta[name="shaurma-background"]')?.getAttribute('content') || ''
+        scene = /^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(image) ? image : ''
+        const tokens = ['bg-panel', 'bg-card', 'bg-input', 'bg-input-hi', 'text', 'text-mute', 'text-dim', 'orange', 'orange-2', 'border']
+        let nextPalette = tokens.map(key => {
+          const value = doc.querySelector(`meta[name="shaurma-${key}"]`)?.getAttribute('content') || ''
+          return /^#[0-9a-f]{6}$/i.test(value) ? `--${key}:${value}` : ''
+        }).filter(Boolean).join(';')
+        const accent = doc.querySelector('meta[name="shaurma-orange"]')?.getAttribute('content') || ''
+        if (/^#[0-9a-f]{6}$/i.test(accent)) nextPalette += `;--orange-rgb:${[1,3,5].map(i => parseInt(accent.slice(i,i+2),16)).join(',')}`
+        palette = nextPalette
+        doc.querySelectorAll('script,iframe,object,embed,base,link,form,meta[http-equiv]').forEach(el => el.remove())
+        doc.querySelectorAll('*').forEach(el => {
+          for (const attr of [...el.attributes]) if (/^on/i.test(attr.name) || ['href','action','formaction'].includes(attr.name)) el.removeAttribute(attr.name)
+        })
+        const csp = doc.createElement('meta')
+        csp.httpEquiv = 'Content-Security-Policy'
+        csp.content = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; base-uri 'none'; form-action 'none'"
+        doc.head.prepend(csp)
+        html = '<!doctype html>' + doc.documentElement.outerHTML
+      }
+      if (isOfficial) {
+        if (id.toLowerCase() === 'mafia') apply(mafia)
+        App.GetPackPageDesign(id).then(apply).catch(() => { /* standard or bundled design remains usable offline */ })
+      }
+      return () => { cancelled = true }
+    })
   })
   function toggle() {
     enabled = !enabled

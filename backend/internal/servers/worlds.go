@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	shsync "shaurma-launcher-backend/internal/sync"
 	"sort"
 	"strings"
 	"time"
@@ -149,10 +150,13 @@ func CreateBackupWithProgress(serverDir, worldName, backupsDir string, auto bool
 	}
 
 	worldName = filepath.Base(strings.TrimSpace(worldName))
-	if worldName == "" || worldName == "." {
+	if worldName == "" || worldName == "." || worldName == ".." {
 		return "", fmt.Errorf("не вказано світ для бекапу")
 	}
-	worldDir := filepath.Join(serverDir, worldName)
+	worldDir, pathErr := shsync.SafeJoin(serverDir, worldName)
+	if pathErr != nil {
+		return "", pathErr
+	}
 	if _, err := os.Stat(worldDir); os.IsNotExist(err) {
 		return "", fmt.Errorf("світ %s не знайдено", worldName)
 	}
@@ -331,6 +335,9 @@ func worldFromBackupID(id, fallback string) string {
 
 // DeleteBackup видаляє бекап (zip + метафайл, якщо є).
 func DeleteBackup(backupsDir, backupID string) error {
+	if backupID == "" || backupID == "." || backupID == ".." || strings.ContainsAny(backupID, "/\\:") {
+		return fmt.Errorf("invalid backup ID")
+	}
 	zipPath := filepath.Join(backupsDir, backupID+".zip")
 	err := os.Remove(zipPath)
 	// Метафайл — необов'язковий: якщо його немає, це не помилка.
@@ -373,10 +380,35 @@ func RestoreBackup(serverDir, worldName, backupsDir, backupID string) error {
 	}
 
 	worldName = filepath.Base(strings.TrimSpace(worldName))
-	if worldName == "" || worldName == "." {
+	if worldName == "" || worldName == "." || worldName == ".." {
 		return fmt.Errorf("не вказано світ для відновлення")
 	}
-	worldDir := filepath.Join(serverDir, worldName)
+	worldDir, pathErr := shsync.SafeJoin(serverDir, worldName)
+	if pathErr != nil {
+		return pathErr
+	}
+
+	// Fully extract and validate before touching the user's current world.
+	staged, err := os.MkdirTemp(serverDir, ".shaurma-restore-")
+	if err != nil {
+		return err
+	}
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.RemoveAll(staged)
+		}
+	}()
+	if err := unzipTo(zipPath, staged); err != nil {
+		return fmt.Errorf("розпакування: %w", err)
+	}
+	entries, err := os.ReadDir(staged)
+	if err != nil {
+		return err
+	}
+	if len(entries) != 1 || entries[0].Name() != worldName || !entries[0].IsDir() {
+		return fmt.Errorf("бекап має містити лише світ %s", worldName)
+	}
 
 	// Створюємо бекап поточного стану перед відновленням.
 	if _, err := os.Stat(worldDir); err == nil {
@@ -388,14 +420,27 @@ func RestoreBackup(serverDir, worldName, backupsDir, backupID string) error {
 		writeBackupMeta(backupsDir, strings.TrimSuffix(backupName, ".zip"), 0, false)
 	}
 
-	// Видаляємо поточний світ.
-	if err := os.RemoveAll(worldDir); err != nil {
-		return fmt.Errorf("видалення поточного світу: %w", err)
+	old := filepath.Join(staged, ".previous-world")
+	if worldName == ".previous-world" {
+		old = filepath.Join(staged, ".previous-world-backup")
 	}
-
-	// Розпаковуємо бекап.
-	if err := unzipTo(zipPath, filepath.Dir(worldDir)); err != nil {
-		return fmt.Errorf("розпакування: %w", err)
+	hadOld := false
+	if _, err := os.Lstat(worldDir); err == nil {
+		if err := os.Rename(worldDir, old); err != nil {
+			return err
+		}
+		hadOld = true
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if err := os.Rename(filepath.Join(staged, worldName), worldDir); err != nil {
+		if hadOld {
+			if rollbackErr := os.Rename(old, worldDir); rollbackErr != nil {
+				cleanup = false // Preserve the original if rollback fails; never delete the recovery copy.
+				return fmt.Errorf("відновлення: %v; оригінал збережено в %s: %w", err, old, rollbackErr)
+			}
+		}
+		return err
 	}
 
 	return nil
@@ -403,6 +448,9 @@ func RestoreBackup(serverDir, worldName, backupsDir, backupID string) error {
 
 // ExportBackup копіює бекап у вказану директорію.
 func ExportBackup(backupsDir, backupID, destPath string) error {
+	if backupID == "" || backupID == "." || backupID == ".." || strings.ContainsAny(backupID, "/\\:") {
+		return fmt.Errorf("invalid backup ID")
+	}
 	src := filepath.Join(backupsDir, backupID+".zip")
 	return copyFile(src, filepath.Join(destPath, backupID+".zip"))
 }
@@ -578,29 +626,52 @@ func unzipTo(zipPath, destDir string) error {
 	}
 	defer r.Close()
 
+	// Validate the entire archive before writing any entry.
 	for _, f := range r.File {
-		outPath := filepath.Join(destDir, f.Name)
+		rel := strings.TrimSuffix(f.Name, "/")
+		if _, err := shsync.SafeJoin(destDir, rel); err != nil {
+			return err
+		}
+		if f.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("backup symlink: %s", f.Name)
+		}
+	}
+	root, err := os.OpenRoot(destDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	for _, f := range r.File {
+		rel := filepath.FromSlash(strings.ReplaceAll(f.Name, "\\", "/"))
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(outPath, 0755)
+			if err := root.MkdirAll(rel, 0755); err != nil {
+				return err
+			}
 			continue
 		}
-		os.MkdirAll(filepath.Dir(outPath), 0755)
-		outFile, err := os.Create(outPath)
+		if err := root.MkdirAll(filepath.Dir(rel), 0755); err != nil {
+			return err
+		}
+		out, err := root.OpenFile(rel, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 		if err != nil {
 			return err
 		}
 		rc, err := f.Open()
 		if err != nil {
-			outFile.Close()
+			out.Close()
 			return err
 		}
-		_, err = io.Copy(outFile, rc)
+		_, err = io.Copy(out, rc)
 		rc.Close()
-		outFile.Close()
+		closeErr := out.Close()
 		if err != nil {
 			return err
 		}
+		if closeErr != nil {
+			return closeErr
+		}
 	}
+
 	return nil
 }
 

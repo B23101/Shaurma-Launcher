@@ -18,7 +18,7 @@ func newPackProvider(a *App) PackProvider {
 // скомпільовані взагалі (їх просто немає в цьому бінарнику).
 func (a *App) IsShaurmaEdition() bool { return false }
 
-// launcherEditionName — назва редакції для аналітики та install-ping.
+// launcherEditionName — назва редакції для аналітики.
 func launcherEditionName() string { return "base" }
 
 type stubProvider struct{}

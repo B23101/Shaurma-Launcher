@@ -7,8 +7,8 @@ It does not contain advertising and does not sell data.
 
 - **Game files and metadata:** Mojang/Microsoft (versions, libraries, assets, skins), mod-loader metadata and downloads
   (Forge, NeoForge, Fabric, Quilt, Paper, Purpur and others), Modrinth and CurseForge (mod/modpack search and downloads).
-- **Updates:** the launcher downloads its own components from the Shaurma CDN and verifies them (SHA-256, and a signed manifest
-  when the build contains signing keys). Requests carry the release channel and a channel access token.
+- **Updates:** the launcher downloads its own components from the Shaurma CDN and verifies them (SHA-256 and size against a mandatory Ed25519-signed manifest
+  in production builds). Requests carry the release channel and a channel access token.
 - **Microsoft sign-in:** handled by Microsoft/Xbox services in your browser; the launcher stores the resulting tokens locally.
 
 ## Only if you use the feature

@@ -566,7 +566,10 @@ func (r *Runner) Run(ctx context.Context, manifest *PackManifest, maxConcurrentD
 
 	// Тимчасова тека з .zip архівами більше не потрібна (всі розпаковані
 	// та видалені) — прибираємо, щоб не лишати сміття в теці збірки.
-	os.RemoveAll(filepath.Join(r.InstallDir, ".override-archives"))
+	if fs, err := openInstallFS(r.InstallDir); err == nil {
+		fs.RemoveAll(filepath.Join(r.InstallDir, ".override-archives"))
+		fs.Close()
+	}
 
 	// Фіналізація: осиротілі файли, StageComplete.
 	r.setStage(StageFinalizing)
@@ -710,6 +713,15 @@ func (s *pauseStallReader) Close() error {
 // місця зупинки через Range. Пауза/скасування (Pause()/Cancel()) розриває
 // навіть заблокований Read через pauseStallReader.
 func (r *Runner) downloadTask(ctx context.Context, t Task) error {
+	if err := os.MkdirAll(r.InstallDir, 0755); err != nil {
+		return err
+	}
+	fs, err := openInstallFS(r.InstallDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
 	fullURL := t.URL
 	isWorker := t.Kind != "" // workerFiles завжди мають Kind; hashMods — ""
 	if isWorker {
@@ -739,7 +751,9 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 		}
 		destPath = p
 	}
-	os.MkdirAll(filepath.Dir(destPath), 0755)
+	if err := fs.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return err
+	}
 	httpClient := clientWithSafeRedirects(r.Client)
 
 	// Resume/повторний запуск: файл уже ПОВНІСТЮ на диску (destPath існує і
@@ -750,7 +764,7 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 	// (.override-archives/*.zip) це ще й рятує від повторного качання zip-а,
 	// якщо розпаковка перервалась — архів лишається на диску до успіху
 	// (див. extractOverrideFolder), і downloadTask пропускає його за хешем.
-	if fi, err := os.Stat(destPath); err == nil && !fi.IsDir() && fi.Size() > 0 {
+	if fi, err := fs.Stat(destPath); err == nil && !fi.IsDir() && fi.Size() > 0 {
 		if (t.SHA256 != "" && fileMatchesSHA256(destPath, t.SHA256)) ||
 			(t.SHA256 == "" && t.SHA1 != "" && fileMatchesSHA1(destPath, t.SHA1)) {
 			atomic.AddInt32(&r.filesDone, 1)
@@ -788,7 +802,7 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 		}
 
 		var existingBytes int64
-		if fi, err := os.Stat(tmpPath); err == nil {
+		if fi, err := fs.Stat(tmpPath); err == nil {
 			existingBytes = fi.Size()
 		}
 
@@ -844,13 +858,13 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 		if resp.StatusCode == http.StatusRequestedRangeNotSatisfiable {
 			resp.Body.Close()
 			if t.SHA1 != "" && fileExists(tmpPath) && fileMatchesSHA1(tmpPath, t.SHA1) {
-				if err := os.Rename(tmpPath, destPath); err == nil {
+				if err := fs.Rename(tmpPath, destPath); err == nil {
 					atomic.AddInt32(&r.filesDone, 1)
 					r.markActuallyDownloaded(t.ManifestKey)
 					return nil
 				}
 			}
-			os.Remove(tmpPath)
+			fs.Remove(tmpPath)
 			lastErr = fmt.Errorf("Range-запит не задоволено (HTTP 416)")
 			continue
 		}
@@ -870,7 +884,13 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 // перейменований у destPath), errTaskPaused при паузі/скасуванні, або
 // retryable-помилку при стілі/обриві (викликач докачує через Range).
 func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, tmpPath, destPath string, t Task, existingBytes int64) error {
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	fs, err := openInstallFS(r.InstallDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
+	f, err := fs.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		return err
 	}
@@ -884,10 +904,10 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 		// Windows: «завантаження не вдалось після N спроб: truncate ...
 		// Access is denied» — і виглядало як зависання на одному моді.
 		f.Close()
-		if err := os.Truncate(tmpPath, 0); err != nil {
+		if err := fs.Truncate(tmpPath, 0); err != nil {
 			return err
 		}
-		f, err = os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		f, err = fs.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
 			return err
 		}
@@ -898,7 +918,7 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 	hasher256 := sha256.New()
 	hasher512 := sha512.New()
 	if existingBytes > 0 {
-		if rf, err := os.Open(tmpPath); err == nil {
+		if rf, err := fs.Open(tmpPath); err == nil {
 			io.Copy(io.MultiWriter(hasher1, hasher256, hasher512), rf)
 			rf.Close()
 		}
@@ -932,7 +952,7 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 			written += int64(n)
 			if written > sizeCap {
 				f.Close()
-				os.Remove(tmpPath)
+				fs.Remove(tmpPath)
 				return fmt.Errorf("%s: розмір перевищує заявлений у маніфесті (%d байт)", t.DestRelPath, sizeCap)
 			}
 			bw.Write(buf[:n])
@@ -970,26 +990,26 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 	if t.SHA512 != "" {
 		got := fmt.Sprintf("%x", hasher512.Sum(nil))
 		if !strings.EqualFold(got, t.SHA512) {
-			os.Remove(tmpPath)
+			fs.Remove(tmpPath)
 			return fmt.Errorf("SHA512 mismatch для %s", t.DestRelPath)
 		}
 	}
 	if t.SHA1 != "" {
 		got := fmt.Sprintf("%x", hasher1.Sum(nil))
 		if !strings.EqualFold(got, t.SHA1) {
-			os.Remove(tmpPath)
+			fs.Remove(tmpPath)
 			return fmt.Errorf("SHA1 mismatch для %s: очікував %s, отримав %s", t.DestRelPath, t.SHA1, got)
 		}
 	}
 	if t.SHA256 != "" {
 		got := fmt.Sprintf("%x", hasher256.Sum(nil))
 		if !strings.EqualFold(got, t.SHA256) {
-			os.Remove(tmpPath)
+			fs.Remove(tmpPath)
 			return fmt.Errorf("SHA256 mismatch для %s: очікував %s, отримав %s", t.DestRelPath, t.SHA256, got)
 		}
 	}
 
-	if err := os.Rename(tmpPath, destPath); err != nil {
+	if err := fs.Rename(tmpPath, destPath); err != nil {
 		return err
 	}
 	atomic.AddInt32(&r.filesDone, 1)
@@ -1001,6 +1021,12 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 // теки (аналог force_archive зі старої схеми). Якщо теки не було раніше —
 // вона трекається як partial, щоб Cancel міг прибрати саме її.
 func (r *Runner) extractOverrideFolder(t Task) error {
+	fs, err := openInstallFS(r.InstallDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
 	archivePath := filepath.Join(r.InstallDir, ".override-archives", sanitizeName(t.ManifestKey)+".zip")
 	// destDir іде в os.RemoveAll нижче — ОБОВ'ЯЗКОВО всередині теки збірки й не
 	// сама тека збірки.
@@ -1020,17 +1046,25 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 	ok := false
 	defer func() {
 		if ok {
-			os.Remove(archivePath)
+			fs.Remove(archivePath)
 		}
 	}()
 
 	preExisted := r.localExists(t.DestRelPath)
 
-	zr, err := zip.OpenReader(archivePath)
+	archive, err := fs.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	info, err := archive.Stat()
+	if err != nil {
+		return err
+	}
+	zr, err := zip.NewReader(archive, info.Size())
 	if err != nil {
 		return fmt.Errorf("відкриття архіву %s: %w", t.DestRelPath, err)
 	}
-	defer zr.Close()
 
 	// Перевіряємо ВЕСЬ архів до першого запису на диск: zip-slip, виконувані
 	// файли, «бомба» за кількістю/розміром.
@@ -1047,7 +1081,7 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 		if f.FileInfo().IsDir() {
 			continue
 		}
-		fi, err := os.Stat(filepath.Join(destDir, filepath.FromSlash(f.Name)))
+		fi, err := fs.Stat(filepath.Join(destDir, filepath.FromSlash(f.Name)))
 		if err != nil || fi.IsDir() || fi.Size() != int64(f.UncompressedSize64) {
 			alreadyComplete = false
 			break
@@ -1058,8 +1092,12 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 		return nil
 	}
 
-	os.RemoveAll(destDir)
-	os.MkdirAll(destDir, 0755)
+	if err := fs.RemoveAll(destDir); err != nil {
+		return err
+	}
+	if err := fs.MkdirAll(destDir, 0755); err != nil {
+		return err
+	}
 	if !preExisted {
 		r.trackPartial(destDir)
 	}
@@ -1091,7 +1129,7 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 		if f.FileInfo().IsDir() {
 			target, _ := SafeJoin(destDir, f.Name) // вже перевірено vetZipEntries
 			if target != "" {
-				os.MkdirAll(target, 0755)
+				fs.MkdirAll(target, 0755)
 			}
 			continue
 		}
@@ -1111,7 +1149,7 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 			errMu.Unlock()
 			break
 		}
-		os.MkdirAll(filepath.Dir(target), 0755)
+		fs.MkdirAll(filepath.Dir(target), 0755)
 
 		zf := f
 		sem <- struct{}{}
@@ -1137,7 +1175,7 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 				errMu.Unlock()
 				return
 			}
-			out, err := os.Create(target)
+			out, err := fs.Create(target)
 			if err != nil {
 				rc.Close()
 				errMu.Lock()
@@ -1177,6 +1215,12 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 // (наприклад, override-тека, яку успішно розпакували в попередньому
 // запуску і зараз лише перевіряємо на дельту), не чіпаються.
 func (r *Runner) cleanupPartials() {
+	fs, err := openInstallFS(r.InstallDir)
+	if err != nil {
+		return
+	}
+	defer fs.Close()
+
 	r.partialPathsMu.Lock()
 	paths := make([]string, 0, len(r.partialPaths))
 	for p := range r.partialPaths {
@@ -1185,9 +1229,9 @@ func (r *Runner) cleanupPartials() {
 	r.partialPathsMu.Unlock()
 
 	for _, p := range paths {
-		os.RemoveAll(p)
+		fs.RemoveAll(p)
 	}
-	os.Remove(filepath.Join(r.InstallDir, ".override-archives"))
+	fs.Remove(filepath.Join(r.InstallDir, ".override-archives"))
 }
 
 func (r *Runner) markActuallyDownloaded(manifestKey string) {
@@ -1256,6 +1300,12 @@ func (r *Runner) markOnMissingComplete(t Task) {
 }
 
 func (r *Runner) removeOrphans(paths []string) {
+	fs, err := openInstallFS(r.InstallDir)
+	if err != nil {
+		return
+	}
+	defer fs.Close()
+
 	for _, p := range paths {
 		// p — ЛОКАЛЬНИЙ шлях відносно кореня установки ("mods/foo.jar").
 		// Раніше сюди потрапляв R2-ключ ("packs/<id>/mods/x.jar") або
@@ -1266,7 +1316,7 @@ func (r *Runner) removeOrphans(paths []string) {
 		if jerr != nil {
 			continue // шлях зі стану/маніфесту виходить за теку збірки — не чіпаємо
 		}
-		if err := os.Remove(full); err == nil {
+		if err := fs.Remove(full); err == nil {
 			r.mu.Lock()
 			// Прибираємо і запис стану: ключ шукаємо серед Files, у яких
 			// LocalPath збігається (сам p може бути і R2-ключем, і локальним

@@ -32,3 +32,10 @@ Minecraft character textures and platform/project logos remain subject to their 
 copyright and trademark terms. Inclusion does not imply endorsement. Maintainers must retain
 source and permission evidence for each redistributed asset; no blanket MIT claim is made
 for third-party logos, Minecraft assets or downloaded game content.
+
+## Optional skin integration
+
+The launcher downloads authlib-injector v1.2.8 separately when the skin service is enabled.
+Upstream: https://github.com/yushijinhun/authlib-injector (AGPL-3.0).
+This component retains its upstream license and is not signed with this project's certificate.
+Review its redistribution and source-availability obligations before distributing it.

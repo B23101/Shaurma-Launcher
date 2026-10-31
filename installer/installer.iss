@@ -390,15 +390,37 @@ Type: filesandordirs; Name: "{app}\webview2"
 ; .part (недокачані), .new (підготовлені до довстановлення), .previous
 ; (backup перед заміною файлу — включно з легасі launcher.exe.previous
 ; від монолітної версії).
-Type: filesandordirs; Name: "{app}\*.part"
-Type: filesandordirs; Name: "{app}\*.new"
-Type: filesandordirs; Name: "{app}\*.previous"
+Type: filesandordirs; Name: "{app}\{#MyShellExeName}.part"
+Type: filesandordirs; Name: "{app}\{#MyOtherShellExeName}.part"
+Type: filesandordirs; Name: "{app}\backend.dll.part"
+Type: filesandordirs; Name: "{app}\updater.dll.part"
+Type: filesandordirs; Name: "{app}\frontend.zip.part"
+Type: filesandordirs; Name: "{app}\updater-frontend.zip.part"
+Type: filesandordirs; Name: "{app}\frontend.part"
+Type: filesandordirs; Name: "{app}\updater-frontend.part"
+Type: filesandordirs; Name: "{app}\{#MyShellExeName}.new"
+Type: filesandordirs; Name: "{app}\{#MyOtherShellExeName}.new"
+Type: filesandordirs; Name: "{app}\backend.dll.new"
+Type: filesandordirs; Name: "{app}\updater.dll.new"
+Type: filesandordirs; Name: "{app}\frontend.zip.new"
+Type: filesandordirs; Name: "{app}\updater-frontend.zip.new"
+Type: filesandordirs; Name: "{app}\frontend.new"
+Type: filesandordirs; Name: "{app}\updater-frontend.new"
+Type: filesandordirs; Name: "{app}\{#MyShellExeName}.previous"
+Type: filesandordirs; Name: "{app}\{#MyOtherShellExeName}.previous"
+Type: filesandordirs; Name: "{app}\backend.dll.previous"
+Type: filesandordirs; Name: "{app}\updater.dll.previous"
+Type: filesandordirs; Name: "{app}\frontend.zip.previous"
+Type: filesandordirs; Name: "{app}\updater-frontend.zip.previous"
+Type: filesandordirs; Name: "{app}\frontend.previous"
+Type: filesandordirs; Name: "{app}\updater-frontend.previous"
 ; Файл <shell>~ — старий exe, відкладений self-update'ом shell'а вбік під час
 ; оновлення (див. applyShellSelfUpdate: активний exe -> ~, .new на місце).
 ; Зазвичай видаляється при наступному старті лаунчера, але якщо процес
 ; впав між двома rename (вікно краху) — ~ лишається на диску і без цього
 ; правила пережив би деінсталяцію.
-Type: filesandordirs; Name: "{app}\*~"
+Type: files; Name: "{app}\{#MyShellExeName}~"
+Type: files; Name: "{app}\{#MyOtherShellExeName}~"
 
 [Code]
 // ── Деінсталяція: збереження даних користувача ─────────────────────────
@@ -450,6 +472,7 @@ begin
     BaseDir := Copy(Content, Pos1, Pos2 - Pos1);
     if BaseDir <> '' then
     begin
+      StringChangeEx(BaseDir, '\\', '\', True);
       Result := BaseDir;
       Exit;
     end;
@@ -457,11 +480,31 @@ begin
   Result := ExpandConstant('{userappdata}\.shaurm');
 end;
 
+// Never recursively delete an arbitrary path read from a user-writable JSON.
+// Automatic removal is limited to the launcher's default dedicated data root.
+// Custom locations may contain unrelated files and must be cleaned manually.
+function CanDeleteDataDir(const Dir: String): Boolean;
+var
+  Normalized, Expected: String;
+begin
+  Normalized := RemoveBackslash(ExpandFileName(Dir));
+  Expected := RemoveBackslash(ExpandConstant('{userappdata}\.shaurm'));
+  Result := (Dir <> '') and (CompareText(Normalized, Expected) = 0);
+end;
+
 function InitializeUninstall: Boolean;
 var
   Answer: Integer;
 begin
   UninstallDataDir := GetDataDir();
+  UninstallDeleteData := False;
+  if UninstallSilent then begin Result := True; Exit; end;
+  if not CanDeleteDataDir(UninstallDataDir) then
+  begin
+    MsgBox('Дані у власній теці буде збережено. За потреби видаліть їх вручну після деінсталяції:' + #13#10 + UninstallDataDir, mbInformation, MB_OK);
+    Result := True;
+    Exit;
+  end;
   // Питання про видалення даних користувача — ПЕРЕД початком видалення.
   //
   // ВАЖЛИВО: робимо це через MsgBox, а НЕ через CreateCustomPage. Inno
@@ -470,7 +513,7 @@ begin
   // доступні лише майстру ВСТАНОВЛЕННЯ (InitializeWizard). Раніше тут
   // була кастомна сторінка з чекбоксом — і деінсталяція падала одразу
   // при запуску, лаунчер було неможливо видалити.
-  Answer := MsgBox('Видалити також всі дані користувача (збірки, акаунти, налаштування, гардероб)?' + #13#10 + #13#10 + 'Якщо Ні — дані збережуться і будуть доступні після повторного встановлення лаунчера.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
+  Answer := MsgBox('Видалити також всі дані користувача (збірки, акаунти, налаштування, гардероб)?' + #13#10 + #13#10 + UninstallDataDir + #13#10 + #13#10 + 'Якщо Ні — дані збережуться і будуть доступні після повторного встановлення лаунчера.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
   UninstallDeleteData := (Answer = IDYES);
   // Обов'язковий результат функції (Inno вимагає InitializeUninstall: Boolean).
   Result := True;
@@ -571,7 +614,7 @@ begin
   // Якщо інша редакція запущена зараз — завершуємо процес, інакше
   // DeleteFile нижче мовчки не спрацює (Windows тримає лок на запущений
   // exe).
-  Exec('taskkill.exe', '/IM {#MyOtherShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#MyOtherShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   DeleteFile(OtherExePath);
   DeleteFile(OtherExePath + '.previous');
   DeleteFile(OtherExePath + '.new');
@@ -691,8 +734,8 @@ begin
   // (див. [UninstallDelete]: MyOtherShellExeName).
   if CurUninstallStep = usUninstall then
   begin
-    Exec('taskkill.exe', '/IM {#MyShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-    Exec('taskkill.exe', '/IM {#MyOtherShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#MyShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/IM {#MyOtherShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 
   if CurUninstallStep = usPostUninstall then
@@ -705,7 +748,7 @@ begin
     if UninstallDeleteData then
     begin
       // Папка даних може бути поза {app} (користувач сам обрав baseDir).
-      if Length(UninstallDataDir) > 0 then
+      if CanDeleteDataDir(UninstallDataDir) then
         DelTree(UninstallDataDir, True, True, True);
       // База даних і конфіг у теці встановлення теж дані користувача.
       DeleteFile(ExpandConstant('{app}\shaurma.db'));

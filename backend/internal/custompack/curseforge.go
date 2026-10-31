@@ -201,12 +201,12 @@ func (c *CurseForgeClient) HasAPIKey() bool { return effectiveAPIKey() != "" }
 // хелпери для коду поза custompack (наприклад, downloadModFile у
 // mods_api.go), якому треба лише перевірити наявність ключа й додати
 // x-api-key на прямому HTTP-запиті до CDN, не створюючи CurseForgeClient.
-func HasCurseForgeAPIKey() bool     { return effectiveAPIKey() != "" }
+func HasCurseForgeAPIKey() bool { return effectiveAPIKey() != "" }
 
 // CurseForgeAvailable — CurseForge доступний ЗАВЖДИ: без ключа (власного чи
 // вбудованого) запити йдуть через публічне дзеркало api.curse.tools, як у
 // Millida Launcher. Ключ лише пришвидшує/стабілізує прямий шлях.
-func CurseForgeAvailable() bool { return true }
+func CurseForgeAvailable() bool     { return true }
 func CurseForgeAPIKeyValue() string { return curseForgeAPIKey }
 
 // IsCurseForgeCDNURL — true, якщо посилання веде на CDN CurseForge
@@ -214,7 +214,12 @@ func CurseForgeAPIKeyValue() string { return curseForgeAPIKey }
 // хост. Використовується, щоб x-api-key додавався ЛИШЕ до запитів на
 // CurseForge CDN — на інших хостах цей заголовок зайвий і нічого не значить.
 func IsCurseForgeCDNURL(rawURL string) bool {
-	return strings.Contains(rawURL, "forgecdn.net")
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme != "https" || u.User != nil || (u.Port() != "" && u.Port() != "443") {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "forgecdn.net" || strings.HasSuffix(host, ".forgecdn.net")
 }
 
 type cfFileResponse struct {
@@ -1599,4 +1604,21 @@ func (c *CurseForgeClient) GetModFileCtx(ctx context.Context, projectID, fileID 
 		}
 	}
 	return info, nil
+}
+
+// Strip the API key on cross-origin redirects; custom headers are otherwise forwarded by Go.
+func protectDownloadRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 5 {
+		return fmt.Errorf("too many download redirects")
+	}
+	if len(via) > 0 {
+		first := via[0].URL
+		if first.Scheme == "https" && req.URL.Scheme != "https" {
+			return fmt.Errorf("insecure download redirect")
+		}
+		if !strings.EqualFold(first.Host, req.URL.Host) || first.Scheme != req.URL.Scheme {
+			req.Header.Del("x-api-key")
+		}
+	}
+	return nil
 }

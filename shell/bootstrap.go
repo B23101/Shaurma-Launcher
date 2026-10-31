@@ -184,6 +184,12 @@ func bootstrapLog(installDir, format string, args ...interface{}) {
 // файл; апдейтер його також не оновлює). Використовується і bootstrapUpdater,
 // і тестами (бізнес-логіка — в одному місці).
 func bootstrapAll(installDir string, m *bootstrapRemoteManifest) error {
+	fs, err := openInstallFS(installDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
 	bootstrapLog(installDir, "bootstrap start: %d компонентів", len(m.Components))
 	selfExe := ""
 	if exe, err := os.Executable(); err == nil {
@@ -212,14 +218,14 @@ func bootstrapAll(installDir string, m *bootstrapRemoteManifest) error {
 		if c.Kind == "archive" {
 			shellEmit("updater:status", fmt.Sprintf(`{"status":"installing","message":"Встановлення %s..."}`, c.Path))
 			zipPath := filepath.Join(installDir, filepath.FromSlash(c.Path))
-			if err := extractZipTo(zipPath, filepath.Join(installDir, filepath.FromSlash(c.ExtractTo))); err != nil {
+			if err := extractZipToRoot(fs, zipPath, filepath.Join(installDir, filepath.FromSlash(c.ExtractTo))); err != nil {
 				return fmt.Errorf("не вдалося розпакувати %s: %v", c.Path, err)
 			}
 			// Архів розпаковано, локальний маніфест буде записано нижче — сам
 			// zip у теці встановлення більше не потрібен (Diff порівнює
 			// маніфести, а не файли на диску), тож прибираємо його, щоб
 			// installDir не смітився багатомегабайтними архівами фронтенду.
-			_ = os.Remove(zipPath)
+			_ = fs.Remove(zipPath)
 		}
 	}
 
@@ -373,6 +379,12 @@ func downloadComponentRetry(url string, comp bootstrapComponent, installDir stri
 // деплой — на боці pack-manager: DeploySigned звіряє sha256 staging перед
 // заливкою, а підписаний маніфест публікується останнім.
 func downloadComponent(url string, comp bootstrapComponent, installDir string) error {
+	fs, err := openInstallFS(installDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
 	if err := checkDownloadURL(url); err != nil {
 		return err
 	}
@@ -392,18 +404,18 @@ func downloadComponent(url string, comp bootstrapComponent, installDir string) e
 	}
 
 	dest := filepath.Join(installDir, filepath.FromSlash(comp.Path))
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := fs.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
 	part := dest + ".part"
-	os.Remove(part)
-	out, err := os.Create(part)
+	fs.Remove(part)
+	out, err := fs.OpenFile(part, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
 	fail := func(e error) error {
 		out.Close()
-		os.Remove(part)
+		fs.Remove(part)
 		return e
 	}
 
@@ -445,17 +457,17 @@ func downloadComponent(url string, comp bootstrapComponent, installDir string) e
 		return fail(err)
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(part)
+		fs.Remove(part)
 		return err
 	}
 
 	// ЖОРСТКА перевірка цілісності до перейменування.
 	if done != comp.Size {
-		os.Remove(part)
+		fs.Remove(part)
 		return fmt.Errorf("%s: розмір %d замість %d — перевірка цілісності не пройдена", comp.Path, done, comp.Size)
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, comp.SHA256) {
-		os.Remove(part)
+		fs.Remove(part)
 		bootstrapLog(installDir, "ВІДХИЛЕНО %s: sha256 не збігається (очікувано %s, отримано %s)", comp.Path, comp.SHA256, got)
 		return fmt.Errorf("%s: sha256 не збігається з підписаним маніфестом — перевірка цілісності не пройдена", comp.Path)
 	}
@@ -464,14 +476,14 @@ func downloadComponent(url string, comp bootstrapComponent, installDir string) e
 	// тримає його без FILE_SHARE_DELETE — перший rename часто падає.
 	var mvErr error
 	for i := 0; i < 20; i++ {
-		_ = os.Remove(dest)
-		if mvErr = os.Rename(part, dest); mvErr == nil {
+		_ = fs.Remove(dest)
+		if mvErr = fs.Rename(part, dest); mvErr == nil {
 			break
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
 	if mvErr != nil {
-		os.Remove(part)
+		fs.Remove(part)
 		return fmt.Errorf("%s: не вдалося зберегти: %v", comp.Path, mvErr)
 	}
 	emitProgress(comp.Path, 0, 1, done, done)
@@ -482,6 +494,15 @@ func downloadComponent(url string, comp bootstrapComponent, installDir string) e
 // від zip-slip (шляхи типу ../ не виходять за межі) — та сама логіка, що
 // в install.Apply апдейтера.
 func extractZipTo(zipPath, destDir string) error {
+	fs, err := openInstallFS(filepath.Dir(destDir))
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+	return extractZipToRoot(fs, zipPath, destDir)
+}
+
+func extractZipToRoot(fs *installFS, zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
@@ -489,15 +510,15 @@ func extractZipTo(zipPath, destDir string) error {
 	defer r.Close()
 
 	tmp := destDir + ".new"
-	if err := os.RemoveAll(tmp); err != nil {
+	if err := fs.RemoveAll(tmp); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(tmp, 0o755); err != nil {
+	if err := fs.MkdirAll(tmp, 0o755); err != nil {
 		return err
 	}
 
 	if len(r.File) > 20000 {
-		_ = os.RemoveAll(tmp)
+		_ = fs.RemoveAll(tmp)
 		return fmt.Errorf("archive has too many files (%d)", len(r.File))
 	}
 	var total int64
@@ -506,59 +527,74 @@ func extractZipTo(zipPath, destDir string) error {
 		rel := filepath.Clean(filepath.FromSlash(f.Name))
 		if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) ||
 			filepath.VolumeName(rel) != "" || strings.Contains(f.Name, ":") {
-			_ = os.RemoveAll(tmp)
+			_ = fs.RemoveAll(tmp)
 			return fmt.Errorf("unsafe path in archive: %s", f.Name)
 		}
 		// Символічні посилання та спецфайли не розпаковуємо.
 		if mode := f.Mode(); mode&os.ModeSymlink != 0 || (!mode.IsRegular() && !f.FileInfo().IsDir()) {
-			_ = os.RemoveAll(tmp)
+			_ = fs.RemoveAll(tmp)
 			return fmt.Errorf("unsupported entry type in archive: %s", f.Name)
 		}
 		target := filepath.Join(tmp, rel)
 		if f.FileInfo().IsDir() {
-			if err := os.MkdirAll(target, 0o755); err != nil {
-				_ = os.RemoveAll(tmp)
+			if err := fs.MkdirAll(target, 0o755); err != nil {
+				_ = fs.RemoveAll(tmp)
 				return err
 			}
 			continue
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-			_ = os.RemoveAll(tmp)
+		if err := fs.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			_ = fs.RemoveAll(tmp)
 			return err
 		}
 		in, err := f.Open()
 		if err != nil {
-			_ = os.RemoveAll(tmp)
+			_ = fs.RemoveAll(tmp)
 			return err
 		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+		out, err := fs.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o644)
 		if err != nil {
 			in.Close()
-			_ = os.RemoveAll(tmp)
+			_ = fs.RemoveAll(tmp)
 			return err
 		}
 		n, cerr := io.Copy(out, io.LimitReader(in, maxFile+1))
-		out.Close()
+		if e := out.Sync(); cerr == nil {
+			cerr = e
+		}
+		if e := out.Close(); cerr == nil {
+			cerr = e
+		}
 		in.Close()
 		if cerr != nil {
-			_ = os.RemoveAll(tmp)
+			_ = fs.RemoveAll(tmp)
 			return cerr
 		}
 		total += n
 		if n > maxFile || total > maxTotal {
-			_ = os.RemoveAll(tmp)
+			_ = fs.RemoveAll(tmp)
 			return fmt.Errorf("archive exceeds size limit")
 		}
 	}
 
-	if err := os.RemoveAll(destDir); err != nil {
-		_ = os.RemoveAll(tmp)
+	backup := destDir + ".previous"
+	if err := fs.RemoveAll(backup); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, destDir); err != nil {
-		_ = os.RemoveAll(tmp)
+	hadOld := false
+	if err := fs.Rename(destDir, backup); err == nil {
+		hadOld = true
+	} else if !os.IsNotExist(err) {
 		return err
 	}
+	if err := fs.Rename(tmp, destDir); err != nil {
+		if hadOld {
+			_ = fs.Rename(backup, destDir)
+		}
+		_ = fs.RemoveAll(tmp)
+		return err
+	}
+	_ = fs.RemoveAll(backup)
 	return nil
 }
 
@@ -566,16 +602,22 @@ func extractZipTo(zipPath, destDir string) error {
 // (через .tmp + rename — крах процесу посеред запису не лишить биту
 // чернетку, яку апдейтер сприйняв би як «нічого не встановлено»).
 func saveLocalManifest(installDir string, m *bootstrapRemoteManifest) error {
+	fs, err := openInstallFS(installDir)
+	if err != nil {
+		return err
+	}
+	defer fs.Close()
+
 	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
 	path := filepath.Join(installDir, "launcher-version.json")
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := fs.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	return fs.Rename(tmp, path)
 }
 
 // emitProgress — подія updater:progress у форматі, який розуміє splash

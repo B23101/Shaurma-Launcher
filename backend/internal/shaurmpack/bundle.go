@@ -168,10 +168,10 @@ type BundleImportResult struct {
 
 // BundleImportPack — результат імпорту однієї збірки з бандла.
 type BundleImportPack struct {
-	PackID     string
-	Name       string
-	GameDir    string
-	FilesTotal int
+	PackID      string
+	Name        string
+	GameDir     string
+	FilesTotal  int
 	FilesCopied int
 	FilesLinked int
 	// FilesMissing — файли з онлайн-джерелом, які не вдалося завантажити
@@ -402,6 +402,9 @@ func ReadBundleManifest(path string) (*BundleManifest, error) {
 		return nil, fmt.Errorf("відкриття .shaurmbundle: %w", err)
 	}
 	defer r.Close()
+	if err := validatePackArchive(r.File, 64<<30); err != nil {
+		return nil, err
+	}
 
 	for _, f := range r.File {
 		if f.Name == BundleManifestFile {
@@ -411,7 +414,7 @@ func ReadBundleManifest(path string) (*BundleManifest, error) {
 			}
 			defer rc.Close()
 			var bundle BundleManifest
-			if err := json.NewDecoder(rc).Decode(&bundle); err != nil {
+			if err := json.NewDecoder(io.LimitReader(rc, 16<<20)).Decode(&bundle); err != nil {
 				return nil, fmt.Errorf("парсинг bundle.json: %w", err)
 			}
 			return &bundle, nil
@@ -433,7 +436,7 @@ func readBundleFiles(r *zip.ReadCloser, packPrefix string) []PackFile {
 		}
 		defer rc.Close()
 		var bf BundleFiles
-		if err := json.NewDecoder(rc).Decode(&bf); err != nil {
+		if err := json.NewDecoder(io.LimitReader(rc, 16<<20)).Decode(&bf); err != nil {
 			return nil
 		}
 		return bf.Files
@@ -455,12 +458,27 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 		return nil, fmt.Errorf("відкриття .shaurmbundle: %w", err)
 	}
 	defer r.Close()
+	if err := validatePackArchive(r.File, 64<<30); err != nil {
+		return nil, err
+	}
 
 	bundle, err := ReadBundleManifest(opts.ShaurmBundlePath)
 	if err != nil {
 		return nil, err
 	}
 
+	for _, f := range r.File {
+		rel := strings.TrimSuffix(f.Name, "/")
+		if rel == "" {
+			continue
+		}
+		if _, err := safeDestination(opts.TargetBaseDir, rel); err != nil {
+			return nil, err
+		}
+		if f.Mode()&os.ModeSymlink != 0 {
+			return nil, fmt.Errorf("bundle symlink")
+		}
+	}
 	result := &BundleImportResult{}
 
 	// Кожна збірка окремо. destID може відрізнятися від packInfo.ID через
@@ -480,7 +498,16 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 			destID = "pack"
 		}
 
-		packDir := filepath.Join(opts.TargetBaseDir, destID)
+		if strings.ContainsAny(packInfo.ID, "/\\:") || packInfo.ID == "." || packInfo.ID == ".." {
+			return nil, fmt.Errorf("invalid bundle pack ID")
+		}
+		if strings.ContainsAny(destID, "/\\:") {
+			return nil, fmt.Errorf("invalid destination ID")
+		}
+		packDir, err := safeDestination(opts.TargetBaseDir, destID)
+		if err != nil {
+			return nil, err
+		}
 		gameDir := filepath.Join(packDir, ".minecraft")
 		if err := os.MkdirAll(gameDir, 0755); err != nil {
 			return nil, fmt.Errorf("створення теки %s: %w", destID, err)
@@ -500,6 +527,9 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 		// там такі файли просто в overrides/.
 		var toDownload []PackFile
 		for _, pf := range readBundleFiles(r, packPrefix) {
+			if _, err := safeDestination(gameDir, pf.Path); err != nil {
+				return nil, err
+			}
 			if pf.HasWorkingSource() {
 				toDownload = append(toDownload, pf)
 			}
@@ -517,8 +547,9 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 				if relPath == "" {
 					continue
 				}
-				destPath := filepath.Join(gameDir, filepath.FromSlash(relPath))
-				if err := extractFile(f, destPath); err == nil {
+				if err := extractFile(f, gameDir, relPath); err != nil {
+					return nil, err
+				} else {
 					packResult.FilesCopied++
 					packResult.FilesTotal++
 				}
@@ -528,24 +559,28 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 				if relPath == "" {
 					continue
 				}
-				destPath := filepath.Join(gameDir, filepath.FromSlash(relPath))
-				if err := extractFile(f, destPath); err == nil {
+				if err := extractFile(f, gameDir, relPath); err != nil {
+					return nil, err
+				} else {
 					packResult.FilesCopied++
 					packResult.FilesTotal++
 				}
 
 			case relInPack == "instance.json":
 				// Зберігаємо instance.json в корінь папки збірки
-				destPath := filepath.Join(packDir, "instance.json")
-				if err := extractFile(f, destPath); err != nil {
+				if err := importInstanceMetadata(f, packDir, destID); err != nil {
 					return nil, fmt.Errorf("instance.json %s: %w", packInfo.ID, err)
 				}
 
 			case relInPack == "icon.png":
-				extractFile(f, filepath.Join(packDir, "icon.png"))
+				if err := extractFile(f, packDir, "icon.png"); err != nil {
+					return nil, err
+				}
 
 			case relInPack == "background.png":
-				extractFile(f, filepath.Join(packDir, "background.png"))
+				if err := extractFile(f, packDir, "background.png"); err != nil {
+					return nil, err
+				}
 			}
 		}
 
@@ -555,11 +590,10 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 			runPool(context.Background(), len(toDownload), func(i int) {
 				pf := toDownload[i]
 				var err error
-				dest := filepath.Join(gameDir, filepath.FromSlash(pf.Path))
 				if opts.ResolveDownload == nil {
 					err = fmt.Errorf("немає ResolveDownload")
-				} else if err = os.MkdirAll(filepath.Dir(dest), 0755); err == nil {
-					err = opts.ResolveDownload(dest, pf)
+				} else {
+					err = resolveVerified(ImportOptions{TargetGameDir: gameDir, ResolveDownload: opts.ResolveDownload}, pf)
 				}
 				mu.Lock()
 				defer mu.Unlock()
@@ -695,3 +729,49 @@ func BundleToShaurmaPack(bundlePath string, packID string, outPath string) error
 }
 
 // fileSHA1ForBundle — обчислення SHA-1 (використовується тимчасово).
+
+// Imported instance settings are data, never permission to execute commands or use local paths.
+func importInstanceMetadata(f *zip.File, packDir, id string) error {
+	rc, err := f.Open()
+	if err != nil {
+		return err
+	}
+	defer rc.Close()
+	var input map[string]json.RawMessage
+	if err := json.NewDecoder(io.LimitReader(rc, 1<<20)).Decode(&input); err != nil {
+		return err
+	}
+	output := map[string]json.RawMessage{}
+	for _, key := range []string{"name", "description", "color", "mcVersion", "loader", "loaderVersion", "useCustomRam", "minRamMb", "maxRamMb", "fullscreenOverride", "windowWidthOverride", "windowHeightOverride"} {
+		if value, ok := input[key]; ok {
+			output[key] = value
+		}
+	}
+	output["id"], _ = json.Marshal(id)
+	output["source"] = json.RawMessage(`"import"`)
+	for key, name := range map[string]string{"iconPath": "icon.png", "backgroundPath": "background.png"} {
+		var original string
+		if json.Unmarshal(input[key], &original) == nil && original != "" {
+			output[key], _ = json.Marshal(filepath.Join(packDir, name))
+		}
+	}
+	data, err := json.Marshal(output)
+	if err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(packDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	out, err := root.OpenFile("instance.json", os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(data)
+	closeErr := out.Close()
+	if err != nil {
+		return err
+	}
+	return closeErr
+}

@@ -14,7 +14,6 @@
   // тут лише спільний стан (конфіг збірки cfg, налаштування, вкладка) та
   // скелет сторінки.
   import { untrack } from 'svelte'
-  import PackPageDesign from './PackPageDesign.svelte'
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
@@ -741,8 +740,7 @@
   // всю ширину», packBannerFull): геро-блок на всю ширину контенту
   // (край-у-край, без паддингів), сайдбар лаунчера НЕ чіпаємо. За
   // замовчуванням вимкнено — звичайний банер-картка, як раніше.
-  let usePackDesign = $state(false)
-  const bannerFull = $derived(!!(settings as any).packBannerFull && !usePackDesign)
+  const bannerFull = $derived(!!(settings as any).packBannerFull)
   // Іконка збірки (локальний асет або URL) — потрібна у банері, який у
   // повному режимі рендериться ДО тулбара (нагорі розділу).
   const bannerIcon = $derived(pack ? packAsset(pack.icon_url) : '')
@@ -992,7 +990,6 @@
   })
 </script>
 
-<PackPageDesign packId={pack.id} official={kind === 'shaurma'} background={packAsset(pack.background_url) || ''} onLayoutChange={(active) => usePackDesign = active}>
 <!-- Єдиний рядок дій: «Назад» зліва, решта кнопок СПРАВА, і «⋯» з
      «Грати» в ОДНОМУ рядку поряд одне з одним.
 
@@ -1703,8 +1700,6 @@
     {/snippet}
   </UiModal>
 {/if}
-
-</PackPageDesign>
 
 <style>
   /* ── Компактна ідентичність у закріпленому тулбарі сторінки ──

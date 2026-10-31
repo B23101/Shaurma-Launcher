@@ -116,7 +116,9 @@ func texturesOf(t *testing.T, prof ygProfile) map[string]string {
 			t.Fatal("textures не розпакувались")
 		}
 		for k, raw := range d.Textures {
-			var u struct{ URL string `json:"url"` }
+			var u struct {
+				URL string `json:"url"`
+			}
 			_ = json.Unmarshal(raw, &u)
 			out[k] = u.URL
 		}
@@ -254,5 +256,18 @@ func TestOfflineUUIDHex(t *testing.T) {
 	}
 	if normalizeUUIDHex("zz") != "" {
 		t.Fatal("сміття має відкидатись")
+	}
+}
+
+func TestSkinProxyRejectsUntrustedHost(t *testing.T) {
+	p := &skinProxy{port: 12345}
+	for _, host := range []string{"evil.test:12345", "127.0.0.1:9999", "127.0.0.1:12345.evil.test"} {
+		req := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:12345/", nil)
+		req.Host = host
+		rec := httptest.NewRecorder()
+		p.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("host %s: status %d", host, rec.Code)
+		}
 	}
 }

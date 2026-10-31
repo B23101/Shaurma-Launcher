@@ -19,7 +19,7 @@ foreach ($relative in $expected) {
         throw "Unexpected publisher: $relative"
     }
     $metadata = (Get-Item -LiteralPath $path).VersionInfo
-    if ($metadata.ProductName -ne 'Shaurma Launcher' -or $metadata.ProductVersion -ne '1.0.0') {
+    if ($metadata.ProductName -ne 'Shaurma Launcher' -or $metadata.ProductVersion -ne '1.0.0' -or $metadata.CompanyName -ne 'SHAURMA TEAM') {
         throw "Unexpected product metadata: $relative"
     }
     Write-Output "Verified: $relative"

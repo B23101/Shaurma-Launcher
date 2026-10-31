@@ -42,10 +42,16 @@ type Component struct {
 }
 
 // Manifest — launcher-version.json, і локальний, і віддалений (CDN).
+type UpdateProof struct {
+	Payload   []byte `json:"payload"`
+	Signature string `json:"signature"`
+}
+
 type Manifest struct {
-	Version      string      `json:"version"`
-	ReleaseNotes string      `json:"releaseNotes"`
-	Components   []Component `json:"components"`
+	Proof        *UpdateProof `json:"-"`
+	Version      string       `json:"version"`
+	ReleaseNotes string       `json:"releaseNotes"`
+	Components   []Component  `json:"components"`
 }
 
 // Load читає локальний launcher-version.json. Відсутність файлу (перший
@@ -166,7 +172,16 @@ func SafeComponentURL(u string) bool {
 // Викликається одразу після розбору віддаленого маніфесту — ДО Diff і
 // будь-якого завантаження.
 func (m *Manifest) Validate() error {
+	seen := make(map[string]bool)
 	for _, c := range m.Components {
+		key := strings.ToLower(strings.ReplaceAll(c.Path, `\`, "/"))
+		if seen[key] {
+			return fmt.Errorf("duplicate component path %q", c.Path)
+		}
+		seen[key] = true
+		if c.Kind != "" && c.Kind != "file" && c.Kind != "archive" {
+			return fmt.Errorf("unknown component kind %q", c.Kind)
+		}
 		if !SafeRelPath(c.Path) {
 			return fmt.Errorf("небезпечний шлях компонента %q", c.Path)
 		}

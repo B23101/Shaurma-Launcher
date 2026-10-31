@@ -165,7 +165,7 @@ func Download(ctx context.Context, baseURL, token, tmpDir string, components []m
 			defer wg.Done()
 			defer func() { <-sem }()
 
-			tempPath := filepath.Join(tmpDir, filepath.Base(c.Path))
+			tempPath := filepath.Join(tmpDir, fmt.Sprintf("%d-%s", i, filepath.Base(c.Path)))
 
 			var lastErr error
 			ok := false
@@ -225,6 +225,8 @@ func Download(ctx context.Context, baseURL, token, tmpDir string, components []m
 				break
 			}
 			if !ok {
+				mu.Lock()
+				defer mu.Unlock()
 				if firstErr == nil {
 					firstErr = fmt.Errorf("%s: %w", c.Path, lastErr)
 				}

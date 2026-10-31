@@ -275,7 +275,7 @@ func TestImportDownloadsSourcedFilesInParallel(t *testing.T) {
 			mu.Lock()
 			downloaded[pf.Path] = true
 			mu.Unlock()
-			return os.WriteFile(dest, []byte("dl"), 0644)
+			return os.WriteFile(dest, []byte(files[pf.Path]), 0644)
 		},
 	})
 	if err != nil {
@@ -300,7 +300,7 @@ func TestImportOldFormatCompat(t *testing.T) {
 	mf := Manifest{
 		Version: 1, PackID: "old", Name: "Old", VersionID: "1.0.0",
 		Files: []PackFile{
-			{Path: "mods/ok.jar", Hash: "h1", FileType: FileTypeMod, Modrinth: &ModrinthSource{DownloadURL: "https://m/ok"}},
+			{Path: "mods/ok.jar", Hash: sha1hex("downloaded"), FileType: FileTypeMod, Modrinth: &ModrinthSource{DownloadURL: "https://m/ok"}},
 			{Path: "mods/fail.jar", Hash: "h2", FileType: FileTypeMod, Modrinth: &ModrinthSource{DownloadURL: "https://m/fail"}},
 			{Path: "config/c.txt", Hash: "h3", FileType: FileTypeConfig, Bundled: true},
 		},
@@ -390,7 +390,7 @@ func TestBundleSourcedFilesNotInZipAndRedownloaded(t *testing.T) {
 	target := t.TempDir()
 	res, err := ImportBundle(BundleImportOptions{
 		ShaurmBundlePath: out, TargetBaseDir: target,
-		ResolveDownload: func(dest string, pf PackFile) error { return os.WriteFile(dest, []byte("dl:"+pf.Path), 0644) },
+		ResolveDownload: func(dest string, pf PackFile) error { return os.WriteFile(dest, []byte("aaa"), 0644) },
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -398,7 +398,7 @@ func TestBundleSourcedFilesNotInZipAndRedownloaded(t *testing.T) {
 	if res.Packs[0].FilesLinked != 1 || res.Packs[0].FilesMissing != 0 {
 		t.Errorf("linked=%d missing=%d", res.Packs[0].FilesLinked, res.Packs[0].FilesMissing)
 	}
-	if b, _ := os.ReadFile(filepath.Join(target, "p1", ".minecraft", "mods", "a.jar")); string(b) != "dl:mods/a.jar" {
+	if b, _ := os.ReadFile(filepath.Join(target, "p1", ".minecraft", "mods", "a.jar")); string(b) != "aaa" {
 		t.Errorf("a.jar не докачано: %q", b)
 	}
 	if b, _ := os.ReadFile(filepath.Join(target, "p1", ".minecraft", "mods", "b.jar")); string(b) != "bbb" {
@@ -437,7 +437,9 @@ func TestImportProgress(t *testing.T) {
 	var evs []ImportProgress
 	_, err := Import(ImportOptions{
 		ShaurmPackPath: out, TargetGameDir: t.TempDir(),
-		ResolveDownload: func(dest string, pf PackFile) error { return os.WriteFile(dest, []byte("x"), 0644) },
+		ResolveDownload: func(dest string, pf PackFile) error {
+			return os.WriteFile(dest, []byte(fmt.Sprintf("jar-%d", packTestModIndex(pf.Path))), 0644)
+		},
 		Progress: func(p ImportProgress) {
 			mu.Lock()
 			evs = append(evs, p)
@@ -475,7 +477,9 @@ func TestImportCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := Import(ImportOptions{ShaurmPackPath: out, TargetGameDir: t.TempDir(), Context: ctx,
-		ResolveDownload: func(dest string, pf PackFile) error { return os.WriteFile(dest, []byte("x"), 0644) }})
+		ResolveDownload: func(dest string, pf PackFile) error {
+			return os.WriteFile(dest, []byte(fmt.Sprintf("jar-%d", packTestModIndex(pf.Path))), 0644)
+		}})
 	if err == nil {
 		t.Fatal("очікували помилку скасування")
 	}
@@ -510,4 +514,10 @@ func TestImportSkipExisting(t *testing.T) {
 	if calls.Load() != 1 || res.FilesLinked != 2 {
 		t.Errorf("calls=%d linked=%d, want 1 та 2", calls.Load(), res.FilesLinked)
 	}
+}
+
+func packTestModIndex(path string) int {
+	var index int
+	_, _ = fmt.Sscanf(filepath.Base(path), "m%d.jar", &index)
+	return index
 }

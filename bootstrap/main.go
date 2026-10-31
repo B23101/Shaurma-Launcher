@@ -158,6 +158,13 @@ func httpGetLimited(url string, limit int64, timeout time.Duration) ([]byte, err
 // downloadStream качає компонент з CDN у dest (через .part + rename),
 // оновлюючи прогрес у вікні. Повертає помилку при збої мережі/HTTP.
 func downloadStream(comp *manifestComponent, dest string, onProgress func(pct int)) error {
+	if comp == nil || comp.Size <= 0 || len(comp.SHA256) != 64 {
+		return fmt.Errorf("invalid component size or SHA256")
+	}
+	if _, err := hex.DecodeString(comp.SHA256); err != nil {
+		return fmt.Errorf("invalid component SHA256: %w", err)
+	}
+
 	url := comp.URL
 	if !strings.HasPrefix(url, "http") {
 		url = cdnBase + url
@@ -189,9 +196,17 @@ func downloadStream(comp *manifestComponent, dest string, onProgress func(pct in
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
+	root, err := os.OpenRoot(filepath.Dir(dest))
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	dest = filepath.Base(dest)
 	part := dest + ".part"
-	os.Remove(part)
-	out, err := os.Create(part)
+	if err := root.Remove(part); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	out, err := root.OpenFile(part, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
 	}
@@ -209,12 +224,12 @@ func downloadStream(comp *manifestComponent, dest string, onProgress func(pct in
 		if n > 0 {
 			if comp.Size > 0 && done+int64(n) > comp.Size {
 				out.Close()
-				os.Remove(part)
+				root.Remove(part)
 				return fmt.Errorf("%s: файл більший, ніж заявлено в маніфесті", comp.Path)
 			}
 			if _, werr := out.Write(buf[:n]); werr != nil {
 				out.Close()
-				os.Remove(part)
+				root.Remove(part)
 				return werr
 			}
 			h.Write(buf[:n])
@@ -232,17 +247,17 @@ func downloadStream(comp *manifestComponent, dest string, onProgress func(pct in
 		}
 		if rerr != nil {
 			out.Close()
-			os.Remove(part)
+			root.Remove(part)
 			return rerr
 		}
 	}
 	if err := out.Sync(); err != nil {
 		out.Close()
-		os.Remove(part)
+		root.Remove(part)
 		return err
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(part)
+		root.Remove(part)
 		return err
 	}
 
@@ -250,15 +265,15 @@ func downloadStream(comp *manifestComponent, dest string, onProgress func(pct in
 	// не збігся (підміна на CDN/MitM/обрив), не лишається на диску і
 	// ніколи не стає виконуваним.
 	if comp.SHA256 == "" {
-		os.Remove(part)
+		root.Remove(part)
 		return fmt.Errorf("%s: у маніфесті немає sha256 — встановлення відхилено", comp.Path)
 	}
 	if comp.Size > 0 && done != comp.Size {
-		os.Remove(part)
+		root.Remove(part)
 		return fmt.Errorf("%s: розмір %d замість %d — перевірка цілісності не пройдена", comp.Path, done, comp.Size)
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); !strings.EqualFold(got, comp.SHA256) {
-		os.Remove(part)
+		root.Remove(part)
 		return fmt.Errorf("%s: sha256 не збігається — перевірка цілісності не пройдена", comp.Path)
 	}
 
@@ -266,14 +281,14 @@ func downloadStream(comp *manifestComponent, dest string, onProgress func(pct in
 	// тримає його без FILE_SHARE_DELETE — перший rename часто падає.
 	var rerr error
 	for i := 0; i < 20; i++ {
-		_ = os.Remove(dest)
-		if rerr = os.Rename(part, dest); rerr == nil {
+		_ = root.Remove(dest)
+		if rerr = root.Rename(part, dest); rerr == nil {
 			break
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
 	if rerr != nil {
-		os.Remove(part)
+		root.Remove(part)
 		return fmt.Errorf("%s: не вдалося зберегти: %v", comp.Path, rerr)
 	}
 	onProgress(100)

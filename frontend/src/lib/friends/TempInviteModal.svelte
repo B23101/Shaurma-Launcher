@@ -1,13 +1,13 @@
 <script lang="ts">
   import { recentInvitesStore } from './recentInvites'
-  import { onMount } from 'svelte'
+  import { onMount, untrack } from 'svelte'
   import { App } from '../wails'
   import { toast } from '../toast.svelte'
   import { t } from '../i18n.svelte'
   import UiModal from '../UiModal.svelte'
   import FriendAvatar from './FriendAvatar.svelte'
   import { friendColor } from './friendHead'
-  import type { LocalServer, TempInvite, SocialFriend } from '../types'
+  import type { LocalServer, TempInvite, TempVoiceInfo, SocialFriend } from '../types'
 
   // Модальне вікно «Запросити у мій світ»: LAN-світ або локальний сервер → тимчасовий P2P-доступ
   // лише для обраних друзів. Доступ живе, поки відкритий світ.
@@ -74,6 +74,43 @@
   )
   const chosenFriends = $derived(friends.filter((f) => chosen.has(f.accountId) && !invitedSet.has(f.accountId)))
   const sourceChosen = $derived(!!(picked || useExisting || useServer))
+
+  // ── Голосовий чат (UDP) ──────────────────────────────────────────────
+  // Simple Voice Chat / Plasmo Voice мають СВІЙ UDP-порт (у конфігу -1/0 = порт світу), тож
+  // тунель треба вести саме на нього, а не на порт світу. «Авто» бере порт із конфігу мода
+  // збірки, «Свій» дає вписати вручну, «Вимк.» — без голосу.
+  let voice = $state<TempVoiceInfo | null>(null)
+  let udpMode = $state<'auto' | 'custom' | 'off'>('auto')
+  let udpCustom = $state('')
+  let udpBusy = $state(false)
+  const selPort = $derived(useServer ? 0 : useExisting ? (existing.find((x) => x.id === useExisting)?.meta.port ?? 0) : (picked?.port ?? 0))
+  const udpValue = $derived(udpMode === 'off' ? -1 : udpMode === 'custom' ? Number(udpCustom) || 0 : 0)
+  const udpValid = $derived(udpMode !== 'custom' || (Number.isInteger(Number(udpCustom)) && Number(udpCustom) >= 1 && Number(udpCustom) <= 65535))
+
+  $effect(() => {
+    const p = selPort
+    voice = null
+    if (!p) return
+    const ex = untrack(() => existing.find((x) => x.id === useExisting))
+    if (ex) {
+      udpMode = ex.udpPort ? 'custom' : 'off'
+      udpCustom = ex.udpPort ? String(ex.udpPort) : ''
+    } else { udpMode = 'auto'; udpCustom = '' }
+    let alive = true
+    App.DetectTempVoice(p).then((v) => { if (alive) voice = v }).catch(() => {})
+    return () => { alive = false }
+  })
+
+  async function applyUdp() {
+    if (!useExisting || !udpValid) return
+    udpBusy = true
+    err = ''
+    try {
+      const upd = await App.SetTempInviteUDP(useExisting, udpValue)
+      existing = existing.map((x) => (x.id === upd.id ? upd : x))
+      toast(upd.udpPort ? `Голос тунелюється на UDP ${upd.udpPort}` : 'Голос вимкнено', 'success')
+    } catch (e) { err = String(e) } finally { udpBusy = false }
+  }
 
   const kindLabel = (k: string) => (k === 'lan' ? 'LAN-світ' : k === 'modded' ? 'Сервер з модами' : 'Сервер')
   const kindIcon = (k: string) => (k === 'lan' ? 'ti-world' : k === 'modded' ? 'ti-puzzle' : 'ti-server-2')
@@ -190,7 +227,8 @@
         await App.InviteToTempInvite(useExisting, newGuests)
         toast('Запрошення надіслано. Доступ працює, поки відкритий світ.', 'success')
       } else if (picked) {
-        await App.CreateTempInvite(picked.port, [...chosen], '', '')
+        if (!udpValid) { err = 'UDP-порт голосу — число від 1 до 65535'; return }
+        await App.CreateTempInvite(picked.port, [...chosen], '', '', udpValue)
         toast('Запрошення надіслано. Доступ працює, поки відкритий світ.', 'success')
       } else { err = 'Оберіть світ або сервер'; return }
       onclose()
@@ -304,6 +342,29 @@
                  onkeydown={(e) => { if (e.key === 'Enter') probe() }} />
           <button class="inv-mini" onclick={probe} disabled={busy || !manualPort}>Перевірити</button>
         </div>
+
+        {#if selPort}
+          <div class="inv-voice" data-testid="temp-invite-voice">
+            <div class="inv-voice-h"><i class="ti ti-microphone"></i> Голосовий чат (UDP)
+              {#if voice?.detected}<small>{voice.name}{voice.sameAsWorld ? ' · порт світу' : ''} → {voice.autoPort}</small>
+              {:else if voice}<small>мод не знайдено — порт невідомий лаунчеру</small>{/if}
+            </div>
+            <div class="inv-voice-r">
+              <button class="inv-chip" class:on={udpMode === 'auto'} onclick={() => (udpMode = 'auto')}>Авто{voice ? ` (${voice.autoPort})` : ''}</button>
+              <button class="inv-chip" class:on={udpMode === 'custom'} onclick={() => (udpMode = 'custom')}>Свій порт</button>
+              <button class="inv-chip" class:on={udpMode === 'off'} onclick={() => (udpMode = 'off')}>Вимк.</button>
+              {#if udpMode === 'custom'}
+                <input class="inv-voice-in" data-testid="temp-invite-udp" inputmode="numeric" placeholder="UDP, напр. 24454" bind:value={udpCustom} />
+              {/if}
+              {#if useExisting}
+                <button class="inv-mini" onclick={applyUdp} disabled={udpBusy || !udpValid}>Застосувати</button>
+              {/if}
+            </div>
+            {#if voice?.issues?.length}
+              {#each voice.issues.filter((i) => i.severity !== 'info') as i (i.code)}<small class="inv-voice-w">{i.message}</small>{/each}
+            {/if}
+          </div>
+        {/if}
       </div>
     </section>
 
@@ -439,6 +500,13 @@
   .inv-port { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 12px; border-radius: 12px; border: 1px dashed var(--border-hi); }
   .inv-port > i { color: var(--text-mute); font-size: 16px; }
   .inv-port input { flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text); font: 500 12.5px/1 var(--font-ui); padding: 8px 0; }
+  .inv-voice { display: grid; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: color-mix(in srgb, var(--bg-input) 55%, transparent); }
+  .inv-voice-h { display: flex; align-items: center; gap: 6px; font: 700 12px/1.2 var(--font-ui); color: var(--text); flex-wrap: wrap; }
+  .inv-voice-h small { font-weight: 500; color: var(--text-mute); }
+  .inv-voice-r { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  .inv-voice-r .inv-chip { height: 28px; }
+  .inv-voice-in { width: 130px; background: var(--bg-input); border: 1px solid var(--border-hi); border-radius: 8px; color: var(--text); font: 500 12px/1 var(--font-ui); padding: 7px 9px; outline: 0; }
+  .inv-voice-w { color: var(--orange); font-size: 11px; }
   .inv-port:focus-within { border-color: rgba(var(--orange-rgb), .5); border-style: solid; }
 
   .inv-empty { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: var(--hover); color: var(--text-mute); font: 400 12px/1.4 var(--font-ui); }
