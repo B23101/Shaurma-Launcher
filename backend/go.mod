@@ -1,10 +1,10 @@
 module shaurma-launcher-backend
 
-go 1.25.5
+go 1.26.0
 
 require (
 	golang.org/x/image v0.44.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.56.0
 	tailscale.com v1.94.0
 )
@@ -60,7 +60,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.46.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
