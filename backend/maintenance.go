@@ -63,6 +63,8 @@ func (a *App) startMaintenance() {
 
 // runMaintenance виконує один прохід прибирання.
 func (a *App) runMaintenance() {
+	// File cleanup does not require an open database.
+	a.cleanupInstallDirGarbage()
 	st := a.cfg.Store()
 	if st == nil {
 		return // БД недоступна — прибирати нічого
@@ -74,7 +76,6 @@ func (a *App) runMaintenance() {
 	a.cleanupShortcutIcons()
 	a.cleanupCacheTextures()
 	a.cleanupGalleryOrphans(st)
-	a.cleanupInstallDirGarbage()
 	a.cleanupSkinOrphans()
 	a.cleanupExpiredTempMods()
 }

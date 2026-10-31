@@ -1,5 +1,6 @@
 <script lang="ts">
   import UiModal from './lib/UiModal.svelte'
+  import P2PNetworkDialog from './lib/P2PNetworkDialog.svelte'
   import './lib/settings/settings.css'
   import './style.css'
   import { onMount, onDestroy } from 'svelte'
@@ -36,7 +37,7 @@
   import AnalyticsPanel from './lib/AnalyticsPanel.svelte'
   import FriendsPage from './lib/FriendsPage.svelte'
   import AddFriendModal from './lib/friends/AddFriendModal.svelte'
-  import { parseFriendLink, friendLinkKey, type FriendLink } from './lib/friends/friendLink'
+  import { parseFriendLink, type FriendLink } from './lib/friends/friendLink'
   import Wardrobe from './lib/Wardrobe.svelte'
   import PinnedServersSection from './lib/PinnedServersSection.svelte'
   import ContentBrowser from './lib/ContentBrowser.svelte'
@@ -963,31 +964,12 @@
   })
 
   // ── Посилання-запрошення в друзі (https://shaurma-launcher.org/friend/…) ─
-  // Лаунчер сам «бачить» скопійоване посилання (перевірка буфера обміну при
-  // поверненні фокуса вікна) і показує вікно «Додати цього друга?». Деталі
-  // формату — lib/friends/friendLink.ts. Уже показані лінки запам'ятовуємо в
-  // localStorage, щоб не відкривати модалку щоразу при копіюванні того ж лінка.
-  const FRIEND_LINKS_SEEN_KEY = 'shaurma.friendLinks.seen'
+  // Запрошення відкривається лише після явного переходу за посиланням.
+  // Буфер обміну не читаємо. Формат — lib/friends/friendLink.ts.
   let friendInvite = $state<FriendLink | null>(null)
 
-  function seenFriendLinks(): Set<string> {
-    try {
-      const raw = localStorage.getItem(FRIEND_LINKS_SEEN_KEY)
-      const arr = raw ? JSON.parse(raw) : []
-      return new Set(Array.isArray(arr) ? arr.filter((x) => typeof x === 'string') : [])
-    } catch { return new Set() }
-  }
-  function rememberFriendLink(id: string) {
-    try {
-      const s = seenFriendLinks()
-      s.add(id.toLowerCase())
-      // Тримаємо лише останні 200, щоб сховище не росло безмежно.
-      localStorage.setItem(FRIEND_LINKS_SEEN_KEY, JSON.stringify([...s].slice(-200)))
-    } catch { /* приватний режим — просто покажемо ще раз */ }
-  }
-
   // Явне відкриття з браузера (shaurma://friend/…): гравець сам натиснув
-  // «Відкрити в Shaurma», тож «вже показували» не враховуємо.
+  // «Відкрити в Shaurma».
   function openFriendLinkFromOS(url: string | undefined | null) {
     const l = parseFriendLink(url)
     if (!l) return
@@ -995,41 +977,9 @@
     void App.FocusMainWindow().catch(() => {})
   }
 
-  function maybeOpenFriendLink(text: string | undefined | null) {
-    const l = parseFriendLink(text)
-    if (!l) return
-    if (seenFriendLinks().has(friendLinkKey(l))) return
-    friendInvite = l
-    // Лінк спрацював → виводимо вікно лаунчера на передній план (воно могло
-    // бути згорнуте, у треї або під іншими вікнами).
-    void App.FocusMainWindow().catch(() => {})
-  }
-
-  // Перевірка буфера обміну при поверненні фокуса. Помилки читання (нема
-  // утиліти / буфер зайнятий) навмисно моловемо — це фонова перевірка.
-  async function checkClipboardForFriendLink() {
-    if (friendInvite) return
-    try {
-      const text = await App.ClipboardText()
-      maybeOpenFriendLink(text)
-    } catch { /* ігноруємо */ }
-  }
   function closeFriendInvite() {
-    if (friendInvite) rememberFriendLink(friendLinkKey(friendInvite))
     friendInvite = null
   }
-  $effect(() => {
-    const onFocus = () => { void checkClipboardForFriendLink() }
-    window.addEventListener('focus', onFocus)
-    const timer = setTimeout(() => { void checkClipboardForFriendLink() }, 1200)
-    // Поки вікно неактивне (згорнуте/у треї/під іншими), подія focus не
-    // прийде — тому лінк, скопійований у браузері/Discord, лишався б
-    // непоміченим. Легке опитування буфера лише в неактивному стані.
-    const poll = setInterval(() => {
-      if (!windowActive) void checkClipboardForFriendLink()
-    }, 1500)
-    return () => { window.removeEventListener('focus', onFocus); clearTimeout(timer); clearInterval(poll) }
-  })
 
   // ── Анімація «деактивації» пунктів sidebar (nav-item / sb-pack) ────────
   // Коли переключаємось на інший розділ/картку, СТАРИЙ активний елемент
@@ -7076,6 +7026,8 @@
 <!-- Скоуп-стилі, що лишились тільки для розмітки App (інші перенесені в
      style.css при рефакторингу SettingsPage — там вони глобальні й діють
      і на компоненти). Модалки App — на спільному UiModal. -->
+<P2PNetworkDialog />
+
 <style>
   .dbh-desc { font-size: 12.5px; line-height: 1.5; color: var(--text-mute); }
   .bse-body { display: flex; flex-direction: column; gap: 14px; }

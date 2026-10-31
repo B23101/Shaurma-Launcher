@@ -26,11 +26,11 @@
 package p2p
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"bufio"
 	"context"
 	"fmt"
 	"net"
+	"shaurma-launcher-backend/internal/crashguard"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -57,7 +57,6 @@ const guestExternalIP = "127.0.0.2"
 // порту, який опублікував хост (RoomInfo.HostPort) — див. guestRoom.tcpPort.
 // Зовнішній вхід guestExternalAddr лишається фіксованим, бо DNS-wildcard
 // резолвиться саме в нього і гравець вводить адресу без порту.
-
 
 // roomIdleTimeout — скільки кімната живе БЕЗ жодного активного з'єднання.
 // Потрібно, щоб пінг/разове підключення не тримало слот із пулу вічно:
@@ -858,14 +857,14 @@ func (g *GuestService) ensureNode(ctx context.Context) (*tsnet.Server, error) {
 		AuthKey:     authKey,
 		AuthKeyFunc: g.cfg.AuthKeyFunc,
 		ControlURL:  g.cfg.ControlURL,
-		OnFreshState: func() error {
+		OnFreshState: func() (string, error) {
 			dropNodeStateDir(stateDir)
 			d, derr := freshNodeStateDir(g.cfg.StateDir, "guest")
 			if derr != nil {
-				return derr
+				return "", derr
 			}
 			stateDir = d
-			return nil
+			return d, nil
 		},
 	})
 	if err != nil {
@@ -981,6 +980,7 @@ func (g *GuestService) noteDialResult(ok bool, tag string) {
 	g.dialFails.Store(0)
 	launchlog.Warn(compGuest, "[%s] діали до хоста провалились підряд — перестворюю гостьову tsnet-ноду (самовідновлення)", tag)
 	g.dropNode()
+	reportNetworkFailure()
 }
 
 // closeRoom гасить одну кімнату: TCP-listener, її per-room UDP-тунель

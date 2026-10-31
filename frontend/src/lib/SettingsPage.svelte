@@ -623,6 +623,9 @@
           </SCard>
           <SCard icon="ti-network" tone="green" title={t('st.c.p2p')}>
             {@render row('disableP2P', { invert: true })}
+            <button class="btn btn-ghost" onclick={() => window.dispatchEvent(new CustomEvent('p2p-network-settings'))}>
+              {t('p2p.network.check')}
+            </button>
           </SCard>
           <SCard icon="ti-brand-discord" tone="violet" title={t('st.c.discord')} desc={settings.discordRpcEnabled ? t('st.c.discord.d') : ''}>
             {@render row('discordRpcEnabled')}

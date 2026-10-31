@@ -21,8 +21,8 @@ package main
 // і підписує ним ВСІ профілі — і шаурмівські, і мойданські. Для гри це один
 // цілісний «сесійний сервер».
 //
-// join/hasJoined та все інше проксі прозоро пересилає на Shaurma — там уже є
-// логіка форварду на справжній Mojang для ліцензійних ніків.
+// join/hasJoined і Minecraft services йдуть напряму до Mojang.
+// Shaurma отримує лише запити профілів/скінів; невідомі маршрути відхиляємо.
 //
 // ХТО ЦЕЙ ГРАВЕЦЬ. Для чужих скінів клієнт питає профіль за UUID, а не за
 // ніком. Офлайн-UUID = MD5("OfflinePlayer:"+нік), назад його не порахувати,
@@ -31,8 +31,8 @@ package main
 // «[CHAT] <X>», «Setting user: X»). UUID→нік для відомих ніків — у таблиці.
 // Обмеження: гравець, нік якого лаунчер ще не бачив, лишається зі Steve.
 //
-// Вимкнення: налаштування DisableMojangSkinFallback (тоді працює старий
-// прямий шлях гра → Shaurma). Збій старту проксі теж ТИХО повертає на нього.
+// DisableMojangSkinFallback вимикає лише додатковий пошук скінів у Mojang.
+// Локальний проксі обов'язковий: при його збої запускаємо гру без інжектора.
 
 import (
 	"bytes"
@@ -129,6 +129,7 @@ type inflightCall struct {
 type skinProxy struct {
 	mu       sync.Mutex
 	upstream string // база Yggdrasil Shaurma БЕЗ кінцевого слеша
+	disableMojangFallback bool
 	domains  []string
 	key      *rsa.PrivateKey
 	pubPEM   string
@@ -179,6 +180,9 @@ func (a *App) ensureSkinProxy(upstreamBase, upstreamMetaB64 string, nicks []stri
 	}
 	p := theSkinProxy
 	p.configure(upstreamBase, meta.SkinDomains)
+	p.mu.Lock()
+	p.disableMojangFallback = a.cfg.GetSettings().DisableMojangSkinFallback
+	p.mu.Unlock()
 	for _, n := range nicks {
 		p.learn(n)
 	}
@@ -394,6 +398,10 @@ func (p *skinProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.handleProfile(w, strings.TrimPrefix(path, "/sessionserver/session/minecraft/profile/"))
 	case r.Method == http.MethodPost && path == "/api/profiles/minecraft":
 		p.handleBatch(w, r)
+	case r.Method == http.MethodPost && path == "/sessionserver/session/minecraft/join":
+		p.forwardMojang(w, r, "https://sessionserver.mojang.com/session/minecraft/join")
+	case r.Method == http.MethodGet && path == "/sessionserver/session/minecraft/hasJoined":
+		p.forwardMojang(w, r, "https://sessionserver.mojang.com/session/minecraft/hasJoined")
 	case strings.HasPrefix(path, "/minecraftservices/"):
 		// Сервіси Minecraft (player/certificates — чат-ключ профілю, publickeys,
 		// privileges тощо) НЕ належать Shaurma: їх має віддавати справжній Mojang
@@ -401,8 +409,7 @@ func (p *skinProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// enforce-secure-profile=true кажуть «Недійсний підпис публічного ключа».
 		p.forwardMojang(w, r, mojangServicesAPI+strings.TrimPrefix(path, "/minecraftservices/"))
 	default:
-		launchlog.Info("SkinProxy", "forward → Shaurma: %s %s", r.Method, path)
-		p.forward(w, r)
+		http.NotFound(w, r)
 	}
 }
 
@@ -412,7 +419,11 @@ func (p *skinProxy) forwardMojang(w http.ResponseWriter, r *http.Request, target
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -423,13 +434,21 @@ func (p *skinProxy) forwardMojang(w http.ResponseWriter, r *http.Request, target
 			req.Header.Set(h, v)
 		}
 	}
-	resp, err := p.client.Do(req)
+	// A 307/308 redirect can resend the token-bearing body to another host.
+	// Authentication endpoints must never redirect credentials, even over HTTPS.
+	client := *p.client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
 	if err != nil {
 		launchlog.Warn("SkinProxy", "Mojang недоступний (%s): %v", r.URL.Path, err)
 		http.Error(w, "mojang: "+err.Error(), http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		http.Error(w, "authentication redirect refused", http.StatusBadGateway)
+		return
+	}
 	launchlog.Info("SkinProxy", "forward → Mojang: %s %s → %d", r.Method, r.URL.Path, resp.StatusCode)
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		w.Header().Set("Content-Type", ct)
@@ -450,17 +469,18 @@ func (p *skinProxy) upstreamBase() string {
 	return p.upstream
 }
 
-// forward — прозора пересилка на Shaurma (join, hasJoined, усе невідоме).
+// forward sends only the validated nickname batch; never session requests.
 func (p *skinProxy) forward(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || r.URL.Path != "/api/profiles/minecraft" {
+		http.NotFound(w, r)
+		return
+	}
 	base := p.upstreamBase()
 	if base == "" {
 		http.Error(w, "upstream не задано", http.StatusBadGateway)
 		return
 	}
 	target := base + r.URL.Path
-	if r.URL.RawQuery != "" {
-		target += "?" + r.URL.RawQuery
-	}
 	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
 	if err != nil {
@@ -487,15 +507,24 @@ func (p *skinProxy) forward(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleBatch — POST /api/profiles/minecraft ([ "нік", ... ]): вчимо ніки і
-// пересилаємо на Shaurma без змін.
+// пересилаємо на Shaurma лише перевірений список ніків.
 func (p *skinProxy) handleBatch(w http.ResponseWriter, r *http.Request) {
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 64<<10))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
 	var names []string
-	if json.Unmarshal(body, &names) == nil {
-		for _, n := range names {
-			p.learn(n)
+	if err != nil || json.Unmarshal(body, &names) != nil {
+		http.Error(w, "invalid profile names", http.StatusBadRequest)
+		return
+	}
+	for _, n := range names {
+		if !skinNickValid.MatchString(n) {
+			http.Error(w, "invalid profile name", http.StatusBadRequest)
+			return
 		}
 	}
+	for _, n := range names {
+		p.learn(n)
+	}
+	body, _ = json.Marshal(names)
 	r.Body = io.NopCloser(bytes.NewReader(body))
 	p.forward(w, r)
 }
@@ -625,6 +654,10 @@ func (p *skinProxy) mojangTextures(nick string) *texturesDoc {
 	key := strings.ToLower(nick)
 
 	p.mu.Lock()
+	if p.disableMojangFallback {
+		p.mu.Unlock()
+		return nil
+	}
 	if e, ok := p.cache[key]; ok && time.Since(e.at) < e.ttl {
 		p.mu.Unlock()
 		return e.doc

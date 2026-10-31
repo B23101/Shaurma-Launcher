@@ -314,6 +314,7 @@ func dispatchLaunchToBackend() {
 }
 
 func main() {
+	handleP2PFirewallCommand()
 	// Краш-лог shell-процесу — ПЕРШЕ, до будь-якої іншої роботи (crashlog.go).
 	initCrashLog()
 

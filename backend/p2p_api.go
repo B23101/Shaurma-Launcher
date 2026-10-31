@@ -260,6 +260,7 @@ func (a *App) wireP2PEvents() {
 	if a.p2pAPI == nil {
 		return
 	}
+	p2p.SetNetworkFailureHandler(func() { a.emit("p2p:network_failure", nil) })
 	a.p2pAPI.OnHostStopped = func(subdomain, reason string) {
 		a.emit("p2p:host_stopped", map[string]string{"subdomain": subdomain, "reason": reason})
 	}

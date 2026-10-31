@@ -80,6 +80,10 @@ async function call(method: string, ...args: unknown[]): Promise<any> {
   const parsed = JSON.parse(resultJson)
   if (!parsed.ok) {
     const err = new Error(parsed.error ?? `Bridge.Invoke(${method}) failed`)
+    if (/^(StartP2P|P2PHostStart|P2PStart|EnsureP2P|Share|Remote)/.test(method) &&
+        /timeout|timed out|deadline|network|connection|dial tcp|no such host|мереж|з'єднан|з’єднан/i.test(err.message)) {
+      window.dispatchEvent(new CustomEvent('p2p-network-failure'))
+    }
     // Автолог: кожна помилка App.* (кнопка/дія → метод) тихо пишеться у
     // журнал помилок лаунчера з КОНТЕКСТОМ — ім'ям методу як source. Так
     // «натиснув кнопку, а вона дала помилку» фіксується з місцем і суттю
@@ -155,7 +159,17 @@ export interface ChatKeyStatus { state: 'ready' | 'pending' | 'need_recovery'; m
 export interface NickCheckResult { available: boolean; reason?: string; message?: string }
 
 /** Типізований доступ до Go-бекенду (main.App). */
+export interface P2PNetworkReport {
+  supported: boolean
+  configured: boolean
+  blocked: boolean
+  policyRestricted: boolean
+  control: 'ok' | 'dns' | 'server' | 'unreachable'
+}
+
 export const App = {
+  DiagnoseP2PNetwork: (): Promise<P2PNetworkReport> => call('DiagnoseP2PNetwork'),
+  RepairP2PNetwork: (): Promise<P2PNetworkReport> => call('RepairP2PNetwork'),
   AwaitMSLogin: (): Promise<SignInResult> => call('AwaitMSLogin'),
   SignInGoogle: (): Promise<SignInResult> => call('SignInGoogle'),
   CompleteSignIn: (nickname: string): Promise<SignInResult> => call('CompleteSignIn', nickname),
@@ -480,10 +494,6 @@ export const App = {
       await navigator.clipboard.writeText(text)
     }
   },
-  // Читання системного буфера обміну (порожній рядок — там не текст або
-  // читання недоступне). Потрібне, щоб лаунчер сам бачив посилання-запрошення
-  // в друзі, яке гравець скопіював з Discord/Telegram.
-  ClipboardText: (): Promise<string> => call('ClipboardText'),
   // ── Налаштування гри «за замовчуванням» (вкладка налаштувань) ──
   GetMinecraftDefaults: (): Promise<MinecraftDefaults> => call('GetMinecraftDefaults'),
   SaveMinecraftDefaults: (d: MinecraftDefaults): Promise<void> => call('SaveMinecraftDefaults', d),

@@ -156,14 +156,14 @@ func StartHost(ctx context.Context, cfg HostConfig) (*HostSession, error) {
 		AuthKey:     cfg.AuthKey,
 		AuthKeyFunc: cfg.AuthKeyFunc,
 		ControlURL:  cfg.ControlURL,
-		OnFreshState: func() error {
+		OnFreshState: func() (string, error) {
 			dropNodeStateDir(stateDir)
 			d, derr := freshNodeStateDir(cfg.StateDir, "host")
 			if derr != nil {
-				return derr
+				return "", derr
 			}
 			stateDir = d
-			return nil
+			return d, nil
 		},
 	})
 	if err != nil {

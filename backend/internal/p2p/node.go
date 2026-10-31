@@ -39,8 +39,8 @@ type nodeUpConfig struct {
 	ControlURL  string
 	// OnFreshState викликається ПЕРЕД повторною спробою: має підготувати
 	// чисту теку стану (закрити/видалити попередню) і повернути її новий
-	// шлях через замикання викликача.
-	OnFreshState func() error
+	// шлях. Наступна спроба повинна використовувати саме цю теку.
+	OnFreshState func() (string, error)
 }
 
 // upFreshNode піднімає ноду; при невдачі (є джерело свіжих ключів) робить
@@ -61,6 +61,9 @@ func upFreshNode(ctx context.Context, cfg nodeUpConfig) (*tsnet.Server, error) {
 		role, tag, cfg.Prefix, cfg.ControlURL, nodeUpTimeout, cfg.AuthKeyFunc != nil)
 
 	for attempt := 0; attempt < 2; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if authKey == "" {
 			if lastErr == nil {
 				lastErr = fmt.Errorf("відсутній auth key")
@@ -102,10 +105,13 @@ func upFreshNode(ctx context.Context, cfg nodeUpConfig) (*tsnet.Server, error) {
 		}
 		_ = ts.Close()
 		lastErr = err
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 
 		if attempt == 0 && cfg.AuthKeyFunc != nil && cfg.OnFreshState != nil {
 			launchlog.Warn(compNode, "[%s/%s] повторна спроба: чиста тека стану + новий auth key", role, tag)
-			if ferr := cfg.OnFreshState(); ferr != nil {
+			if ferr := cfg.refreshState(); ferr != nil {
 				launchlog.Error(compNode, "[%s/%s] не вдалося підготувати чисту теку: %v", role, tag, ferr)
 				break
 			}
@@ -126,9 +132,24 @@ func upFreshNode(ctx context.Context, cfg nodeUpConfig) (*tsnet.Server, error) {
 	// Нода не піднялась — окремо перевіряємо сам Headscale (DNS → TCP → HTTPS),
 	// щоб у лозі було видно, ЧИ це блокування мережі, чи проблема глибше.
 	preflightControl(ctx, cfg.ControlURL, role+"/"+tag)
+	if ctx.Err() == nil {
+		reportNetworkFailure()
+	}
 
 	launchlog.Error(compNode, "[%s/%s] ПІДЙОМ НОДИ ПРОВАЛЕНО за %s", role, tag, total)
 	return nil, fmt.Errorf("p2p: нода не піднялась у Headscale-мережі: %v%s", lastErr, registrationHint(lastErr))
+}
+
+func (cfg *nodeUpConfig) refreshState() error {
+	dir, err := cfg.OnFreshState()
+	if err != nil {
+		return err
+	}
+	if dir == "" {
+		return fmt.Errorf("empty P2P state directory")
+	}
+	cfg.StateDir = dir
+	return nil
 }
 
 // registrationHint додає до помилки підказку про причину, коли Headscale

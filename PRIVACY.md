@@ -63,6 +63,15 @@ the rules belonging to this installation. Existing block rules and organization 
 may still prevent P2P access. P2P, remote server access, AI helpers and social features are
 activated by using those features; anonymous statistics remain off until you opt in.
 
+After a P2P connection failure, or when you select the network check in Settings,
+the launcher can inspect its Windows Firewall rules and contact the P2P control
+server's health endpoint. Missing allow rules do not by themselves mean a connection
+is blocked. The optional repair button requests Windows administrator approval and
+configures only the launcher's own inbound/outbound rules for private and public
+networks. It does not disable protection, remove block rules, or override organization
+policies. Declining approval leaves the rules unchanged. Active sessions are not
+restarted by this repair. The helper runs directly in the launcher EXE without scripts.
+
 Account deletion and server-side retention must be confirmed with the operator of Shaurma
 services; uninstalling removes local application files, not remote account data. Never attach
 account databases or unredacted logs to public issues. Security reporting instructions:

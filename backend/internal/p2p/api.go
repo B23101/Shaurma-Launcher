@@ -920,6 +920,12 @@ func (a *API) EnsureP2PGuestService() error {
 // ensureGuestLocked — власне запуск. Виклик ЛИШЕ з-під a.mu.
 func (a *API) ensureGuestLocked() error {
 	if a.guestStarted {
+		// A failed bind is not a running service. Retry on the next explicit
+		// request after the port/permission issue has been resolved, without
+		// replacing a working listener or interrupting active connections.
+		if a.guestErr != nil && a.guest != nil {
+			a.guestErr = a.guest.Start()
+		}
 		return a.guestErr
 	}
 	a.guest = NewGuestService(GuestConfig{
