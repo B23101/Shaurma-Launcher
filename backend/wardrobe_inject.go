@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 import (
@@ -132,6 +130,9 @@ func (a *App) licensedAccountWithNick(nick string) (model.Account, bool) {
 // у грі в цьому випадку показується дефолтний Steve, і гардероб має
 // поводитись так само, а не мовчки показувати Mojang-скін.
 func (a *App) fetchSkinServerLook(nickname string) (png []byte, slim bool, found bool, err error) {
+	if a.cfg.GetSettings().DisableSkins {
+		return nil, false, false, nil
+	}
 	resp, err := a.skinRequest(http.MethodGet, "/api/skin/by-nick/"+url.PathEscape(nickname), nil)
 	if err != nil {
 		return nil, false, false, err
@@ -252,6 +253,9 @@ func (a *App) wireShaurmaAvatarResolver() {
 		return
 	}
 	a.avatars.SetShaurmaSkinResolver(func(username string) ([]byte, bool, error) {
+		if a.cfg.GetSettings().DisableSkins {
+			return nil, false, nil
+		}
 		resp, err := a.skinRequest(http.MethodGet, "/api/skin/by-nick/"+url.PathEscape(username), nil)
 		if err != nil {
 			return nil, false, err

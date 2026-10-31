@@ -596,12 +596,18 @@ func TestScanRegistersVanillaForInstanceJSONOnly(t *testing.T) {
 		t.Fatalf("ScanAndRegisterInstances = %d, want 1", n)
 	}
 
-	// Перевіряємо що loader дефолтнув на vanilla
-	raw, _ := os.ReadFile(filepath.Join(packDir, "instance.json"))
-	var cfg model.InstanceConfig
-	json.Unmarshal(raw, &cfg)
-	if cfg.Loader != "vanilla" {
-		t.Errorf("Loader = %q, want vanilla", cfg.Loader)
+	// Existing instance files are normalized asynchronously after registration.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		raw, _ := os.ReadFile(filepath.Join(packDir, "instance.json"))
+		var cfg model.InstanceConfig
+		if json.Unmarshal(raw, &cfg) == nil && cfg.Loader == "vanilla" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Loader = %q, want vanilla after normalization", cfg.Loader)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

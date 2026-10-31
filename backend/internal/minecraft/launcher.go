@@ -796,7 +796,6 @@ func runShellCommand(command string, env []string, dir string) error {
 	}
 	cmd.Dir = dir
 	cmd.Env = env
-	hideConsoleWindow(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%s (output: %s)", err, strings.TrimSpace(string(out)))

@@ -508,6 +508,7 @@ export const App = {
   GetPackIndex: (): Promise<PackIndexEntry[]> => call('GetPackIndex'),
   // data URL асета збірки (іконка/фон) — качається через бекенд, бо браузер
   // не може додати токен-заголовки до <img> (див. lib/packAssets.svelte.ts).
+  GetPackPageDesign: (id: string): Promise<string> => call('GetPackPageDesign', id),
   GetPackAsset: (url: string): Promise<string> => call('GetPackAsset', url),
   // Динамічний банер головного екрана: data URL картинки останнього
   // офіційного оновлення Minecraft (бекенд сам питає Mojang-маніфест +
@@ -609,6 +610,7 @@ export const App = {
   // виходу, без прапорця (на відміну від build:exit).
   WasLastExitUserStop: (): Promise<boolean> => call('WasLastExitUserStop'),
   IsShaurmaEdition: (): Promise<boolean> => call('IsShaurmaEdition'),
+  HasSkinSupport: (): Promise<boolean> => call('HasSkinSupport'),
   LaunchInstance: (id: string): Promise<void> => call('LaunchInstance', id),
   // Фіксує акаунт, активний У МОМЕНТ КЛІКУ «Грати» — викликати СИНХРОННО
   // (await) ПЕРЕД LaunchInstance, щоб мінімізувати вікно гонитви: якщо
@@ -641,17 +643,14 @@ export const App = {
   SaveFolderPaths: (instanceDir: string, javaPath: string): Promise<void> => call('SaveFolderPaths', instanceDir, javaPath),
   SaveInstanceConfig: (cfg: InstanceConfig): Promise<void> => call('SaveInstanceConfig', cfg),
   GetBuildSkinRestoreStatus: (buildID: string, accountID: string): Promise<SkinRestoreStatus> => call('GetBuildSkinRestoreStatus', buildID, accountID),
-  // ── Скін-система (офлайн-акаунти, ЛИШЕ Shaurma-редакція) ────────────
-  // Base-редакція не має цих методів взагалі (backend.dll зібраний без
-  // тегу shaurma) — викликати їх можна лише коли isShaurmaEdition() === true,
-  // інакше bridge поверне помилку «метод не знайдено».
+  // ── Спільна система скінів та акаунтів Base і повної редакції ──────
   // Google OAuth: старт флоу → URL для браузера; Await — чекає токен.
   StartGoogleSkinLogin: (): Promise<string> => call('StartGoogleSkinLogin'),
   AwaitGoogleSkinLogin: (): Promise<SkinAuthStatus> => call('AwaitGoogleSkinLogin'),
   CancelGoogleSkinLogin: (): Promise<void> => call('CancelGoogleSkinLogin'),
   // Стан сесії скін-системи (loggedIn/email/nickname/expired).
   GetSkinAuthStatus: (): Promise<SkinAuthStatus> => call('GetSkinAuthStatus'),
-  // Система скінів ліцензійного акаунта: 'mojang' | 'shaurma' (лише Shaurma-редакція).
+  // Система скінів ліцензійного акаунта: 'mojang' | 'shaurma'.
   // ── Акаунт Шаурми (окремий для кожного акаунта лаунчера) ──
   // Стан акаунта Шаурми АКТИВНОГО акаунта лаунчера (є/нема, тип, нік, ID).
   GetShaurmaAccount: (): Promise<ShaurmaAccountInfo> => call('GetShaurmaAccount'),
@@ -681,7 +680,7 @@ export const App = {
   SyncShaurmaNickname: (): Promise<string> => call('SyncShaurmaNickname'),
   // Повний профіль (серверні дані + локальна статистика) для сторінки «Акаунт».
   GetShaurmaProfile: (): Promise<ShaurmaProfile> => call('GetShaurmaProfile'),
-  // ── Друзі Shaurma (лише Shaurma-редакція; потрібна скін-сесія) ──
+  // ── Друзі й чат в обох редакціях; потрібен Shaurma-акаунт ──
   GetFriendsState: (): Promise<SocialState> => call('GetFriendsState'),
   // ── Віддалене керування серверами друзів ─────────────────────────────
   // ВЛАСНИК: хто з друзів що може на моєму сервері (VPS перевіряє дружбу й права, лаунчер — ще раз).

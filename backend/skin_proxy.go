@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // skin_proxy.go — ЛОКАЛЬНИЙ injector з двома потоками скінів.

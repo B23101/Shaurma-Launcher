@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // Єдиний вхід у лаунчер: «Microsoft» або «Google» — і БІЛЬШЕ нічого, жодного ніка наперед.

@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // remote_control_shaurma.go — склейка віддаленого керування серверами друзів з App.

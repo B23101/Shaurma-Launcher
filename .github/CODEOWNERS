@@ -1,0 +1,8 @@
+# Build, signing and update changes require maintainer review.
+/.github/ @B23101
+/.signpath/ @B23101
+/scripts/ @B23101
+/installer/ @B23101
+/bootstrap/ @B23101
+/shell/ @B23101
+/updater-backend/ @B23101

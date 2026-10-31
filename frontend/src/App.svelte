@@ -421,7 +421,8 @@
   // (disableSkins) СЮДИ НЕ ВХОДИТЬ: воно лише каже, чи підключати при запуску
   // гри java-агент, щоб бачити скіни офлайн-гравців у грі — а не блокує
   // жодного інтерфейсу лаунчера.
-  const skinsEnabled = $derived(isShaurmaEdition)
+  let skinSupport = $state(false)
+  const skinsEnabled = $derived(skinSupport)
   // ID збірки Шаурма, відкритої на сторінці деталей (null = список збірок).
   let openPackId = $state<string | null>(null)
   // Архітектура збірок: BuildView[] від GetBuilds (збірка + стан для
@@ -755,16 +756,13 @@
   // false, поки стан сесії ще не читали: не викидаємо зі сторінки гардероба
   // під час запуску, коли відновлюється остання відкрита сторінка.
   let skinAuthKnown = $state(false)
-  // Друзі Shaurma: потрібна Shaurma-редакція і живий вхід у скін-акаунт
+  // Друзі доступні в обох редакціях; потрібен живий вхід у Shaurma-акаунт.
   // (його JWT — єдина ідентичність для соціальної системи). Лічильник
   // вхідних запитів живе тут, щоб крапка на кнопці працювала й при закритій
   // шухляді.
-  const shaurmaFriendsReady = $derived(isShaurmaEdition && skinAuth.ok)
-  // Кнопку входу в друзів показуємо УЖЕ в Shaurma-редакції, не чекаючи входу
-  // в скін-акаунт: інакше гравець просто не знає, що соціальна система існує
-  // (раніше кнопка з'являлась лише після входу — саме через це її «не було
-  // видно»). Шухляда за потреби покаже екран «Увійдіть у Shaurma-акаунт».
-  const shaurmaFriendsVisible = $derived(isShaurmaEdition)
+  const shaurmaFriendsReady = $derived(skinAuth.ok)
+  // Кнопка друзів видима в обох редакціях ще до входу в акаунт.
+  const shaurmaFriendsVisible = true
   let socialInvites = $state(0)
   // Непрочитані повідомлення за accountId (джерело — бекенд, події friends:unread).
   let socialUnread = $state<Record<string, number>>({})
@@ -836,7 +834,7 @@
   let skinReloginSeq = 0
 
   function openSkinRelogin(force = false) {
-    if (!isShaurmaEdition || !skinsEnabled) return
+    if (!skinsEnabled) return
     if (!force && skinReloginDismissed) return
     skinReloginOpen = true
   }
@@ -891,7 +889,7 @@
   // Тиха періодична перевірка (GetSkinAuthStatus сама оновлює access-токен):
   // завершення сесії помічаємо ще до того, як людина відкриє друзів.
   $effect(() => {
-    if (!isShaurmaEdition || !skinsEnabled) return
+    if (!skinsEnabled) return
     const id = setInterval(() => { if (!document.hidden) refreshSkinAuth() }, 10 * 60 * 1000)
     return () => clearInterval(id)
   })
@@ -960,7 +958,7 @@
   // останньої сторінки.
   $effect(() => {
     if (currentPage !== 'wardrobe' || wardrobeVisible) return
-    if (activeAccount()?.isLicensed !== true && isShaurmaEdition && !skinAuthKnown) return
+    if (activeAccount()?.isLicensed !== true && skinsEnabled && !skinAuthKnown) return
     currentPage = 'instances'
   })
 
@@ -992,7 +990,7 @@
   // «Відкрити в Shaurma», тож «вже показували» не враховуємо.
   function openFriendLinkFromOS(url: string | undefined | null) {
     const l = parseFriendLink(url)
-    if (!l || !isShaurmaEdition) return
+    if (!l) return
     friendInvite = l
     void App.FocusMainWindow().catch(() => {})
   }
@@ -1000,7 +998,6 @@
   function maybeOpenFriendLink(text: string | undefined | null) {
     const l = parseFriendLink(text)
     if (!l) return
-    if (!isShaurmaEdition) return // друзі Шаурми є лише у Shaurma-редакції
     if (seenFriendLinks().has(friendLinkKey(l))) return
     friendInvite = l
     // Лінк спрацював → виводимо вікно лаунчера на передній план (воно могло
@@ -1011,7 +1008,7 @@
   // Перевірка буфера обміну при поверненні фокуса. Помилки читання (нема
   // утиліти / буфер зайнятий) навмисно моловемо — це фонова перевірка.
   async function checkClipboardForFriendLink() {
-    if (friendInvite || !isShaurmaEdition) return
+    if (friendInvite) return
     try {
       const text = await App.ClipboardText()
       maybeOpenFriendLink(text)
@@ -1491,7 +1488,7 @@
     // вбивала весь ланцюжок: settingsSchema не завантажувалась (порожні
     // розділи налаштувань — лише заголовки) і refreshHeads() не
     // викликався (іконки акаунтів завжди Стів).
-    const [accR, setR, buildR, schemaR, playR, anR, verR, edR, autoR, platR] = await Promise.allSettled([
+    const [accR, setR, buildR, schemaR, playR, anR, verR, edR, autoR, platR, skinR] = await Promise.allSettled([
       App.GetAccounts(),
       App.GetSettings(),
       App.GetBuilds(),
@@ -1502,6 +1499,7 @@
       App.IsShaurmaEdition(),
       App.GetAutoPacks(),
       App.GetPlatform(),
+      App.HasSkinSupport(),
     ])
     // data-platform якомога раніше (не чекаючи інших полів settings) —
     // на Linux одразу знімає дорогу backdrop-filter-композицію (WebKitGTK,
@@ -1550,6 +1548,7 @@
     // немає взагалі (фізично не скомпільовані), тому вкладку/список
     // приховуємо і за замовчуванням показуємо вкладку "Кастомні".
     isShaurmaEdition = edR.status === 'fulfilled' ? edR.value : false
+    skinSupport = skinR.status === 'fulfilled' ? skinR.value : isShaurmaEdition
     if (!isShaurmaEdition) instanceTab = 'custom'
     // Відновлюємо «останнє вікно» одразу після першого завантаження даних.
     // initUIState() підвантажує реальний стан з .ui-state.json (диск) — до
@@ -4916,7 +4915,6 @@
   //   - інакше (сервер Шаурми недоступний) — запасний шлях: пропонуємо
   //     Google-вхід, як і раніше.
   async function promptSocialAfterMsLogin() {
-    if (!isShaurmaEdition) return
     try {
       const st = await App.GetFriendsState()
       if (st?.loggedIn) return
@@ -4934,7 +4932,7 @@
   // Тільки ПІСЛЯ Microsoft-входу: якщо акаунта Шаурми ще немає (напр. вхід
   // стався до Shaurma-редакції), ведемо гравця на сторінку «Акаунт».
   async function promptGoogleLink() {
-    if (!isShaurmaEdition || !skinsEnabled) return
+    if (!skinsEnabled) return
     await refreshSkinAuth()
     if (skinAuth.ok) return
     window.dispatchEvent(new CustomEvent('open-settings-skin-account'))
@@ -6596,7 +6594,7 @@
     onlogin={loginMsStart}
     oncancelms={loginMsCancel}
     onpirate={loginPirate}
-    skingate={isShaurmaEdition && skinsEnabled}
+    skingate={skinsEnabled}
     skinstep={googleShaurmaStep}
     onskinlogin={loginGoogleStart}
     onskincancel={loginGoogleCancel}

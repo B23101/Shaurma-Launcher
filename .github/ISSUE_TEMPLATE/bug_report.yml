@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible launcher problem
+body:
+  - type: markdown
+    attributes:
+      value: Do not include tokens, account databases, private server addresses or personal file paths. Report security issues privately using the Security policy.
+  - type: input
+    id: version
+    attributes:
+      label: Launcher version and edition
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and installation method
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps, expected result and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted diagnostics or screenshots
+      description: Review attachments and remove credentials and personal information before posting.

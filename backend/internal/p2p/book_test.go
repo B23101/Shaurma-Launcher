@@ -160,9 +160,13 @@ func TestAssignClaimedAddress(t *testing.T) {
 		t.Fatalf("мітка другого сервера зіпсована: %q", labels[second.Subdomain])
 	}
 
-	// Чужий акаунт не може призначити собі нашу адресу.
-	if err := api.AssignClaimedAddress(first.Subdomain, "server-9", "other"); err == nil {
-		t.Fatal("чужий акаунт не мав призначити нашу адресу")
+	// Ownership is installation-scoped (owner secret), not account-scoped.
+	if err := api.AssignClaimedAddress(first.Subdomain, "server-9", "other"); err != nil {
+		t.Fatalf("інший акаунт цієї інсталяції: %v", err)
+	}
+	otherInstall := NewAPI(t.TempDir(), func() string { return "token-1234567890abcdef" }, func() string { return srv.URL })
+	if err := otherInstall.AssignClaimedAddress(first.Subdomain, "server-9", "acc1"); err == nil {
+		t.Fatal("інша інсталяція не мала призначити чужу адресу")
 	}
 	// Неіснуюча адреса.
 	if err := api.AssignClaimedAddress("nope-000000", "s", "acc1"); err == nil {

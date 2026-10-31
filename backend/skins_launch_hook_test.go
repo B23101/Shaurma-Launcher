@@ -1,9 +1,11 @@
-//go:build shaurma
-
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,14 +13,15 @@ import (
 
 	"shaurma-launcher-backend/internal/console"
 	"shaurma-launcher-backend/internal/model"
+	"shaurma-launcher-backend/internal/nodes"
 )
 
-// Регресія: скін-injector підключається ЛИШЕ для неліцензійних (офлайн)
-// акаунтів. Ліцензійний акаунт запускається напряму на Mojang/Microsoft —
-// жодного стороннього посередника в авторизації чи сесії (див. докладний
-// коментар в wardrobe_inject.go: після інциденту поведінку повернуто).
-//
-// Єдиний вимикач скін-системи для офлайн-акаунтів — налаштування DisableSkins.
+type skinTestTransport func(*http.Request) (*http.Response, error)
+
+func (f skinTestTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// The shared skin service applies to all account types when enabled.
+// Tests use a local metadata transport and a synthetic, integrity-checked JAR.
 
 // seedInjectorCache кладе на диск правдоподібний jar і metadata-кеш, щоб
 // authlibJVMArgs не потребував мережі (в тесті вона недоступна/не потрібна:
@@ -31,7 +34,13 @@ func seedInjectorCache(t *testing.T, a *App) (jarPath string) {
 	}
 	jarPath = filepath.Join(dir, authlibInjectorJarName)
 	// ≥ minAuthlibJarSize (50 КБ) — інакше authlibInjectorJar піде в мережу.
-	if err := os.WriteFile(jarPath, make([]byte, minAuthlibJarSize+1024), 0o644); err != nil {
+	fixture := make([]byte, minAuthlibJarSize+1024)
+	copy(fixture, []byte{'P', 'K', 3, 4})
+	sum := sha256.Sum256(fixture)
+	previousDigest := authlibInjectorSHA256
+	authlibInjectorSHA256 = hex.EncodeToString(sum[:])
+	t.Cleanup(func() { authlibInjectorSHA256 = previousDigest })
+	if err := os.WriteFile(jarPath, fixture, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "yggdrasil-metadata.b64"),
@@ -47,6 +56,7 @@ func newSkinsTestApp(t *testing.T, disableSkins bool) *App {
 	cfg := newTestConfig(t, dir)
 	s := cfg.GetSettings()
 	s.DisableSkins = disableSkins
+	s.DisableMojangSkinFallback = true // Test the launch hook without starting a local proxy.
 	if err := cfg.UpdateSettings(s); err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -55,6 +65,21 @@ func newSkinsTestApp(t *testing.T, disableSkins bool) *App {
 		consoleBufs: map[consoleKey]*console.Buffer{},
 	}
 	seedInjectorCache(t, a)
+	originalPool, originalFetch := vpsPool(), authlibFetchFn
+	nodePool = &nodes.Pool{
+		WorkerBase: "https://skin-test.invalid",
+		Headers:    func() http.Header { return http.Header{} },
+		HTTP: &http.Client{Transport: skinTestTransport(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"nodes":[{"id":"test","url":"https://skin-test.invalid","roles":["gateway"],"weight":1}]}`))}, nil
+		})},
+	}
+	if err := nodePool.Refresh(); err != nil {
+		t.Fatal(err)
+	}
+	authlibFetchFn = func(*App, string, bool) ([]byte, error) {
+		return []byte(`{"signaturePublickey":"test-public-key","skinDomains":[]}`), nil
+	}
+	t.Cleanup(func() { nodePool, authlibFetchFn = originalPool, originalFetch })
 	return a
 }
 
@@ -67,11 +92,12 @@ func hasAgent(args []string) bool {
 	return false
 }
 
-// Офлайн (неліцензійний) акаунт отримує інжектор; ліцензійний — ні.
-func TestPrepareOfflineAccount_InjectorOnlyForUnlicensed(t *testing.T) {
+// Both account types use the configured skin service; disabling it returns no arguments.
+func TestPrepareOfflineAccount_InjectorForEnabledSkins(t *testing.T) {
 	offline := map[string]model.Account{
 		"offline (пірат)":           {ID: "a1", Username: "Pirate", IsLicensed: false, Type: "offline"},
 		"Шаурма-скін офлайн акаунт": {ID: "a3", Username: "Shaurma", IsLicensed: false, IsShaurmaSkinAccount: true},
+		"Microsoft": {ID: "a2", Username: "Licensed", IsLicensed: true, Type: "microsoft"},
 	}
 	for name, acc := range offline {
 		t.Run(name, func(t *testing.T) {
@@ -100,8 +126,8 @@ func TestPrepareOfflineAccount_InjectorOnlyForUnlicensed(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			a := newSkinsTestApp(t, false)
 			args := a.prepareOfflineAccount(acc, "build1", t.TempDir())
-			if hasAgent(args) {
-				t.Fatalf("інжектор НЕ має підключатись для ліцензійного акаунта «%s»: args=%v", name, args)
+			if !hasAgent(args) {
+				t.Fatalf("увімкнена спільна система скінів не підключена для «%s»: args=%v", name, args)
 			}
 		})
 	}
@@ -130,9 +156,7 @@ func TestPrepareOfflineAccount_DisableSkinsTurnsOffForEveryAccountType(t *testin
 		}
 	}
 
-	// Ліцензійний акаунт і з вимкненими скінами не отримує аргументів; але
-	// повідомлення про нього — не «скін-систему вимкнено», а «пряме з'єднання
-	// з Mojang» (він скін-систему не використовує взагалі).
+	// Disabling the shared service also leaves Microsoft accounts without an agent.
 	lic := model.Account{ID: "a2", Username: "Licensed", IsLicensed: true, Type: "microsoft", AccessToken: "tok"}
 	a := newSkinsTestApp(t, true)
 	if args := a.prepareOfflineAccount(lic, "build1", t.TempDir()); len(args) != 0 {
@@ -140,12 +164,12 @@ func TestPrepareOfflineAccount_DisableSkinsTurnsOffForEveryAccountType(t *testin
 	}
 	var licensedMsg bool
 	for _, l := range a.consoleBufFor(lic.ID, "build1").Snapshot() {
-		if strings.Contains(l.Text, "Ліцензійний акаунт") {
+		if strings.Contains(l.Text, "Скіни вимкнено") {
 			licensedMsg = true
 		}
 	}
 	if !licensedMsg {
-		t.Fatal("немає повідомлення, що ліцензійний акаунт іде напряму на Mojang")
+		t.Fatal("немає повідомлення про вимкнену систему скінів")
 	}
 }
 

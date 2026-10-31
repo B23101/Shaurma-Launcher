@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // Вхід у Google/Microsoft ДЛЯ АКАУНТА ШАУРМИ — окремий від входу в Minecraft.

@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // Друзі Shaurma (ФАЗА 1 SOCIAL_MASTERPLAN.md, без чату) — тонка обгортка над
@@ -8,11 +6,11 @@ package main
 //   - життєвий цикл (старт при вході, стоп при виході);
 //   - методи, які бачить фронтенд.
 //
-// Це shaurma-only: у base-збірці скін-акаунта (а отже й JWT) немає.
+// Акаунти, друзі й чат спільні для Base та повної редакції.
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"fmt"
+	"shaurma-launcher-backend/internal/crashguard"
 	"strings"
 	"sync"
 
@@ -117,7 +115,7 @@ func (a *App) startSocialIfLoggedIn() {
 	if svc.Running() {
 		return
 	}
-	_ = svc.Start() // помилка = некоректний WS URL; тоді просто лишаємось без presence
+	_ = svc.Start()         // помилка = некоректний WS URL; тоді просто лишаємось без presence
 	go a.remoteSyncShares() // VPS нічого не пам'ятає між сесіями: публікуємо дозволи й ключ каналу знову
 }
 

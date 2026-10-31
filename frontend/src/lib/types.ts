@@ -2066,7 +2066,7 @@ export interface ShaurmaProfile {
   reason?: 'no_launcher_account' | 'no_hwid' | 'no_shaurma_account'
 }
 
-// ── Скін-система (офлайн-акаунти, ЛИШЕ Shaurma-редакція) ──────────────
+// ── Спільна система скінів обох редакцій ────────────────────────────
 // Стан сесії скін-системи (бекенд → UI).
 export interface SkinAuthStatus {
   loggedIn: boolean

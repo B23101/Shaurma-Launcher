@@ -622,6 +622,9 @@ func (a *App) ServiceStartup() error {
 	// Ініціалізуємо одразу після cfg.Load() (нижче), але відкриваємо тут,
 	// щоб перші рядки вже писались у файл. Помилка відкриття — не фатальна.
 	a.cfg.Load()
+	if err := a.applyInstallerSkinPreference(); err != nil {
+		log.Printf("installer skin preference: %v", err)
+	}
 	_ = launchlog.Init(a.cfg.LogsDir(), launchlog.LevelDebug)
 	// Перехоплення крашів: crash.log (фатальні помилки рантайму + паніки
 	// горутин) і маркер аварійного завершення попередньої сесії. Одразу
@@ -5626,7 +5629,7 @@ func (a *App) CopyWardrobePlayerSkin(accountID string, profile model.PlayerProfi
 // подію avatar:changed — картка профілю гравця одразу показує новий скін
 // (без цього голова лишалась би старою до закінчення TTL кешу).
 func (a *App) ApplyWardrobePreset(accountID, presetID string) error {
-	// Офлайн-акаунт (лише Shaurma-редакція): скін іде на сервер скінів під
+	// Офлайн-акаунт (обидві редакції): скін іде на сервер скінів під
 	// Google-сесією, а не на Mojang. У base-збірці хук завжди handled=false.
 	handled, err := a.applyPresetToSkinServer(accountID, presetID)
 	if err != nil {
@@ -5679,7 +5682,7 @@ func (a *App) SetWardrobeActiveCape(accountID, capeID string) error {
 // при відкритті гардеробу, щоб автоматично виділити пресет як вибраний
 // замість першого в списку.
 func (a *App) GetWardrobeActivePresetID(accountID string) (string, error) {
-	// Офлайн-акаунт (лише Shaurma-редакція): порівнюємо зі скіном на
+	// Офлайн-акаунт (обидві редакції): порівнюємо зі скіном на
 	// нашому сервері скінів, а не на Mojang (там у такого акаунта нічого
 	// немає). У base-збірці хук завжди handled=false.
 	if id, handled, err := a.activeMatchingPresetFromSkinServer(accountID); handled {

@@ -173,7 +173,7 @@
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('pack.perf.ram')}</span><span class="mono text-orange">{effectiveRAM} МБ</span>
       </div>
-      <div class="ram-track" onclick={setRamFromClick} onpointerdown={startRamDragMax} onpointermove={ramDragMaxMove}
+      <div class="ram-track" data-value={`${effectiveRAM} MB`} onclick={setRamFromClick} onpointerdown={startRamDragMax} onpointermove={ramDragMaxMove}
            onpointerup={stopRamDragMax} onpointercancel={stopRamDragMax}>
         <div class="ram-fill" style="width:{ramPct}%"></div>
         <div class="ram-knob" style="left:{ramPct}%"></div>
@@ -183,7 +183,7 @@
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('pack.game.ramMin')}</span><span class="mono text-orange">{effectiveMinRAM} МБ</span>
       </div>
-      <div class="ram-track" onclick={setMinRamFromClick} onpointerdown={startRamDragMin} onpointermove={ramDragMinMove}
+      <div class="ram-track" data-value={`${effectiveMinRAM} MB`} onclick={setMinRamFromClick} onpointerdown={startRamDragMin} onpointermove={ramDragMinMove}
            onpointerup={stopRamDragMin} onpointercancel={stopRamDragMin}>
         <div class="ram-fill" style="width:{minRamPct}%"></div>
         <div class="ram-knob" style="left:{minRamPct}%"></div>

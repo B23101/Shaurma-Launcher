@@ -1,8 +1,6 @@
-//go:build shaurma
-
 package main
 
-// authlib_injector.go — скіни для ОФЛАЙН (неліцензійних) акаунтів.
+// authlib_injector.go — optional shared skin service for both launcher editions.
 //
 // Механізм (єдиний, який реально працює у ванільному клієнті):
 // лаунчер запускає JVM з java-агентом authlib-injector, який підміняє в
@@ -28,7 +26,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,10 +78,24 @@ var authlibFetchFn = func(a *App, url string, withToken bool) ([]byte, error) {
 	return a.fetchPublic(url)
 }
 
+// SHA-256 published for the official v1.2.8 GitHub release asset.
+// Tests substitute a synthetic fixture digest; production has no setter.
+var authlibInjectorSHA256 = "9c7f4343e6c82034958ffb48c14a2cb0c85928be7283103ce17da00c6d5a7b10"
+
+func trustedAuthlibJar(body []byte) bool {
+	if !looksLikeJar(body) {
+		return false
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]) == authlibInjectorSHA256
+}
+
 func (a *App) authlibInjectorJar() (string, error) {
 	dst := filepath.Join(a.javaToolsDir(), authlibInjectorJarName)
-	if st, err := os.Stat(dst); err == nil && st.Size() >= minAuthlibJarSize {
-		return dst, nil
+	if st, err := os.Stat(dst); err == nil && st.Size() >= minAuthlibJarSize && st.Size() <= maxAuthlibJarSize {
+		if body, err := os.ReadFile(dst); err == nil && trustedAuthlibJar(body) {
+			return dst, nil
+		}
 	}
 	if err := os.MkdirAll(a.javaToolsDir(), 0o755); err != nil {
 		return "", fmt.Errorf("не вдалося створити %s: %w", a.javaToolsDir(), err)
@@ -90,7 +104,7 @@ func (a *App) authlibInjectorJar() (string, error) {
 	// 1) Наш CDN — якщо Pack Manager задеплоїв компонент
 	//    launcher/authlib-injector.jar (тоді версію контролюємо ми).
 	body, err := authlibFetchFn(a, update.CDNBaseURL()+"/launcher/"+authlibInjectorJarName, true)
-	if err != nil || !looksLikeJar(body) {
+	if err != nil || !trustedAuthlibJar(body) {
 		// 2) Офіційний реліз — без редистрибуції jar'а з нашого боку.
 		ver := strings.TrimPrefix(authlibInjectorVersion, "v")
 		url := fmt.Sprintf(
@@ -101,8 +115,8 @@ func (a *App) authlibInjectorJar() (string, error) {
 			return "", fmt.Errorf("завантаження authlib-injector (%s): %w", url, err)
 		}
 	}
-	if !looksLikeJar(body) {
-		return "", fmt.Errorf("authlib-injector: отриманий файл не є jar (%d байт)", len(body))
+	if !trustedAuthlibJar(body) {
+		return "", fmt.Errorf("authlib-injector: SHA-256 або формат офіційного v%s не збігається", authlibInjectorVersion)
 	}
 
 	tmp := dst + ".tmp"
@@ -116,9 +130,8 @@ func (a *App) authlibInjectorJar() (string, error) {
 	return dst, nil
 }
 
-// looksLikeJar перевіряє, що тіло — ZIP-архів (jar — це zip) правдоподібного
-// розміру. Повної перевірки підпису немає: файл іде по HTTPS з нашого CDN
-// або з офіційного релізу.
+// looksLikeJar checks format and size only; trustedAuthlibJar additionally
+// requires the pinned official-release SHA-256 before any cached/downloaded use.
 func looksLikeJar(body []byte) bool {
 	if len(body) < minAuthlibJarSize || len(body) > maxAuthlibJarSize {
 		return false
@@ -198,10 +211,8 @@ func (a *App) authlibJVMArgs(account model.Account) ([]string, error) {
 	return a.authlibJVMArgsOpt(account, false)
 }
 
-// authlibJVMArgsOpt — те саме, але allowLicensed=true дозволяє підключити
-// injector і ЛІЦЕНЗІЙНОМУ акаунту. Викликається ЛИШЕ коли гравець (або адмін
-// пака) свідомо обрав для ліцензії систему скінів «Шаурма» — з попередженням,
-// що вхід на сервери з перевіркою Mojang (Hypixel тощо) тоді недоступний.
+// authlibJVMArgsOpt supports the shared skin-service setting for all account types.
+// With allowLicensed=false, Microsoft accounts retain the direct Mojang path.
 func (a *App) authlibJVMArgsOpt(account model.Account, allowLicensed bool) ([]string, error) {
 	if !allowLicensed && (account.IsLicensed || account.Type == "microsoft") {
 		// Ліцензійний акаунт: жодного втручання в auth. JVM запускається

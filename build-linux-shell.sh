@@ -49,24 +49,31 @@ if [ ${#EDITIONS[@]} -eq 0 ]; then
     EDITIONS=("shaurma" "base")
 fi
 
-TOKEN_SHAURMA="${TOKEN_SHAURMA:-dev-token-shaurma}"
-TOKEN_BASE="${TOKEN_BASE:-dev-token-base}"
+TOKEN_SHAURMA="${TOKEN_SHAURMA:-${SHRM_BUILD_TOKEN_SHAURMA:-}}"
+TOKEN_BASE="${TOKEN_BASE:-${SHRM_BUILD_TOKEN_BASE:-}}"
 
-# Пароль unix-користувача WSL2 для неінтерактивного sudo (apt install,
-# копіювання Go в /usr/local). Дефолт "1234" — той самий пароль, що
-# заведений при першому запуску `wsl --install -d Ubuntu-24.04`
-# (Розділ 4 LINUX-BUILD-GUIDE.md). Постав свій через
-# WSL_SUDO_PASSWORD=... якщо на цій машині пароль інший — build.bat теж
-# прокидає цю змінну (WSL_SUDO_PASSWORD=1234 усередині build.bat).
-WSL_SUDO_PASSWORD="${WSL_SUDO_PASSWORD:-1234}"
+PUBKEYS="${SHAURMA_MANIFEST_PUBKEYS:-}"
+[[ -n "$PUBKEYS" && "$PUBKEYS" =~ ^[A-Za-z0-9+/=,]+$ && "$PUBKEYS" != *, ]] || { echo 'Valid SHAURMA_MANIFEST_PUBKEYS is required' >&2; exit 1; }
+IFS=',' read -ra manifest_keys <<< "$PUBKEYS"
+for key in "${manifest_keys[@]}"; do
+    size=$(printf '%s' "$key" | base64 --decode | wc -c)
+    [[ "$size" -eq 32 ]] || { echo 'Invalid Ed25519 public key' >&2; exit 1; }
+done
+for ED in "${EDITIONS[@]}"; do
+    case "$ED" in
+        base) [[ -n "$TOKEN_BASE" ]] || { echo 'Missing Base token' >&2; exit 1; } ;;
+        shaurma) [[ -n "$TOKEN_SHAURMA" ]] || { echo 'Missing Shaurma token' >&2; exit 1; } ;;
+        *) echo 'Unknown edition' >&2; exit 1 ;;
+    esac
+done
 
-# sudo_run — обгортка над sudo, що читає пароль зі stdin (-S), а не з
-# інтерактивного терміналу. Без цього build.bat (запущений через
-# wsl.exe без прив'язаного TTY для введення пароля) просто зависав би
-# на першому "[sudo] password for user:" без жодного повідомлення про
-# помилку — саме це сталось у попередньому запуску.
+# Optional password comes only from the caller's environment. No built-in credentials.
 sudo_run() {
-    echo "$WSL_SUDO_PASSWORD" | sudo -S "$@" 2>/dev/null
+    if [[ -n "${WSL_SUDO_PASSWORD:-}" ]]; then
+        printf '%s\n' "$WSL_SUDO_PASSWORD" | sudo -S "$@"
+    else
+        sudo -n "$@"
+    fi
 }
 
 echo "== Редакції для збірки shell: ${EDITIONS[*]}"
@@ -149,7 +156,7 @@ for ED in "${EDITIONS[@]}"; do
         CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
             -tags production \
             -trimpath -buildvcs=false \
-            -ldflags "-X main.editionChannel=$ED -X main.cdnToken=$TOKEN_FOR_ED" \
+            -ldflags "-X main.editionChannel=$ED -X main.cdnToken=$TOKEN_FOR_ED -X main.trustedKeys=$PUBKEYS" \
             -o "$OUT_DIR/$SHELL_NAME" .
     )
     chmod +x "$OUT_DIR/$SHELL_NAME"

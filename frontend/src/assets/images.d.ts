@@ -1,3 +1,8 @@
+declare module '*.html?raw' {
+  const html: string
+  export default html
+}
+
 declare module '*.png?inline' {
   const src: string
   export default src

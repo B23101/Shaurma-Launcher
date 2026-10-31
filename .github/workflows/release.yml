@@ -6,9 +6,9 @@
 # No secrets live in this repository. They are GitHub Actions secrets / variables:
 #   secrets:  SIGNPATH_API_TOKEN
 #             SHRM_BUILD_TOKEN_SHAURMA  SHRM_BUILD_TOKEN_BASE
-#             CF_API_KEY  GROQ_API_KEY  GEMINI_API_KEY
+#             CF_API_KEY
 #             SHAURMA_GOOGLE_CLIENT_ID  SHAURMA_GOOGLE_CLIENT_SECRET
-#             SHAURMA_MANIFEST_PUBKEYS   (optional)
+#   variables: SHAURMA_MANIFEST_PUBKEYS (required public Ed25519 keys)
 #   variables: SIGNPATH_ORGANIZATION_ID
 # SignPath requires GitHub-hosted runners for every job before a signing request.
 name: release
@@ -18,6 +18,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
     inputs:
+      edition:
+        description: Edition (shaurma requires a private repository)
+        type: choice
+        options: [base, shaurma]
+        default: base
       sign:
         description: Submit to SignPath (false = unsigned dry run)
         type: boolean
@@ -37,22 +42,40 @@ permissions:
 
 env:
   SIGNPATH_PROJECT: shaurma-launcher
+  EDITION: ${{ inputs.edition || vars.RELEASE_EDITION || 'base' }}
   SIGN: ${{ github.event_name == 'push' || inputs.sign }}
   POLICY: ${{ inputs.policy || 'release-signing' }}
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release visibility
+        env:
+          VISIBILITY: ${{ github.event.repository.visibility }}
+        run: |
+          case "$EDITION" in base|shaurma) ;; *) echo 'Invalid edition'; exit 1 ;; esac
+          if [ "$EDITION" = shaurma ] && [ "$VISIBILITY" != private ]; then
+            echo 'Full-edition artifacts must be built in an approved private repository'
+            exit 1
+          fi
+
   windows-components:
+    needs: [validate, checks]
+    environment: release-base
     runs-on: windows-latest
     timeout-minutes: 360
     permissions:
       contents: read
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
@@ -60,7 +83,7 @@ jobs:
             shell/go.sum
             updater-backend/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
@@ -76,40 +99,45 @@ jobs:
       - name: Build components (unsigned)
         shell: pwsh
         env:
-          SHRM_BUILD_TOKEN_SHAURMA: ${{ secrets.SHRM_BUILD_TOKEN_SHAURMA }}
-          SHRM_BUILD_TOKEN_BASE: ${{ secrets.SHRM_BUILD_TOKEN_BASE }}
+          SHRM_BUILD_TOKEN_SHAURMA: ${{ env.EDITION == 'shaurma' && secrets.SHRM_BUILD_TOKEN_SHAURMA || '' }}
+          SHRM_BUILD_TOKEN_BASE: ${{ env.EDITION == 'base' && secrets.SHRM_BUILD_TOKEN_BASE || '' }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SHAURMA_GOOGLE_CLIENT_ID: ${{ secrets.SHAURMA_GOOGLE_CLIENT_ID }}
+          SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.SHAURMA_GOOGLE_CLIENT_ID }}
           SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.SHAURMA_GOOGLE_CLIENT_SECRET }}
-          SHAURMA_MANIFEST_PUBKEYS: ${{ secrets.SHAURMA_MANIFEST_PUBKEYS }}
-        run: ./scripts/build-windows.ps1 -Step components -RequireSecrets
+          SHAURMA_GOOGLE_CLIENT_KIND: ${{ vars.SHAURMA_GOOGLE_CLIENT_KIND }}
+          SHAURMA_MANIFEST_PUBKEYS: ${{ vars.SHAURMA_MANIFEST_PUBKEYS }}
+        run: ./scripts/build-windows.ps1 -Step components -Edition $env:EDITION -RequireSecrets
+
+      - name: Check release components for forbidden credentials
+        shell: pwsh
+        run: ./scripts/check-release-secrets.ps1 -Directory dist/unsigned -Edition $env:EDITION
 
       - name: Upload unsigned components
         id: upload-unsigned
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: unsigned-components
           path: dist/unsigned
           if-no-files-found: error
+          retention-days: 14
 
       - name: Upload web assets (frontend zips)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: launcher-assets
           path: dist/assets
           if-no-files-found: error
+          retention-days: 14
 
       - name: Sign components (SignPath)
         if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ env.SIGNPATH_PROJECT }}
           signing-policy-slug: ${{ env.POLICY }}
-          artifact-configuration-slug: components
+          artifact-configuration-slug: ${{ env.EDITION == 'base' && 'components' || 'components-team' }}
           github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: 18000
@@ -120,6 +148,7 @@ jobs:
         run: |
           $src = if ($env:SIGN -eq 'true') { 'dist/signed' } else { 'dist/unsigned' }
           if ($env:SIGN -eq 'true') {
+            ./scripts/verify-signatures.ps1 -Directory $src -Edition $env:EDITION -Stage components
             $bad = 0
             foreach ($f in Get-ChildItem $src -Recurse -Include *.exe, *.dll) {
               $s = Get-AuthenticodeSignature $f.FullName
@@ -131,13 +160,15 @@ jobs:
           Copy-Item $src dist/final -Recurse
 
       - name: Upload final components
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: components-final
           path: dist/final
           if-no-files-found: error
+          retention-days: 14
 
   windows-installer:
+    environment: release-base
     needs: windows-components
     runs-on: windows-latest
     timeout-minutes: 360
@@ -147,7 +178,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
@@ -156,19 +187,19 @@ jobs:
         run: |
           if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: components-final
           path: dist/final
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: launcher-assets
           path: dist/assets
 
       - name: Build installers
         shell: pwsh
-        run: ./scripts/build-windows.ps1 -Step installer -ComponentsDir dist/final -AssetsDir dist/assets
+        run: ./scripts/build-windows.ps1 -Step installer -Edition $env:EDITION -ComponentsDir dist/final -AssetsDir dist/assets
 
       - name: Collect installers
         shell: pwsh
@@ -178,21 +209,22 @@ jobs:
 
       - name: Upload unsigned installers
         id: upload-setups
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: unsigned-installers
           path: dist/setups
           if-no-files-found: error
+          retention-days: 14
 
       - name: Sign installers (SignPath)
         if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ env.SIGNPATH_PROJECT }}
           signing-policy-slug: ${{ env.POLICY }}
-          artifact-configuration-slug: installer
+          artifact-configuration-slug: ${{ env.EDITION == 'base' && 'installer' || 'installer-team' }}
           github-artifact-id: ${{ steps.upload-setups.outputs.artifact-id }}
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: 18000
@@ -203,6 +235,7 @@ jobs:
         run: |
           $src = if ($env:SIGN -eq 'true') { 'dist/signed-setups' } else { 'dist/setups' }
           if ($env:SIGN -eq 'true') {
+            ./scripts/verify-signatures.ps1 -Directory $src -Edition $env:EDITION -Stage installer
             foreach ($f in Get-ChildItem $src -Filter *.exe) {
               $s = Get-AuthenticodeSignature $f.FullName
               Write-Host ("{0}: {1} ({2})" -f $f.Name, $s.Status, $s.SignerCertificate.Subject)
@@ -216,28 +249,31 @@ jobs:
           }
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: dist/installers/*.exe
 
       - name: Upload final installers
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: installers-final
           path: dist/installers
           if-no-files-found: error
+          retention-days: 14
 
       # Same layout as dist\app-<edition>: drop-in staging for the private release/CDN tooling.
       - name: Upload staging (signed components + zips)
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: app-staging
           path: |
-            dist/app-shaurma
-            dist/app-base
+            dist/app-${{ env.EDITION }}
           if-no-files-found: error
+          retention-days: 14
 
   linux:
+    needs: [validate, checks]
+    environment: release-base
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
@@ -245,11 +281,11 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: |
@@ -257,7 +293,7 @@ jobs:
             shell/go.sum
             updater-backend/go.sum
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
@@ -268,47 +304,50 @@ jobs:
 
       - name: Build Linux components
         env:
-          SHRM_BUILD_TOKEN_SHAURMA: ${{ secrets.SHRM_BUILD_TOKEN_SHAURMA }}
-          SHRM_BUILD_TOKEN_BASE: ${{ secrets.SHRM_BUILD_TOKEN_BASE }}
+          SHRM_BUILD_TOKEN_SHAURMA: ${{ env.EDITION == 'shaurma' && secrets.SHRM_BUILD_TOKEN_SHAURMA || '' }}
+          SHRM_BUILD_TOKEN_BASE: ${{ env.EDITION == 'base' && secrets.SHRM_BUILD_TOKEN_BASE || '' }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          SHAURMA_GOOGLE_CLIENT_ID: ${{ secrets.SHAURMA_GOOGLE_CLIENT_ID }}
+          SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.SHAURMA_GOOGLE_CLIENT_ID }}
           SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.SHAURMA_GOOGLE_CLIENT_SECRET }}
-          SHAURMA_MANIFEST_PUBKEYS: ${{ secrets.SHAURMA_MANIFEST_PUBKEYS }}
-        run: bash scripts/build-linux.sh
+          SHAURMA_GOOGLE_CLIENT_KIND: ${{ vars.SHAURMA_GOOGLE_CLIENT_KIND }}
+          SHAURMA_MANIFEST_PUBKEYS: ${{ vars.SHAURMA_MANIFEST_PUBKEYS }}
+        run: bash scripts/build-linux.sh "$EDITION"
 
       # SignPath Foundation signs Windows files; Linux files get a verifiable GitHub
       # build-provenance attestation (check: gh attestation verify <file> -R <owner>/<repo>).
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: |
             dist/linux-release/*.tar.gz
             dist/linux-release/SHA256SUMS-linux.txt
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: linux-release
           path: dist/linux-release
           if-no-files-found: error
+          retention-days: 14
 
   publish:
-    if: github.ref_type == 'tag'
+    if: github.ref_type == 'tag' && (inputs.edition || vars.RELEASE_EDITION || 'base') == 'base' && (github.event_name == 'push' || inputs.sign)
     needs: [windows-installer, linux]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: installers-final
           path: release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: linux-release
           path: release
       - name: Create draft release (review, then publish)
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "$GITHUB_REF_NAME"
+        run: |
+          mkdir -p release/checksums
+          cp release/SHA256SUMS-* release/checksums/
+          gh release create "$GITHUB_REF_NAME" release/checksums/* --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "$GITHUB_REF_NAME" --notes "Downloads: https://shaurma-launcher.org/ — Code signing policy: https://github.com/$GITHUB_REPOSITORY#code-signing-policy"

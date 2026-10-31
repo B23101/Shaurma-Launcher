@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <zip-file>
+    <pe-file-set product-name="Shaurma Launcher" product-version="1.0.0">
+      <include path="shaurma/ShaurmLauncher.exe" />
+      <include path="shaurma/bootstrap/ShaurmLauncher.exe" />
+      <include path="shaurma/backend.dll" />
+      <include path="shaurma/updater.dll" />
+      <for-each><authenticode-sign /></for-each>
+    </pe-file-set>
+  </zip-file>
+</artifact-configuration>

@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 import (

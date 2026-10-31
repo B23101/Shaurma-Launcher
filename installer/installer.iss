@@ -105,8 +105,8 @@
 ; компоненти» й ОДНУ теку встановлення; встановлення іншої редакції
 ; поверх наявної Windows штатно розпізнає як АПГРЕЙД того самого
 ; застосунку (той самий AppId → IsUpgrade()=True, без діалогу «виберіть
-; іншу теку»), а CurStepChanged/RegisterFirewallRule нижче прибирає
-; артефакти (.exe, firewall-правило) редакції, яку витісняють — див.
+; іншу теку»), а CurStepChanged/CleanupOtherEditionArtifacts нижче прибирає
+; артефакти (.exe) редакції, яку витісняють — див.
 ; CleanupOtherEditionArtifacts. Раніше тут були РІЗНІ AppId і РІЗНІ
 ; installDir (ShaurmLauncher/ShaurmLauncherBase) — обидві редакції
 ; ставились ПОРУЧ як два незалежних застосунки, і саме це й був баг.
@@ -123,7 +123,7 @@
 ; staging теки.
 #ifdef MyEdition
   #if MyEdition == "base"
-    #define MyAppName         "Shaurm Launcher"
+    #define MyAppName         "Shaurma Launcher"
     #define MyInstallDir      "ShaurmLauncher"
     #define MyChannel         "base"
     #define MyShellExeName    "ShaurmLauncherBase.exe"
@@ -131,7 +131,7 @@
     #define MyOutputBaseFilename "ShaurmLauncherBase-setup"
     #define MyRulePrefix      "Shaurm Launcher"
   #else
-    #define MyAppName         "Shaurm Launcher"
+    #define MyAppName         "Shaurma Launcher"
     #define MyInstallDir      "ShaurmLauncher"
     #define MyChannel         "shaurma"
     #define MyShellExeName    "ShaurmLauncher.exe"
@@ -141,7 +141,7 @@
   #endif
 #else
   ; Дефолт без /DMyEdition — повна shaurma-версія (як і до двоверсійності).
-  #define MyAppName         "Shaurm Launcher"
+  #define MyAppName         "Shaurma Launcher"
   #define MyInstallDir      "ShaurmLauncher"
   #define MyChannel         "shaurma"
   #define MyShellExeName    "ShaurmLauncher.exe"
@@ -194,7 +194,7 @@ DisableDirPage=no
 AlwaysShowDirOnReadyPage=yes
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-PrivilegesRequired=lowest
+PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#OutputDir}
 OutputBaseFilename={#MyOutputBaseFilename}
@@ -251,18 +251,27 @@ ukrainian.ForeignSignerWarnText=УВАГА: цей інсталятор підп
 ; через App Control НЕ пов'язане з вірусами, як його вимкнути і що робити,
 ; а кнопка відкриває офіційну документацію Microsoft.
 english.AppControlPageTitle=Windows may block the launcher (App Control)
-english.AppControlPageDesc=Please read this before installing. It is not a virus.
+english.AppControlPageDesc=Check the exact Windows security message before continuing.
 english.AppControlDocButton=Read the official Microsoft documentation
 english.AppControlDocUrl=https://support.microsoft.com/en-us/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003
-english.AppControlText=WHAT THIS IS%nWindows 11 has a protection feature called App Control (its official name is Smart App Control). It lets only programs that Microsoft already knows run: widely used programs, or programs with a signature Microsoft trusts. A new or not-yet-popular program such as {#MyAppName} can be blocked simply because Microsoft does not yet have enough reputation data about it.%n%nIT IS NOT RELATED TO VIRUSES%nApp Control is not an antivirus. A block by App Control does not mean a virus or data theft was found in the launcher. It only means the program is not yet popular enough for Microsoft. The block disappears as the program becomes more widely used.%n%nHOW TO TELL IT HAPPENED%nAfter installation the launcher does not start, disappears, or Windows shows a message or notification that mentions Smart App Control / App Control (for example "Smart App Control blocked part of this app"), or the launcher file vanishes from the installation folder.%n%nWHAT TO DO%n1. Click Start and type "Smart App Control". Open "Smart App Control settings". (The same place: Windows Security > App & browser control > Smart App Control settings.)%n2. Select "Off" and confirm.%n3. Start the launcher again. If its file disappeared, run this installer once more.%n%nMicrosoft states that it is not possible to allow a single program in Smart App Control, so turning it off is the way to run such a program. Per Microsoft's documentation you can turn it back on later in the same place. Turn it off only if you trust where you got this installer (the official site: https://shaurma-launcher.org/).%n%nTo make sure this text is honest, press the button below: it opens the official Microsoft documentation about App Control.
+english.AppControlText=Windows may block an application because of its reputation, signature, or security analysis. A block does not establish whether a file is safe.%n%nKeep Windows protection enabled. Open Windows Security and inspect Protection history and the exact notification. Record the file name, SHA-256, detection name, and publisher signature.%n%nIf malware is reported, stop installation and send these details to the developer for investigation. Use a verified official release after the issue has been resolved. Do not restore quarantined files or add antivirus exclusions to complete installation.%n%nThe button below opens Microsoft documentation about Smart App Control.
 ukrainian.AppControlPageTitle=Windows може заблокувати лаунчер (App Control)
-ukrainian.AppControlPageDesc=Прочитайте це перед встановленням. Це не вірус.
+ukrainian.AppControlPageDesc=Перевірте точне повідомлення Безпеки Windows перед продовженням.
 ukrainian.AppControlDocButton=Прочитати офіційну документацію Microsoft
 ukrainian.AppControlDocUrl=https://support.microsoft.com/uk-ua/topic/what-is-smart-app-control-285ea03d-fa88-4d56-882e-6698afdb7003
-ukrainian.AppControlText=ЩО ЦЕ ТАКЕ%nУ Windows 11 є функція захисту App Control (офіційна назва — Smart App Control). Вона дозволяє запуск лише тих програм, які Microsoft уже «знає»: широко поширених або з підписом, якому Microsoft довіряє. Нову чи ще не популярну програму, як-от {#MyAppName}, можуть заблокувати просто тому, що в Microsoft поки немає достатньо даних про її репутацію.%n%nЦЕ НЕ ПОВ'ЯЗАНО З ВІРУСАМИ%nApp Control — не антивірус. Блокування через App Control не означає, що в лаунчері знайдено вірус чи крадіжку даних. Воно означає лише те, що програма ще недостатньо відома Microsoft. Коли програмою користуватиметься більше людей, блокування зникне.%n%nЯК ПОНЯТИ, ЩО ЦЕ СТАЛОСЯ%nПісля встановлення лаунчер не запускається, зникає, або Windows показує повідомлення чи сповіщення, де згадується Smart App Control / App Control (наприклад, «Smart App Control заблокував частину цієї програми»), або файл лаунчера зникає з теки встановлення.%n%nЩО РОБИТИ%n1. Натисніть «Пуск» і введіть «Smart App Control». Відкрийте «Параметри Smart App Control» (Smart App Control settings). Те саме місце: «Безпека Windows» > «Керування програмами та браузером» (App & browser control) > «Параметри Smart App Control».%n2. Оберіть «Вимк.» (Off) і підтвердіть.%n3. Запустіть лаунчер знову. Якщо його файл зник — запустіть цей інсталятор ще раз.%n%nMicrosoft зазначає, що дозволити окрему програму в Smart App Control неможливо, тому щоб запустити таку програму, його потрібно вимкнути. За документацією Microsoft, пізніше його можна ввімкнути назад у тому самому місці. Вимикайте його, лише якщо довіряєте джерелу, з якого завантажено цей інсталятор (офіційний сайт: https://shaurma-launcher.org/).%n%nЩоб переконатися, що цей текст не вигадка, натисніть кнопку нижче: вона відкриє офіційну документацію Microsoft про App Control.
+ukrainian.AppControlText=Windows може заблокувати програму через репутацію, підпис або результати перевірки безпеки. Саме блокування не доводить безпечність файла.%n%nЗалиште захист Windows увімкненим. Відкрийте Безпеку Windows, перегляньте Журнал захисту й точне повідомлення. Збережіть назву файла, SHA-256, назву виявлення та дані підпису видавця.%n%nЯкщо виявлено загрозу, припиніть встановлення й передайте ці дані розробнику для перевірки. Скористайтеся перевіреним офіційним релізом після усунення проблеми. Не відновлюйте файли з карантину й не додавайте винятки антивірусу заради встановлення.%n%nКнопка нижче відкриває документацію Microsoft про Smart App Control.
+
+english.P2PFirewallTask=Allow launcher P2P connections on private and public networks (administrator rights required)
+english.SkinServiceTask=Enable the Shaurma skin service for game accounts (skin and game session requests may pass through Shaurma)
+ukrainian.SkinServiceTask=Увімкнути сервіс скінів Shaurma для ігрових акаунтів (запити скінів та ігрових сесій можуть проходити через Shaurma)
+ukrainian.P2PFirewallTask=Дозволити P2P-з'єднання лаунчера у приватних і публічних мережах (потрібні права адміністратора)
+english.P2PFirewallError=Could not configure Windows Firewall for P2P. Run this installer as administrator with the P2P option selected. Existing block rules or organization policies may still block connections.
+ukrainian.P2PFirewallError=Не вдалося налаштувати брандмауер Windows для P2P. Запустіть інсталятор як адміністратор з обраною опцією P2P. Наявні блокувальні правила або політики організації можуть і далі блокувати з'єднання.
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
+Name: "p2pfirewall"; Description: "{cm:P2PFirewallTask}"
+Name: "skinservice"; Description: "{cm:SkinServiceTask}"
 
 [Files]
 ; ── Інсталятор містить ЛИШЕ ОДНОРАЗОВИЙ bootstrap (Shell A) ────────────
@@ -293,7 +302,7 @@ Name: "{app}"
 ; запис у "Програми і компоненти" НІКУДИ не діваються (Uninstallable за
 ; замовчуванням = yes) — деінсталяція, як і раніше, повністю робоча
 ; (Панель керування → Програми і компоненти → Shaurm Launcher), включно
-; з CurUninstallStepChanged (taskkill, RemoveFirewallRule, [UninstallDelete]).
+; з CurUninstallStepChanged (taskkill, [UninstallDelete]).
 Name: "{group}\{#MyAppName}";                       Filename: "{app}\{#MyShellExeName}"
 Name: "{autodesktop}\{#MyAppName}";                 Filename: "{app}\{#MyShellExeName}"; Tasks: desktopicon
 
@@ -322,14 +331,11 @@ Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Shaurbundle\shell\open\comm
 ; Сторінка https://shaurma-launcher.org/friend/@handle запускає
 ; shaurma://friend/@handle?n=Nick — браузер питає «Відкрити Shaurma Launcher?»
 ; і стартує shell.exe з URL як аргументом (shell/main.go: parseFriendLinkArg →
-; подія friend:open → модалка «Додати друга»). Лише Shaurma-редакція: друзі є
-; тільки в ній, а Base не має перехоплювати схему.
-#if MyChannel == "shaurma"
+; подія friend:open → модалка «Додати друга»). Доступно в обох редакціях.
 Root: HKCU; Subkey: "Software\Classes\shaurma"; ValueType: string; ValueName: ""; ValueData: "URL:Shaurma Launcher"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\shaurma"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
 Root: HKCU; Subkey: "Software\Classes\shaurma\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyShellExeName},0"
 Root: HKCU; Subkey: "Software\Classes\shaurma\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyShellExeName}"" ""%1"""
-#endif
 
 [Run]
 Filename: "{app}\{#MyShellExeName}"; \
@@ -337,6 +343,7 @@ Filename: "{app}\{#MyShellExeName}"; \
   Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
+Type: files; Name: "{app}\disable-skins-once"
 ; Видалення лаунчера має прибирати ВСІ компоненти, які встановив/скачав
 ; сам лаунчер: exe, DLL, zip-архіви і розпаковані теки фронтенду. Раніше
 ; тут нічого не було, і після унінсталу в installDir лишались backend.dll,
@@ -565,77 +572,109 @@ begin
   // DeleteFile нижче мовчки не спрацює (Windows тримає лок на запущений
   // exe).
   Exec('taskkill.exe', '/IM {#MyOtherShellExeName} /F', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  // Знімаємо firewall-правило попередньої редакції — інакше воно лишиться
-  // висіти, вказуючи на вже видалений файл.
-  Exec('netsh.exe',
-    'advfirewall firewall delete rule name="{#MyRulePrefix} Out-{#MyOtherShellExeName}"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   DeleteFile(OtherExePath);
   DeleteFile(OtherExePath + '.previous');
   DeleteFile(OtherExePath + '.new');
   DeleteFile(OtherExePath + '~');
 end;
 
-// ── Windows Firewall ────────────────────────────────────────────────────
-// Лише ОДИН процес виходить у мережу: shell.exe (Modrinth/CurseForge API,
-// завантаження збірок, перевірка оновлень — і backend.dll, і updater.dll
-// живуть у тому самому процесі). Loopback-правила для internal IPC не
-// потрібні — ніякого TCP між процесами немає.
-procedure RegisterFirewallRule;
+// Native Windows Firewall API: no PowerShell/cmd/netsh subprocesses.
+// Only the launcher EXE is allowed, on private (2) and public (4) profiles.
+procedure ConfigureP2PFirewall;
 var
-  ResultCode: Integer;
+  Policy, Rule: Variant;
+  Direction: Integer;
+  RuleName, ExePath: String;
 begin
-  Exec('netsh.exe',
-    'advfirewall firewall delete rule name="{#MyRulePrefix} Out"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-
-  Exec('netsh.exe',
-    'advfirewall firewall delete rule name="{#MyRulePrefix} Out-{#MyShellExeName}"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  Exec('netsh.exe',
-    'advfirewall firewall add rule' +
-    ' name="{#MyRulePrefix} Out-{#MyShellExeName}"' +
-    ' dir=out' +
-    ' action=allow' +
-    ' program="' + ExpandConstant('{app}\{#MyShellExeName}') + '"' +
-    ' profile=private' +
-    ' description="Outbound access for {#MyShellExeName} (CDN/API)"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if not WizardIsTaskSelected('p2pfirewall') then
+    Exit;
+  try
+    if not IsAdmin then
+      RaiseException('P2P firewall rules require administrator rights');
+    Policy := CreateOleObject('HNetCfg.FwPolicy2');
+    ExePath := ExpandConstant('{app}\{#MyShellExeName}');
+    for Direction := 1 to 2 do
+    begin
+      RuleName := '{#MyRulePrefix} P2P-{#MyShellExeName}-' + IntToStr(Direction);
+      Rule := Unassigned;
+      try
+        Rule := Policy.Rules.Item(RuleName);
+      except
+        // Missing rule: create it below.
+      end;
+      if VarIsEmpty(Rule) then
+      begin
+        Rule := CreateOleObject('HNetCfg.FWRule');
+        Rule.Name := RuleName;
+        Rule.Grouping := 'Shaurma Launcher P2P';
+        Rule.ApplicationName := ExePath;
+        Rule.Protocol := 256; // NET_FW_IP_PROTOCOL_ANY (TCP and UDP)
+        Rule.Direction := Direction; // inbound / outbound
+        Rule.Profiles := 6; // private | public, no domain profile
+        Rule.Action := 1; // NET_FW_ACTION_ALLOW
+        Rule.Enabled := True;
+        Policy.Rules.Add(Rule);
+      end
+      else
+      begin
+        if (Rule.Grouping <> 'Shaurma Launcher P2P') or
+           (CompareText(Rule.ApplicationName, ExePath) <> 0) then
+          RaiseException('Firewall rule name is already used by another rule');
+        Rule.Profiles := 6;
+        Rule.Protocol := 256;
+        Rule.Direction := Direction;
+        Rule.Action := 1;
+        Rule.Enabled := True;
+      end;
+    end;
+  except
+    Log('P2P firewall configuration failed: ' + GetExceptionMessage);
+    MsgBox(CustomMessage('P2PFirewallError'), mbError, MB_OK);
+  end;
 end;
 
-procedure RemoveFirewallRule;
+procedure RemoveP2PFirewallRules(ExeName: String);
 var
-  ResultCode: Integer;
+  Policy, Rule: Variant;
+  Direction: Integer;
+  RuleName: String;
 begin
-  Exec('netsh.exe',
-    'advfirewall firewall delete rule name="{#MyRulePrefix} Out-{#MyShellExeName}"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
-  // Про всяк випадок — правило іншої редакції, якщо колись лишилось
-  // невитерте (див. CleanupOtherEditionArtifacts, яка мала б знімати
-  // його ще при встановленні наступної редакції).
-  Exec('netsh.exe',
-    'advfirewall firewall delete rule name="{#MyRulePrefix} Out-{#MyOtherShellExeName}"',
-    '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  if not IsAdmin then
+    Exit;
+  try
+    Policy := CreateOleObject('HNetCfg.FwPolicy2');
+    for Direction := 1 to 2 do
+    begin
+      RuleName := '{#MyRulePrefix} P2P-' + ExeName + '-' + IntToStr(Direction);
+      try
+        Rule := Policy.Rules.Item(RuleName);
+        if (Rule.Grouping = 'Shaurma Launcher P2P') and
+           (CompareText(Rule.ApplicationName, ExpandConstant('{app}\') + ExeName) = 0) then
+          Policy.Rules.Remove(RuleName);
+      except
+        Log('P2P firewall rule cleanup skipped: ' + GetExceptionMessage);
+      end;
+    end;
+  except
+    Log('P2P firewall cleanup failed: ' + GetExceptionMessage);
+  end;
 end;
 
-// ── Після встановлення: лише firewall-правило ───────────────────────────
-// Решту компонентів (updater.dll, backend.dll, frontend.zip...) качає
-// САМ (реальний) shell.exe при першому запуску (bootstrap/main.go:
-// ОДНОРАЗОВИЙ Shell A підміняє себе на Shell B; далі Shell B качає
-// updater.dll з прогресом у splash, потім апдейтер качає решту).
-// Інсталятор не знає про хеші цих компонентів — тому setup.exe завжди
-// одного розміру і навіть річний setup поставить актуальну версію.
-//
-// CleanupOtherEditionArtifacts викликається ПЕРШОЮ — до реєстрації
-// нового firewall-правила, — щоб прибрати .exe/правило попередньої
-// редакції, якщо в цій самій installDir щойно було виявлено іншу
-// (перемикання shaurma ↔ base в спільній теці).
+// Apply the selected P2P permission after installing the launcher.
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
     CleanupOtherEditionArtifacts();
-    RegisterFirewallRule();
+    if not WizardIsTaskSelected('skinservice') then
+    begin
+      if not SaveStringToFile(ExpandConstant('{app}\disable-skins-once'), 'disabled', False) then
+        RaiseException('Could not save skin service opt-out');
+    end
+    else
+      DeleteFile(ExpandConstant('{app}\disable-skins-once'));
+    RemoveP2PFirewallRules('{#MyOtherShellExeName}');
+    ConfigureP2PFirewall();
   end;
 end;
 
@@ -658,7 +697,8 @@ begin
 
   if CurUninstallStep = usPostUninstall then
   begin
-    RemoveFirewallRule();
+    RemoveP2PFirewallRules('{#MyShellExeName}');
+    RemoveP2PFirewallRules('{#MyOtherShellExeName}');
     // Користувач явно обрав «видалити все» — прибираємо папку даних
     // (.shaurm: збірки, акаунти, налаштування, гардероб). Інакше вона
     // зберігається (див. коментар до InitializeUninstall).

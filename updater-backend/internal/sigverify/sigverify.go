@@ -29,7 +29,7 @@ const Context = "shaurma-launcher-manifest-v1\n"
 var ErrBadSignature = errors.New("підпис маніфесту оновлення недійсний")
 
 // Enabled — чи вшито хоч один довірений ключ.
-func Enabled() bool { return len(keys(TrustedKeys)) > 0 }
+func Enabled() bool { return requireManifestSignature || len(keys(TrustedKeys)) > 0 }
 
 func keys(list string) []ed25519.PublicKey {
 	var out []ed25519.PublicKey

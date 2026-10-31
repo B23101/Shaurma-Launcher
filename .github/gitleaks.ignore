@@ -1,0 +1,3 @@
+# Historical credential revoked by the owner, confirmed 2026-10-30.
+# This exception applies only to this exact finding; other findings still fail.
+c6e4fe08a0efa6a1456ce469fd0f67ff8200d812:launcher/internal/ai/gemini.go:generic-api-key:42

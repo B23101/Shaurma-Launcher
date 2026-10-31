@@ -1,0 +1,135 @@
+/* Native Mafia menu layout. Values follow Fx, FancyButton, VoiceSlider and
+   MafiaTitleScreen. Every selector stays inside this pack's active layout. */
+.content:has(.mafia-layout) { padding: 0 !important; }
+.mafia-layout {
+  --bg: #0a0a10; --bg-panel: #14141c; --bg-card: #14141c;
+  --bg-input: #0a0a10; --bg-input-hi: #1e1e2a;
+  --text: #f2f2f7; --text-mute: #9a9aae; --text-dim: #9a9aae;
+  --orange: #ffc83d; --orange-2: #ffc83d; --orange-rgb: 255,200,61;
+  --border: #3a3a4c; --border-hi: #ffc83d;
+  --green: #3ddc84; --blue: #4da3ff; --red: #e5383b; --violet: #a77bff;
+  position: relative; isolation: isolate; min-height: var(--mafia-view-height);
+  font-family: var(--font-mono); color: var(--text); background: #0a0a10;
+  container-type: inline-size;
+}
+.mafia-scene { position: absolute; inset: 0; overflow: hidden; z-index: -1; pointer-events: none; }
+.mafia-panorama { position: absolute; inset: 0; width: 125%; background-image: var(--mafia-scene); background-size: cover; background-position: center; }
+.mafia-shade { position: absolute; inset: 0; background: linear-gradient(90deg,#05050aeb,#05050a99 35%,#05050a20 70%),linear-gradient(0deg,#020203b3,transparent 24%,transparent 76%,#02020399),linear-gradient(90deg,#ffc83d17,transparent 42%),#05050a4d; box-shadow: inset 0 0 150px #0009; }
+.mafia-scanlines { position: absolute; inset: 0; background: repeating-linear-gradient(0deg,#00000012 0 1px,transparent 1px 4px); }
+.mafia-embers { position: absolute; inset: 0; opacity: .5; background-image: radial-gradient(circle,#ffc83d 0 1px,transparent 1.5px),radial-gradient(circle,#ffc83d80 0 1px,transparent 1.5px); background-size: 211px 173px,157px 239px; mask-image: linear-gradient(90deg,transparent,#000); }
+.mafia-corners { position: absolute; inset: 14px; border: 2px solid #ffc83d66; clip-path: polygon(0 0,24px 0,24px 2px,calc(100% - 24px) 2px,calc(100% - 24px) 0,100% 0,100% 24px,calc(100% - 2px) 24px,calc(100% - 2px) calc(100% - 24px),100% calc(100% - 24px),100% 100%,calc(100% - 24px) 100%,calc(100% - 24px) calc(100% - 2px),24px calc(100% - 2px),24px 100%,0 100%,0 calc(100% - 24px),2px calc(100% - 24px),2px 24px,0 24px); }
+.mafia-layout .design-switch { position: absolute; right: 28px; top: 10px; z-index: 4; }
+.pack-page-design.mafia-layout .design-content {
+  position: relative; display: grid; grid-template-columns: clamp(230px,30cqw,300px) minmax(0,1fr);
+  grid-template-rows: auto auto auto 1fr; gap: 14px 5cqw;
+  min-height: var(--mafia-view-height); padding: 56px max(26px,5cqw) 34px 7cqw;
+  align-items: start;
+}
+.mafia-layout .design-content > .pack-toolbar { grid-column: 1; grid-row: 2; position: static; display: flex; flex-direction: column; align-items: stretch; flex-wrap: nowrap; gap: 7px; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; backdrop-filter: none; }
+.mafia-layout .pack-toolbar > .pt-spacer, .mafia-layout .pack-toolbar > .pt-id { display: none; }
+.mafia-layout .pack-toolbar > .btn { justify-content: flex-start; min-height: 34px; padding-left: 18px; }
+.mafia-layout .pack-toolbar > .btn-primary, .mafia-layout .pack-toolbar > .btn-danger { order: -2; min-height: 44px; font-size: 15px; }
+.mafia-layout .pack-toolbar > .btn:first-child { order: 10; }
+.mafia-layout .pack-toolbar > .menu-wrap { align-self: stretch; }
+.mafia-layout .pack-toolbar > .menu-wrap > button { width: 100%; justify-content: flex-start; }
+.mafia-layout .design-content > .inst-banner { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; min-height: 100px; height: auto; gap: 10px; padding: 0 0 18px; margin: 0; border: 0; border-radius: 0; background: none !important; box-shadow: none; overflow: visible; }
+.mafia-layout .inst-banner .ib-shine, .mafia-layout .inst-banner .ib-title > .ib-ic, .mafia-layout .inst-banner .ib-title > i { display: none; }
+.mafia-layout .ib-title { padding: 0; }
+.mafia-layout .ib-meta { min-width: 0; }
+.mafia-layout .ib-name { color: #ffc83d; font: 800 clamp(32px,5cqw,48px)/1.12 var(--font-mono); text-transform: uppercase; letter-spacing: .08em; text-shadow: 0 2px 0 #000,0 0 24px #ffc83d40; white-space: normal; overflow-wrap: anywhere; }
+.mafia-layout .ib-meta::after { content: ''; display: block; height: 1px; margin-top: 18px; background: linear-gradient(90deg,#ffc83d,transparent); }
+.mafia-layout .ib-badges { margin-top: 12px; gap: 6px; }
+.mafia-layout .ib-tag, .mafia-layout .badge-mc, .mafia-layout .ib-lock, .mafia-layout .ib-time { position: static; background: #ffc83d14; border: 1px solid #ffc83d66; border-radius: 6px; color: #e9d294; font: 10px/1.5 var(--font-mono); padding: 3px 8px; }
+.mafia-layout .design-content > .tabbar { grid-column: 1; grid-row: 3; display: flex; flex-direction: column; align-items: stretch; width: 100%; gap: 7px; overflow: visible; border: 0; margin: 0; padding: 0; background: none; box-shadow: none; }
+.mafia-layout .tabbar::after, .mafia-layout .tabbar::before { display: none; }
+.mafia-layout .tab-btn { width: 100%; min-height: 34px; justify-content: flex-start; text-align: left; padding: 8px 18px; margin: 0; font: 12px/1.4 var(--font-mono); }
+.mafia-layout .tab-btn::after { content: '›'; position: absolute; inset: auto 14px auto auto; width: auto; height: auto; background: none; opacity: .6; }
+.mafia-layout .tab-btn[data-section="game"] { --control-accent: #3ddc84; }
+.mafia-layout .tab-btn[data-section="perf"] { --control-accent: #4da3ff; }
+.mafia-layout .tab-btn .num { margin-left: auto; background: transparent; color: inherit; }
+.mafia-layout .tabbar.tb-slide .tab-btn { padding: 8px 18px; border-radius: 5px; background: linear-gradient(#1e1e2aeb,#0a0a10f2) !important; box-shadow: 0 4px 10px #0006,inset 0 1px #ffffff1a !important; }
+.mafia-layout .tabbar.tb-slide .tab-btn.active { background: linear-gradient(#292718eb,#0a0a10f2) !important; }
+.mafia-layout .design-content > .tab-panel-host { grid-column: 2; grid-row: 1 / span 4; min-width: 0; max-height: calc(var(--mafia-view-height) - 100px); overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #ffc83dbf #ffffff14; padding: 0 10px 20px 0; align-self: start; }
+.mafia-layout .design-content > :is(.launch-prog,.mig-banner,.inst-progress,.pip-running) { grid-column: 2; }
+.mafia-layout .design-content > .pack-empty { grid-column: 1 / -1; min-height: calc(var(--mafia-view-height) - 100px); background: none !important; border: 0; box-shadow: none; display: flex; justify-content: flex-start; }
+.mafia-layout .pack-empty .pe-inner { align-items: flex-start; text-align: left; max-width: 480px; margin: 0; }
+.mafia-layout .pack-empty .pe-title { font: 800 48px/1.12 var(--font-mono); color: #ffc83d; }
+.mafia-layout .pack-empty .pe-ic { display: none; }
+.mafia-layout .tab-panel-anim { animation: none; }
+.mafia-layout :is(.card,.st-card,.scard,.s-card,.srv-card,.server-card,.pss-head,.screenshot-card) { background: #14141ce6; border: 1px solid #3a3a4c; border-radius: 5px; box-shadow: 0 8px 24px #0006,inset 0 1px #ffffff14; backdrop-filter: blur(8px); }
+.mafia-layout :is(.card-head,.st-card-head,.sc-head) { background: #1e1e2a99; border-color: #3a3a4c; border-radius: 5px 5px 0 0; }
+.mafia-layout :is(.ct,.st-card-title,.sc-title,.rl-name,.st-row-name) { font-family: var(--font-mono); }
+.mafia-layout :is(.row,.st-row) { border-color: #3a3a4c99; }
+.mafia-layout :is(.ci,.ci.violet,.ci.blue) { border-radius: 4px; color: #ffc83d; background: #ffc83d14; }
+.mafia-layout :is(button:not(.st-switch),.btn,.tab-btn,.dd-item,.chip,.pss-chip,.seg button,.select-trigger) {
+  --control-accent: #ffc83d; position: relative; border: 1px solid #3a3a4c; border-radius: 5px;
+  background: linear-gradient(#1e1e2aeb,#0a0a10f2); color: #c8c8d8;
+  box-shadow: 0 4px 10px #0006,inset 0 1px #ffffff1a;
+  font-family: var(--font-mono); text-shadow: 0 1px #000;
+}
+.mafia-layout :is(.btn-primary,.tab-btn.active,.seg button.active,.chip.on) { border-color: color-mix(in srgb,var(--control-accent) 70%,#3a3a4c); color: #f2f2f7; background: linear-gradient(#292718eb,#0a0a10f2); }
+.mafia-layout .btn-danger { --control-accent: #e5383b; color: #e0787b; }
+.mafia-layout :is(.btn-success,.btn-green) { --control-accent: #3ddc84; }
+.mafia-layout .btn-info { --control-accent: #4da3ff; }
+.mafia-layout :is(.tab-btn,.pack-toolbar .btn)::before { content: ''; position: absolute; top: 4px; bottom: 4px; left: 0; width: 2px; border-radius: 1px; background: var(--control-accent); opacity: .55; }
+.mafia-layout :is(.tab-btn.active,.pack-toolbar .btn-primary)::before { width: 3px; opacity: 1; }
+.mafia-layout :is(button,.btn,.tab-btn):disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.mafia-layout :is(.input,.st-input,.st-select,.st-num-input,textarea,select,input:not([type=range]):not([type=checkbox]):not([type=radio])) { color: #f2f2f7; background-color: #0a0a10eb; border: 1px solid #3a3a4c; border-radius: 4px; font-family: var(--font-mono); box-shadow: inset 0 2px 5px #0006; }
+.mafia-layout :is(input,select,textarea,button,[tabindex]):focus-visible { outline: 2px solid #ffc83d; outline-offset: 3px; }
+.mafia-layout :is(.input,.st-input):focus { border-color: #ffc83d; }
+.mafia-layout :is(.toggle,.st-switch) { width: 42px; min-width: 42px; height: 24px; border: 1px solid #3a3a4c; border-radius: 4px; background: #1e1e2aeb; box-shadow: inset 0 1px #ffffff14; }
+.mafia-layout :is(.toggle,.st-switch)::after { width: 16px; height: 16px; left: 3px; top: 3px; border-radius: 2px; background: #9a9aae; box-shadow: 0 2px 4px #0006; }
+.mafia-layout :is(.toggle.on,.st-switch.on) { border-color: #ffc83d; background: #ffc83d26; }
+.mafia-layout :is(.toggle.on,.st-switch.on)::after { background: #ffc83d; transform: translateX(18px); box-shadow: 0 0 10px #ffc83d50; }
+.mafia-layout .ram-track { height: 24px; margin: 12px 0 6px; background: #1e1e2aeb; border: 1px solid #3a3a4cf2; border-radius: 4px; overflow: hidden; }
+.mafia-layout .ram-fill { background: #ffc83d73; border-radius: 3px 0 0 3px; box-shadow: none; }
+.mafia-layout .ram-knob { width: 2px; height: 18px; border-radius: 0; background: #fff; box-shadow: none; }
+.mafia-layout input[type=range] { appearance: none; height: 24px; border-radius: 4px; background: #1e1e2aeb; border: 1px solid #3a3a4c; accent-color: #ffc83d; cursor: ew-resize; }
+.mafia-layout input[type=range]::-webkit-slider-runnable-track { height: 22px; border-radius: 3px; background: linear-gradient(90deg,#ffc83d73 var(--mafia-range-fill,0%),transparent var(--mafia-range-fill,0%)); }
+.mafia-layout input[type=range]::-webkit-slider-thumb { appearance: none; width: 3px; height: 18px; margin-top: 2px; background: #fff; border: 0; border-radius: 0; box-shadow: 0 0 8px #ffc83d70; }
+.mafia-layout input[type=range]::-moz-range-thumb { width: 3px; height: 18px; background: #fff; border: 0; border-radius: 0; }
+.mafia-layout input[type=range]::-moz-range-progress { height: 22px; background: #ffc83d73; }
+.mafia-layout :is(.dropdown-menu,.custom-select-menu,.cs-menu,.select-menu) { background: #14141cf5; border: 1px solid #3a3a4c; border-radius: 5px; box-shadow: 0 12px 30px #0009; }
+.mafia-layout .console-tab-wrap { --ct-top: 120px !important; height: calc(var(--mafia-view-height) - 130px); }
+@media (hover: hover) {
+  .mafia-layout :is(button:not(:disabled),.btn:not(:disabled),.tab-btn,.dd-item,.chip):hover {
+    border-color: var(--control-accent,#ffc83d); color: #fff;
+    background: linear-gradient(color-mix(in srgb,var(--control-accent,#ffc83d) 24%,#1e1e2a),color-mix(in srgb,var(--control-accent,#ffc83d) 12%,#0a0a10));
+    box-shadow: 0 4px 10px #0006,0 0 14px color-mix(in srgb,var(--control-accent,#ffc83d) 22%,transparent),inset 0 1px #ffffff33,inset 0 -2px var(--control-accent,#ffc83d);
+  }
+  .mafia-layout .ram-track:hover { border-color: #ffc83d; }
+  .mafia-layout .ram-track:hover .ram-fill { background: #ffc83d9e; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:hover { background: linear-gradient(color-mix(in srgb,var(--control-accent) 24%,#1e1e2a),color-mix(in srgb,var(--control-accent) 12%,#0a0a10)) !important; box-shadow: 0 4px 10px #0006,0 0 14px color-mix(in srgb,var(--control-accent) 22%,transparent),inset 0 1px #ffffff33,inset 0 -2px var(--control-accent) !important; }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .mafia-layout .mafia-panorama { animation: mafia-pan 20s ease-in-out infinite alternate; }
+  .mafia-layout .mafia-embers { animation: mafia-embers 16s linear infinite alternate; }
+  .pack-page-design.mafia-layout .design-content { animation: mafia-screen-in 600ms ease-out both; }
+  .mafia-layout :is(.btn,.tab-btn,button) { transition: transform 150ms ease-out,border-color 150ms ease-out,box-shadow 150ms ease-out,background-color 150ms ease-out; }
+  .mafia-layout .tabbar.tb-slide .tab-btn { animation: mafia-item-in 460ms cubic-bezier(.2,0,0,1) both; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:nth-child(2) { animation-delay: 75ms; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:nth-child(3) { animation-delay: 150ms; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:nth-child(4) { animation-delay: 225ms; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:nth-child(5) { animation-delay: 300ms; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:nth-child(6) { animation-delay: 375ms; }
+  .mafia-layout .tabbar.tb-slide .tab-btn:nth-child(7) { animation-delay: 450ms; }
+  .mafia-layout :is(button,.btn):not(:disabled):active { filter: brightness(1.35); }
+  @keyframes mafia-pan { from { transform: translateX(0); } to { transform: translateX(-20%); } }
+  @keyframes mafia-embers { to { transform: translate(12px,-35px); } }
+  @keyframes mafia-screen-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mafia-item-in { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: translateX(0); } }
+}
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .mafia-layout .tab-btn:hover { transform: translateX(4px); }
+}
+@container (max-width: 760px) {
+  .pack-page-design.mafia-layout .design-content { grid-template-columns: 230px minmax(0,1fr); column-gap: 20px; padding-inline: 26px; }
+}
+@container (max-width: 600px) {
+  .pack-page-design.mafia-layout .design-content { display: flex; flex-direction: column; gap: 20px; padding: 52px 26px 26px; }
+  .mafia-layout .design-content > :is(.tab-panel-host,.pack-toolbar,.inst-banner,.tabbar) { width: 100%; max-height: none; }
+  .mafia-layout .design-content > .tab-panel-host { overflow: visible; }
+}
+
+.mafia-layout .tab-btn[data-section="content"] { --control-accent: #a77bff; }
+.mafia-layout .ram-track::after { content: attr(data-value); position: absolute; inset: 0; display: grid; place-items: center; color: #f2f2f7; font: 11px var(--font-mono); text-shadow: 0 1px #000; pointer-events: none; }

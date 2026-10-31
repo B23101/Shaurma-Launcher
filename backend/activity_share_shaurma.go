@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // activity_share_shaurma.go — передачі збірок/серверів друзям у реєстрі

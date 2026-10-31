@@ -1,28 +1,124 @@
-﻿SHAURMA LAUNCHER - what this installer does / що робить цей інсталятор
+SHAURMA LAUNCHER - what this installer does / що робить цей інсталятор
 =====================================================================
 
 ENGLISH
 -------
-Files: installs into the folder you choose (default: %LOCALAPPDATA%\ShaurmLauncher, no administrator rights needed). On first start the launcher downloads its remaining components (updater, backend, UI) from the Shaurma CDN and verifies them.
+Files: installs into the folder you choose (default: %LOCALAPPDATA%\ShaurmLauncher, administrator rights requested by default for P2P permissions). On first start the launcher downloads its remaining components (updater, backend, UI) from the Shaurma CDN and verifies them.
 
 System changes made by this installer:
  - Start menu shortcut and an optional desktop shortcut (you can untick it).
  - File associations for .shaurmpack and .shaurmbundle (current user only).
- - The shaurma:// link scheme for friend invitations (Shaurma edition, current user only).
- - A Windows Firewall rule that allows the launcher outbound access (private networks). It is created only when setup runs with administrator rights.
- - An entry in "Apps & features" so you can uninstall at any time. Uninstalling removes the launcher and the firewall rule; your game data and settings are kept unless you choose to delete them.
+ - The shaurma:// link scheme for friend invitations (both editions, current user only).
+ - The optional skin service may route skin and game session requests through Shaurma for all account types. Deselect it to disable automatic skin injection and previews; this can be changed later in Settings.
+ - The P2P option (selected by default) adds inbound and outbound permissions for the launcher EXE on private and public networks through Windows Firewall. Administrator rights are required; failures are reported. Uninstall removes its own P2P rules. Existing block rules or organization policies may still prevent access.
+ - An entry in "Apps & features" so you can uninstall at any time. Uninstalling removes the launcher; your game data and settings are kept unless you choose to delete them.
 
 Privacy: the launcher contacts only the services it needs (Mojang/Microsoft login, Modrinth, CurseForge, mod-loader metadata, Shaurma servers for accounts, friends and updates). Anonymous usage statistics are OFF by default and are sent only if you opt in inside the launcher. AI helpers (translation, crash analysis) send the text you submit to the AI provider only when you use them. Full policy: https://github.com/B23101/Shaurma-Launcher/blob/main/PRIVACY.md
 
 УКРАЇНСЬКОЮ
 -----------
-Файли: встановлюється у вибрану вами теку (за замовчуванням %LOCALAPPDATA%\ShaurmLauncher, права адміністратора не потрібні). При першому запуску лаунчер докачує решту компонентів (апдейтер, backend, інтерфейс) з CDN Shaurma і перевіряє їх.
+Файли: встановлюється у вибрану вами теку (за замовчуванням %LOCALAPPDATA%\ShaurmLauncher, типово запитуються права адміністратора для дозволів P2P). При першому запуску лаунчер докачує решту компонентів (апдейтер, backend, інтерфейс) з CDN Shaurma і перевіряє їх.
 
 Зміни в системі, які робить інсталятор:
  - Ярлик у меню «Пуск» і необов'язковий ярлик на робочому столі (можна зняти позначку).
  - Асоціації файлів .shaurmpack і .shaurmbundle (лише для поточного користувача).
- - Схема посилань shaurma:// для запрошень у друзі (Shaurma-редакція, лише для поточного користувача).
- - Правило брандмауера Windows, яке дозволяє лаунчеру вихідний доступ (приватні мережі). Створюється лише якщо інсталятор запущено з правами адміністратора.
- - Запис у «Програми та компоненти» — видалити можна будь-коли. Видалення прибирає лаунчер і правило брандмауера; ігрові дані й налаштування лишаються, якщо ви не оберете їх видалити.
+ - Схема посилань shaurma:// для запрошень у друзі (обидві редакції, лише для поточного користувача).
+ - Необов'язковий сервіс скінів може передавати запити скінів та ігрових сесій через Shaurma для всіх типів акаунтів. Зняття позначки вимикає автоматичні скіни та перегляд із сервера; вибір можна змінити в налаштуваннях.
+ - Опція P2P (типово ввімкнена) додає вхідний і вихідний дозволи для EXE лаунчера у приватних і публічних мережах через брандмауер Windows. Потрібні права адміністратора; про помилки повідомляється. Деінсталяція видаляє власні правила P2P. Наявні блокувальні правила або політики організації можуть і далі забороняти доступ.
+ - Запис у «Програми та компоненти» — видалити можна будь-коли. Видалення прибирає лаунчер; ігрові дані й налаштування лишаються, якщо ви не оберете їх видалити.
 
 Приватність: лаунчер звертається лише до потрібних сервісів (вхід Mojang/Microsoft, Modrinth, CurseForge, метадані завантажувачів модів, сервери Shaurma для акаунтів, друзів і оновлень). Анонімна статистика ВИМКНЕНА за замовчуванням і надсилається лише за вашою згодою в лаунчері. ШІ-помічники (переклад, аналіз крашів) надсилають текст постачальнику ШІ лише тоді, коли ви ними користуєтесь. Повна політика: https://github.com/B23101/Shaurma-Launcher/blob/main/PRIVACY.md
+
+
+FULL PRIVACY POLICY / ПОВНА ПОЛІТИКА ПРИВАТНОСТІ
+==============================================
+# Privacy policy
+
+Shaurma Launcher is open source. This page lists what the program sends over the network and why.
+It does not contain advertising and does not sell data.
+
+## Always (needed for the launcher to work)
+
+- **Game files and metadata:** Mojang/Microsoft (versions, libraries, assets, skins), mod-loader metadata and downloads
+  (Forge, NeoForge, Fabric, Quilt, Paper, Purpur and others), Modrinth and CurseForge (mod/modpack search and downloads).
+- **Updates:** the launcher downloads its own components from the Shaurma CDN and verifies them (SHA-256, and a signed manifest
+  when the build contains signing keys). Requests carry the release channel and a channel access token.
+- **Microsoft sign-in:** handled by Microsoft/Xbox services in your browser; the launcher stores the resulting tokens locally.
+
+## Only if you use the feature
+
+- **Friends, chat, shared playtime (full Shaurma edition):** your account identifiers, nickname, friend list,
+  messages and total playtime per day are exchanged with Shaurma servers. Playtime synced to the cloud is visible only to you.
+- **Peer-to-peer play and server tools:** connections are relayed or brokered by Shaurma servers. A friend can start or stop
+  your servers remotely **only** if you explicitly grant that permission; nothing is allowed by default and every attempt is
+  logged locally.
+- **AI helpers (translation, review, crash analysis):** the text you submit is sent to the AI provider (Groq / Google Gemini).
+- **Log sharing:** if you choose to upload a game log, it is sent to the log-sharing service you pick.
+- **Discord Rich Presence:** talks to your local Discord client only.
+
+## Anonymous statistics (opt-in, OFF by default)
+
+If you accept the one-time question in the launcher, it sends a small report at most every few hours: nickname (encrypted on
+arrival), anonymous device hash, total playtime and session count, launcher version/edition and platform.
+It never sends tokens, e-mail, file paths, modpack names or mod lists. You can turn it off in Settings at any time.
+
+## Local data
+
+Settings, accounts and modpacks are stored on your computer (default `%APPDATA%\.shaurm`). Uninstalling keeps them unless you
+choose to delete them.
+
+## Contact
+
+Open an issue in this repository.
+
+## Providers' privacy policies
+
+The services you choose also process connection metadata such as IP addresses according to their own policies:
+
+- Microsoft/Mojang/Xbox sign-in and game services: https://privacy.microsoft.com/privacystatement
+- Google sign-in and Gemini (when used): https://policies.google.com/privacy
+- Groq (when used): https://groq.com/privacy-policy/
+- Modrinth: https://modrinth.com/legal/privacy
+- CurseForge: https://www.curseforge.com/legal/privacy-policy
+- Discord (when Rich Presence is enabled): https://discord.com/privacy
+
+AI provider keys are not embedded by the repository release scripts. AI features require
+user-supplied credentials at runtime unless a separately operated service is explicitly configured.
+A CurseForge key supplied with a distributed desktop build must be treated as publicly recoverable;
+users may override it with their own key in Settings. No credential in a client binary can serve as
+proof of membership or permission to access private data.
+
+## Network permissions and optional features
+
+The Windows installer offers a P2P permission option, selected by default, which adds
+application-specific inbound and outbound firewall rules for private and public networks.
+It requires administrator approval. The firewall is not disabled. Uninstallation removes
+the rules belonging to this installation. Existing block rules and organization policies
+may still prevent P2P access. P2P, remote server access, AI helpers and social features are
+activated by using those features; anonymous statistics remain off until you opt in.
+
+Account deletion and server-side retention must be confirmed with the operator of Shaurma
+services; uninstalling removes local application files, not remote account data. Never attach
+account databases or unredacted logs to public issues. Security reporting instructions:
+https://github.com/B23101/Shaurma-Launcher/blob/main/.github/SECURITY.md
+
+## Shared account and skin service (Base and full editions)
+
+Both editions support a Shaurma identity for skin management and Google/Microsoft sign-in.
+The identity service receives the provider identity token needed to verify sign-in and account
+identifiers used for the skin account. Friends, chat, P2P sharing, remote server access and
+cloud playtime are available in both editions under the same account and permission rules.
+Base excludes only the private modpack catalog and its download client; it does not receive
+the private pack token.
+
+When the Shaurma skin service is enabled, the launcher attaches authlib-injector to Minecraft
+for all account types, including Microsoft accounts. Skin/profile and game session requests
+can pass through the local skin proxy and Shaurma's Yggdrasil service; session requests may
+contain game session authorization data. This is separate from browser-based Microsoft sign-in.
+To avoid this routing, deselect the skin-service option during Windows installation or turn
+off the Shaurma skin service in Settings. This prevents agent attachment and automatic
+Shaurma skin previews. Explicit account-management actions still contact the chosen service.
+
+The downloaded authlib-injector v1.2.8 is separate upstream software (AGPL-3.0), not signed
+under this project's certificate. Its SHA-256 is pinned to the digest published with the
+official GitHub release and checked for cached and newly downloaded files.

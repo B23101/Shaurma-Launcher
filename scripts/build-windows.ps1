@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Shaurma Launcher - Windows build (no signing, no secrets in this file).
 
@@ -15,7 +15,7 @@
 
   Secrets are read ONLY from environment variables (never from files in git):
     SHRM_BUILD_TOKEN_SHAURMA, SHRM_BUILD_TOKEN_BASE   CDN channel tokens
-    CF_API_KEY, GROQ_API_KEY, GEMINI_API_KEY          CurseForge / Groq / Gemini
+    CF_API_KEY                                       CurseForge client key (recoverable from distributed binaries)
     SHAURMA_GOOGLE_CLIENT_ID, SHAURMA_GOOGLE_CLIENT_SECRET   Google sign-in
     SHAURMA_MANIFEST_PUBKEYS                          Ed25519 public keys (base64, comma separated)
   Missing values only disable the matching feature (warning), unless -RequireSecrets is set.
@@ -151,26 +151,31 @@ function New-ZipFromDir([string]$SrcDir, [string]$ZipPath) {
 $TokenShaurma = Get-Secret 'SHRM_BUILD_TOKEN_SHAURMA'
 $TokenBase = Get-Secret 'SHRM_BUILD_TOKEN_BASE'
 $CfKey = Get-Secret 'CF_API_KEY'
-$GroqKey = Get-Secret 'GROQ_API_KEY'
-$GeminiKey = Get-Secret 'GEMINI_API_KEY'
 $GoogleId = Get-Secret 'SHAURMA_GOOGLE_CLIENT_ID'
 $GoogleSecret = Get-Secret 'SHAURMA_GOOGLE_CLIENT_SECRET'
 $PubKeys = Get-Secret 'SHAURMA_MANIFEST_PUBKEYS'
 
 function Check-Secrets {
+    if ($GoogleSecret -and (Get-Secret 'SHAURMA_GOOGLE_CLIENT_KIND') -ne 'desktop') {
+        Fail 'Only public Desktop OAuth client credentials may be embedded; set SHAURMA_GOOGLE_CLIENT_KIND=desktop after verifying the client type'
+    }
     $missing = @()
-    if (-not $TokenShaurma) { $missing += 'SHRM_BUILD_TOKEN_SHAURMA' }
-    if (-not $TokenBase) { $missing += 'SHRM_BUILD_TOKEN_BASE' }
-    if (-not $CfKey) { $missing += 'CF_API_KEY' }
-    if (-not $GroqKey) { $missing += 'GROQ_API_KEY' }
-    if (-not $GeminiKey) { $missing += 'GEMINI_API_KEY' }
-    if (-not $GoogleId) { $missing += 'SHAURMA_GOOGLE_CLIENT_ID' }
+    if (($Editions -contains 'shaurma') -and -not $TokenShaurma) { $missing += 'SHRM_BUILD_TOKEN_SHAURMA' }
+    if (($Editions -contains 'base') -and -not $TokenBase) { $missing += 'SHRM_BUILD_TOKEN_BASE' }
+    if (-not $PubKeys) { $missing += 'SHAURMA_MANIFEST_PUBKEYS' }
     if ($missing.Count -gt 0) {
         $msg = 'Not set: ' + ($missing -join ', ') + ' (matching features will be disabled in this build)'
         if ($RequireSecrets) { Fail $msg }
         Write-Warning $msg
     }
     if ($PubKeys -and ($PubKeys -notmatch '^[A-Za-z0-9+/=,]+$')) { Fail 'SHAURMA_MANIFEST_PUBKEYS: only base64 keys separated by commas are allowed' }
+    if ($PubKeys) {
+        foreach ($key in $PubKeys.Split(',')) {
+            try { $decoded = [Convert]::FromBase64String($key) }
+            catch { Fail 'SHAURMA_MANIFEST_PUBKEYS: invalid base64 public key' }
+            if ($decoded.Length -ne 32) { Fail 'SHAURMA_MANIFEST_PUBKEYS: each Ed25519 public key must contain 32 bytes' }
+        }
+    }
 }
 
 function Get-Token([string]$ed) { if ($ed -eq 'base') { return $TokenBase } else { return $TokenShaurma } }
@@ -243,12 +248,9 @@ function Build-Frontends {
     Require-Command 'npm' 'Install Node.js 20+.' | Out-Null
     $fe = Join-Path $Root 'frontend'
     $flags = @('--no-audit', '--no-fund', '--progress=false', '--loglevel=error')
-    try { Invoke-Native 'npm.cmd' (@('ci') + $flags) $fe }
-    catch {
-        Write-Warning 'npm ci failed (package-lock.json out of sync with package.json) - falling back to npm install. Refresh the lock file: npm install --package-lock-only'
-        Invoke-Native 'npm.cmd' (@('install') + $flags) $fe
-    }
+    Invoke-Native 'npm.cmd' (@('ci') + $flags) $fe
     Invoke-Native 'npm.cmd' @('run', 'build') $fe
+    & (Join-Path $PSScriptRoot 'collect-licenses.ps1') -Destination (Join-Path $fe 'dist/licenses/dependencies')
     New-ZipFromDir (Join-Path $fe 'dist') (Join-Path $AssetsOut 'frontend.zip')
 
     Write-Step 'updater-frontend -> updater-frontend.zip'
@@ -280,7 +282,7 @@ function Build-Bootstrap([string]$ed) {
     $syso = New-WailsSyso $dir
     try {
         $ld = "-H windowsgui -buildid= -X main.cdnToken=$(Get-Token $ed) -X main.trustedKeys=$PubKeys"
-        Invoke-Native 'go' @('build', '-buildmode=pie', '-trimpath', '-buildvcs=false',
+        Invoke-Native 'go' @('build', '-tags', 'production', '-buildmode=pie', '-trimpath', '-buildvcs=false',
             '-ldflags', $ld, '-o', $out, '.') $dir @{ CGO_ENABLED = '0' }
     }
     finally { Remove-Item $syso -Force -ErrorAction SilentlyContinue }
@@ -288,25 +290,25 @@ function Build-Bootstrap([string]$ed) {
 
 function Build-Backend([string]$ed) {
     Write-Step "backend.dll ($ed)"
-    $tags = if ($ed -eq 'shaurma') { 'shaurma' } else { '' }
+    $tags = if ($ed -eq 'shaurma') { 'production,shaurma' } else { 'production' }
     $ld = "-X shaurma-launcher-backend/internal/update.token=$(Get-Token $ed)"
     if ($ed -eq 'shaurma') {
         $ld += " -X shaurma-launcher-backend/internal/api.tokenShaurma=$TokenShaurma"
-        if ($GoogleId) {
-            $ld += " -X main.shaurmaGoogleClientID=$GoogleId"
-            if ($GoogleSecret) { $ld += " -X main.shaurmaGoogleClientSecret=$GoogleSecret" }
-        }
+
+    }
+    if ($GoogleId) {
+        $ld += " -X main.shaurmaGoogleClientID=$GoogleId"
+        if ($GoogleSecret) { $ld += " -X main.shaurmaGoogleClientSecret=$GoogleSecret" }
     }
     if ($CfKey) { $ld += " -X shaurma-launcher-backend/internal/custompack.curseForgeAPIKey=$CfKey" }
-    if ($GroqKey) { $ld += " -X shaurma-launcher-backend/internal/ai.DefaultGroqAPIKey=$GroqKey" }
-    if ($GeminiKey) { $ld += " -X shaurma-launcher-backend/internal/ai.DefaultAPIKey=$GeminiKey" }
     Build-Dll (Join-Path $Root 'backend') $tags $ld (Join-Path $UnsignedDir "$ed\backend.dll") 'backend.dll' "$ProductName backend"
 }
 
-function Build-Updater {
-    Write-Step 'updater.dll'
-    $ld = "-X shrm-updater-backend/internal/core.tokenShaurma=$TokenShaurma -X shrm-updater-backend/internal/core.tokenBase=$TokenBase -X shrm-updater-backend/internal/sigverify.TrustedKeys=$PubKeys"
-    Build-Dll (Join-Path $Root 'updater-backend') '' $ld (Join-Path $UnsignedDir 'updater.dll') 'updater.dll' "$ProductName updater"
+function Build-Updater([string]$ed) {
+    Write-Step "updater.dll ($ed)"
+    $tokenField = if ($ed -eq 'base') { 'tokenBase' } else { 'tokenShaurma' }
+    $ld = "-X shrm-updater-backend/internal/core.$tokenField=$(Get-Token $ed) -X shrm-updater-backend/internal/sigverify.TrustedKeys=$PubKeys"
+    Build-Dll (Join-Path $Root 'updater-backend') 'production' $ld (Join-Path $UnsignedDir "$ed\updater.dll") 'updater.dll' "$ProductName updater"
 }
 
 # After building, prove that metadata is what SignPath will enforce.
@@ -329,8 +331,7 @@ function Invoke-Components {
     if (Test-Path $UnsignedDir) { Remove-Item $UnsignedDir -Recurse -Force }
     if (Test-Path $AssetsOut) { Remove-Item $AssetsOut -Recurse -Force }
     Build-Frontends
-    foreach ($ed in $Editions) { Build-Shell $ed; Build-Bootstrap $ed; Build-Backend $ed }
-    Build-Updater
+    foreach ($ed in $Editions) { Build-Shell $ed; Build-Bootstrap $ed; Build-Backend $ed; Build-Updater $ed }
     Test-PeMetadata $UnsignedDir
     Write-Host "`nUnsigned components: $UnsignedDir" -ForegroundColor Green
 }
@@ -350,7 +351,7 @@ function Invoke-Installer {
         Copy-Item (Join-Path $ComponentsDir "$ed\$name") $app
         Copy-Item (Join-Path $ComponentsDir "$ed\bootstrap\$name") (Join-Path $app 'bootstrap')
         Copy-Item (Join-Path $ComponentsDir "$ed\backend.dll") $app
-        Copy-Item (Join-Path $ComponentsDir 'updater.dll') $app
+        Copy-Item (Join-Path $ComponentsDir "$ed\updater.dll") $app
         Copy-Item (Join-Path $AssetsDir 'frontend.zip') $app
         Copy-Item (Join-Path $AssetsDir 'updater-frontend.zip') $app
         Copy-Item (Join-Path $Root 'shell\build\windows\icon.ico') (Join-Path $app 'build\windows')

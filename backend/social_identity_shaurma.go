@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // Соціальна «особистість» — друзі, чат, ключі E2E, P2P.

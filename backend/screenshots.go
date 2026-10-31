@@ -585,10 +585,7 @@ func (a *App) OpenScreenshotInDefaultApp(packID, fileName string) error {
 		return fmt.Errorf("скріншот не знайдено: %s", fileName)
 	}
 	if runtime.GOOS == "windows" {
-		// "cmd /c start" з порожнім заголовком у лапках — стандартний спосіб
-		// відкрити файл типовою програмою через Windows shell (ShellExecute),
-		// коректно обробляє шляхи з пробілами.
-		return exec.Command("cmd", "/c", "start", "", abs).Start()
+		return openFileDefault(abs)
 	}
 	return xdgOpen(abs)
 }

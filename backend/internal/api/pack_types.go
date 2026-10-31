@@ -1,14 +1,17 @@
 package api
 
 type PackIndexEntry struct {
-	ID            string `json:"id"`
-	Name          string `json:"name"`
-	Description   string `json:"description"`
-	MCVersion     string `json:"mc_version"`
-	LoaderType    string `json:"loader_type"`
-	LoaderVersion string `json:"loader_version"`
-	IconURL       string `json:"icon_url"`
-	BackgroundURL string `json:"background_url,omitempty"`
+	PageDesignPath      string `json:"page_design_path,omitempty"`
+	PageDesignSHA256    string `json:"page_design_sha256,omitempty"`
+	PageDesignUpdatedAt string `json:"page_design_updated_at,omitempty"`
+	ID                  string `json:"id"`
+	Name                string `json:"name"`
+	Description         string `json:"description"`
+	MCVersion           string `json:"mc_version"`
+	LoaderType          string `json:"loader_type"`
+	LoaderVersion       string `json:"loader_version"`
+	IconURL             string `json:"icon_url"`
+	BackgroundURL       string `json:"background_url,omitempty"`
 	// MrpackURL @deprecated: схема V2 більше не публікує .mrpack цілим
 	// файлом — лишається порожнім, качання йде через ManifestPath.
 	MrpackURL string   `json:"mrpack_url,omitempty"`

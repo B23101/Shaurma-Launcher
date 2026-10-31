@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // presence_mode_shaurma.go — ручний статус у віджеті акаунта (як у Discord):

@@ -14,6 +14,7 @@
   // тут лише спільний стан (конфіг збірки cfg, налаштування, вкладка) та
   // скелет сторінки.
   import { untrack } from 'svelte'
+  import PackPageDesign from './PackPageDesign.svelte'
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
@@ -105,7 +106,7 @@
     // Прогрес міграції модів (з App.svelte — mods:migrate-progress): банер
     // показує, який мод зараз переноситься, з іконкою і прогрес-баром.
     migration = null,
-    // «Поділитися» збіркою з друзями (лише Shaurma-редакція).
+    // «Поділитися» збіркою з друзями (обидві редакції).
     canShare = false
   } = $props<{
     pack: PackIndexEntry
@@ -740,7 +741,8 @@
   // всю ширину», packBannerFull): геро-блок на всю ширину контенту
   // (край-у-край, без паддингів), сайдбар лаунчера НЕ чіпаємо. За
   // замовчуванням вимкнено — звичайний банер-картка, як раніше.
-  const bannerFull = $derived(!!(settings as any).packBannerFull)
+  let usePackDesign = $state(false)
+  const bannerFull = $derived(!!(settings as any).packBannerFull && !usePackDesign)
   // Іконка збірки (локальний асет або URL) — потрібна у банері, який у
   // повному режимі рендериться ДО тулбара (нагорі розділу).
   const bannerIcon = $derived(pack ? packAsset(pack.icon_url) : '')
@@ -990,6 +992,7 @@
   })
 </script>
 
+<PackPageDesign packId={pack.id} official={kind === 'shaurma'} background={packAsset(pack.background_url) || ''} onLayoutChange={(active) => usePackDesign = active}>
 <!-- Єдиний рядок дій: «Назад» зліва, решта кнопок СПРАВА, і «⋯» з
      «Грати» в ОДНОМУ рядку поряд одне з одним.
 
@@ -1145,32 +1148,32 @@
     </div>
 
 <div class="tabbar tb-slide tb-full" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
-      <button class="tab-btn" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
+      <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
         <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{packServers.length}</span>
       </button>
       {#if hasScreenshots}
-        <button class="tab-btn" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
+        <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
           <i class="ti ti-photo"></i> {t('pack.tab.gallery')}
         </button>
       {/if}
       {#if canManage}
-        <button class="tab-btn" class:active={tab === 'content'} onclick={() => tab = 'content'}>
+        <button class="tab-btn" data-section="content" class:active={tab === 'content'} onclick={() => tab = 'content'}>
           <i class="ti ti-puzzle"></i> {t('pack.tab.content')}
         </button>
-        <button class="tab-btn" class:active={tab === 'files'} onclick={() => tab = 'files'}>
+        <button class="tab-btn" data-section="files" class:active={tab === 'files'} onclick={() => tab = 'files'}>
           <i class="ti ti-files"></i> {t('pack.tab.files')}
         </button>
       {/if}
-      <button class="tab-btn" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
+      <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
         <i class="ti ti-info-circle"></i> {t('pack.tab.basic')}
       </button>
-      <button class="tab-btn" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
+      <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
         <i class="ti ti-cpu"></i> {t('pack.tab.perf')}
       </button>
-      <button class="tab-btn" class:active={tab === 'game'} onclick={() => tab = 'game'}>
+      <button class="tab-btn" data-section="game" class:active={tab === 'game'} onclick={() => tab = 'game'}>
         <i class="ti ti-device-gamepad-2"></i> {t('pack.tab.game')}
       </button>
-      <button class="tab-btn" class:active={tab === 'console'} onclick={() => tab = 'console'}>
+      <button class="tab-btn" data-section="console" class:active={tab === 'console'} onclick={() => tab = 'console'}>
         <i class="ti ti-terminal-2"></i> {t('pack.tab.console')}
       </button>
     </div>
@@ -1485,39 +1488,39 @@
 
 {#if !bannerFull}
   <div class="tabbar tb-slide" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
-    <button class="tab-btn" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
+    <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
       <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{packServers.length}</span>
     </button>
     {#if hasScreenshots}
-      <button class="tab-btn" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
+      <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
         <i class="ti ti-photo"></i> {t('pack.tab.gallery')}
       </button>
     {/if}
     {#if canManage}
-      <button class="tab-btn" class:active={tab === 'content'} onclick={() => tab = 'content'}>
+      <button class="tab-btn" data-section="content" class:active={tab === 'content'} onclick={() => tab = 'content'}>
         <i class="ti ti-puzzle"></i> {t('pack.tab.content')}
       </button>
-      <button class="tab-btn" class:active={tab === 'files'} onclick={() => tab = 'files'}>
+      <button class="tab-btn" data-section="files" class:active={tab === 'files'} onclick={() => tab = 'files'}>
         <i class="ti ti-files"></i> {t('pack.tab.files')}
       </button>
     {/if}
     {#if !isAutoPack}
-      <button class="tab-btn" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
+      <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
         <i class="ti ti-info-circle"></i> {t('pack.tab.basic')}
       </button>
     {/if}
     {#if kind === 'shaurma'}
-      <button class="tab-btn" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'}>
+      <button class="tab-btn" data-section="wiki" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'}>
         <i class="ti ti-book-2"></i> {t('pack.tab.wiki')}
       </button>
     {/if}
-    <button class="tab-btn" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
+    <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
       <i class="ti ti-cpu"></i> {t('pack.tab.perf')}
     </button>
-    <button class="tab-btn" class:active={tab === 'game'} onclick={() => tab = 'game'}>
+    <button class="tab-btn" data-section="game" class:active={tab === 'game'} onclick={() => tab = 'game'}>
       <i class="ti ti-device-gamepad-2"></i> {t('pack.tab.game')}
     </button>
-    <button class="tab-btn" class:active={tab === 'console'} onclick={() => tab = 'console'}>
+    <button class="tab-btn" data-section="console" class:active={tab === 'console'} onclick={() => tab = 'console'}>
       <i class="ti ti-terminal-2"></i> {t('pack.tab.console')}
     </button>
   </div>
@@ -1700,6 +1703,8 @@
     {/snippet}
   </UiModal>
 {/if}
+
+</PackPageDesign>
 
 <style>
   /* ── Компактна ідентичність у закріпленому тулбарі сторінки ──

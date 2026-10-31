@@ -1,5 +1,3 @@
-//go:build shaurma
-
 package main
 
 // Блокування акаунтів і чат з не-друзями (Wails-методи).

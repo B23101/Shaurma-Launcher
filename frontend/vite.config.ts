@@ -4,7 +4,23 @@ import {svelte} from '@sveltejs/vite-plugin-svelte'
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [svelte()],
+  plugins: [svelte(), {
+    name: 'bundled-license-inventory',
+    generateBundle(_options, bundle) {
+      const packages = new Set<string>()
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'chunk') continue
+        for (const id of Object.keys(output.modules)) {
+          const normalized = id.replace(/\\/g, '/')
+          if (!normalized.includes('/node_modules/')) continue
+          const relative = normalized.split('/node_modules/').pop()!
+          const segments = relative.split('/')
+          packages.add(segments.slice(0, relative.startsWith('@') ? 2 : 1).join('/'))
+        }
+      }
+      this.emitFile({type: 'asset', fileName: 'licenses/bundled-packages.json', source: JSON.stringify([...packages].sort(), null, 2)})
+    }
+  }],
   // .glb-моделі Гардероба імпортуються як URL-ассети (three.js GLTFLoader).
   assetsInclude: ['**/*.glb'],
   build: {

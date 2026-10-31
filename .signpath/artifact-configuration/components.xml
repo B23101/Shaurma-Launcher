@@ -1,27 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  SignPath artifact configuration "components"  (slug: components)
-  Signs every PE file that the launcher ships. Layout comes from scripts/build-windows.ps1
-  (-Step components) and the zip uploaded by .github/workflows/release.yml:
-    shaurma/ShaurmLauncher.exe, shaurma/bootstrap/ShaurmLauncher.exe, shaurma/backend.dll
-    base/ShaurmLauncherBase.exe, base/bootstrap/ShaurmLauncherBase.exe, base/backend.dll
-    updater.dll
-  SignPath Foundation rule: product name and product version are enforced on every file.
-  Keep these values identical to $ProductName / $ProductVersion in the build script.
--->
 <artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
   <zip-file>
     <pe-file-set product-name="Shaurma Launcher" product-version="1.0.0">
-      <include path="shaurma/ShaurmLauncher.exe" />
-      <include path="shaurma/bootstrap/ShaurmLauncher.exe" />
-      <include path="shaurma/backend.dll" />
       <include path="base/ShaurmLauncherBase.exe" />
       <include path="base/bootstrap/ShaurmLauncherBase.exe" />
       <include path="base/backend.dll" />
-      <include path="updater.dll" />
-      <for-each>
-        <authenticode-sign />
-      </for-each>
+      <include path="base/updater.dll" />
+      <for-each><authenticode-sign /></for-each>
     </pe-file-set>
   </zip-file>
 </artifact-configuration>

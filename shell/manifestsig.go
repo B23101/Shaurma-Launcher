@@ -43,7 +43,9 @@ func parseTrustedKeys(list string) []ed25519.PublicKey {
 
 // manifestSigEnabled — чи вшито хоч один довірений ключ (інакше збірка
 // без перевірки підпису: лише для розробки).
-func manifestSigEnabled() bool { return manifestSigEnabledWith(trustedKeys) }
+func manifestSigEnabled() bool {
+	return requireManifestSignature || manifestSigEnabledWith(trustedKeys)
+}
 
 func manifestSigEnabledWith(keys string) bool { return len(parseTrustedKeys(keys)) > 0 }
 

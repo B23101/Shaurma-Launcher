@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -606,11 +607,14 @@ func TestUndecryptableTriggersResyncOnRotationElsewhere(t *testing.T) {
 	if _, err := dev.DecryptFrom(peerID, ct, n); !errors.Is(err, ErrCryptoDecryptFail) {
 		t.Fatalf("v2 цьому пристрою ще невідома: %v", err)
 	}
-	dev.mu.Lock()
-	dev.lastResync = time.Time{}
-	dev.mu.Unlock()
-	time.Sleep(50 * time.Millisecond) // фоновий Resync із DecryptFrom
-	dev.Resync()
+	// Wait for the actual background resync; its duration depends on disk/crypto speed.
+	deadline := time.Now().Add(5 * time.Second)
+	for dev.PublicKeyB64() != other.PublicKeyB64() {
+		if time.Now().After(deadline) {
+			t.Fatal("фоновий Resync не завантажив новий ключ")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	dev.Forget(peerID)
 	if pt, err := dev.DecryptFrom(peerID, ct, n); err != nil || pt != "шифровано на v2" {
 		t.Fatalf("після Resync: %q %v", pt, err)
@@ -632,7 +636,7 @@ func TestKeyringArchivesAndPrunesBackups(t *testing.T) {
 	if len(baks) != keepBackups {
 		t.Fatalf("архівів %d, очікував %d", len(baks), keepBackups)
 	}
-	if st, err := os.Stat(filepath.Join(dir, keyringFileName)); err != nil || st.Mode().Perm() != 0o600 {
+	if st, err := os.Stat(filepath.Join(dir, keyringFileName)); err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0o600) {
 		t.Fatalf("права: %v %v", err, st)
 	}
 }
