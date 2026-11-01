@@ -32,7 +32,8 @@ package main
 // Обмеження: гравець, нік якого лаунчер ще не бачив, лишається зі Steve.
 //
 // DisableMojangSkinFallback вимикає лише додатковий пошук скінів у Mojang.
-// Локальний проксі обов'язковий: при його збої запускаємо гру без інжектора.
+// При збої проксі ліцензійна гра стартує без інжектора. Прямий запасний
+// шлях до Shaurma дозволено лише для офлайн-акаунтів без справжніх токенів.
 
 import (
 	"bytes"
@@ -127,16 +128,17 @@ type inflightCall struct {
 }
 
 type skinProxy struct {
-	mu       sync.Mutex
-	upstream string // база Yggdrasil Shaurma БЕЗ кінцевого слеша
+	mu                    sync.Mutex
+	upstream              string // база Yggdrasil Shaurma БЕЗ кінцевого слеша
 	disableMojangFallback bool
-	domains  []string
-	key      *rsa.PrivateKey
-	pubPEM   string
-	port     int
-	nicks    map[string]string // uuidHex -> нік
-	cache    map[string]mojangEntry
-	inflight map[string]*inflightCall
+	dead                  bool // server exited; do not reuse its closed loopback endpoint
+	domains               []string
+	key                   *rsa.PrivateKey
+	pubPEM                string
+	port                  int
+	nicks                 map[string]string // uuidHex -> нік
+	cache                 map[string]mojangEntry
+	inflight              map[string]*inflightCall
 
 	client      *http.Client
 	mojangAPI   string
@@ -169,6 +171,14 @@ func (a *App) ensureSkinProxy(upstreamBase, upstreamMetaB64 string, nicks []stri
 		return "", "", fmt.Errorf("metadata Shaurma не розібрано")
 	}
 
+	if theSkinProxy != nil {
+		theSkinProxy.mu.Lock()
+		dead := theSkinProxy.dead
+		theSkinProxy.mu.Unlock()
+		if dead {
+			theSkinProxy = nil
+		}
+	}
 	if theSkinProxy == nil {
 		p, perr := a.newSkinProxy()
 		if perr != nil {
@@ -222,6 +232,7 @@ func (a *App) newSkinProxy() (*skinProxy, error) {
 	}
 	go func() {
 		defer crashguard.Recover("skinProxy.Serve")
+		defer func() { p.mu.Lock(); p.dead = true; p.mu.Unlock() }()
 		if e := p.srv.Serve(ln); e != nil && e != http.ErrServerClosed {
 			launchlog.Warn("SkinProxy", "сервер зупинився: %v", e)
 		}

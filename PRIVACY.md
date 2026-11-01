@@ -87,9 +87,15 @@ Base excludes only the private modpack catalog and its download client; it does 
 the private pack token.
 
 When the Shaurma skin service is enabled, the launcher attaches authlib-injector to Minecraft
-for all account types, including Microsoft accounts. Skin/profile and game session requests
-can pass through the local skin proxy and Shaurma's Yggdrasil service; session requests may
-contain game session authorization data. This is separate from browser-based Microsoft sign-in.
+for all account types, including Microsoft accounts. The local proxy sends game session
+authorization (`join`, `hasJoined`) and Minecraft services requests directly to Mojang/Microsoft,
+without forwarding game access tokens to Shaurma. Authentication redirects are refused.
+Shaurma receives skin/profile lookups, not arbitrary session requests. If the local proxy
+cannot start, licensed accounts launch without the injector using official services.
+Only offline accounts with no credentials (empty access token or the offline placeholder `0`)
+may fall back directly to Shaurma skins. Disabling Mojang skin fallback does not disable the
+local authentication proxy. This is separate from browser-based Microsoft sign-in and the
+identity token used to create or recover the Shaurma account.
 To avoid this routing, deselect the skin-service option during Windows installation or turn
 off the Shaurma skin service in Settings. This prevents agent attachment and automatic
 Shaurma skin previews. Explicit account-management actions still contact the chosen service.

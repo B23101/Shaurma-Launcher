@@ -50,8 +50,7 @@ func (a *App) skinRequest(method, path string, body []byte) (*http.Response, err
 // ═══════════════════════════════════════════════════════════════════════
 // Launch hook — викликається з LaunchInstance ПЕРЕД стартом JVM
 // ═══════════════════════════════════════════════════════════════════════
-// У base-збірці ця функція — порожній no-op (offline_account_base.go),
-// тож сам виклик у спільному app.go безпечний для обох редакцій.
+// Спільний hook скінів для обох редакцій.
 func (a *App) prepareOfflineAccount(account model.Account, buildID, gameDir string) []string {
 	_ = gameDir // у теку гри нічого не пишемо: скін віддає Yggdrasil-API в рантаймі
 
@@ -60,10 +59,8 @@ func (a *App) prepareOfflineAccount(account model.Account, buildID, gameDir stri
 	// Система скінів одна — Шаурма (authlib-injector) — і для піратських, і
 	// для ліцензійних акаунтів (account.IsLicensed або Type == "microsoft"):
 	// гравець бачить скіни піратів, а свій скін видно й на неліцензійних
-	// серверах. Вхід на ліцензійні сервери при цьому працює: join/hasJoined
-	// ліцензійних ніків наш Yggdrasil-API форвардить на справжній
-	// sessionserver Mojang (vps/internal/skins/ygg.go). Перемикача системи
-	// скінів більше немає.
+	// серверах. join/hasJoined локальний проксі надсилає напряму до Mojang.
+	// При збої проксі ліцензійний акаунт запускається без інжектора.
 	licensed := account.IsLicensed || account.Type == "microsoft"
 	if a.cfg.GetSettings().DisableSkins {
 		if buf := a.consoleBufFor(account.ID, buildID); buf != nil {
@@ -82,7 +79,7 @@ func (a *App) prepareOfflineAccount(account model.Account, buildID, gameDir stri
 		return nil
 	}
 	if buf := a.consoleBufFor(account.ID, buildID); buf != nil {
-		buf.AppendLevel(console.LevelSystem, skinSourcesNote())
+		buf.AppendLevel(console.LevelSystem, skinSourcesNote(args))
 	}
 	return args
 }
@@ -413,12 +410,11 @@ func (a *App) uploadSkinFor(launcherID, pngBase64, model string) error {
 }
 
 // skinSourcesNote — рядок для консолі збірки: які джерела скінів діють.
-func skinSourcesNote() string {
-	skinProxyMu.Lock()
-	active := theSkinProxy != nil
-	skinProxyMu.Unlock()
-	if active {
-		return "Скіни: локальний injector активний (джерела: Shaurma → Mojang за ніком)"
+func skinSourcesNote(args []string) string {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-javaagent:") && strings.Contains(arg, "=http://127.0.0.1:") {
+			return "Скіни: локальний проксі Shaurma/Mojang; ігрова авторизація напряму до Mojang"
+		}
 	}
-	return "Скіни: authlib-injector активний (скіни з сервера Shaurma)"
+	return "Скіни: запасний шлях Shaurma для офлайн-акаунта без токенів"
 }

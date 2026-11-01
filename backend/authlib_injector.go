@@ -4,8 +4,8 @@ package main
 //
 // Механізм (єдиний, який реально працює у ванільному клієнті):
 // лаунчер запускає JVM з java-агентом authlib-injector, який підміняє в
-// клієнті URL сесійного сервісу на наш worker (Yggdrasil-API —
-// worker/yggdrasil.js). Клієнт питає профіль у «сесійного сервера» й
+// клієнті URL сесійного сервісу на локальний проксі (skin_proxy.go).
+// Авторизація йде напряму до Mojang. Клієнт питає профіль у проксі й
 // отримує ПІДПИСАНУ властивість textures з URL нашого PNG → показує скін.
 //
 // ЧОГО НЕ РОБИМО (історія): раніше код копіював PNG у
@@ -191,24 +191,24 @@ func (a *App) yggdrasilPrefetched(base string, allowCache bool) (string, error) 
 
 // authlibJVMArgs — аргументи JVM скін-системи. ТІЛЬКИ для offline-акаунтів.
 //
-// ВАЖЛИВО (фікс бага): для акаунтів account.Type == "microsoft" injector
-// НЕ підключається і функція одразу повертає (nil, nil). Причина: authlib-
-// injector підміняє ввесь Yggdrasil session API (login/hasJoined/join/
-// profile) на apiRoot нашого worker'а — не лише текстури. Якщо підключити
-// його для ліцензійного (Microsoft) акаунта, JVM перестає звертатись до
-// справжнього sessionserver.mojang.com, і:
-//  1. офіційні сервери, що виконують справжній Mojang hasJoined-callback,
-//     більше не бачать дійсну сесію гравця → вхід на ліцензійні сервери
-//     блокується;
-//  2. профіль/текстури такого гравця так само йдуть через наш worker,
-//     тому замість свого скіна гравець бачить підмінені дані.
-//
-// Виклик цієї функції для Microsoft-акаунта — і є першопричиною обох
-// симптомів одночасно. Порожній результат для offline-акаунта = інжектор
-// недоступний (мережа/налаштування) — гра має запуститись як звичайно,
-// тому помилку повертаємо разом із причиною.
+// Ця обгортка пропускає Microsoft. Спільний launch hook викликає
+// authlibJVMArgsOpt з allowLicensed=true, але авторизація все одно йде
+// з локального проксі напряму до Mojang. Помилка інжектора не блокує гру.
 func (a *App) authlibJVMArgs(account model.Account) ([]string, error) {
 	return a.authlibJVMArgsOpt(account, false)
+}
+
+// Test seam for startup failures; production always starts the loopback proxy.
+var authlibLocalProxyFn = func(a *App, base, meta string, nicks []string) (string, string, error) {
+	return a.ensureSkinProxy(base, meta, nicks)
+}
+
+// Direct skin-service fallback is restricted to accounts without credentials.
+// "0" is the Minecraft offline placeholder, not an issued session credential.
+func tokenlessOfflineSkinAccount(account model.Account) bool {
+	return !account.IsLicensed && account.Type != "microsoft" &&
+		(account.AccessToken == "" || account.AccessToken == "0") &&
+		account.MsAccessToken == "" && account.RefreshToken == "" && account.MsIDToken == ""
 }
 
 // authlibJVMArgsOpt supports the shared skin-service setting for all account types.
@@ -233,24 +233,22 @@ func (a *App) authlibJVMArgsOpt(account model.Account, allowLicensed bool) ([]st
 	// /api/sessionserver/… (404).
 	apiRoot := strings.TrimRight(base, "/") + yggdrasilAPIPath + "/"
 
-	// Локальний injector з двома потоками (skin_proxy.go): гра → 127.0.0.1 →
-	// Shaurma, а якщо скіна там немає — Mojang за ніком. Будь-яка помилка
-	// старту проксі НЕ фатальна: тихо лишається старий прямий шлях нижче.
-	if !a.cfg.GetSettings().DisableMojangSkinFallback {
-		var nicks []string
-		nicks = append(nicks, account.Username)
-		for _, acc := range a.cfg.GetAccounts() {
-			nicks = append(nicks, acc.Username)
-		}
-		if root, meta, perr := a.ensureSkinProxy(base, prefetched, nicks); perr == nil {
-			return []string{
-				"-javaagent:" + jar + "=" + root,
-				"-Dauthlibinjector.yggdrasil.prefetched=" + meta,
-			}, nil
-		} else {
-			launchlog.Warn("SkinProxy", "локальний injector недоступний, пряма схема Shaurma: %v", perr)
-		}
+	// The skin fallback setting never disables the local authentication boundary.
+	nicks := []string{account.Username}
+	for _, acc := range a.cfg.GetAccounts() {
+		nicks = append(nicks, acc.Username)
 	}
+	root, meta, proxyErr := authlibLocalProxyFn(a, base, prefetched, nicks)
+	if proxyErr == nil {
+		return []string{
+			"-javaagent:" + jar + "=" + root,
+			"-Dauthlibinjector.yggdrasil.prefetched=" + meta,
+		}, nil
+	}
+	if !tokenlessOfflineSkinAccount(account) {
+		return nil, fmt.Errorf("локальний проксі скінів недоступний; запуск без інжектора зі стандартною авторизацією Mojang: %w", proxyErr)
+	}
+	launchlog.Warn("SkinProxy", "локальний проксі недоступний; скіни Shaurma лише для офлайн-акаунта без токенів: %v", proxyErr)
 	return []string{
 		"-javaagent:" + jar + "=" + apiRoot,
 		"-Dauthlibinjector.yggdrasil.prefetched=" + prefetched,

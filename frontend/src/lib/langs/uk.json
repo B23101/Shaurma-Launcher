@@ -2536,7 +2536,7 @@
   "settings.disableP2P": "Вимкнути «LAN через інтернет» (P2P)",
   "settings.disableP2PDesc": "Ховає P2P-функції (гра з друзями без відкриття портів) і вимикає їхню фонову роботу.",
   "settings.disableMojangSkinFallback": "Не брати скіни з Mojang за ніком",
-  "settings.disableMojangSkinFallbackDesc": "Якщо в Shaurma немає скіна гравця, локальний skin-injector бере скін ліцензійного гравця з таким самим ніком у Mojang — тому офлайн-гравці бачать ліцензійні скіни. Увімкни цей пункт, щоб гра ходила лише на сервер Shaurma.",
+  "settings.disableMojangSkinFallbackDesc": "Якщо в Shaurma немає скіна гравця, локальний проксі може взяти скін ліцензійного гравця з таким самим ніком у Mojang. Цей пункт вимикає лише пошук додаткових скінів; ігрова авторизація й надалі йде напряму до Mojang.",
   "settings.disableSkins": "Вимкнути сервіс скінів Shaurma",
   "settings.disableSkinsDesc": "Не підключати сервіс скінів Shaurma до гри для жодного типу акаунта. Коли сервіс увімкнений, запити скінів та ігрових сесій можуть проходити через Shaurma.",
   "settings.discordRPCDetails": "Текст присутності (перший рядок)",

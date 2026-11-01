@@ -217,8 +217,8 @@ type Settings struct {
 	// хоче, щоб лаунчер взагалі ходив у Yggdrasil-API.
 	DisableSkins bool `json:"disableSkins"`
 	// DisableMojangSkinFallback — вимкнути другий потік локального injector'а
-	// (скін із Mojang за ніком, коли в Shaurma його немає). Тоді гра, як і
-	// раніше, ходить напряму на сервер Shaurma. Інвертована назва з тієї ж
+	// (скін із Mojang за ніком, коли в Shaurma його немає). Локальний проксі
+	// та пряма авторизація Mojang залишаються активними. Інвертована назва з тієї ж
 	// причини, що й DisableSkins: відсутнє поле в старому settings.json = false
 	// = «увімкнено».
 	DisableMojangSkinFallback bool `json:"disableMojangSkinFallback"`

@@ -56,7 +56,7 @@ func newSkinsTestApp(t *testing.T, disableSkins bool) *App {
 	cfg := newTestConfig(t, dir)
 	s := cfg.GetSettings()
 	s.DisableSkins = disableSkins
-	s.DisableMojangSkinFallback = true // Test the launch hook without starting a local proxy.
+	s.DisableMojangSkinFallback = true // This must not bypass the local authentication proxy.
 	if err := cfg.UpdateSettings(s); err != nil {
 		t.Fatalf("UpdateSettings: %v", err)
 	}
@@ -64,6 +64,21 @@ func newSkinsTestApp(t *testing.T, disableSkins bool) *App {
 		cfg:         cfg,
 		consoleBufs: map[consoleKey]*console.Buffer{},
 	}
+	skinProxyMu.Lock()
+	previousProxy := theSkinProxy
+	theSkinProxy = nil
+	skinProxyMu.Unlock()
+	previousLocal := authlibLocalProxyFn
+	t.Cleanup(func() {
+		authlibLocalProxyFn = previousLocal
+		skinProxyMu.Lock()
+		current := theSkinProxy
+		theSkinProxy = previousProxy
+		skinProxyMu.Unlock()
+		if current != nil && current.srv != nil {
+			_ = current.srv.Close()
+		}
+	})
 	seedInjectorCache(t, a)
 	originalPool, originalFetch := vpsPool(), authlibFetchFn
 	nodePool = &nodes.Pool{
@@ -108,6 +123,9 @@ func TestPrepareOfflineAccount_InjectorForEnabledSkins(t *testing.T) {
 			}
 			var hasPrefetched bool
 			for _, x := range args {
+				if strings.HasPrefix(x, "-javaagent:") && !strings.Contains(x, "=http://127.0.0.1:") {
+					t.Fatalf("working local proxy was bypassed: %s", x)
+				}
 				if strings.HasPrefix(x, "-Dauthlibinjector.yggdrasil.prefetched=") {
 					hasPrefetched = true
 				}
