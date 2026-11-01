@@ -92,6 +92,14 @@ type Pack struct {
 
 	CreatedAt time.Time `json:"createdAt"`
 	UpdatedAt time.Time `json:"updatedAt"`
+
+	// Rev — лічильник ревізій запису в instance.json. Росте на кожному
+	// записі. Save порівнює його з диском: якщо знімок Pack застарів (хтось
+	// інший записав новішу ревізію, поки викликач тримав копію), Save НЕ
+	// відкочує вигляд збірки (назва, опис, іконка, колір, фон) до старих
+	// значень. Саме так раніше «злітали» пресет-іконки: фоновий потік брав
+	// копію, користувач міняв іконку, потік записував стару копію назад.
+	Rev uint64 `json:"rev,omitempty"`
 }
 
 // GalleryEntry — метадані одного скріншоту для пер-збіркової галереї.
@@ -259,17 +267,59 @@ func (s *Store) Get(id string) (Pack, bool) {
 }
 
 // Save створює/оновлює запис збірки в instance.json.
+//
+// Save записує ЦІЛУ структуру, тож для змін поверх наявного запису
+// («прочитав → змінив поле → записав») використовуйте Update: він читає й
+// пише під одним локом і не може затерти чужі зміни. Як страховка для
+// місць, що ще роблять Get→Save, тут діє перевірка ревізії: застарілий
+// знімок (p.Rev < ревізії на диску) не перезаписує вигляд збірки
+// (назва/опис/іконка/колір/фон) — ці поля лишаються з диску, решта полів
+// знімка застосовується як і раніше.
 func (s *Store) Save(p Pack) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	all := s.load()
-	if _, exists := all[p.ID]; !exists {
+	// Читаємо лише цей один запис, а не всі збірки: Save викликається на
+	// кожному тіку прогресу імпорту, і сканувати всі instance.json щоразу
+	// було марною роботою.
+	prev := s.loadPack(p.ID)
+	if prev.ID == "" {
 		p.CreatedAt = time.Now()
+		p.Rev = 1
 	} else {
-		p.CreatedAt = all[p.ID].CreatedAt
+		p.CreatedAt = prev.CreatedAt
+		if p.Rev < prev.Rev {
+			p.Name, p.Description = prev.Name, prev.Description
+			p.Icon, p.IconPath = prev.Icon, prev.IconPath
+			p.Color, p.BackgroundPath = prev.Color, prev.BackgroundPath
+		}
+		p.Rev = prev.Rev + 1
 	}
 	p.UpdatedAt = time.Now()
 	return s.savePack(p)
+}
+
+// Update — атомарна зміна наявної збірки: читання свіжого запису, fn і
+// запис відбуваються під одним м'ютексом, тож жодна паралельна зміна (у
+// тому числі вибір іконки користувачем) не губиться. fn не повинна
+// викликати методи Store (м'ютекс не реентерабельний). Повертає false, якщо
+// збірки немає. Якщо fn повертає помилку — нічого не записується.
+func (s *Store) Update(id string, fn func(*Pack) error) (Pack, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.loadPack(id)
+	if p.ID == "" {
+		return Pack{}, false, nil
+	}
+	if err := fn(&p); err != nil {
+		return p, true, err
+	}
+	p.ID = id
+	p.UpdatedAt = time.Now()
+	p.Rev++
+	if err := s.savePack(p); err != nil {
+		return p, true, err
+	}
+	return p, true, nil
 }
 
 // RenameAccountRefs переносить прив'язку "запускати саме під акаунтом X"

@@ -273,18 +273,32 @@
   async function saveAppearance() {
     if (saving || !cp) return
     saving = true
+    // ЗНІМОК того, що реально відправляємо. Раніше після await у
+    // lastSavedAppearance/cp потрапляли ПОТОЧНІ значення полів: якщо під час
+    // збереження користувач обирав іншу іконку, форма вважала нову іконку
+    // «вже збереженою» (changed=false), бекенд мав стару, і після перезапуску
+    // пресет «злітав». Тепер фіксуємо надіслане, а все, що змінилось за час
+    // збереження, лишається «незбереженим» і ефект нижче збереже його одразу
+    // після завершення (saving → false перезапускає ефект).
+    const snap = {
+      color, iconName, iconSrcPath, backgroundSrcPath,
+      bgRemove: backgroundRemovePending,
+    }
+    // iconChanged — лише коли іконка справді змінилась відносно збереженої
+    // (або обрано новий файл). Зміна кольору/фону не повинна торкатись іконки:
+    // з iconChanged=true бекенд видаляє завантажений PNG, щойно iconName —
+    // пресет.
+    const iconTouched = snap.iconName !== lastSavedAppearance.iconName || !!snap.iconSrcPath
     try {
       await App.UpdateCustomPack(pack.id, {
         // Назва/опис — ОСТАННІ ЗБЕРЕЖЕНІ (origText), а не те, що зараз у
         // полях: авто-збереження вигляду ніколи не «підхоплює» незбережені
         // текстові правки за кулісами.
         name: origText.name, description: origText.description,
-        iconSrcPath, backgroundSrcPath, backgroundRemove: backgroundRemovePending, icon: iconName,
-        // iconChanged: true — це збереження ВИГЛЯДУ (авто-save з $effect
-        // спрацьовує саме на реальну зміну iconName/iconSrcPath), тож тут
-        // бекенду можна довіряти поточному значенню iconName.
-        iconChanged: true,
-        color,
+        iconSrcPath: snap.iconSrcPath, backgroundSrcPath: snap.backgroundSrcPath,
+        backgroundRemove: snap.bgRemove, icon: snap.iconName,
+        iconChanged: iconTouched,
+        color: snap.color,
         mcVersion: origVersions.mc, loader: origVersions.loader, loaderVersion: origVersions.lv,
         useCustomRam: cp?.useCustomRam ?? false,
         minRamMb: cp?.minRamMb ?? 0,
@@ -294,16 +308,19 @@
       })
       onUpdated()
       // iconSrcPath/backgroundSrcPath одноразові (шлях до файлу для
-      // імпорту) — після збереження бекенд скопіював файл, локально їх
-      // більше тримати не треба. cp оновлюємо тихо (без loadingCfg), щоб
-      // прев'ю продовжувало показувати актуальний шлях без «блимання».
+      // імпорту) — після збереження бекенд скопіював файл. Скидаємо їх лише
+      // якщо за час збереження користувач не обрав інший файл. cp оновлюємо
+      // тихо значеннями зі ЗНІМКА (а не поточними полями).
       if (cp) {
-        cp = { ...cp, color, icon: iconName, backgroundPath: backgroundRemovePending ? '' : cp.backgroundPath }
-        if (iconSrcPath) iconSrcPath = ''
-        if (backgroundSrcPath) backgroundSrcPath = ''
+        cp = { ...cp, color: snap.color, icon: snap.iconName, backgroundPath: snap.bgRemove ? '' : cp.backgroundPath }
       }
-      backgroundRemovePending = false
-      lastSavedAppearance = { color, iconName, iconSrcPath: '', backgroundSrcPath: '' }
+      if (snap.iconSrcPath && iconSrcPath === snap.iconSrcPath) iconSrcPath = ''
+      if (snap.backgroundSrcPath && backgroundSrcPath === snap.backgroundSrcPath) backgroundSrcPath = ''
+      if (snap.bgRemove) backgroundRemovePending = false
+      lastSavedAppearance = {
+        color: snap.color, iconName: snap.iconName,
+        iconSrcPath: '', backgroundSrcPath: '',
+      }
       autoSavedTick++
     } catch (e: any) {
       toast(t('error.withMessage', { message: e }), 'error')

@@ -1,13 +1,13 @@
 package main
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/crashguard"
 	"strings"
 	"sync"
 	"time"
@@ -339,7 +339,10 @@ func (a *App) createAutoPackLocked(kind autoPackKind, name, mcVersion, iconDataU
 		iconAbs := filepath.Join(a.packDir(pack.ID, string(builds.KindCustom)), "icon.png")
 		if werr := os.WriteFile(iconAbs, iconBytes, 0644); werr == nil {
 			pack.IconPath = "icon.png"
-			_ = a.customPacks.Save(pack)
+			_, _, _ = a.customPacks.Update(pack.ID, func(cp *custompack.Pack) error {
+				cp.IconPath = "icon.png"
+				return nil
+			})
 		}
 	}
 	rec.ID = pack.ID
@@ -636,17 +639,23 @@ func (a *App) ensureAutoVersionSync(packID string) {
 	if rec.ID != packID || !rec.Enabled {
 		return // стан змінився, поки чекали на мережу (вимкнули/видалили) — не чіпаємо
 	}
-	cp, ok := a.customPacks.Get(packID)
-	if !ok {
+	if _, ok := a.customPacks.Get(packID); !ok {
 		return
 	}
 	rec.Target = target
-	if cp.MCVersion == target {
-		a.saveAutoPacksLocked()
+	same := false
+	if _, _, err := a.customPacks.Update(packID, func(cp *custompack.Pack) error {
+		if cp.MCVersion == target {
+			same = true
+			return nil
+		}
+		cp.MCVersion = target
+		return nil
+	}); err != nil {
 		return
 	}
-	cp.MCVersion = target
-	if err := a.customPacks.Save(cp); err != nil {
+	if same {
+		a.saveAutoPacksLocked()
 		return
 	}
 	a.saveAutoPacksLocked()
@@ -709,8 +718,10 @@ func (a *App) checkAutoVersionPacks() bool {
 		}
 		// Нова версія Mojang: перемикаємо конфіг збірки самі. Файли гри
 		// качаються по кнопці (RefreshAutoPackFiles) — див. статус картки.
-		cp.MCVersion = target
-		if err := a.customPacks.Save(cp); err != nil {
+		if _, _, err := a.customPacks.Update(rec.ID, func(c *custompack.Pack) error {
+			c.MCVersion = target
+			return nil
+		}); err != nil {
 			continue
 		}
 		changed = true

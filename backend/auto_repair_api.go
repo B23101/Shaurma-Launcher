@@ -403,9 +403,12 @@ func (e *repairExecutor) SetJava(path string) error {
 		return err
 	}
 	if cp, ok := e.a.customPacks.Get(e.packID); ok && (cp.UseSeparateJava || cp.JavaPath != "") {
-		cp.UseSeparateJava = path != ""
-		cp.JavaPath = path
-		return e.a.customPacks.Save(cp)
+		_, _, err := e.a.customPacks.Update(e.packID, func(c *custompack.Pack) error {
+			c.UseSeparateJava = path != ""
+			c.JavaPath = path
+			return nil
+		})
+		return err
 	}
 	return nil
 }
@@ -456,7 +459,10 @@ func (e *repairExecutor) UpdateLoader(minimum string) (string, error) {
 	}
 	old := cp.LoaderVersion
 	cp.LoaderVersion = pick
-	if err := a.customPacks.Save(cp); err != nil {
+	if _, _, err := a.customPacks.Update(cp.ID, func(c *custompack.Pack) error {
+		c.LoaderVersion = pick
+		return nil
+	}); err != nil {
 		return "", err
 	}
 	// Новий профіль лоадера: старий прибираємо зі спільної бази й ставимо заново.

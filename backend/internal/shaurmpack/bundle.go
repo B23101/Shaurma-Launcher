@@ -158,6 +158,9 @@ type BundleImportOptions struct {
 
 	// ResolveDownload — функція для завантаження файлів з CurseForge/Modrinth
 	ResolveDownload func(destPath string, pf PackFile) error
+
+	// ResolveDownloadHashed — швидкий потоковий шлях (див. ImportOptions).
+	ResolveDownloadHashed func(destPath string, pf PackFile) (sha1Hex string, err error)
 }
 
 // BundleImportResult — результат імпорту бандла.
@@ -590,10 +593,10 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 			runPool(context.Background(), len(toDownload), func(i int) {
 				pf := toDownload[i]
 				var err error
-				if opts.ResolveDownload == nil {
+				if opts.ResolveDownload == nil && opts.ResolveDownloadHashed == nil {
 					err = fmt.Errorf("немає ResolveDownload")
 				} else {
-					err = resolveVerified(ImportOptions{TargetGameDir: gameDir, ResolveDownload: opts.ResolveDownload}, pf)
+					err = resolveVerified(ImportOptions{TargetGameDir: gameDir, ResolveDownload: opts.ResolveDownload, ResolveDownloadHashed: opts.ResolveDownloadHashed}, pf)
 				}
 				mu.Lock()
 				defer mu.Unlock()

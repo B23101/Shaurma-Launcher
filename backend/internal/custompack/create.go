@@ -164,85 +164,96 @@ func Create(store *Store, instanceDir string, p CreateParams) (Pack, error) {
 
 // Update редагує вже створену кастомну збірку (сторінка редагування —
 // ті самі поля, без зміни ID/теки на диску).
+//
+// Усі зміни запису застосовуються через store.Update — читання свіжого
+// instance.json і запис під одним м'ютексом. Раніше тут було Get → правки →
+// Save, і між Get та Save фоновий потік (імпорт, синхронізація) міг записати
+// свою копію, затерши щойно обрану користувачем іконку.
 func Update(store *Store, instanceDir, id string, p CreateParams) (Pack, error) {
-	existing, ok := store.Get(id)
-	if !ok {
+	if _, ok := store.Get(id); !ok {
 		return Pack{}, fmt.Errorf("збірку не знайдено: %s", id)
 	}
 	packDir := filepath.Join(instanceDir, id)
 	name := strings.TrimSpace(p.Name)
-	if name != "" {
-		existing.Name = name
-	}
-	existing.Description = strings.TrimSpace(p.Description)
-	// existing.Icon оновлюємо ЛИШЕ якщо форма реально несе нове значення
-	// пресету (IconChanged) — інакше просте збереження назви/опису
-	// перезаписувало б Icon значенням, яке фронтенд шле в payload завжди
-	// (навіть коли користувач іконку не чіпав), затираючи попередній стан.
-	// Явний вибір пресет-іконки (IconChanged && новий файл не обирався)
-	// скасовує раніше завантажений PNG: інакше стара IconPath лишається
-	// на диску незайманою і скрізь у UI PNG має пріоритет над пресетом
-	// (packAsset(iconUrl) ? img : icon), тому користувач бачив СТАРУ
-	// картинку замість щойно обраної зірки/черепа/etc. IconSrcPath (новий
-	// файл із діалогу) завжди має пріоритет над цим скиданням — обробляється
-	// нижче.
-	if p.IconChanged {
-		existing.Icon = p.Icon
-		if p.Icon != "" && p.IconSrcPath == "" {
-			if existing.IconPath != "" {
-				// IconPath тепер відносний — розв'язуємо повний шлях для видалення.
-				_ = os.Remove(filepath.Join(packDir, existing.IconPath))
-			}
-			existing.IconPath = ""
-		}
-	}
-	if p.Color != "" {
-		existing.Color = p.Color
-	}
-	if strings.TrimSpace(p.MCVersion) != "" {
-		existing.MCVersion = strings.TrimSpace(p.MCVersion)
-	}
-	if p.Loader != "" {
-		existing.Loader = string(p.Loader)
-	}
-	existing.LoaderVersion = strings.TrimSpace(p.LoaderVersion)
-	// Той самий захист, що й у Create: не дати зберегти нову конфігурацію
-	// без версії лоадера, якщо лоадер не Vanilla (перевіряємо ПІСЛЯ мержу
-	// existing/p вище, бо Loader міг лишитись попереднім, якщо p.Loader
-	// порожній).
-	if Loader(existing.Loader) != LoaderVanilla && existing.LoaderVersion == "" {
-		return Pack{}, fmt.Errorf("не обрано версію лоадера %s", existing.Loader)
-	}
-	existing.UseCustomRAM = p.UseCustomRAM
-	existing.MinRAMMB = p.MinRAMMB
-	existing.MaxRAMMB = p.MaxRAMMB
-	existing.UseSeparateJava = p.UseSeparateJava
-	existing.JavaPath = p.JavaPath
 
+	// Файлові операції без м'ютекса Store: копіювання нової іконки/фону
+	// може бути повільним і не залежить від полів запису.
+	var newIconPath, newBgPath string
 	if p.IconSrcPath != "" {
 		if dst, err := copyAssetInto(packDir, "icon", p.IconSrcPath); err == nil {
-			existing.IconPath = dst
+			newIconPath = dst
 		}
 	}
-	if p.BackgroundRemove {
-		// Явне видалення банера: прибираємо старий файл з диска і чистимо
-		// шлях у записі. Раніше цього зробити було неможливо — порожній
-		// BackgroundSrcPath означав «не чіпати фон», тому банер, раз
-		// встановлений, висів на сторінці збірки назавжди.
-		if existing.BackgroundPath != "" {
-			_ = os.Remove(filepath.Join(packDir, existing.BackgroundPath))
-		}
-		existing.BackgroundPath = ""
-	} else if p.BackgroundSrcPath != "" {
+	if !p.BackgroundRemove && p.BackgroundSrcPath != "" {
 		if dst, err := copyAssetInto(packDir, "background", p.BackgroundSrcPath); err == nil {
-			existing.BackgroundPath = dst
+			newBgPath = dst
 		}
 	}
 
-	if err := store.Save(existing); err != nil {
+	pack, found, err := store.Update(id, func(existing *Pack) error {
+		if name != "" {
+			existing.Name = name
+		}
+		existing.Description = strings.TrimSpace(p.Description)
+		// existing.Icon оновлюємо ЛИШЕ якщо форма реально несе нове значення
+		// пресету (IconChanged) — інакше просте збереження назви/опису
+		// перезаписувало б Icon значенням, яке фронтенд шле в payload завжди.
+		// Явний вибір пресет-іконки (IconChanged && новий файл не обирався)
+		// скасовує раніше завантажений PNG: інакше стара IconPath лишається
+		// і скрізь у UI PNG має пріоритет над пресетом. IconSrcPath (новий
+		// файл із діалогу) завжди має пріоритет — обробляється нижче.
+		if p.IconChanged {
+			existing.Icon = p.Icon
+			if p.Icon != "" && p.IconSrcPath == "" {
+				if existing.IconPath != "" {
+					// IconPath відносний — розв'язуємо повний шлях для видалення.
+					_ = os.Remove(filepath.Join(packDir, existing.IconPath))
+				}
+				existing.IconPath = ""
+			}
+		}
+		if p.Color != "" {
+			existing.Color = p.Color
+		}
+		if strings.TrimSpace(p.MCVersion) != "" {
+			existing.MCVersion = strings.TrimSpace(p.MCVersion)
+		}
+		if p.Loader != "" {
+			existing.Loader = string(p.Loader)
+		}
+		existing.LoaderVersion = strings.TrimSpace(p.LoaderVersion)
+		// Той самий захист, що й у Create: не зберігати конфігурацію без
+		// версії лоадера, якщо лоадер не Vanilla (перевірка ПІСЛЯ мержу).
+		if Loader(existing.Loader) != LoaderVanilla && existing.LoaderVersion == "" {
+			return fmt.Errorf("не обрано версію лоадера %s", existing.Loader)
+		}
+		existing.UseCustomRAM = p.UseCustomRAM
+		existing.MinRAMMB = p.MinRAMMB
+		existing.MaxRAMMB = p.MaxRAMMB
+		existing.UseSeparateJava = p.UseSeparateJava
+		existing.JavaPath = p.JavaPath
+
+		if newIconPath != "" {
+			existing.IconPath = newIconPath
+		}
+		if p.BackgroundRemove {
+			// Явне видалення банера: прибираємо файл і чистимо шлях у записі.
+			if existing.BackgroundPath != "" {
+				_ = os.Remove(filepath.Join(packDir, existing.BackgroundPath))
+			}
+			existing.BackgroundPath = ""
+		} else if newBgPath != "" {
+			existing.BackgroundPath = newBgPath
+		}
+		return nil
+	})
+	if !found {
+		return Pack{}, fmt.Errorf("збірку не знайдено: %s", id)
+	}
+	if err != nil {
 		return Pack{}, err
 	}
-	return existing, nil
+	return pack, nil
 }
 
 // Delete видаляє кастомну збірку: запис зі Store + всю теку на диску.

@@ -141,6 +141,8 @@
   // змінювали: consoleFontStackFor()/lineFont() падали на дефолтний
   // var(--font-mono) для будь-якого значення, якого явно не очікували).
   function lineFont(lvl: string): string {
+    // Банер запуску — завжди чистий моноширинний шрифт (інакше ASCII-арт з «█» пливе).
+    if (lvl === 'banner') return "ui-monospace, 'JetBrains Mono', 'Cascadia Mono', Consolas, Menlo, 'DejaVu Sans Mono', monospace"
     const f = settings.consoleFontMode === 'perType'
       ? (lvl === 'error' ? settings.consoleErrorFont : lvl === 'warn' ? settings.consoleWarnFont : settings.consoleInfoFont) || 'mono'
       : settings.consoleFontFamily || 'mono'
@@ -758,6 +760,7 @@
     if (lvl === 'error') return settings.consoleErrorColor || '#ff6b6b'
     if (lvl === 'warn') return settings.consoleWarnColor || '#ffd166'
     if (lvl === 'system') return 'var(--text-dim)'
+    if (lvl === 'banner') return 'var(--orange, #ff9f43)'
     return settings.consoleInfoColor || '#8fd3ff'
   }
 
@@ -1227,8 +1230,10 @@
     {:else if settings.consoleWrap}
       {#each filtered as line (line.id)}
         <div class="line {line.level}" style="color:{levelColor(line.level)};font-family:{lineFont(line.level)}">
-          <span class="l-ts">{line.time}</span>
-          <span class="l-lvl">{levelLabel(line.level)}</span>
+          {#if line.level !== 'banner'}
+            <span class="l-ts">{line.time}</span>
+            <span class="l-lvl">{levelLabel(line.level)}</span>
+          {/if}
           <span class="l-msg">{@html highlight(line.text)}</span>
   </div>
       {/each}
@@ -1236,8 +1241,10 @@
       <div style="height:{startIdx * LINE_H}px;flex-shrink:0"></div>
       {#each visible as line (line.id)}
         <div class="line {line.level}" style="height:{LINE_H}px;color:{levelColor(line.level)};font-family:{lineFont(line.level)}">
-          <span class="l-ts">{line.time}</span>
-          <span class="l-lvl">{levelLabel(line.level)}</span>
+          {#if line.level !== 'banner'}
+            <span class="l-ts">{line.time}</span>
+            <span class="l-lvl">{levelLabel(line.level)}</span>
+          {/if}
           <span class="l-msg">{@html highlight(line.text)}</span>
   </div>
       {/each}
@@ -1733,6 +1740,15 @@
   .line.error { background: color-mix(in srgb, #ff6b6b 9%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, #ff6b6b 80%, transparent); }
   .line.warn:hover, .line.error:hover { filter: brightness(1.15); }
   .line .l-msg { flex: 1; min-width: 0; }
+  /* Банер запуску: без префіксів, блоки «█» стикуються між рядками
+     (розмір шрифту = висота рядка / 1.2), ліга/кернінг вимкнені. */
+  .line.banner {
+    font-size: calc(var(--cons-line, 22px) / 1.2);
+    line-height: var(--cons-line, 22px);
+    letter-spacing: 0; font-variant-ligatures: none; font-kerning: none;
+    font-weight: 700; user-select: none; -webkit-user-select: none;
+  }
+  .line.banner:hover { background: none; }
   .line .l-msg :global(mark) { background: rgba(var(--orange-rgb), .4); color: #fff; border-radius: 2px; }
 
   /* Перенесення довгих рядків (налаштування consoleWrap, як у Prism):

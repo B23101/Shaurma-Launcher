@@ -30,6 +30,10 @@ const (
 	LevelWarn   = "warn"
 	LevelError  = "error"
 	LevelSystem = "system"
+	// LevelBanner — ASCII-арт банер запуску: у UI малюється БЕЗ часу й бейджа
+	// рівня, суворо моноширинним шрифтом і щільними рядками, інакше блоки
+	// «█» розсипаються.
+	LevelBanner = "banner"
 )
 
 var (
@@ -84,7 +88,7 @@ func (b *Buffer) AppendLevel(level, text string) model.ConsoleLine {
 	line := b.appendLocked(level, text)
 	// Спостерігач — ПОЗА мьютексом буфера і лише для рядків гри (не службових
 	// повідомлень лаунчера). Помилка в ньому не має ламати консоль.
-	if level != LevelSystem {
+	if level != LevelSystem && level != LevelBanner {
 		if fn := lineObserver.Load(); fn != nil {
 			func() {
 				defer func() { _ = recover() }()

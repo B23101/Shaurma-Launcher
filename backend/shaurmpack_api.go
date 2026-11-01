@@ -3,9 +3,12 @@ package main
 import (
 	"archive/zip"
 	"context"
+	"crypto/sha1"
 	"encoding/base64"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -207,9 +210,10 @@ func (a *App) ImportShaurmpackFile(path, name, color, iconSrcPath, icon string) 
 	}()
 
 	result, err := shaurmpack.Import(shaurmpack.ImportOptions{
-		ShaurmPackPath:  path,
-		TargetGameDir:   gameDir,
-		ResolveDownload: a.shaurmpackDownloadResolver(),
+		ShaurmPackPath:        path,
+		TargetGameDir:         gameDir,
+		ResolveDownload:       a.shaurmpackDownloadResolver(),
+		ResolveDownloadHashed: a.shaurmpackDownloadResolverHashed(),
 	})
 	if err != nil {
 		return custompack.Pack{}, fmt.Errorf("імпорт .shaurmpack: %w", err)
@@ -291,11 +295,12 @@ func (a *App) startShaurmpackImportRun(pack custompack.Pack, gameDir string, m *
 		}()
 
 		result, err := shaurmpack.Import(shaurmpack.ImportOptions{
-			ShaurmPackPath:  pack.ArchivePath,
-			TargetGameDir:   gameDir,
-			ResolveDownload: a.shaurmpackDownloadResolver(),
-			Context:         ctx,
-			SkipExisting:    resume,
+			ShaurmPackPath:        pack.ArchivePath,
+			TargetGameDir:         gameDir,
+			ResolveDownload:       a.shaurmpackDownloadResolver(),
+			ResolveDownloadHashed: a.shaurmpackDownloadResolverHashed(),
+			Context:               ctx,
+			SkipExisting:          resume,
 			Progress: func(p shaurmpack.ImportProgress) {
 				a.reportShaurmpackProgress(ctx, pack, p)
 			},
@@ -387,14 +392,9 @@ func (a *App) failShaurmpackImport(pack custompack.Pack, err error) {
 // шлях ще до виклику цього резолвера (guard у unpack.go).
 func (a *App) shaurmpackDownloadResolver() func(destPath string, pf shaurmpack.PackFile) error {
 	return func(destPath string, pf shaurmpack.PackFile) error {
-		var url string
-		switch {
-		case pf.Modrinth != nil && pf.Modrinth.DownloadURL != "":
-			url = pf.Modrinth.DownloadURL
-		case pf.CurseForge != nil && !pf.CurseForge.Blocked && pf.CurseForge.DownloadURL != "":
-			url = pf.CurseForge.DownloadURL
-		default:
-			return fmt.Errorf("немає робочого джерела для %s", pf.Path)
+		url, err := shaurmpackSourceURL(pf)
+		if err != nil {
+			return err
 		}
 		return shaurmpackDownloadToFile(url, destPath, pf.Size)
 	}
@@ -418,20 +418,27 @@ func validatePackDownloadURL(raw string) error {
 	return fmt.Errorf("untrusted pack download host")
 }
 
-func shaurmpackDownloadToFile(url, destPath string, size int64) error {
-	if err := validatePackDownloadURL(url); err != nil {
-		return err
-	}
-
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+shaurmpack-import; shaurmaofficial2210@gmail.com)")
-	if custompack.IsCurseForgeCDNURL(url) && custompack.HasCurseForgeAPIKey() {
-		req.Header.Set("x-api-key", custompack.CurseForgeAPIKeyValue())
-	}
-	client := &http.Client{Timeout: 5 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+// shaurmpackHTTP — ЄДИНИЙ клієнт для всіх завантажень модів з .shaurmpack.
+// Раніше кожен файл створював свій http.Client на http.DefaultTransport, у
+// якого лише 2 «гарячі» з'єднання на хост: 10 паралельних воркерів постійно
+// закривали й заново відкривали TLS-з'єднання до cdn.modrinth.com. Тут
+// з'єднання перевикористовуються (keep-alive, HTTP/2), що помітно пришвидшує
+// збірки з сотнею дрібних модів. DisableCompression — щоб байти на диску
+// збігались із розміром і SHA-1 з маніфесту.
+var shaurmpackHTTP = &http.Client{
+	Timeout: 5 * time.Minute,
+	Transport: &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		ForceAttemptHTTP2:     true,
+		DisableCompression:    true,
+		MaxIdleConns:          64,
+		MaxIdleConnsPerHost:   16,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	},
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return fmt.Errorf("too many redirects")
 		}
@@ -443,15 +450,100 @@ func shaurmpackDownloadToFile(url, destPath string, size int64) error {
 			req.Header.Set("x-api-key", custompack.CurseForgeAPIKeyValue())
 		}
 		return nil
-	}}
-	resp, err := client.Do(req)
+	},
+}
+
+// shaurmpackSourceURL обирає робочий прямий URL з маніфесту (Modrinth →
+// CurseForge без блокування).
+func shaurmpackSourceURL(pf shaurmpack.PackFile) (string, error) {
+	switch {
+	case pf.Modrinth != nil && pf.Modrinth.DownloadURL != "":
+		return pf.Modrinth.DownloadURL, nil
+	case pf.CurseForge != nil && !pf.CurseForge.Blocked && pf.CurseForge.DownloadURL != "":
+		return pf.CurseForge.DownloadURL, nil
+	}
+	return "", fmt.Errorf("немає робочого джерела для %s", pf.Path)
+}
+
+// shaurmpackOpenURL виконує GET за перевіреним URL і повертає відповідь 200.
+func shaurmpackOpenURL(url string) (*http.Response, error) {
+	if err := validatePackDownloadURL(url); err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+shaurmpack-import; shaurmaofficial2210@gmail.com)")
+	if custompack.IsCurseForgeCDNURL(url) && custompack.HasCurseForgeAPIKey() {
+		req.Header.Set("x-api-key", custompack.CurseForgeAPIKeyValue())
+	}
+	resp, err := shaurmpackHTTP.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("HTTP %d при завантаженні %s", resp.StatusCode, url)
+	}
+	return resp, nil
+}
+
+// shaurmpackDownloadResolverHashed — швидкий шлях для shaurmpack.Import
+// (ImportOptions.ResolveDownloadHashed): SHA-1 рахується потоково під час
+// завантаження, без повторного читання файлу й копіювання між теками.
+func (a *App) shaurmpackDownloadResolverHashed() func(destPath string, pf shaurmpack.PackFile) (string, error) {
+	return func(destPath string, pf shaurmpack.PackFile) (string, error) {
+		url, err := shaurmpackSourceURL(pf)
+		if err != nil {
+			return "", err
+		}
+		return shaurmpackDownloadHashed(url, destPath, pf.Size)
+	}
+}
+
+// shaurmpackDownloadHashed качає url просто в destPath (тимчасове ім'я,
+// яке Import потім атомарно перейменовує після звірки) і повертає SHA-1
+// отриманих байтів. Файл створюється з O_EXCL — не слідуємо за чужим
+// symlink. При помилці частковий файл видаляється.
+func shaurmpackDownloadHashed(url, destPath string, size int64) (string, error) {
+	resp, err := shaurmpackOpenURL(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return "", err
+	}
+	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+	if err != nil {
+		return "", err
+	}
+	limit := int64(2 << 30)
+	if size > 0 && size < limit {
+		limit = size
+	}
+	h := sha1.New()
+	n, copyErr := io.Copy(io.MultiWriter(out, h), io.LimitReader(resp.Body, limit+1))
+	if copyErr == nil && (n > limit || (size > 0 && n != size)) {
+		copyErr = fmt.Errorf("download size mismatch")
+	}
+	if cerr := out.Close(); copyErr == nil {
+		copyErr = cerr
+	}
+	if copyErr != nil {
+		_ = os.Remove(destPath)
+		return "", copyErr
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+func shaurmpackDownloadToFile(url, destPath string, size int64) error {
+	resp, err := shaurmpackOpenURL(url)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d при завантаженні %s", resp.StatusCode, url)
-	}
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return err
 	}
@@ -468,10 +560,10 @@ func shaurmpackDownloadToFile(url, destPath string, size int64) error {
 	if copyErr == nil && (n > limit || (size > 0 && n != size)) {
 		copyErr = fmt.Errorf("download size mismatch")
 	}
-	if err := copyErr; err != nil {
+	if copyErr != nil {
 		out.Close()
 		os.Remove(tmp)
-		return err
+		return copyErr
 	}
 	if err := out.Close(); err != nil {
 		os.Remove(tmp)

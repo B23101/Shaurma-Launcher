@@ -1457,8 +1457,10 @@ func UpdatePackFromSource(ctx context.Context, store *Store, instanceDir string,
 		tasks, blockedModsSkipped, err = resolveBlockedMods(ctx, blockedHandler, useModrinthForBlocked, blocked, tasks, report)
 		if err != nil {
 			if len(blockedModsSkipped) > 0 {
-				p.BlockedMods = blockedModsSkipped
-				_ = store.Save(p)
+				_, _, _ = store.Update(id, func(c *Pack) error {
+					c.BlockedMods = blockedModsSkipped
+					return nil
+				})
 			}
 			report(ImportProgress{Stage: "", Done: true, Error: err})
 			return Pack{}, err
@@ -1510,15 +1512,22 @@ func UpdatePackFromSource(ctx context.Context, store *Store, instanceDir string,
 
 	// Оновлюємо запис: версія гри/лоадер — З НОВОЇ ВЕРСІЇ модпаку,
 	// SourceVersionID — нова версія, SourceFiles — новий список.
-	updated := p
-	updated.MCVersion = detected.MCVersion
-	updated.Loader = string(detected.Loader)
-	updated.LoaderVersion = detected.LoaderVersion
-	updated.SourceVersionID = newVersionID
-	updated.SourceFiles = newManifestFiles
-	updated.BlockedMods = blockedModsSkipped
-	updated.UpdatedAt = time.Now()
-	if err := store.Save(updated); err != nil {
+	// Update замість «updated := p; Save(updated)»: p було прочитано на початку
+	// оновлення, яке триває хвилини, — запис цілої старої копії в кінці
+	// відкочував іконку/назву, змінені користувачем за цей час.
+	updated, found, err := store.Update(id, func(c *Pack) error {
+		c.MCVersion = detected.MCVersion
+		c.Loader = string(detected.Loader)
+		c.LoaderVersion = detected.LoaderVersion
+		c.SourceVersionID = newVersionID
+		c.SourceFiles = newManifestFiles
+		c.BlockedMods = blockedModsSkipped
+		return nil
+	})
+	if err == nil && !found {
+		err = fmt.Errorf("збірку %s видалено під час оновлення", id)
+	}
+	if err != nil {
 		report(ImportProgress{Stage: "", Done: true, Error: err})
 		return Pack{}, err
 	}

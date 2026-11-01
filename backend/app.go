@@ -2058,7 +2058,7 @@ func (a *App) LaunchInstance(instanceID string) error {
 		"████   █   █  █   █   ███   █   █  █   █  █   █",
 		"               L A U N C H E R",
 	} {
-		buf.AppendLevel(console.LevelSystem, line)
+		buf.AppendLevel(console.LevelBanner, line)
 	}
 	buf.AppendLevel(console.LevelSystem, fmt.Sprintf("Запуск збірки \"%s\" (%s %s)...", build.Name, build.Loader, build.MCVersion))
 	if javaWarn != "" {

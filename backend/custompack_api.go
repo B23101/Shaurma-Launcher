@@ -1,12 +1,12 @@
 package main
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"context"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/crashguard"
 	"strings"
 	"time"
 
@@ -414,19 +414,30 @@ func (a *App) GetCustomPack(id string) (custompack.Pack, error) {
 	// Перевіряємо mods/ папку та оновлюємо BlockedMods: якщо файл мода
 	// вже є на диску — позначаємо Downloaded = true.
 	if len(p.BlockedMods) > 0 {
-		changed := false
+		// Дисковий I/O — поза локом Store; сам запис — атомарний Update, що
+		// змінює лише прапорці Downloaded у СВІЖОМУ записі (геттер більше не
+		// може затерти іконку чи інші поля старою копією).
+		modsDir := filepath.Join(a.gameDir(id), "mods")
+		present := map[string]bool{}
 		for i := range p.BlockedMods {
 			if p.BlockedMods[i].Downloaded {
 				continue
 			}
-			modsDir := filepath.Join(a.gameDir(id), "mods")
 			if _, err := os.Stat(filepath.Join(modsDir, p.BlockedMods[i].FileName)); err == nil {
-				p.BlockedMods[i].Downloaded = true
-				changed = true
+				present[p.BlockedMods[i].FileName] = true
 			}
 		}
-		if changed {
-			_ = a.customPacks.Save(p)
+		if len(present) > 0 {
+			if np, found, err := a.customPacks.Update(id, func(cp *custompack.Pack) error {
+				for i := range cp.BlockedMods {
+					if present[cp.BlockedMods[i].FileName] {
+						cp.BlockedMods[i].Downloaded = true
+					}
+				}
+				return nil
+			}); found && err == nil {
+				p = np
+			}
 		}
 	}
 	return p, nil
@@ -436,22 +447,19 @@ func (a *App) GetCustomPack(id string) (custompack.Pack, error) {
 // з BlockedMods. Якщо файл мода є в mods/ — позначає Downloaded=true,
 // якщо ні — Downloaded=false (користувач може вручну зняти позначку).
 func (a *App) ToggleBlockedModDownloaded(packID, fileName string, downloaded bool) error {
-	p, ok := a.customPacks.Get(packID)
-	if !ok {
+	_, found, err := a.customPacks.Update(packID, func(p *custompack.Pack) error {
+		for i := range p.BlockedMods {
+			if p.BlockedMods[i].FileName == fileName {
+				p.BlockedMods[i].Downloaded = downloaded
+				break
+			}
+		}
+		return nil
+	})
+	if !found {
 		return fmt.Errorf("кастомну збірку не знайдено: %s", packID)
 	}
-	changed := false
-	for i := range p.BlockedMods {
-		if p.BlockedMods[i].FileName == fileName {
-			p.BlockedMods[i].Downloaded = downloaded
-			changed = true
-			break
-		}
-	}
-	if changed {
-		_ = a.customPacks.Save(p)
-	}
-	return nil
+	return err
 }
 
 // popBlockedCheckedMods витягує та видаляє список позначених галочками
@@ -701,22 +709,18 @@ func (a *App) ImportModpackArchive(archivePath string, detected *custompack.Dete
 				a.customImportMu.Unlock()
 				// Позначені галочками моди в діалозі → Downloaded=true
 				if checked := a.popBlockedCheckedMods(id); len(checked) > 0 {
-					if cp, ok := a.customPacks.Get(id); ok && len(cp.BlockedMods) > 0 {
-						checkedSet := make(map[string]bool, len(checked))
-						for _, fn := range checked {
-							checkedSet[fn] = true
-						}
-						changed := false
+					checkedSet := make(map[string]bool, len(checked))
+					for _, fn := range checked {
+						checkedSet[fn] = true
+					}
+					_, _, _ = a.customPacks.Update(id, func(cp *custompack.Pack) error {
 						for i := range cp.BlockedMods {
 							if checkedSet[cp.BlockedMods[i].FileName] {
 								cp.BlockedMods[i].Downloaded = true
-								changed = true
 							}
 						}
-						if changed {
-							_ = a.customPacks.Save(cp)
-						}
-					}
+						return nil
+					})
 				}
 				a.applyMinecraftDefaultsNow(id)
 				a.emit("builds:changed", res.pack.ID)
@@ -987,23 +991,24 @@ func (a *App) saveCustomImportStateLocked(ip custompack.ImportProgress) {
 	a.customImportStateAt[ip.PackID] = time.Now()
 	a.customImportStateMu.Unlock()
 
-	p, ok := a.customPacks.Get(ip.PackID)
-	if !ok {
-		return
-	}
-	st := p.ImportState
-	if st == nil {
-		st = &custompack.ImportState{}
-	}
-	st.Stage = ip.Stage
-	st.FilesCompleted = ip.FilesCompleted
-	st.FilesTotal = ip.FilesTotal
-	st.BytesDownloaded = ip.BytesDownloaded
-	st.BytesTotal = ip.BytesTotal
-	st.ArchivePath = p.ArchivePath
-	st.UpdatedAt = time.Now()
-	p.ImportState = st
-	_ = a.customPacks.Save(p)
+	// Атомарний Update: тік прогресу змінює ЛИШЕ ImportState у свіжому
+	// записі й не може відкотити іконку/назву, які користувач змінив під
+	// час імпорту (раніше тут було Get → Save усієї копії кожні ~700 мс).
+	_, _, _ = a.customPacks.Update(ip.PackID, func(p *custompack.Pack) error {
+		st := p.ImportState
+		if st == nil {
+			st = &custompack.ImportState{}
+		}
+		st.Stage = ip.Stage
+		st.FilesCompleted = ip.FilesCompleted
+		st.FilesTotal = ip.FilesTotal
+		st.BytesDownloaded = ip.BytesDownloaded
+		st.BytesTotal = ip.BytesTotal
+		st.ArchivePath = p.ArchivePath
+		st.UpdatedAt = time.Now()
+		p.ImportState = st
+		return nil
+	})
 }
 
 // saveCustomImportState — те саме, але для виклику БЕЗ захопленого
@@ -1023,12 +1028,10 @@ func (a *App) clearCustomImportState(packID string) {
 	a.customImportStateMu.Lock()
 	delete(a.customImportStateAt, packID)
 	a.customImportStateMu.Unlock()
-	p, ok := a.customPacks.Get(packID)
-	if !ok || p.ImportState == nil {
-		return
-	}
-	p.ImportState = nil
-	_ = a.customPacks.Save(p)
+	_, _, _ = a.customPacks.Update(packID, func(p *custompack.Pack) error {
+		p.ImportState = nil
+		return nil
+	})
 }
 
 // removePartFiles рекурсивно видаляє *.part файли в теці — частково скачані

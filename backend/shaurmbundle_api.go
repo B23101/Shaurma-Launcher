@@ -166,10 +166,11 @@ func (a *App) ImportShaurmbundleFile(path, folderID string) (ShaurmbundleImportR
 	}
 
 	importOpts := shaurmpack.BundleImportOptions{
-		ShaurmBundlePath: path,
-		TargetBaseDir:    instancesDir,
-		IDMap:            idMap,
-		ResolveDownload:  a.shaurmpackDownloadResolver(),
+		ShaurmBundlePath:      path,
+		TargetBaseDir:         instancesDir,
+		IDMap:                 idMap,
+		ResolveDownload:       a.shaurmpackDownloadResolver(),
+		ResolveDownloadHashed: a.shaurmpackDownloadResolverHashed(),
 		Progress: func(done, total int, packID string) {
 			a.emit("shaurmbundle:import:progress", map[string]any{
 				"done": done, "total": total, "packId": packID,
@@ -441,10 +442,10 @@ func (a *App) ExportShaurmbundle(req ExportShaurmbundleRequest) (ExportShaurmbun
 	total := len(packs)
 	done := 0
 	result, err := shaurmpack.ExportBundle(shaurmpack.BundleExportOptions{
-		Packs:             packs,
-		OutPath:           outPath,
-		LauncherName:      "Shaurma Launcher",
-		LauncherVersion:   appVersion,
+		Packs:                  packs,
+		OutPath:                outPath,
+		LauncherName:           "Shaurma Launcher",
+		LauncherVersion:        appVersion,
 		ResolveModrinthBatch:   a.shaurmpackModrinthBatchResolver(),
 		ResolveCurseForgeBatch: a.shaurmpackCurseForgeBatchResolver(),
 		SHA1Of:                 a.shaurmpackSHA1Of(),

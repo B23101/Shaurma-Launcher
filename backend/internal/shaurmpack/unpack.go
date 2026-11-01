@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -25,6 +26,16 @@ type ImportOptions struct {
 	// ResolveDownload — функція для завантаження файлів за CurseForge/Modrinth джерелом.
 	// Параметри: шлях для збереження, джерело. Повертає помилку.
 	ResolveDownload func(destPath string, pf PackFile) error
+
+	// ResolveDownloadHashed — швидкий шлях завантаження (має пріоритет над
+	// ResolveDownload). Резолвер пише файл у destPath і повертає SHA-1, який
+	// порахував ПІД ЧАС самого завантаження (потоково). Import не перечитує
+	// файл ще раз для перевірки й не копіює його між теками: звіряє розмір і
+	// SHA-1, після чого атомарно перейменовує готовий файл на місце. Це
+	// прибирає два зайві проходи по диску на кожен мод, а перевірка
+	// цілісності лишається повною — у фінальному шляху ніколи не з'являється
+	// неперевірений файл.
+	ResolveDownloadHashed func(destPath string, pf PackFile) (sha1Hex string, err error)
 
 	// UpdateOf — якщо заповнено, це ОНОВЛЕННЯ існуючої збірки.
 	// Імпортер порівняє версії і видалить файли яких немає в новій версії.
@@ -213,7 +224,8 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 	// Без ResolveDownload качати нічого, тож розпаковуємо все, що є в архіві.
 	var toDownload []PackFile
 	skipExtract := map[string]bool{}
-	if opts.ResolveDownload != nil {
+	canDownload := opts.ResolveDownload != nil || opts.ResolveDownloadHashed != nil
+	if canDownload {
 		for _, pf := range manifest.Files {
 			if pf.Bundled || !pf.HasWorkingSource() || (pf.CurseForge != nil && pf.CurseForge.Blocked && !workingModrinth(pf.Modrinth)) {
 				continue
@@ -261,6 +273,75 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 		opts.Progress(ImportProgress{Stage: ImportStageExtracting, FilesTotal: progTotal})
 	}
 
+	// 3a. Завантаження стартують ОДРАЗУ і йдуть паралельно з розпаковуванням
+	// overrides/bundled (раніше качання починалось лише після того, як
+	// розпаковано все з архіву). Шляхи не перетинаються: файли з toDownload
+	// у skipExtract і з архіву не розпаковуються; зайві запити лише на
+	// фолбек у download-воркері, а zip.Reader безпечний для паралельного читання.
+	// Великі файли качаємо першими, щоб найдовший не стартував останнім і не
+	// розтягував «хвіст» імпорту.
+	sort.SliceStable(toDownload, func(i, j int) bool { return toDownload[i].Size > toDownload[j].Size })
+	var resMu sync.Mutex
+	var downloadErr error
+	dctx, dcancel := context.WithCancel(ctx)
+	dlDone := make(chan struct{})
+	// Помилка розпакування чи скасування: зупиняємо нові завантаження й
+	// дочікуємось воркерів ДО закриття архіву (r.Close відкладено раніше).
+	defer func() { dcancel(); <-dlDone }()
+	if len(toDownload) == 0 {
+		close(dlDone)
+	} else {
+		go func() {
+			defer close(dlDone)
+			mu := &resMu
+			runPool(dctx, len(toDownload), func(i int) {
+				pf := toDownload[i]
+				destPath, pathErr := safeDestination(opts.TargetGameDir, pf.Path)
+				if pathErr != nil {
+					mu.Lock()
+					if downloadErr == nil {
+						downloadErr = pathErr
+					}
+					mu.Unlock()
+					return
+				}
+				// Відновлення після паузи: уже завантажений цілий файл не качаємо.
+				if opts.SkipExisting && fileMatches(destPath, pf) {
+					mu.Lock()
+					result.FilesLinked++
+					result.FilesTotal++
+					mu.Unlock()
+					report(ImportStageDownloading, pf.Path)
+					return
+				}
+				// Тека призначення може не існувати (з архіву моди більше не
+				// розпаковуються) — створюємо, щоб резолвер не мусив цього знати.
+				err := os.MkdirAll(opts.TargetGameDir, 0755)
+				if err == nil {
+					err = resolveVerified(opts, pf)
+				}
+
+				// Старі паки: якщо завантаження не вдалось — беремо копію з
+				// архіву (bundled/ або overrides/), якщо вона там є.
+				copied := err != nil && extractArchiveFallback(r, pf.Path, opts.TargetGameDir)
+				mu.Lock()
+				switch {
+				case err == nil:
+					result.FilesLinked++
+					result.FilesTotal++
+				case copied:
+					result.FilesCopied++
+				default:
+					if downloadErr == nil {
+						downloadErr = err
+					}
+				}
+				mu.Unlock()
+				report(ImportStageDownloading, pf.Path)
+			})
+		}()
+	}
+
 	// 3. Проходимо по ZIP файлах
 	for _, f := range r.File {
 		if err := ctx.Err(); err != nil {
@@ -283,7 +364,9 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 			if err := extractFile(f, opts.TargetGameDir, relPath); err != nil {
 				return nil, fmt.Errorf("розпакування override %s: %w", relPath, err)
 			}
+			resMu.Lock()
 			result.FilesCopied++
+			resMu.Unlock()
 			report(ImportStageExtracting, relPath)
 
 		// Bundled файли
@@ -300,7 +383,9 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 			if err := extractFile(f, opts.TargetGameDir, relPath); err != nil {
 				return nil, fmt.Errorf("розпакування bundled %s: %w", relPath, err)
 			}
+			resMu.Lock()
 			result.FilesCopied++
+			resMu.Unlock()
 			report(ImportStageExtracting, relPath)
 
 		// Metadata
@@ -316,69 +401,27 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 	// для неконсистентного/ручного .shaurmpack (Bundled=false, але Blocked) —
 	// страховий фолбек з bundled/ (потім overrides/), без запиту по порожньому
 	// DownloadURL.
-	if opts.ResolveDownload != nil {
+	if canDownload {
 		for _, pf := range manifest.Files {
 			if !pf.Bundled && pf.CurseForge != nil && pf.CurseForge.Blocked && !workingModrinth(pf.Modrinth) {
 				if extractArchiveFallback(r, pf.Path, opts.TargetGameDir) {
+					resMu.Lock()
 					result.FilesCopied++
+					resMu.Unlock()
 				}
 			}
 		}
 	}
-	if len(toDownload) > 0 {
-		var mu sync.Mutex
-		var downloadErr error
-		runPool(ctx, len(toDownload), func(i int) {
-			pf := toDownload[i]
-			destPath, pathErr := safeDestination(opts.TargetGameDir, pf.Path)
-			if pathErr != nil {
-				mu.Lock()
-				if downloadErr == nil {
-					downloadErr = pathErr
-				}
-				mu.Unlock()
-				return
-			}
-			// Відновлення після паузи: уже завантажений цілий файл не качаємо.
-			if opts.SkipExisting && fileMatches(destPath, pf) {
-				mu.Lock()
-				result.FilesLinked++
-				result.FilesTotal++
-				mu.Unlock()
-				report(ImportStageDownloading, pf.Path)
-				return
-			}
-			// Тека призначення може не існувати (з архіву моди більше не
-			// розпаковуються) — створюємо, щоб резолвер не мусив цього знати.
-			err := os.MkdirAll(opts.TargetGameDir, 0755)
-			if err == nil {
-				err = resolveVerified(opts, pf)
-			}
-
-			// Старі паки: якщо завантаження не вдалось — беремо копію з
-			// архіву (bundled/ або overrides/), якщо вона там є.
-			copied := err != nil && extractArchiveFallback(r, pf.Path, opts.TargetGameDir)
-			mu.Lock()
-			switch {
-			case err == nil:
-				result.FilesLinked++
-				result.FilesTotal++
-			case copied:
-				result.FilesCopied++
-			default:
-				if downloadErr == nil {
-					downloadErr = err
-				}
-			}
-			mu.Unlock()
-			report(ImportStageDownloading, pf.Path)
-		})
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-		if downloadErr != nil {
-			return nil, downloadErr
-		}
+	// Дочікуємось завантажень, що йшли паралельно з розпаковуванням.
+	<-dlDone
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	resMu.Lock()
+	dlErr := downloadErr
+	resMu.Unlock()
+	if dlErr != nil {
+		return nil, dlErr
 	}
 	if opts.Progress != nil {
 		opts.Progress(ImportProgress{Stage: ImportStageFinalizing, FilesDone: progTotal, FilesTotal: progTotal})
@@ -551,6 +594,9 @@ func resolveVerified(opts ImportOptions, pf PackFile) error {
 	if pf.Hash == "" {
 		return fmt.Errorf("missing download hash: %s", pf.Path)
 	}
+	if opts.ResolveDownloadHashed != nil {
+		return resolveVerifiedStreaming(opts, pf)
+	}
 	staging, err := os.MkdirTemp("", "shaurmpack-download-")
 	if err != nil {
 		return err
@@ -604,5 +650,58 @@ func validatePackArchive(files []*zip.File, maxTotal uint64) error {
 			return fmt.Errorf("pack archive exceeds size limit (%d bytes)", maxTotal)
 		}
 	}
+	return nil
+}
+
+// resolveVerifiedStreaming — завантаження з потоковою перевіркою SHA-1.
+//
+// Файл качається одразу в теку призначення під тимчасовим іменем
+// <файл>.part (та сама файлова система, тож фінальний крок — миттєве
+// перейменування, а не копіювання). SHA-1 рахується резолвером на льоту, поки
+// байти йдуть на диск, тому окремих проходів «перечитати для хешу» і
+// «скопіювати з temp у збірку» більше немає. Безпека та сама, що й раніше:
+//   - шлях розв'язується safeDestination (без symlink і виходу за корінь),
+//     а тека створюється через os.Root;
+//   - у фінальному імені файл з'являється лише після звірки розміру й SHA-1;
+//   - при будь-якій помилці .part видаляється.
+func resolveVerifiedStreaming(opts ImportOptions, pf PackFile) error {
+	final, err := safeDestination(opts.TargetGameDir, pf.Path)
+	if err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(opts.TargetGameDir)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	rel := filepath.FromSlash(strings.ReplaceAll(pf.Path, "\\", "/"))
+	if err := root.MkdirAll(filepath.Dir(rel), 0755); err != nil {
+		return err
+	}
+	stage := final + ".part"
+	// Лишок попереднього обриву (або підкинутий symlink) прибираємо самі —
+	// Remove видаляє сам запис, а не те, на що він вказує.
+	_ = root.Remove(rel + ".part")
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(stage)
+		}
+	}()
+	got, err := opts.ResolveDownloadHashed(stage, pf)
+	if err != nil {
+		return err
+	}
+	st, err := os.Lstat(stage)
+	if err != nil {
+		return err
+	}
+	if !st.Mode().IsRegular() || (pf.Size > 0 && st.Size() != pf.Size) || !strings.EqualFold(got, pf.Hash) {
+		return fmt.Errorf("download integrity mismatch: %s", pf.Path)
+	}
+	if err := os.Rename(stage, final); err != nil {
+		return err
+	}
+	ok = true
 	return nil
 }
