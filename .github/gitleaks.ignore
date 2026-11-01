@@ -1,3 +1,6 @@
 # Historical credential revoked by the owner, confirmed 2026-10-30.
 # This exception applies only to this exact finding; other findings still fail.
 c6e4fe08a0efa6a1456ce469fd0f67ff8200d812:launcher/internal/ai/gemini.go:generic-api-key:42
+# Public SHA-256 digest of the official authlib-injector release jar, used to verify downloads. Not a credential.
+# This exception applies only to this exact finding; other findings still fail.
+31b9807c8634df74eb96fb7eea4f6d174db33cb5:backend/authlib_injector.go:generic-api-key:83

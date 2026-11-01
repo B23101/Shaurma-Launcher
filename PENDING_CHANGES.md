@@ -26,3 +26,6 @@ Pack Manager після успішної збірки сам зробить git 
 
 ## 2026-11-01 23:55
 - [ci] У кроці gitleaks додано -v, щоб у логу було видно файл, коміт і правило знахідки (секрет лишається замаскованим) (зміни в .github/ — на окреме рев'ю) || print gitleaks finding details in ci log with redacted secrets
+
+## 2026-11-02 00:15
+- [ci] Додано в gitleaks.ignore точний виняток для публічного SHA-256 офіційного authlib-injector (це перевірочний хеш, а не секрет) (зміни в .github/ — на окреме рев'ю) || ignore public authlib-injector sha256 digest false positive in gitleaks
