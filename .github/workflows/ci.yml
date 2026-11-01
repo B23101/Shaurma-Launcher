@@ -18,7 +18,7 @@ jobs:
         with:
           go-version-file: backend/go.mod
       - name: Scan complete history with redacted findings
-        run: go run github.com/zricethezav/gitleaks/v8@v8.24.3 git --redact=100 --no-banner --log-opts=--all --gitleaks-ignore-path .github/gitleaks.ignore .
+        run: go run github.com/zricethezav/gitleaks/v8@v8.24.3 git -v --redact=100 --no-banner --log-opts=--all --gitleaks-ignore-path .github/gitleaks.ignore .
   go:
     runs-on: windows-latest
     strategy:

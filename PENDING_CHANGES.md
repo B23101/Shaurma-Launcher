@@ -23,3 +23,6 @@ Pack Manager після успішної збірки сам зробить git 
 
 ## 2026-11-01 23:45
 - [fix] Дозволено в git лише backend/build/appicon.png (його вбудовує tray_menu.go через go:embed), решта backend/build лишається ігнорованою; без нього go test у CI падав (змінено .gitignore — на окреме рев'ю) || track backend/build/appicon.png needed by go:embed so ci tests build
+
+## 2026-11-01 23:55
+- [ci] У кроці gitleaks додано -v, щоб у логу було видно файл, коміт і правило знахідки (секрет лишається замаскованим) (зміни в .github/ — на окреме рев'ю) || print gitleaks finding details in ci log with redacted secrets
