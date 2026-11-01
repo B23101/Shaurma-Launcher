@@ -20,9 +20,16 @@
     SHAURMA_MANIFEST_PUBKEYS                          Ed25519 public keys (base64, comma separated)
   Missing values only disable the matching feature (warning), unless -RequireSecrets is set.
 
+.PARAMETER LocalInstall
+  Локальна ПОВНА (shaurma) збірка для встановлення з диска: усі компоненти
+  кладуться в setup.exe, CDN-токен вшивається ТІЛЬКИ в backend.dll,
+  shell/updater лишаються без токена, а local-only.flag вимикає апдейтер.
+  Використовуйте через build-local-full.ps1; базова редакція не збирається.
+
 .EXAMPLE
   .\scripts\build-windows.ps1                       # everything, both editions, unsigned
   .\scripts\build-windows.ps1 -Edition base -Step components
+  .\scripts\build-windows.ps1 -Edition shaurma -LocalInstall   # офлайн setup.exe
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +38,9 @@ param(
     [string]$OutDir = '',
     [string]$ComponentsDir = '',
     [string]$AssetsDir = '',
+    [string]$Version = '1.0.0',
     [switch]$Strip,
+    [switch]$LocalInstall,
     [switch]$RequireSecrets
 )
 
@@ -49,7 +58,8 @@ $WailsCliVersion = 'v3.0.0-alpha2.121'
 $GoWinresVersion = 'v0.3.3'
 
 $ShellNames = @{ shaurma = 'ShaurmLauncher.exe'; base = 'ShaurmLauncherBase.exe' }
-$Editions = if ($Edition -eq 'all') { @('shaurma', 'base') } else { @($Edition) }
+$Editions = if ($LocalInstall) { @('shaurma') } elseif ($Edition -eq 'all') { @('shaurma', 'base') } else { @($Edition) }
+if ($LocalInstall -and $Edition -eq 'base') { throw '-LocalInstall builds only the full (shaurma) edition' }
 
 $UnsignedDir = Join-Path $OutDir 'unsigned'
 $AssetsOut = Join-Path $OutDir 'assets'
@@ -156,6 +166,14 @@ $GoogleSecret = Get-Secret 'SHAURMA_GOOGLE_CLIENT_SECRET'
 $PubKeys = Get-Secret 'SHAURMA_MANIFEST_PUBKEYS'
 
 function Check-Secrets {
+    if ($LocalInstall) {
+        # Локальна повна збірка не оновлюється з CDN, тому ключі підпису
+        # маніфесту не потрібні. Потрібен ЛИШЕ токен Shaurma: він
+        # вшивається в backend.dll, щоб лаунчер качав збірки Шаурми.
+        if (-not $TokenShaurma) { Fail 'SHRM_BUILD_TOKEN_SHAURMA is required: the full backend needs it to download Shaurma packs' }
+        Write-Warning 'Local build: no CDN token/keys in shell and updater; updates are disabled by local-only.flag.'
+        return
+    }
     if (-not $PubKeys) { Fail 'SHAURMA_MANIFEST_PUBKEYS is required for production builds' }
     if ($GoogleSecret -and (Get-Secret 'SHAURMA_GOOGLE_CLIENT_KIND') -ne 'desktop') {
         Fail 'Only public Desktop OAuth client credentials may be embedded; set SHAURMA_GOOGLE_CLIENT_KIND=desktop after verifying the client type'
@@ -277,7 +295,14 @@ function Build-Shell([string]$ed) {
     try {
         $ld = '-H windowsgui -buildid='
         if ($Strip) { $ld = "-w -s $ld" }
-        $ld += " -X main.editionChannel=$ed -X main.cdnToken=$(Get-Token $ed) -X main.trustedKeys=$PubKeys"
+        if ($LocalInstall) {
+            # Локальна збірка: shell не має жодного токена/ключа — усі
+            # компоненти ставить інсталятор, bootstrap-качка не потрібна.
+            $ld += " -X main.editionChannel=$ed"
+        }
+        else {
+            $ld += " -X main.editionChannel=$ed -X main.cdnToken=$(Get-Token $ed) -X main.trustedKeys=$PubKeys"
+        }
         Invoke-Native 'go' @('build', '-tags', 'production', '-buildmode=pie', '-trimpath', '-buildvcs=false',
             '-ldflags', $ld, '-o', $out, '.') $dir @{ CGO_ENABLED = '0' }
     }
@@ -286,6 +311,9 @@ function Build-Shell([string]$ed) {
 
 function Build-Bootstrap([string]$ed) {
     Write-Step "bootstrap ($ed)"
+    # Локальний інсталятор ставить ГОТОВИЙ shell і всі компоненти, тож
+    # bootstrap-качка (перший запуск з CDN) у такій збірці не потрібна.
+    if ($LocalInstall) { return }
     $dir = Join-Path $Root 'bootstrap'
     $out = Join-Path $UnsignedDir "$ed\bootstrap\$($ShellNames[$ed])"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $out) | Out-Null
@@ -316,8 +344,16 @@ function Build-Backend([string]$ed) {
 
 function Build-Updater([string]$ed) {
     Write-Step "updater.dll ($ed)"
-    $tokenField = if ($ed -eq 'base') { 'tokenBase' } else { 'tokenShaurma' }
-    $ld = "-X shrm-updater-backend/internal/core.$tokenField=$(Get-Token $ed) -X shrm-updater-backend/internal/sigverify.TrustedKeys=$PubKeys"
+    if ($LocalInstall) {
+        # Токен Shaurma вшивається ЛИШЕ в backend (див. Build-Backend).
+        # Апдейтер у локальній збірці не має жодного CDN-токена/ключа:
+        # оновлення вимикає local-only.flag у теці встановлення.
+        $ld = ''
+    }
+    else {
+        $tokenField = if ($ed -eq 'base') { 'tokenBase' } else { 'tokenShaurma' }
+        $ld = "-X shrm-updater-backend/internal/core.$tokenField=$(Get-Token $ed) -X shrm-updater-backend/internal/sigverify.TrustedKeys=$PubKeys"
+    }
     Build-Dll (Join-Path $Root 'updater-backend') 'production' $ld (Join-Path $UnsignedDir "$ed\updater.dll") 'updater.dll' "$ProductName updater"
 }
 
@@ -342,8 +378,67 @@ function Invoke-Components {
     if (Test-Path $AssetsOut) { Remove-Item $AssetsOut -Recurse -Force }
     Build-Frontends
     foreach ($ed in $Editions) { Build-Shell $ed; Build-Bootstrap $ed; Build-Backend $ed; Build-Updater $ed }
-    Test-PeMetadata $UnsignedDir
+    if ($LocalInstall) {
+        # Перевірка існує для SignPath: підписані релізні exe/dll мусять мати
+        # однакові ProductName/ProductVersion. Локальна збірка не підписується
+        # і не публікується, тому метадані не блокують її (див. README).
+        Write-Warning 'Local build: PE metadata check skipped (release/SignPath only).'
+    }
+    else {
+        Test-PeMetadata $UnsignedDir
+    }
     Write-Host "`nUnsigned components: $UnsignedDir" -ForegroundColor Green
+}
+
+function New-AsciiBuildRoot {
+    # ISCC не вміє вбудувати іконку, якщо шлях до неї містить не-ASCII
+    # символи (наприклад, кирилиця в теці проєкту): "Error on line ...
+    # SetupIconFile: The system cannot find the path specified". Тому
+    # staging-тека для локального setup.exe завжди в ASCII-шляху.
+    foreach ($base in @($env:PUBLIC, $env:ProgramData, [IO.Path]::GetTempPath())) {
+        if (-not $base -or $base -match '[^\x00-\x7F]') { continue }
+        $dir = Join-Path $base ("shaurma-local-build-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Force -Path $dir | Out-Null
+        return $dir
+    }
+    Fail 'Cannot find an ASCII path for the local build (ISCC cannot embed the icon from a non-ASCII path). Move the repository to an ASCII-only path.'
+}
+
+# ---- local full bundle (no CDN) -------------------------------------------
+# Розпаковує frontend.zip/updater-frontend.zip у staging, кладе поруч
+# local-only.flag (апдейтер бачить його і не робить жодних запитів до CDN)
+# і пише локальний launcher-version.json, щоб backend показував версію.
+function New-LocalBundle([string]$AppDir, [string]$ed) {
+    Write-Step 'local bundle (frontend dirs + local-only.flag + launcher-version.json)'
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($pair in @(@{ zip = 'frontend.zip'; dir = 'frontend' }, @{ zip = 'updater-frontend.zip'; dir = 'updater-frontend' })) {
+        $dest = Join-Path $AppDir $pair.dir
+        if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+        [System.IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $AppDir $pair.zip), $dest)
+    }
+    Set-Content -Path (Join-Path $AppDir 'local-only.flag') -Value 'local build' -Encoding ascii
+    $specs = @(
+        @{ path = $ShellNames[$ed]; kind = ''; extractTo = '' },
+        @{ path = 'backend.dll'; kind = ''; extractTo = '' },
+        @{ path = 'updater.dll'; kind = ''; extractTo = '' },
+        @{ path = 'frontend.zip'; kind = 'archive'; extractTo = 'frontend' },
+        @{ path = 'updater-frontend.zip'; kind = 'archive'; extractTo = 'updater-frontend' }
+    )
+    $components = @()
+    foreach ($spec in $specs) {
+        $file = Join-Path $AppDir $spec.path
+        $component = [ordered]@{
+            path   = $spec.path
+            sha256 = (Get-FileHash -Path $file -Algorithm SHA256).Hash.ToLowerInvariant()
+            size   = (Get-Item $file).Length
+            url    = "/launcher/$($spec.path)"
+        }
+        if ($spec.kind) { $component.kind = $spec.kind; $component.extractTo = $spec.extractTo }
+        $components += $component
+    }
+    $manifest = [ordered]@{ version = $Version; releaseNotes = 'Local build (no CDN)'; components = $components }
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText((Join-Path $AppDir 'launcher-version.json'), ($manifest | ConvertTo-Json -Depth 6), $utf8)
 }
 
 # ---- installer -------------------------------------------------------------
@@ -352,23 +447,54 @@ function Invoke-Installer {
     $ComponentsDir = [System.IO.Path]::GetFullPath($ComponentsDir)
     $iscc = Find-ISCC
     if (-not $iscc) { Fail 'ISCC.exe not found. Install Inno Setup 6 (choco install innosetup).' }
-    foreach ($ed in $Editions) {
-        Write-Step "installer ($ed)"
-        $app = Join-Path $OutDir "app-$ed"
-        if (Test-Path $app) { Remove-Item $app -Recurse -Force }
-        New-Item -ItemType Directory -Force -Path (Join-Path $app 'bootstrap'), (Join-Path $app 'build\windows') | Out-Null
-        $name = $ShellNames[$ed]
-        Copy-Item (Join-Path $ComponentsDir "$ed\$name") $app
-        Copy-Item (Join-Path $ComponentsDir "$ed\bootstrap\$name") (Join-Path $app 'bootstrap')
-        Copy-Item (Join-Path $ComponentsDir "$ed\backend.dll") $app
-        Copy-Item (Join-Path $ComponentsDir "$ed\updater.dll") $app
-        Copy-Item (Join-Path $AssetsDir 'frontend.zip') $app
-        Copy-Item (Join-Path $AssetsDir 'updater-frontend.zip') $app
-        Copy-Item (Join-Path $Root 'shell\build\windows\icon.ico') (Join-Path $app 'build\windows')
-        $isccArgs = @((Join-Path $Root 'installer\installer.iss'), "/DAppImageDir=$app", "/DMyEdition=$ed", "/O$OutDir")
-        $th = Get-Secret 'SHAURMA_SIGNER_THUMBPRINTS'
-        if ($th -and ($th -match '^[0-9a-fA-F,]+$')) { $isccArgs += "/DOfficialSignerThumbprints=$th" }
-        Invoke-Native $iscc $isccArgs $Root
+    $asciiRoot = $null
+    try {
+        foreach ($ed in $Editions) {
+            Write-Step "installer ($ed)"
+            # Локальна збірка має власну staging-теку й власну OutputDir, щоб не
+            # перетирати офіційний dist\app-<edition> і dist\*-setup.exe.
+            # Staging — в ASCII-шляху: так ISCC вбудує іконку навіть тоді,
+            # коли сам репозиторій лежить у теці з кирилицею.
+            if ($LocalInstall) {
+                if (-not $asciiRoot) { $asciiRoot = New-AsciiBuildRoot }
+                $app = Join-Path $asciiRoot "app-$ed-local"
+            }
+            else {
+                $app = Join-Path $OutDir "app-$ed"
+            }
+            if (Test-Path $app) { Remove-Item $app -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path (Join-Path $app 'build\windows') | Out-Null
+            if (-not $LocalInstall) { New-Item -ItemType Directory -Force -Path (Join-Path $app 'bootstrap') | Out-Null }
+            $name = $ShellNames[$ed]
+            Copy-Item (Join-Path $ComponentsDir "$ed\$name") $app
+            if (-not $LocalInstall) { Copy-Item (Join-Path $ComponentsDir "$ed\bootstrap\$name") (Join-Path $app 'bootstrap') }
+            Copy-Item (Join-Path $ComponentsDir "$ed\backend.dll") $app
+            Copy-Item (Join-Path $ComponentsDir "$ed\updater.dll") $app
+            Copy-Item (Join-Path $AssetsDir 'frontend.zip') $app
+            Copy-Item (Join-Path $AssetsDir 'updater-frontend.zip') $app
+            Copy-Item (Join-Path $Root 'shell\build\windows\icon.ico') (Join-Path $app 'build\windows')
+            $isccArgs = @((Join-Path $Root 'installer\installer.iss'), "/DAppImageDir=$app", "/DMyEdition=$ed")
+            if ($LocalInstall) {
+                New-LocalBundle $app $ed
+                $isccArgs += '/DLocalInstall=1'
+                $isccArgs += "/O$(Join-Path $OutDir 'local')"
+            }
+            else {
+                $isccArgs += "/O$OutDir"
+            }
+            $th = Get-Secret 'SHAURMA_SIGNER_THUMBPRINTS'
+            if ($th -and ($th -match '^[0-9a-fA-F,]+$')) { $isccArgs += "/DOfficialSignerThumbprints=$th" }
+            Invoke-Native $iscc $isccArgs $Root
+            if ($LocalInstall) {
+                # Портативна копія поруч зі setup.exe: dist\app-<edition>-local
+                $portable = Join-Path $OutDir "app-$ed-local"
+                if (Test-Path $portable) { Remove-Item $portable -Recurse -Force }
+                Copy-Item $app $portable -Recurse
+            }
+        }
+    }
+    finally {
+        if ($asciiRoot) { Remove-Item $asciiRoot -Recurse -Force -ErrorAction SilentlyContinue }
     }
     Write-Host "`nInstallers in: $OutDir" -ForegroundColor Green
 }

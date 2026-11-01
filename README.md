@@ -34,6 +34,20 @@ scripts\build-windows.bat -Step components     # only the binaries
 bash scripts/build-linux.sh                    # Linux (needs libgtk-4-dev, libwebkitgtk-6.0-dev)
 ```
 
+### Local full build with an offline installer
+
+```
+powershell -ExecutionPolicy Bypass -File scripts\build-local-full.ps1
+```
+
+Builds only the full (shaurma) edition and writes `dist\local\ShaurmLauncher-setup.exe` plus a
+portable `dist\app-shaurma-local\`. The installer ships shell, backend, updater, both frontend
+archives and `launcher-version.json` from local files; `local-only.flag` disables the updater so
+nothing is downloaded from the CDN. The Shaurma token is embedded only in `backend.dll` (needed to
+download Shaurma packs) and never in `shell.exe` or `updater.dll`. Needs Inno Setup 6; the Base
+edition is not built by this script.
+```
+
 Tokens and API keys are **never** stored in this repository. The build reads them from environment variables
 (`SHRM_BUILD_TOKEN_SHAURMA`, `SHRM_BUILD_TOKEN_BASE`, `CF_API_KEY`, Desktop OAuth client settings,
 `SHAURMA_MANIFEST_PUBKEYS`; see `scripts/build-windows.ps1` and `scripts/RELEASING.md`).
@@ -41,6 +55,10 @@ Release builds require their edition's CDN token and manifest public keys. AI ke
 by the user at runtime and are not embedded by these release scripts.
 
 Releases are produced only by GitHub Actions (`.github/workflows/release.yml`) from a `v*` tag.
+Full (shaurma) releases are built and published by `.github/workflows/release-full.yml`, which
+Pack Manager triggers with a complete `X.Y.Z` version; publishing is refused in a public repository
+(full builds embed the Shaurma CDN token) unless the `ALLOW_FULL_EDITION_RELEASE` repository
+variable is `true`.
 
 ## Code signing policy
 

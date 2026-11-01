@@ -10,3 +10,13 @@ Pack Manager після успішної збірки сам зробить git 
 Типи: feat, fix, perf, refactor, docs, build, ci, chore.
 Пункт = одна змістовна зміна, одним рядком, без секретів і без згадок ШІ.
 -->
+
+## 2026-11-01 18:30
+
+- [build] Додано локальну повну збірку з інсталятором Inno Setup без CDN: `scripts/build-local-full.ps1` і режим `-LocalInstall` у `scripts/build-windows.ps1` || add local full build with an offline Inno Setup installer
+- [build] Токен Shaurma вшивається лише в backend локальної збірки, апдейтер і shell без токена, оновлення вимикає `local-only.flag` || embed the shaurma token only in the local backend and keep updater and shell token-free
+- [build] `installer/installer.iss` отримав умовну гілку `LocalInstall`, стандартний bootstrap-інсталятор не змінено || add a conditional LocalInstall branch to the Inno Setup script without changing the default installer
+- [ci] Додано workflow `release-full`: повна збірка та реліз за версією X.Y.Z від Pack Manager || add a full-release workflow for complete X.Y.Z versions dispatched by Pack Manager
+- [docs] Описано локальну повну збірку та повний реліз у `README.md` || document the local full build and full release in README.md
+- [fix] `collect-licenses.ps1` більше не падає у Windows PowerShell 5.1 на масиві npm-пакетів з `ConvertFrom-Json` || fix collect-licenses failing on the npm package array under Windows PowerShell 5.1
+- [build] Локальна збірка пропускає перевірку PE-метаданих SignPath, релізна — без змін || skip the SignPath PE metadata check for local builds only

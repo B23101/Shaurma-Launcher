@@ -285,7 +285,26 @@ Name: "skinservice"; Description: "{cm:SkinServiceTask}"
 ; мережі: файл уже на диску. Усі інші компоненти (updater.dll,
 ; backend.dll, frontend.zip) качає САМ (реальний) shell при першому
 ; запуску.
+#ifdef LocalInstall
+; ── ЛОКАЛЬНА ПОВНА ЗБІРКА (/DLocalInstall=1) ─────────────────────────────
+; setup.exe ставить УСІ компоненти з локальних файлів: shell.exe,
+; backend.dll, updater.dll, frontend.zip/updater-frontend.zip (уже
+; розпаковані у staging) і launcher-version.json. CDN не потрібен,
+; bootstrap у такій збірці відсутній. local-only.flag вимикає апдейтер:
+; лаунчер не оновлюється з сервера. Токен Shaurma вшито ЛИШЕ в
+; backend.dll (щоб качати збірки Шаурми); updater і shell його не містять.
+Source: "{#AppImageDir}\{#MyShellExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\backend.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\updater.dll"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\frontend.zip"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\updater-frontend.zip"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\launcher-version.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\local-only.flag"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppImageDir}\frontend\*"; DestDir: "{app}\frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#AppImageDir}\updater-frontend\*"; DestDir: "{app}\updater-frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
+#else
 Source: "{#AppImageDir}\bootstrap\{#MyShellExeName}"; DestDir: "{app}"; DestName: "{#MyShellExeName}"; Flags: ignoreversion
+#endif
 
 [Dirs]
 Name: "{app}"
@@ -383,6 +402,9 @@ Type: filesandordirs; Name: "{app}\frontend"
 Type: filesandordirs; Name: "{app}\updater-frontend"
 Type: filesandordirs; Name: "{app}\launcher-version.json"
 Type: filesandordirs; Name: "{app}\launcher-version-beta.json"
+; Маркер локальної збірки (створює лише /DLocalInstall=1). В офіційній
+; збірці файлу немає — видалення неіснуючого файлу безпечне.
+Type: files; Name: "{app}\local-only.flag"
 Type: filesandordirs; Name: "{app}\bootstrap.log"
 ; Кеш WebView2 (двигун фронтенду) — теж компонент, видаляється повністю.
 Type: filesandordirs; Name: "{app}\webview2"

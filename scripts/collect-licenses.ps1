@@ -36,7 +36,12 @@ foreach ($module in @('backend', 'shell', 'bootstrap', 'updater-backend')) {
 }
 $bundleInventory = Join-Path $root 'frontend/dist/licenses/bundled-packages.json'
 if (-not (Test-Path -LiteralPath $bundleInventory)) { throw 'Build the frontend before collecting bundled dependency licenses' }
-$bundledPackages = @(Get-Content -LiteralPath $bundleInventory -Raw | ConvertFrom-Json)
+# Windows PowerShell 5.1: ConvertFrom-Json віддає JSON-масив як ОДИН об'єкт
+# (noEnumerate), тож @(...) навколо пайплайна дає один елемент-масив і
+# foreach отримує весь список замість окремої назви пакета:
+#   Join-Path: Cannot convert 'clsx esm-env ...' to type 'System.String'
+# Тому спершу присвоюємо результат у змінну — foreach перебирає вже самі назви.
+$bundledPackages = Get-Content -LiteralPath $bundleInventory -Raw | ConvertFrom-Json
 foreach ($package in $bundledPackages) {
     if ($package -notmatch '^(@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+$') { throw 'Invalid bundled dependency name' }
     $source = Join-Path (Join-Path $root 'frontend/node_modules') $package
