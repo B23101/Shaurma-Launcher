@@ -20,3 +20,10 @@ Pack Manager після успішної збірки сам зробить git 
 - [docs] Описано локальну повну збірку та повний реліз у `README.md` || document the local full build and full release in README.md
 - [fix] `collect-licenses.ps1` більше не падає у Windows PowerShell 5.1 на масиві npm-пакетів з `ConvertFrom-Json` || fix collect-licenses failing on the npm package array under Windows PowerShell 5.1
 - [build] Локальна збірка пропускає перевірку PE-метаданих SignPath, релізна — без змін || skip the SignPath PE metadata check for local builds only
+
+## 2026-11-01 18:00
+
+- [fix] Bootstrap більше не падає на «TLS handshake timeout» при отриманні маніфесту: довший TLS-таймаут, до 4 спроб із паузою, останні — лише через IPv4 || fix bootstrap failing with tls handshake timeout by raising the timeout and retrying, falling back to ipv4
+
+- [fix] Збірка лаунчера більше не падає на «Access is denied» при розпакуванні updater-frontend/frontend у staging: повтори видалення й перейменування, запасне копіювання || fix staging build failing with access denied when renaming the unpacked frontend dir by retrying and falling back to copy
+- [chore] Видалено internal/deploy/page_design.go (і його тест), який не збирався || remove the broken internal/deploy/page_design.go and its test

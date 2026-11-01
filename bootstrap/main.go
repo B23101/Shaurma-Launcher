@@ -27,11 +27,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -80,7 +82,7 @@ type remoteManifest struct {
 // — реальний shell на CDN має ТОЙ САМИЙ шлях, що й ми).
 func fetchManifest(exeName string) (*manifestComponent, error) {
 	manifestURL := cdnBase + "/launcher/launcher-version.json"
-	data, err := httpGetLimited(manifestURL, 4<<20, 30*time.Second)
+	data, err := httpGetLimited(manifestURL, 4<<20, 60*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("не вдалося отримати маніфест: %v", err)
 	}
@@ -91,7 +93,7 @@ func fetchManifest(exeName string) (*manifestComponent, error) {
 	// перевірка пропускається — release-збірка pack-manager без ключа не
 	// створюється.
 	if manifestSigEnabled() {
-		sig, err := httpGetLimited(manifestURL+".sig", 4096, 30*time.Second)
+		sig, err := httpGetLimited(manifestURL+".sig", 4096, 60*time.Second)
 		if err != nil {
 			return nil, fmt.Errorf("підпис маніфесту недоступний: %v", err)
 		}
@@ -119,8 +121,32 @@ func fetchManifest(exeName string) (*manifestComponent, error) {
 // САМИЙ хост (інакше X-Shaurma-Token пішов би на сторонній сервер). Для
 // loopback (тести/dev) http дозволено.
 func cdnHTTPClient(timeout time.Duration) *http.Client {
+	return cdnHTTPClientNet(timeout, false)
+}
+
+// cdnHTTPClientNet — те саме, але з довшим TLS-handshake (типовий 10 с
+// замало на повільних/фільтрованих мережах → «TLS handshake timeout») і
+// опцією лише-IPv4: зламаний IPv6-маршрут до Cloudflare дає саме такий збій,
+// а при форсованому IPv4 з'єднання проходить.
+func cdnHTTPClientNet(timeout time.Duration, ipv4Only bool) *http.Client {
+	dialer := &net.Dialer{Timeout: 20 * time.Second, KeepAlive: 30 * time.Second}
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		TLSHandshakeTimeout:   30 * time.Second,
+		ResponseHeaderTimeout: 45 * time.Second,
+		IdleConnTimeout:       30 * time.Second,
+		ForceAttemptHTTP2:     true,
+	}
+	if ipv4Only {
+		tr.DialContext = func(ctx context.Context, _, addr string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "tcp4", addr)
+		}
+	} else {
+		tr.DialContext = dialer.DialContext
+	}
 	return &http.Client{
-		Timeout: timeout,
+		Timeout:   timeout,
+		Transport: tr,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("забагато редиректів")
@@ -136,15 +162,39 @@ func cdnHTTPClient(timeout time.Duration) *http.Client {
 	}
 }
 
+// doCDN виконує запит із повторами при мережевих збоях (TLS handshake
+// timeout, reset, таймаут): спроби 1-2 — звичайно, 3-4 — лише IPv4, з паузою.
+// HTTP-статуси (401/403/404…) не повторюються — це не мережева проблема.
+func doCDN(newReq func() (*http.Request, error), timeout time.Duration) (*http.Response, error) {
+	var lastErr error
+	for attempt := 0; attempt < 4; attempt++ {
+		if attempt > 0 {
+			time.Sleep(time.Duration(attempt) * 2 * time.Second)
+		}
+		req, err := newReq()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := cdnHTTPClientNet(timeout, attempt >= 2).Do(req)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
+}
+
 // httpGetLimited — GET з токеном каналу і лімітом розміру відповіді.
 func httpGetLimited(url string, limit int64, timeout time.Duration) ([]byte, error) {
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("X-Shaurma-Token", cdnToken)
-	req.Header.Set("User-Agent", "ShaurmaLauncher/bootstrap")
-	resp, err := cdnHTTPClient(timeout).Do(req)
+	resp, err := doCDN(func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Shaurma-Token", cdnToken)
+		req.Header.Set("User-Agent", "ShaurmaLauncher/bootstrap")
+		return req, nil
+	}, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -178,13 +228,15 @@ func downloadStream(comp *manifestComponent, dest string, onProgress func(pct in
 	if !strings.HasPrefix(strings.ToLower(url), "https://") {
 		return fmt.Errorf("відхилено небезпечну адресу завантаження (потрібен https)")
 	}
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("X-Shaurma-Token", cdnToken)
-	req.Header.Set("User-Agent", "ShaurmaLauncher/bootstrap")
-	resp, err := cdnHTTPClient(5 * time.Minute).Do(req)
+	resp, err := doCDN(func() (*http.Request, error) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("X-Shaurma-Token", cdnToken)
+		req.Header.Set("User-Agent", "ShaurmaLauncher/bootstrap")
+		return req, nil
+	}, 5*time.Minute)
 	if err != nil {
 		return err
 	}
