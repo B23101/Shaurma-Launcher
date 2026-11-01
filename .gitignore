@@ -24,7 +24,8 @@
 /shell/docker/
 /shell/shell/
 /shell/WHERE-TO-PUT.md
-/backend/build/
+/backend/build/*
+!/backend/build/appicon.png
 
 
 *.key

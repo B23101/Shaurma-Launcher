@@ -10,16 +10,16 @@ Pack Manager після успішної збірки сам зробить git 
 Типи: feat, fix, perf, refactor, docs, build, ci, chore.
 Пункт = одна змістовна зміна, одним рядком, без секретів і без згадок ШІ.
 -->
-
-## 2026-11-01 21:55
-- [ci] Додано workflow GitHub Actions build-windows: повна збірка Windows-лаунчера (shell, bootstrap, backend.dll, updater.dll, setup.exe) на GitHub із секретів, артефакти і чернетка релізу за тегом vX.Y.Z (зміни в .github/ — на окреме рев'ю) || add build-windows github actions workflow for full windows launcher build
-- [build] Додано build-github.ps1/.bat: запуск збірки на GitHub, очікування результату і завантаження інсталяторів || add launcher script to run the github build and download installers
-
-## 2026-11-01 22:05
-- [ci] Збірка на GitHub більше не залежить від pack-manager: workflow викликає scripts/build-windows.ps1, що збирає лише з публічних тек (зміни в .github/ і scripts/ — на окреме рев'ю) || build windows launcher in ci from public sources without pack-manager
-- [build] Додано scripts/build-windows.ps1: frontend, shell, bootstrap, backend.dll, updater.dll, launcher-version.json і setup.exe з секретів середовища || add standalone windows build script
-
 ## 2026-11-01 23:10
 - [feat] Pack Manager після локальної збірки і пушу коду сам запускає збірку на GitHub (workflow_dispatch) для цієї версії; у формі збірки додано галочку || trigger github build for the same version from pack manager after local build and push
 - [ci] Workflow build-windows більше не стартує від тегу v*: лише workflow_dispatch з Pack Manager або вручну; чернетка релізу створюється за версією з inputs (зміни в .github/ — на окреме рев'ю) || run build-windows only via workflow_dispatch and create release draft from version input
 - [build] Додано scripts/sync-github-secrets.ps1: читає build-secrets.json Pack Manager і виставляє GitHub Actions secrets через gh без ручного вводу (зміни в scripts/ — на окреме рев'ю) || add script to sync pack manager secrets to github actions secrets
+
+## 2026-11-01 23:25
+- [fix] Оновлено frontend/package-lock.json: синхронізовано з package.json, щоб npm ci не падав у CI || sync frontend package-lock with package.json so npm ci passes in ci
+
+## 2026-11-01 23:35
+- [ci] Відновлено оригінальний scripts/build-windows.ps1 (його перезаписав новий скрипт і зламав test-build-policy та release workflows); новий скрипт перейменовано на build-windows-standalone.ps1, workflow build-windows викликає його (зміни в .github/ і scripts/ — на окреме рев'ю) || restore original build-windows.ps1 and move standalone ci build to build-windows-standalone.ps1
+
+## 2026-11-01 23:45
+- [fix] Дозволено в git лише backend/build/appicon.png (його вбудовує tray_menu.go через go:embed), решта backend/build лишається ігнорованою; без нього go test у CI падав (змінено .gitignore — на окреме рев'ю) || track backend/build/appicon.png needed by go:embed so ci tests build

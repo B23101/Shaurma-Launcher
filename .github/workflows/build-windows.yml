@@ -1,5 +1,5 @@
 # Повна збірка Windows-лаунчера на GitHub (frontend, shell, bootstrap, backend.dll,
-# updater.dll, setup.exe) скриптом scripts/build-windows.ps1. Pack Manager не потрібен —
+# updater.dll, setup.exe) скриптом scripts/build-windows-standalone.ps1. Pack Manager не потрібен —
 # лише публічні теки репозиторію. Секрети — лише з GitHub Secrets.
 #
 # Запуск:
@@ -97,7 +97,7 @@ jobs:
       - name: Встановити wails3 CLI (для іконки/маніфесту/version-info exe)
         shell: pwsh
         run: |
-          # Версія має збігатися з $wailsCliVersion у scripts/build-windows.ps1
+          # Версія має збігатися з $wailsCliVersion у scripts/build-windows-standalone.ps1
           go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.121
           if ($LASTEXITCODE -ne 0) { throw 'go install wails3 впав' }
           $bin = Join-Path (go env GOPATH) 'bin\wails3.exe'
@@ -151,7 +151,7 @@ jobs:
           VERSION: ${{ steps.meta.outputs.version }}
           EDITIONS: ${{ steps.meta.outputs.editions }}
         run: |
-          ./scripts/build-windows.ps1 -Version $env:VERSION -Editions $env:EDITIONS -ReleaseNotes $env:RELEASE_NOTES
+          ./scripts/build-windows-standalone.ps1 -Version $env:VERSION -Editions $env:EDITIONS -ReleaseNotes $env:RELEASE_NOTES
 
       - name: Перевірити результат
         id: verify
