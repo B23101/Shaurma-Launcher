@@ -2049,6 +2049,17 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// AI-панель (подія console:cleared з buildID).
 	buf.Clear()
 	a.emit("console:cleared", build.ID)
+	// Text-only launch banner; each row uses the normal console buffer.
+	for _, line := range []string{
+		" ████  █   █   ███   █   █  ████   █   █   ███",
+		"█      █   █  █   █  █   █  █   █  ██ ██  █   █",
+		" ███   █████  █████  █   █  ████   █ █ █  █████",
+		"    █  █   █  █   █  █   █  █  █   █   █  █   █",
+		"████   █   █  █   █   ███   █   █  █   █  █   █",
+		"               L A U N C H E R",
+	} {
+		buf.AppendLevel(console.LevelSystem, line)
+	}
 	buf.AppendLevel(console.LevelSystem, fmt.Sprintf("Запуск збірки \"%s\" (%s %s)...", build.Name, build.Loader, build.MCVersion))
 	if javaWarn != "" {
 		buf.AppendLevel(console.LevelWarn, javaWarn)
