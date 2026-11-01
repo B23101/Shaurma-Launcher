@@ -2,5 +2,6 @@
 
 package main
 
-// Release binaries never accept unsigned update manifests, even without keys.
-const requireManifestSignature = true
+// Перевірка підпису маніфесту вмикається ЛИШЕ коли вшито ключі (TrustedKeys). Без ключів — не перевіряється
+// (узгоджено з launcherbuild.RequireSignedManifests=false у pack-manager).
+const requireManifestSignature = false

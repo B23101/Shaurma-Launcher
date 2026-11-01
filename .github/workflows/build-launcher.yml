@@ -1,0 +1,112 @@
+name: Build launcher (Windows)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Версія релізу лаунчера (напр. 2.4.1)"
+        required: true
+      editions:
+        description: "Редакції через кому: shaurma,base"
+        default: "shaurma,base"
+      release_notes:
+        description: "Нотатки релізу (по рядку на пункт)"
+        required: false
+        default: ""
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      LAUNCHER_ROOT: ${{ github.workspace }}
+      VERSION: ${{ github.event.inputs.version || github.ref_name }}
+      EDITIONS: ${{ github.event.inputs.editions || 'shaurma,base' }}
+      RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
+      TOKEN_SHAURMA: ${{ secrets.TOKEN_SHAURMA }}
+      TOKEN_BASE: ${{ secrets.TOKEN_BASE }}
+      CF_API_KEY: ${{ secrets.CF_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      SIGN_CMD: ${{ secrets.SIGN_CMD }}
+      GOTOOLCHAIN: auto
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache-dependency-path: |
+            **/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # C-компілятор для cgo (backend.dll / updater.dll, -buildmode=c-shared).
+      # Збірка шукає саме C:\msys64\clang64\bin\clang.exe (див. windows.go).
+      - name: Install clang64 (msys2)
+        shell: pwsh
+        run: |
+          & C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed mingw-w64-clang-x86_64-clang"
+          & C:\msys64\clang64\bin\clang.exe --version
+
+      - name: Install wails3 CLI
+        shell: pwsh
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.121
+          "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+      - name: Build launcher
+        shell: pwsh
+        working-directory: pack-manager
+        run: go run ./cmd/ci-build
+
+      # Портативний zip: усі компоненти вже на місці (shell, backend.dll, updater.dll,
+      # frontend/, launcher-version.json) — розпакував і запустив, bootstrap з CDN не потрібен.
+      - name: Pack portable zips
+        shell: pwsh
+        run: |
+          foreach ($d in Get-ChildItem dist -Directory -Filter 'app-*' | Where-Object { $_.Name -notmatch 'linux' }) {
+            $ed  = $d.Name -replace '^app-', ''
+            $tmp = Join-Path $env:RUNNER_TEMP "portable-$ed"
+            $dst = Join-Path $tmp 'ShaurmLauncher'
+            if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+            robocopy $d.FullName $dst /E /XD bootstrap build /NFL /NDL /NJH /NJS | Out-Null
+            if ($LASTEXITCODE -ge 8) { throw "robocopy failed: $LASTEXITCODE" }
+            # Маркер: updater.dll у цій збірці не ходить на CDN і довіряє лише локальним файлам.
+            Set-Content -Path (Join-Path $dst 'local-only.flag') -Value 'local build' -Encoding ascii
+            $zip = "dist/ShaurmLauncher-portable-$ed-$env:VERSION.zip"
+            Compress-Archive -Path $dst -DestinationPath $zip -Force
+            Write-Host "created $zip"
+          }
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-${{ env.VERSION }}
+          path: dist/*-setup.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload portable zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-${{ env.VERSION }}
+          path: dist/ShaurmLauncher-portable-*.zip
+          if-no-files-found: error
+          retention-days: 14

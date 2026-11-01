@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -287,6 +288,19 @@ func (a *App) runUpdate() {
 	// невелике дублювання свідоме, щоб не ускладнювати сигнатуру core.Run).
 	if local, err := manifest.Load(filepath.Join(a.installDir, "launcher-version.json")); err == nil {
 		a.emit("updater:version", map[string]any{"current": local.Version})
+	}
+
+	// Portable/локальна збірка: поруч лежить local-only.flag — апдейтер довіряє ЛИШЕ тому, що вже на
+	// диску. Жодних запитів до CDN, жодних завантажень і замін компонентів: одразу передаємо керування
+	// backend.dll. Діє й на ручне оновлення (finalize).
+	if _, err := os.Stat(filepath.Join(a.installDir, "local-only.flag")); err == nil {
+		a.emit("updater:status", map[string]any{
+			"status":  "up_to_date",
+			"message": "Локальна збірка: оновлення вимкнено",
+		})
+		time.Sleep(250 * time.Millisecond)
+		bridgePhaseComplete()
+		return
 	}
 
 	p := prefs.Load(a.installDir)

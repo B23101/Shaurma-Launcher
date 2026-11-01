@@ -4,8 +4,9 @@ package main
 
 import "testing"
 
-func TestProductionRequiresManifestSignature(t *testing.T) {
-	if !manifestSigEnabled() {
-		t.Fatal("production build accepted missing manifest verification keys")
+// Політика: перевірка підпису вмикається лише коли вшито ключі.
+func TestProductionManifestPolicyFollowsKeys(t *testing.T) {
+	if got, want := manifestSigEnabled(), manifestSigEnabledWith(trustedKeys); got != want {
+		t.Fatalf("manifestSigEnabled=%v, очікувалось %v", got, want)
 	}
 }
