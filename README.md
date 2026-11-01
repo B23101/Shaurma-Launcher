@@ -45,7 +45,9 @@ portable `dist\app-shaurma-local\`. The installer ships shell, backend, updater,
 archives and `launcher-version.json` from local files; `local-only.flag` disables the updater so
 nothing is downloaded from the CDN. The Shaurma token is embedded only in `backend.dll` (needed to
 download Shaurma packs) and never in `shell.exe` or `updater.dll`. Needs Inno Setup 6; the Base
-edition is not built by this script.
+edition is not built by this script. If Go is missing or older than `backend/go.mod` requires, the
+script downloads the official toolchain into `%LOCALAPPDATA%\ShaurmaLauncherBuild` (no administrator
+rights).
 ```
 
 Tokens and API keys are **never** stored in this repository. The build reads them from environment variables
