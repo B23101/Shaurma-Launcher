@@ -14,13 +14,15 @@
   // тут лише спільний стан (конфіг збірки cfg, налаштування, вкладка) та
   // скелет сторінки.
   import { untrack } from 'svelte'
+  import { slide } from 'svelte/transition'
+  import { cubicOut } from 'svelte/easing'
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import UiModal from './UiModal.svelte'
   import { packAsset } from './packAssets.svelte'
   import { registerPendingConfig, clearPendingConfig } from './pendingConfigFlush'
-  import { getPackUI, setPackUI, readContentScroll, restoreContentScroll } from './uiState'
+  import { getPackUI, setPackUI, readContentScroll, restoreContentScroll, anchorScroll } from './uiState'
   import PackServersSection from './PackServersSection.svelte'
   import PackOfficialServerWidget from './PackOfficialServerWidget.svelte'
   import { smartImage } from './smartImage'
@@ -1404,12 +1406,13 @@
      тому самому акаунті), а не через те, що щось інше йде паралельно. -->
 <PackOfficialServerWidget packId={pack?.id ?? ''} serverIp={pack?.server_ip} disabled={isThisPackRunning} activeAccountId={activeAccount?.id ?? ''} onJoin={onLaunchOnServer} />
 
+<div class="scroll-slot" use:anchorScroll>
 {#if isLaunching || launchError}
   <!-- Прогрес-бар запуску як в HTML-макеті: ОДНА лінія, що росте крізь
        стадії (перевірка → файли збірки → Java → лоадер), а колір змінюється
        разом зі стадією. Зверху — стадії-кроки (галочка = пройдена, спінер =
        активна), під баром — жива назва стадії та % поточної стадії. -->
-  <div class="launch-prog">
+  <div class="launch-prog" transition:slide={{ duration: 260, easing: cubicOut }}>
     <div class="lp-stages">
       {#each LAUNCH_STAGES as s, i}
         {@const active = i === launchStageIndex}
@@ -1482,6 +1485,7 @@
       <div class="mig-banner-sub">{t('mods.migratingSub')} — {migration.done}/{migration.total}</div>
     </div>
   {/if}
+</div>
 
 {#if !bannerFull}
   <div class="tabbar tb-slide" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">

@@ -4,7 +4,7 @@
   import './lib/settings/settings.css'
   import './style.css'
   import { onMount, onDestroy } from 'svelte'
-  import { fade, fly } from 'svelte/transition'
+  import { fade, fly, slide } from 'svelte/transition'
   import { flip } from 'svelte/animate'
   import { cubicOut, quintOut } from 'svelte/easing'
   import { t, setLanguage, registerCustomLanguage, removeCustomLanguage, getCustomLanguages, onLanguageChange, p2pRejectTexts } from './lib/i18n.svelte'
@@ -5831,8 +5831,10 @@
           <span>{mig.name}</span>
         </div>
       {/if}
-      {#if lp && !lp.done && lp.message}
-        <div class="it-stage"><i class="ti ti-file"></i> {lp.message}</div>
+      {#if lp && !lp.done}
+        <div class="it-stage-wrap" transition:slide={{ duration: 200, easing: cubicOut }}>
+          <div class="it-stage"><i class="ti ti-file"></i> {lp.message || '\u00A0'}</div>
+        </div>
       {/if}
       {#if settings.showGameTime && playtimes[pk.id]}
         <div class="it-time"><i class="ti ti-clock"></i> {fmtPlaytime(playtimes[pk.id])}</div>
@@ -5874,11 +5876,11 @@
       </button>
     {/if}
     {#if lp && !lp.done}
-      <div class="it-prog"><div class="it-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
+      <div class="it-prog" transition:fade={{ duration: 180 }}><div class="it-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
     {:else if prog && (status === 'downloading' || status === 'updating')}
-      <div class="it-prog"><div class="it-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
+      <div class="it-prog" transition:fade={{ duration: 180 }}><div class="it-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
     {:else if mig && !lp}
-      <div class="it-prog"><div class="it-prog-fill mig-fill" style="width:{mig.total ? Math.round(mig.done / mig.total * 100) : 0}%"></div></div>
+      <div class="it-prog" transition:fade={{ duration: 180 }}><div class="it-prog-fill mig-fill" style="width:{mig.total ? Math.round(mig.done / mig.total * 100) : 0}%"></div></div>
     {/if}
   </div>
 

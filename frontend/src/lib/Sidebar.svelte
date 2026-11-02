@@ -4,7 +4,7 @@
   // Вся логіка/стан лишаються в App.svelte — сюди приходять пропсами:
   // значення для рендеру + колбеки-дії (кліки, драг-н-дроп, контекстні меню).
   import { onMount } from 'svelte'
-  import { fly, scale } from 'svelte/transition'
+  import { fly, scale, fade, slide } from 'svelte/transition'
   import { flip } from 'svelte/animate'
   import { cubicOut } from 'svelte/easing'
   import { t } from './i18n.svelte'
@@ -608,8 +608,10 @@
                 <span>{packSubText(bv, lp)}</span>
               {/if}
             </div>
-            {#if lp && !lp.done && lp.message}
-              <div class="sp-stage"><i class="ti ti-file"></i> {lp.message}</div>
+            {#if lp && !lp.done}
+              <div class="sp-stage-wrap" transition:slide={{ duration: 200, easing: cubicOut }}>
+                <div class="sp-stage"><i class="ti ti-file"></i> {lp.message || '\u00A0'}</div>
+              </div>
             {/if}
           </div>
           {#if sti}
@@ -650,9 +652,9 @@
             </button>
           {/if}
           {#if lp && !lp.done}
-            <div class="sp-prog"><div class="sp-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
+            <div class="sp-prog" transition:fade={{ duration: 180 }}><div class="sp-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
           {:else if prog && (status === 'downloading' || status === 'updating')}
-            <div class="sp-prog"><div class="sp-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
+            <div class="sp-prog" transition:fade={{ duration: 180 }}><div class="sp-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
           {/if}
         </div>
       {/each}
@@ -796,8 +798,10 @@
                 <span>{packSubText(bv, lp)}</span>
               {/if}
             </div>
-            {#if lp && !lp.done && lp.message}
-              <div class="sp-stage"><i class="ti ti-file"></i> {lp.message}</div>
+            {#if lp && !lp.done}
+              <div class="sp-stage-wrap" transition:slide={{ duration: 200, easing: cubicOut }}>
+                <div class="sp-stage"><i class="ti ti-file"></i> {lp.message || '\u00A0'}</div>
+              </div>
             {/if}
           </div>
           {#if sti}
@@ -838,9 +842,9 @@
             </button>
           {/if}
           {#if lp && !lp.done}
-            <div class="sp-prog"><div class="sp-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
+            <div class="sp-prog" transition:fade={{ duration: 180 }}><div class="sp-prog-fill" style="width:{launchStagePct(lp)}%;background:{launchStageColor(lp.stage)}"></div></div>
           {:else if prog && (status === 'downloading' || status === 'updating')}
-            <div class="sp-prog"><div class="sp-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
+            <div class="sp-prog" transition:fade={{ duration: 180 }}><div class="sp-prog-fill" style="width:{prog.percent}%;background:{downloadStageColor(prog.stage)}"></div></div>
           {/if}
         </div>
           {/if}

@@ -1027,7 +1027,13 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   font-size:var(--fs-min); color:var(--text-mute); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .sb-pack .sp-run img { width:13px; height:13px; border-radius:50%; flex-shrink:0; image-rendering:auto; }
-.sb-pack .sp-prog { height:3px; background:var(--bg-input-hi); border-radius:2px; margin-top:2px; overflow:hidden; width:100%; }
+.sb-pack .sp-prog {
+  /* Накладення, а не рядок потоку: поява/зникнення смужки більше не міняє
+     висоту картки і не зсуває сусідні збірки (раніше +5px стрибок). */
+  position:absolute; left:7px; right:7px; bottom:1px; z-index:1;
+  height:3px; background:var(--bg-input-hi); border-radius:2px; overflow:hidden;
+  pointer-events:none;
+}
 .sb-pack .sp-prog-fill { height:100%; border-radius:2px; background:var(--pcol, var(--orange)); transition:width .2s ease, background .2s ease; }
 .sb-pack .sp-stage {
   margin-top:3px; font-size:var(--fs-min); color:var(--text-mute);
@@ -1035,6 +1041,9 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .sb-pack .sp-stage i { color:var(--orange); font-size:10px; }
+/* Обгортка для плавного розкриття рядка з файлом (svelte slide) */
+.sb-pack .sp-stage-wrap { overflow:hidden; }
+.sidebar.collapsed .sb-pack .sp-stage-wrap { display:none; }
 
 .sp-btn {
   width:26px; height:26px; min-width:26px; border-radius:7px;
@@ -2060,6 +2069,8 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .inst-tile .it-stage i { color:var(--orange); font-size:10px; }
+/* Обгортка для плавного розкриття рядка з файлом (svelte slide) */
+.inst-tile .it-stage-wrap { overflow:hidden; }
 .inst-tile .it-time {
   font-size:var(--fs-min); color:var(--text-mute);
   display:flex; align-items:center; gap:4px;
@@ -2117,10 +2128,12 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .inst-tile .it-st.st-dl-finalizing { background:rgba(16,185,129,.15); color:var(--green); }
 .inst-tile .it-st.st-dl-finalizing i { animation:st-check-pop .6s ease-out; }
 .inst-tile .it-prog {
-  grid-column:1 / -1; grid-row:2;
-  height:3px; margin-top:9px;
+  /* Накладення у нижньому паддінгу тайла: поява смужки не збільшує тайл
+     (раніше +12px і перестановка всього рядка сітки). */
+  position:absolute; left:12px; right:12px; bottom:4px; z-index:1;
+  height:3px;
   background:var(--bg-input-hi); overflow:hidden;
-  border-radius:2px; width:100%; max-width:100%;
+  border-radius:2px; pointer-events:none;
 }
 .inst-tile .it-prog-fill { display:block; height:100%; max-width:100%; background:var(--pcol, var(--orange)); transition:width .2s ease, background .2s ease; }
 .inst-tile.running { border-color:rgba(16,185,129,.5); }
@@ -2799,6 +2812,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
    ОДНА лінія (не сегменти), що росте крізь стадії; колір змінюється разом
    зі стадією (checking=жовтий, worker_update=синій, java=червоний,
    loader=зелений). Зверху — стадії-кроки, під баром — назва + % стадії. */
+.scroll-slot { display:flow-root; }
 .launch-prog {
   background:var(--bg-card); border:1px solid var(--border-hi);
   border-radius:var(--r-lg); padding:14px 20px; margin-bottom:18px;
@@ -2841,6 +2855,8 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .launch-prog .lp-label {
   margin-top:9px; font-size:12px; font-weight:700; color:var(--text-mute);
   display:flex; align-items:center; gap:8px;
+  /* Висота під пілюлю «%» — щоб поява/зникнення відсотка не смикала блок */
+  min-height:24px;
 }
 .launch-prog .lp-label i { color:var(--orange); font-size:15px; }
 .launch-prog .lp-label.lp-error { color:var(--red); }

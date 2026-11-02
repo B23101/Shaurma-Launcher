@@ -207,3 +207,26 @@ export function restoreContentScroll(top: number): void {
   }
   requestAnimationFrame(attempt)
 }
+
+// Тримає позицію скролу користувача, коли над видимою областю з'являється/
+// зникає/змінює висоту блок (прогрес запуску, качка, міграція). Вішається
+// як use:anchorScroll на обгортку блоків. Якщо обгортка починається вище
+// верху видимої області `.content`, будь-яка зміна її висоти одразу
+// компенсується в scrollTop (у тому ж кадрі, до малювання) — те, на що
+// дивиться користувач, не зсувається ні вгору, ні вниз. Якщо користувач
+// на самому верху (обгортку видно), блок просто плавно розкривається.
+export function anchorScroll(node: HTMLElement) {
+  let last = node.offsetHeight
+  const ro = new ResizeObserver(() => {
+    const h = node.offsetHeight
+    const delta = h - last
+    last = h
+    if (!delta) return
+    const c = contentEl()
+    if (!c || c.scrollTop <= 0) return
+    const above = node.getBoundingClientRect().top < c.getBoundingClientRect().top
+    if (above) c.scrollTop += delta
+  })
+  ro.observe(node)
+  return { destroy() { ro.disconnect() } }
+}

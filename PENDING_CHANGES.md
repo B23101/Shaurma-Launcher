@@ -10,22 +10,7 @@ Pack Manager після успішної збірки сам зробить git 
 Типи: feat, fix, perf, refactor, docs, build, ci, chore.
 Пункт = одна змістовна зміна, одним рядком, без секретів і без згадок ШІ.
 -->
-## 2026-11-01 23:10
-- [feat] Pack Manager після локальної збірки і пушу коду сам запускає збірку на GitHub (workflow_dispatch) для цієї версії; у формі збірки додано галочку || trigger github build for the same version from pack manager after local build and push
-- [ci] Workflow build-windows більше не стартує від тегу v*: лише workflow_dispatch з Pack Manager або вручну; чернетка релізу створюється за версією з inputs (зміни в .github/ — на окреме рев'ю) || run build-windows only via workflow_dispatch and create release draft from version input
-- [build] Додано scripts/sync-github-secrets.ps1: читає build-secrets.json Pack Manager і виставляє GitHub Actions secrets через gh без ручного вводу (зміни в scripts/ — на окреме рев'ю) || add script to sync pack manager secrets to github actions secrets
 
-## 2026-11-01 23:25
-- [fix] Оновлено frontend/package-lock.json: синхронізовано з package.json, щоб npm ci не падав у CI || sync frontend package-lock with package.json so npm ci passes in ci
-
-## 2026-11-01 23:35
-- [ci] Відновлено оригінальний scripts/build-windows.ps1 (його перезаписав новий скрипт і зламав test-build-policy та release workflows); новий скрипт перейменовано на build-windows-standalone.ps1, workflow build-windows викликає його (зміни в .github/ і scripts/ — на окреме рев'ю) || restore original build-windows.ps1 and move standalone ci build to build-windows-standalone.ps1
-
-## 2026-11-01 23:45
-- [fix] Дозволено в git лише backend/build/appicon.png (його вбудовує tray_menu.go через go:embed), решта backend/build лишається ігнорованою; без нього go test у CI падав (змінено .gitignore — на окреме рев'ю) || track backend/build/appicon.png needed by go:embed so ci tests build
-
-## 2026-11-01 23:55
-- [ci] У кроці gitleaks додано -v, щоб у логу було видно файл, коміт і правило знахідки (секрет лишається замаскованим) (зміни в .github/ — на окреме рев'ю) || print gitleaks finding details in ci log with redacted secrets
-
-## 2026-11-02 00:15
-- [ci] Додано в gitleaks.ignore точний виняток для публічного SHA-256 офіційного authlib-injector (це перевірочний хеш, а не секрет) (зміни в .github/ — на окреме рев'ю) || ignore public authlib-injector sha256 digest false positive in gitleaks
+## 2026-11-02 12:00
+- [fix] Плавна поява віджета запуску збірки: смужка прогресу в sidebar і тайлах стала накладенням без впливу на висоту, рядок з назвою файлу та блок прогресу на сторінці збірки розкриваються плавно, інтерфейс більше не стрибає || smooth launch progress widget appearance without layout jumps
+- [fix] Позиція скролу на сторінці збірки не зсувається, коли з'являється або зникає блок прогресу запуску, качки чи міграції || keep scroll position stable when launch progress blocks appear
