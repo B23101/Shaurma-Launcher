@@ -10,7 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@tabler/icons-webfont": "^3.19.0",
+    "@tabler/icons-webfont": "^3.50.0",
     "marked": "^18.0.9",
     "three": "^0.185.1"
   },
