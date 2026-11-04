@@ -44,10 +44,15 @@ func newPackProvider(a *App) PackProvider {
 	}
 }
 
-// IsShaurmaEdition повертає true тільки у повній (shaurma) збірці.
-// Фронтенд питає цей прапорець, щоб показувати вкладку/список збірок
-// Шаурма лише там, де відповідні бекенд-методи реально скомпільовані.
-func (a *App) IsShaurmaEdition() bool { return true }
+// IsShaurmaEdition — чи показувати вкладку збірок Шаурма. Міст R1 (вшитий
+// токен) — завжди. Єдиний лаунчер (без токена) — лише з активованим
+// доступом (план «Єдиний лаунчер», §4): без ключа розділ не рендериться.
+func (a *App) IsShaurmaEdition() bool {
+	if api.HasBuiltinToken() {
+		return true
+	}
+	return a.accessManager().HasAccess()
+}
 
 // launcherEditionName — назва редакції для аналітики.
 func launcherEditionName() string { return "shaurma" }

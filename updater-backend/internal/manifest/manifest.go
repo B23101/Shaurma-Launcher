@@ -42,9 +42,19 @@ type Component struct {
 }
 
 // Manifest — launcher-version.json, і локальний, і віддалений (CDN).
+// UpdateProof — доказ для відкладених (.new) файлів: підписані байти, за якими
+// shell при наступному старті ще раз звіряє файл, навіть офлайн.
+//
+//	Format 0/1 — старий маніфест CDN (launcher-version.json) і його підпис.
+//	Format 2   — маніфест v2 з GitHub + keyset (підписаний root), за яким
+//	             перевіряється release-ключ маніфесту. Файл shell шукається
+//	             за роллю (він ставиться під ім'ям свого exe).
 type UpdateProof struct {
+	Format    int    `json:"format,omitempty"`
 	Payload   []byte `json:"payload"`
 	Signature string `json:"signature"`
+	Keyset    []byte `json:"keyset,omitempty"`
+	KeysetSig string `json:"keysetSig,omitempty"`
 }
 
 type Manifest struct {

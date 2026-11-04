@@ -11,6 +11,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 )
 
@@ -37,7 +38,7 @@ func (j *Installer) runtimeClient() *http.Client {
 		}
 		req.Header.Del("Authorization")
 		req.Header.Del("Cookie")
-		req.Header.Del("X-Shaurma-Token")
+		creds.Strip(req.Header)
 		req.Header.Del("x-api-key")
 		return nil
 	}

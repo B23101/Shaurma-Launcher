@@ -23,6 +23,7 @@ import (
 	"net/url"
 	"path"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 )
 
@@ -161,7 +162,7 @@ func clientWithSafeRedirects(c *http.Client) *http.Client {
 			return fmt.Errorf("перенаправлення з https на %s заборонено", req.URL.Scheme)
 		}
 		if !strings.EqualFold(req.URL.Host, via[0].URL.Host) {
-			req.Header.Del("X-Shaurma-Token")
+			creds.Strip(req.Header)
 			req.Header.Del("X-Shaurma-Auth")
 			req.Header.Del("Authorization")
 			req.Header.Del("Cookie")

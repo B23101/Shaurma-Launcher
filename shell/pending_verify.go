@@ -15,7 +15,7 @@ import (
 // Pending files are executable code. Their accompanying proof contains the
 // original signed CDN bytes, so restart verification also works offline.
 func verifyPendingComponent(dir, name string) error {
-	if !manifestSigEnabled() {
+	if !manifestSigEnabled() && rootKeys == "" {
 		return nil
 	} // explicit development builds only
 	root, err := os.OpenRoot(dir)
@@ -24,8 +24,11 @@ func verifyPendingComponent(dir, name string) error {
 	}
 	defer root.Close()
 	var proof struct {
+		Format    int    `json:"format"`
 		Payload   []byte `json:"payload"`
 		Signature string `json:"signature"`
+		Keyset    []byte `json:"keyset"`
+		KeysetSig string `json:"keysetSig"`
 	}
 	proofFile, err := root.Open(name + ".new.proof")
 	if os.IsNotExist(err) {
@@ -47,6 +50,9 @@ func verifyPendingComponent(dir, name string) error {
 	}
 	if err := json.Unmarshal(raw, &proof); err != nil {
 		return err
+	}
+	if proof.Format == 2 {
+		return verifyPendingV2(root, name, pendingProofV2{Payload: proof.Payload, Signature: proof.Signature, Keyset: proof.Keyset, KeysetSig: proof.KeysetSig})
 	}
 	return verifyPendingPayload(root, name, proof.Payload, proof.Signature)
 }

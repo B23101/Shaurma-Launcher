@@ -1500,6 +1500,13 @@
     isShaurmaEdition = edR.status === 'fulfilled' ? edR.value : false
     skinSupport = skinR.status === 'fulfilled' ? skinR.value : isShaurmaEdition
     if (!isShaurmaEdition) instanceTab = 'custom'
+    // Доступ активовано/відкликано (Налаштування → Доступ): вкладка збірок
+    // Шаурма з'являється чи зникає без перезапуску.
+    on('access:changed', async () => {
+      try { isShaurmaEdition = await App.IsShaurmaEdition() } catch { isShaurmaEdition = false }
+      if (!isShaurmaEdition && instanceTab === 'shaurma') instanceTab = 'custom'
+      refreshBuilds()
+    })
     // Відновлюємо «останнє вікно» одразу після першого завантаження даних.
     // initUIState() підвантажує реальний стан з .ui-state.json (диск) — до
     // цього getUIState() повертав би лише дефолти в пам'яті.

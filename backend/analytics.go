@@ -1,11 +1,12 @@
 package main
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"bytes"
 	"encoding/json"
 	"net/http"
 	"runtime"
+	"shaurma-launcher-backend/internal/crashguard"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"time"
 
@@ -189,7 +190,7 @@ func (a *App) sendAnalyticsReport(force bool) {
 			return
 		}
 		req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-		req.Header.Set("X-Shaurma-Token", token)
+		creds.Apply(req.Header, token)
 		req.Header.Set("Content-Type", "application/json")
 
 		client := &http.Client{Timeout: 15 * time.Second}

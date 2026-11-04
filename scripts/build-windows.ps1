@@ -18,7 +18,13 @@
     CF_API_KEY                                       CurseForge client key (recoverable from distributed binaries)
     SHAURMA_GOOGLE_CLIENT_ID, SHAURMA_GOOGLE_CLIENT_SECRET   Google sign-in
     SHAURMA_MANIFEST_PUBKEYS                          Ed25519 public keys (base64, comma separated)
+    SHAURMA_ROOT_PUBKEYS, SHAURMA_KEYSET_B64, SHAURMA_KEYSET_SIG   new update system (public: root key, keyset signed by root)
   Missing values only disable the matching feature (warning), unless -RequireSecrets is set.
+
+.PARAMETER Bundle
+  setup.exe ставить УСІ компоненти одразу (без bootstrap-докачки з CDN), але
+  БЕЗ local-only.flag: далі лаунчер оновлюється сам за підписаним маніфестом v2.
+  Потрібно єдиному лаунчеру без токена CDN (build-launcher.yml).
 
 .PARAMETER LocalInstall
   Локальна ПОВНА (shaurma) збірка для встановлення з диска: усі компоненти
@@ -41,6 +47,7 @@ param(
     [string]$Version = '1.0.0',
     [switch]$Strip,
     [switch]$LocalInstall,
+    [switch]$Bundle,
     [switch]$RequireSecrets
 )
 
@@ -164,6 +171,20 @@ $CfKey = Get-Secret 'CF_API_KEY'
 $GoogleId = Get-Secret 'SHAURMA_GOOGLE_CLIENT_ID'
 $GoogleSecret = Get-Secret 'SHAURMA_GOOGLE_CLIENT_SECRET'
 $PubKeys = Get-Secret 'SHAURMA_MANIFEST_PUBKEYS'
+# New update system (plan "single launcher"): public values only. master.cert is never embedded here:
+# the full bridge build (R1) is made locally by Pack Manager.
+$RootKeys = Get-Secret 'SHAURMA_ROOT_PUBKEYS'
+$KeysetB64 = Get-Secret 'SHAURMA_KEYSET_B64'
+$KeysetSig = Get-Secret 'SHAURMA_KEYSET_SIG'
+if ($RootKeys -and ($RootKeys -notmatch '^[A-Za-z0-9+/=,]+$')) { throw 'SHAURMA_ROOT_PUBKEYS: only base64 keys separated by commas are allowed' }
+if ($KeysetB64 -and ($KeysetB64 -notmatch '^[A-Za-z0-9+/=]+$')) { throw 'SHAURMA_KEYSET_B64: base64 only' }
+if ($KeysetSig -and ($KeysetSig -notmatch '^[A-Za-z0-9+/=]+$')) { throw 'SHAURMA_KEYSET_SIG: base64 only' }
+if (($RootKeys -or $KeysetB64 -or $KeysetSig) -and -not ($RootKeys -and $KeysetB64 -and $KeysetSig)) { throw 'SHAURMA_ROOT_PUBKEYS, SHAURMA_KEYSET_B64 and SHAURMA_KEYSET_SIG must be set together' }
+function Get-NewUpdateLdflags {
+    if (-not $RootKeys) { return '' }
+    $pkg = 'shrm-updater-backend/internal/newupdate'
+    return " -X $pkg.RootKeys=$RootKeys -X $pkg.EmbeddedKeyset=$KeysetB64 -X $pkg.EmbeddedKeysetSig=$KeysetSig"
+}
 
 function Check-Secrets {
     if ($LocalInstall) {
@@ -302,6 +323,7 @@ function Build-Shell([string]$ed) {
         }
         else {
             $ld += " -X main.editionChannel=$ed -X main.cdnToken=$(Get-Token $ed) -X main.trustedKeys=$PubKeys"
+            if ($RootKeys) { $ld += " -X main.rootKeys=$RootKeys -X main.embeddedKeyset=$KeysetB64 -X main.embeddedKeysetSig=$KeysetSig" }
         }
         Invoke-Native 'go' @('build', '-tags', 'production', '-buildmode=pie', '-trimpath', '-buildvcs=false',
             '-ldflags', $ld, '-o', $out, '.') $dir @{ CGO_ENABLED = '0' }
@@ -330,6 +352,7 @@ function Build-Backend([string]$ed) {
     Write-Step "backend.dll ($ed)"
     $tags = if ($ed -eq 'shaurma') { 'production,shaurma' } else { 'production' }
     $ld = "-X shaurma-launcher-backend/internal/update.token=$(Get-Token $ed)"
+    if ($RootKeys) { $ld += " -X shaurma-launcher-backend/internal/access.RootKeys=$RootKeys -X shaurma-launcher-backend/internal/access.EmbeddedKeyset=$KeysetB64 -X shaurma-launcher-backend/internal/access.EmbeddedKeysetSig=$KeysetSig" }
     if ($ed -eq 'shaurma') {
         $ld += " -X shaurma-launcher-backend/internal/api.tokenShaurma=$TokenShaurma"
 
@@ -352,7 +375,7 @@ function Build-Updater([string]$ed) {
     }
     else {
         $tokenField = if ($ed -eq 'base') { 'tokenBase' } else { 'tokenShaurma' }
-        $ld = "-X shrm-updater-backend/internal/core.$tokenField=$(Get-Token $ed) -X shrm-updater-backend/internal/sigverify.TrustedKeys=$PubKeys"
+        $ld = "-X shrm-updater-backend/internal/core.$tokenField=$(Get-Token $ed) -X shrm-updater-backend/internal/sigverify.TrustedKeys=$PubKeys" + (Get-NewUpdateLdflags)
     }
     Build-Dll (Join-Path $Root 'updater-backend') 'production' $ld (Join-Path $UnsignedDir "$ed\updater.dll") 'updater.dll' "$ProductName updater"
 }
@@ -408,15 +431,15 @@ function New-AsciiBuildRoot {
 # Розпаковує frontend.zip/updater-frontend.zip у staging, кладе поруч
 # local-only.flag (апдейтер бачить його і не робить жодних запитів до CDN)
 # і пише локальний launcher-version.json, щоб backend показував версію.
-function New-LocalBundle([string]$AppDir, [string]$ed) {
-    Write-Step 'local bundle (frontend dirs + local-only.flag + launcher-version.json)'
+function New-LocalBundle([string]$AppDir, [string]$ed, [bool]$LocalOnly = $true) {
+    Write-Step 'full bundle (frontend dirs + launcher-version.json)'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     foreach ($pair in @(@{ zip = 'frontend.zip'; dir = 'frontend' }, @{ zip = 'updater-frontend.zip'; dir = 'updater-frontend' })) {
         $dest = Join-Path $AppDir $pair.dir
         if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
         [System.IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $AppDir $pair.zip), $dest)
     }
-    Set-Content -Path (Join-Path $AppDir 'local-only.flag') -Value 'local build' -Encoding ascii
+    if ($LocalOnly) { Set-Content -Path (Join-Path $AppDir 'local-only.flag') -Value 'local build' -Encoding ascii }
     $specs = @(
         @{ path = $ShellNames[$ed]; kind = ''; extractTo = '' },
         @{ path = 'backend.dll'; kind = ''; extractTo = '' },
@@ -436,7 +459,8 @@ function New-LocalBundle([string]$AppDir, [string]$ed) {
         if ($spec.kind) { $component.kind = $spec.kind; $component.extractTo = $spec.extractTo }
         $components += $component
     }
-    $manifest = [ordered]@{ version = $Version; releaseNotes = 'Local build (no CDN)'; components = $components }
+    $notes = if ($LocalOnly) { 'Local build (no CDN)' } else { '' }
+    $manifest = [ordered]@{ version = $Version; releaseNotes = $notes; components = $components }
     $utf8 = New-Object System.Text.UTF8Encoding($false)
     [IO.File]::WriteAllText((Join-Path $AppDir 'launcher-version.json'), ($manifest | ConvertTo-Json -Depth 6), $utf8)
 }
@@ -449,6 +473,8 @@ function Invoke-Installer {
     if (-not $iscc) { Fail 'ISCC.exe not found. Install Inno Setup 6 (choco install innosetup).' }
     $asciiRoot = $null
     try {
+        # Повний набір у setup: локальна офлайн-збірка АБО єдиний лаунчер (-Bundle).
+        $bundleAll = $LocalInstall -or $Bundle
         foreach ($ed in $Editions) {
             Write-Step "installer ($ed)"
             # Локальна збірка має власну staging-теку й власну OutputDir, щоб не
@@ -464,10 +490,10 @@ function Invoke-Installer {
             }
             if (Test-Path $app) { Remove-Item $app -Recurse -Force }
             New-Item -ItemType Directory -Force -Path (Join-Path $app 'build\windows') | Out-Null
-            if (-not $LocalInstall) { New-Item -ItemType Directory -Force -Path (Join-Path $app 'bootstrap') | Out-Null }
+            if (-not $bundleAll) { New-Item -ItemType Directory -Force -Path (Join-Path $app 'bootstrap') | Out-Null }
             $name = $ShellNames[$ed]
             Copy-Item (Join-Path $ComponentsDir "$ed\$name") $app
-            if (-not $LocalInstall) { Copy-Item (Join-Path $ComponentsDir "$ed\bootstrap\$name") (Join-Path $app 'bootstrap') }
+            if (-not $bundleAll) { Copy-Item (Join-Path $ComponentsDir "$ed\bootstrap\$name") (Join-Path $app 'bootstrap') }
             Copy-Item (Join-Path $ComponentsDir "$ed\backend.dll") $app
             Copy-Item (Join-Path $ComponentsDir "$ed\updater.dll") $app
             Copy-Item (Join-Path $AssetsDir 'frontend.zip') $app
@@ -475,9 +501,15 @@ function Invoke-Installer {
             Copy-Item (Join-Path $Root 'shell\build\windows\icon.ico') (Join-Path $app 'build\windows')
             $isccArgs = @((Join-Path $Root 'installer\installer.iss'), "/DAppImageDir=$app", "/DMyEdition=$ed")
             if ($LocalInstall) {
-                New-LocalBundle $app $ed
+                New-LocalBundle $app $ed $true
                 $isccArgs += '/DLocalInstall=1'
+                $isccArgs += '/DLocalOnly=1'
                 $isccArgs += "/O$(Join-Path $OutDir 'local')"
+            }
+            elseif ($Bundle) {
+                New-LocalBundle $app $ed $false
+                $isccArgs += '/DLocalInstall=1'
+                $isccArgs += "/O$OutDir"
             }
             else {
                 $isccArgs += "/O$OutDir"

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"sync"
 
@@ -26,7 +27,7 @@ func vpsPool() *nodes.Pool {
 			Headers: func() http.Header {
 				h := http.Header{}
 				h.Set("User-Agent", "ShaurmaLauncher/2.0")
-				h.Set("X-Shaurma-Token", update.Token())
+				creds.Apply(h, update.Token())
 				return h
 			},
 		}

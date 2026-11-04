@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"time"
 
@@ -39,7 +40,7 @@ func (a *App) skinRequest(method, path string, body []byte) (*http.Response, err
 			return nil, err
 		}
 		req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-		req.Header.Set("X-Shaurma-Token", update.Token())
+		creds.Apply(req.Header, update.Token())
 		if body != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}

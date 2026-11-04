@@ -69,17 +69,14 @@ if (-not $Repository) {
 if (-not $Repository) { throw "Не вдалось визначити репозиторій. Вкажи -Repository OWNER/REPO." }
 Write-Host "Репозиторій: $Repository"
 
-# 3) gh: або вже залогінений, або беремо ghToken з файлу (лише для цього процесу).
+# 3) gh: лише ваш власний вхід (gh auth login). Токен із файлу не використовується:
+#    усе, що може читати файли, бачило б його (план «Єдиний лаунчер», §17).
 $gh = Get-Command gh -ErrorAction SilentlyContinue
 if (-not $gh) { throw "GitHub CLI (gh) не знайдено. Встанови: https://cli.github.com/" }
 $prevToken = $env:GH_TOKEN
 if (-not $DryRun) {
     & gh auth status *> $null
-    if ($LASTEXITCODE -ne 0) {
-        if (-not $cfg.ghToken) { throw "gh не залогінений і ghToken у build-secrets.json порожній. Виконай 'gh auth login'." }
-        $env:GH_TOKEN = [string]$cfg.ghToken
-        Write-Host "gh не залогінений — використовую ghToken з build-secrets.json."
-    }
+    if ($LASTEXITCODE -ne 0) { throw "gh не залогінений. Виконай 'gh auth login' своїм акаунтом." }
 }
 
 $set = 0; $skipped = @(); $failed = @()

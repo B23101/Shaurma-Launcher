@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	neturl "net/url"
+	"shaurma-launcher-backend/internal/creds"
 	"strconv"
 	"strings"
 	"time"
@@ -87,7 +88,10 @@ func (c *Checker) Check() (*UpdateInfo, error) {
 	// гарантованого 401 від Worker для КОЖНОГО користувача — робимо
 	// причину явною одразу, а не після незрозумілої помилки парсингу JSON.
 	if c.token == "" {
-		return nil, fmt.Errorf("update: token is empty — build launcher with -ldflags -X shaurma-launcher-backend/internal/update.token=...")
+		// Єдиний лаунчер (без токена каналу): нова система оновлень. Тут лише
+		// показ версії; саме оновлення перевіряє й ставить updater за
+		// підписаним маніфестом.
+		return c.checkNew()
 	}
 
 	stable, err := c.fetchOne(c.updateURL)
@@ -126,7 +130,7 @@ func (c *Checker) fetchOne(url string) (*remoteManifest, error) {
 	// "ShaurmaLauncher/", — 404 (маскування ендпоінта від сканерів); без
 	// X-Shaurma-Token (мін. 16 символів, звірка timing-safe) — 401/403.
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-	req.Header.Set("X-Shaurma-Token", c.token)
+	creds.Apply(req.Header, c.token)
 
 	resp, err := c.client.Do(req)
 	if err != nil {

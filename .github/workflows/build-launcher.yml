@@ -1,112 +1,324 @@
-name: Build launcher (Windows)
+# The ONLY launcher build workflow (single launcher, no editions).
+#
+# Started only by Pack Manager (workflow_dispatch) with a signed build order:
+#   version  X.Y.Z (must equal installer/VERSION in the commit)
+#   sha      full commit SHA to build (must be on main)
+#   order    build order signed by the release key (checked against vars.ORDER_PUBKEYS)
+# No tag triggers. GitHub is an UNTRUSTED builder: it never holds signing keys.
+# Users trust the update manifest that Pack Manager signs after it verifies the
+# attestation of this run. The order check only guards against accidental runs.
+#
+# Secrets: SIGNPATH_API_TOKEN (environment "release"), CF_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET.
+# Variables (public): ORDER_PUBKEYS, SIGNPATH_ORGANIZATION_ID, SHAURMA_MANIFEST_PUBKEYS,
+#   SHAURMA_ROOT_PUBKEYS, SHAURMA_KEYSET_B64, SHAURMA_KEYSET_SIG, SHAURMA_GOOGLE_CLIENT_ID.
+name: build-launcher
 
 on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Версія релізу лаунчера (напр. 2.4.1)"
+        description: Launcher version X.Y.Z
         required: true
-      editions:
-        description: "Редакції через кому: shaurma,base"
-        default: "shaurma,base"
+        type: string
+      sha:
+        description: Full commit SHA to build (on main)
+        required: true
+        type: string
+      order:
+        description: Signed build order (Pack Manager)
+        required: true
+        type: string
       release_notes:
-        description: "Нотатки релізу (по рядку на пункт)"
+        description: Release notes
         required: false
-        default: ""
-  push:
-    tags: ["v*"]
+        type: string
+        default: ''
+      sign:
+        description: Submit to SignPath (false = unsigned, manifest uses authenticode waived)
+        type: boolean
+        default: false
+      policy:
+        description: SignPath signing policy
+        type: choice
+        options: [release-signing, test-signing]
+        default: release-signing
+
+concurrency:
+  group: build-launcher
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
+env:
+  SIGNPATH_PROJECT: shaurma-launcher
+  BUILD_VERSION: ${{ inputs.version }}
+  BUILD_SHA: ${{ inputs.sha }}
+
 jobs:
-  build:
-    runs-on: windows-latest
-    timeout-minutes: 60
-    env:
-      LAUNCHER_ROOT: ${{ github.workspace }}
-      VERSION: ${{ github.event.inputs.version || github.ref_name }}
-      EDITIONS: ${{ github.event.inputs.editions || 'shaurma,base' }}
-      RELEASE_NOTES: ${{ github.event.inputs.release_notes }}
-      TOKEN_SHAURMA: ${{ secrets.TOKEN_SHAURMA }}
-      TOKEN_BASE: ${{ secrets.TOKEN_BASE }}
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
-      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-      SIGN_CMD: ${{ secrets.SIGN_CMD }}
-      GOTOOLCHAIN: auto
-
+  validate:
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          go-version: "1.25"
-          cache-dependency-path: |
-            **/go.sum
+          ref: ${{ inputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-node@v4
+      - name: Check version, sha and branch
+        run: |
+          [[ "$BUILD_VERSION" =~ ^[0-9]{1,6}(\.[0-9]{1,6}){2,3}$ ]] || { echo 'bad version'; exit 1; }
+          [[ "$BUILD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'sha must be a full 40-hex commit'; exit 1; }
+          [ "$(git rev-parse HEAD)" = "$BUILD_SHA" ] || { echo 'checked out commit differs from sha'; exit 1; }
+          git merge-base --is-ancestor "$BUILD_SHA" origin/main || { echo 'sha is not on main'; exit 1; }
+          file="$(tr -d ' \r\n' < installer/VERSION)"
+          [ "$file" = "$BUILD_VERSION" ] || { echo "installer/VERSION ($file) != version input"; exit 1; }
+
+      - name: Verify signed build order
+        env:
+          ORDER: ${{ inputs.order }}
+          ORDER_PUBKEYS: ${{ vars.ORDER_PUBKEYS }}
+        run: |
+          node --input-type=module -e '
+            const { ORDER, ORDER_PUBKEYS, BUILD_VERSION, BUILD_SHA } = process.env;
+            const keys = (ORDER_PUBKEYS || "").split(",").map(s => s.trim()).filter(Boolean);
+            if (!keys.length) throw new Error("ORDER_PUBKEYS is not set");
+            const [p, s] = String(ORDER || "").split(".");
+            const payload = Buffer.from(p || "", "base64url");
+            const sig = Buffer.from(s || "", "base64url");
+            const msg = Buffer.concat([Buffer.from("shaurma-build-order-v1\n"), payload]);
+            let ok = false;
+            for (const k of keys) {
+              const key = await crypto.subtle.importKey("raw", Buffer.from(k, "base64"), { name: "Ed25519" }, false, ["verify"]);
+              if (await crypto.subtle.verify({ name: "Ed25519" }, key, sig, msg)) { ok = true; break; }
+            }
+            if (!ok) throw new Error("build order signature is invalid");
+            const o = JSON.parse(payload.toString("utf8"));
+            if (o.v !== 1 || o.version !== BUILD_VERSION || o.sha !== BUILD_SHA) throw new Error("order does not match inputs");
+            if (Math.floor(Date.now() / 1000) > o.expires) throw new Error("order expired");
+            console.log("build order OK:", o.version, o.sha);
+          '
+
+  checks:
+    needs: validate
+    uses: ./.github/workflows/ci.yml
+
+  windows-components:
+    needs: [validate, checks]
+    environment: release
+    runs-on: windows-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          node-version: "22"
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
 
-      # C-компілятор для cgo (backend.dll / updater.dll, -buildmode=c-shared).
-      # Збірка шукає саме C:\msys64\clang64\bin\clang.exe (див. windows.go).
-      - name: Install clang64 (msys2)
-        shell: pwsh
-        run: |
-          & C:\msys64\usr\bin\bash.exe -lc "pacman -S --noconfirm --needed mingw-w64-clang-x86_64-clang"
-          & C:\msys64\clang64\bin\clang.exe --version
-
-      - name: Install wails3 CLI
-        shell: pwsh
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0-alpha2.121
-          "$(go env GOPATH)\bin" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-
-      - name: Install Inno Setup
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
-          Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
-
-      - name: Build launcher
-        shell: pwsh
-        working-directory: pack-manager
-        run: go run ./cmd/ci-build
-
-      # Портативний zip: усі компоненти вже на місці (shell, backend.dll, updater.dll,
-      # frontend/, launcher-version.json) — розпакував і запустив, bootstrap з CDN не потрібен.
-      - name: Pack portable zips
-        shell: pwsh
-        run: |
-          foreach ($d in Get-ChildItem dist -Directory -Filter 'app-*' | Where-Object { $_.Name -notmatch 'linux' }) {
-            $ed  = $d.Name -replace '^app-', ''
-            $tmp = Join-Path $env:RUNNER_TEMP "portable-$ed"
-            $dst = Join-Path $tmp 'ShaurmLauncher'
-            if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
-            robocopy $d.FullName $dst /E /XD bootstrap build /NFL /NDL /NJH /NJS | Out-Null
-            if ($LASTEXITCODE -ge 8) { throw "robocopy failed: $LASTEXITCODE" }
-            # Маркер: updater.dll у цій збірці не ходить на CDN і довіряє лише локальним файлам.
-            Set-Content -Path (Join-Path $dst 'local-only.flag') -Value 'local build' -Encoding ascii
-            $zip = "dist/ShaurmLauncher-portable-$ed-$env:VERSION.zip"
-            Compress-Archive -Path $dst -DestinationPath $zip -Force
-            Write-Host "created $zip"
-          }
-
-      - name: Upload installers
-        uses: actions/upload-artifact@v4
+      # No dependency caches in release jobs (SignPath origin verification).
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          name: setup-${{ env.VERSION }}
+          go-version-file: backend/go.mod
+          cache: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22.11.0
+
+      - name: Ensure a C compiler for cgo (pinned)
+        shell: pwsh
+        run: |
+          $have = (Test-Path 'C:\msys64\ucrt64\bin\gcc.exe') -or (Test-Path 'C:\mingw64\bin\gcc.exe')
+          if (-not $have) { choco install mingw --version=13.2.0 -y --no-progress }
+
+      # Single launcher: no channel tokens. Client API keys (CurseForge, Google sign-in)
+      # stay embedded as before, like in other launchers.
+      - name: Build components (unsigned)
+        shell: pwsh
+        env:
+          SHAURMA_MANIFEST_PUBKEYS: ${{ vars.SHAURMA_MANIFEST_PUBKEYS }}
+          SHAURMA_ROOT_PUBKEYS: ${{ vars.SHAURMA_ROOT_PUBKEYS }}
+          SHAURMA_KEYSET_B64: ${{ vars.SHAURMA_KEYSET_B64 }}
+          SHAURMA_KEYSET_SIG: ${{ vars.SHAURMA_KEYSET_SIG }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          SHAURMA_GOOGLE_CLIENT_KIND: ${{ vars.SHAURMA_GOOGLE_CLIENT_KIND }}
+        run: |
+          if (-not $env:SHAURMA_ROOT_PUBKEYS) { throw 'SHAURMA_ROOT_PUBKEYS is required: the single launcher must carry the new update system' }
+          ./scripts/build-windows.ps1 -Step components -Edition shaurma -Version $env:BUILD_VERSION
+
+      - name: Check release components for forbidden credentials
+        shell: pwsh
+        run: ./scripts/check-release-secrets.ps1 -Directory dist/unsigned -Edition base
+
+      - name: Upload unsigned components
+        id: upload-unsigned
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: unsigned-components
+          path: dist/unsigned
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload web assets (frontend zips)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: launcher-assets
+          path: dist/assets
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Sign components (SignPath)
+        if: inputs.sign
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT }}
+          signing-policy-slug: ${{ inputs.policy }}
+          artifact-configuration-slug: components
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 18000
+          output-artifact-directory: dist/signed
+
+      - name: Select final components and verify signatures
+        shell: pwsh
+        env:
+          SIGN: ${{ inputs.sign }}
+        run: |
+          $src = if ($env:SIGN -eq 'true') { 'dist/signed' } else { 'dist/unsigned' }
+          if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $src -Edition base -Stage components }
+          Copy-Item $src dist/final -Recurse
+
+      - name: Upload final components
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: components-final
+          path: dist/final
+          if-no-files-found: error
+          retention-days: 14
+
+  windows-installer:
+    needs: windows-components
+    environment: release
+    runs-on: windows-latest
+    timeout-minutes: 360
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - name: Ensure Inno Setup (pinned)
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe")) { choco install innosetup --version=6.4.3 -y --no-progress }
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: components-final
+          path: dist/final
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: launcher-assets
+          path: dist/assets
+
+      - name: Build installer
+        shell: pwsh
+        # -Bundle: setup ставить усі компоненти одразу (без докачки з CDN за токеном).
+        run: ./scripts/build-windows.ps1 -Step installer -Bundle -Edition shaurma -ComponentsDir dist/final -AssetsDir dist/assets -Version $env:BUILD_VERSION
+
+      - name: Upload unsigned installer
+        id: upload-setup
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: unsigned-installer
           path: dist/*-setup.exe
           if-no-files-found: error
           retention-days: 14
 
-      - name: Upload portable zips
-        uses: actions/upload-artifact@v4
+      - name: Sign installer (SignPath)
+        if: inputs.sign
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3
         with:
-          name: portable-${{ env.VERSION }}
-          path: dist/ShaurmLauncher-portable-*.zip
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ env.SIGNPATH_PROJECT }}
+          signing-policy-slug: ${{ inputs.policy }}
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 18000
+          output-artifact-directory: dist/signed-setup
+
+      # Release assets = the exact files the launcher downloads (flat names) + setup.
+      # Order: build -> Authenticode -> hash -> attest (users can verify the final files).
+      - name: Collect release assets and checksums
+        shell: pwsh
+        env:
+          SIGN: ${{ inputs.sign }}
+        run: |
+          $out = 'dist/release'
+          New-Item -ItemType Directory -Force $out | Out-Null
+          $setupDir = if ($env:SIGN -eq 'true') { 'dist/signed-setup' } else { 'dist' }
+          if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $setupDir -Edition base -Stage installer }
+          Copy-Item "$setupDir/*-setup.exe" "$out/ShaurmaLauncher-setup.exe"
+          Copy-Item dist/final/shaurma/ShaurmLauncher.exe "$out/ShaurmLauncher.exe"
+          Copy-Item dist/final/shaurma/backend.dll "$out/backend.dll"
+          Copy-Item dist/final/shaurma/updater.dll "$out/updater.dll"
+          Copy-Item dist/assets/frontend.zip "$out/frontend.zip"
+          Copy-Item dist/assets/updater-frontend.zip "$out/updater-frontend.zip"
+          Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
+            '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content "$out/SHA256SUMS" -Encoding ascii
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: |
+            dist/release/*.exe
+            dist/release/*.dll
+            dist/release/*.zip
+            dist/release/SHA256SUMS
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-assets
+          path: dist/release
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+  publish-draft:
+    needs: windows-installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-assets
+          path: release
+      # DRAFT only. Pack Manager verifies attestation + hashes, uploads the signed
+      # launcher-manifest.json (+ .sig, keyset.json) and only then publishes.
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.release_notes }}
+        run: |
+          gh release create "v$BUILD_VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$BUILD_SHA" \
+            --draft --title "v$BUILD_VERSION" \
+            --notes "${NOTES:-Release v$BUILD_VERSION}
+
+          Built from $BUILD_SHA by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID.
+          Verify: gh attestation verify <file> -R $GITHUB_REPOSITORY"

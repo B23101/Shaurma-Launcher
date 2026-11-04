@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"time"
 )
@@ -268,7 +269,7 @@ func (c *ManifestClient) newRequest(path string) (*http.Request, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-	req.Header.Set("X-Shaurma-Token", c.Token)
+	creds.Apply(req.Header, c.Token)
 	c.applyIdentityHeaders(req)
 	return req, nil
 }

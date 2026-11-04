@@ -21,6 +21,7 @@ import (
 	"shrm-updater-backend/internal/install"
 	"shrm-updater-backend/internal/manifest"
 	"shrm-updater-backend/internal/neterr"
+	"shrm-updater-backend/internal/newupdate"
 	"shrm-updater-backend/internal/sigverify"
 )
 
@@ -237,14 +238,21 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 	}
 
 	token := edition.token()
-	if token == "" {
-		return fmt.Errorf("%s %q %s (build.ps1 -TokenShaurma/-TokenBase)", cb.tr("токен для каналу", "token for channel"), edition, cb.tr("не вшито в білд — перевір", "not embedded in build — check"))
-	}
-
 	localManifestPath := filepath.Join(installDir, "launcher-version.json")
 	local, err := manifest.Load(localManifestPath)
 	if err != nil {
 		return fmt.Errorf("%s: %w", cb.tr("читання локального маніфесту", "reading local manifest"), err)
+	}
+
+	// НОВА СИСТЕМА (план «Єдиний лаунчер»): якщо в збірку вшито root-ключ,
+	// оновлення шукаються на GitHub за підписаним маніфестом v2. Старий CDN
+	// лишається лише для мосту R1 (поки вшито токен каналу).
+	if newupdate.Enabled() {
+		return runNew(ctx, installDir, edition, updateChannel, installUpdates, local, token, start, cb)
+	}
+
+	if token == "" {
+		return fmt.Errorf("%s %q %s (build.ps1 -TokenShaurma/-TokenBase)", cb.tr("токен для каналу", "token for channel"), edition, cb.tr("не вшито в білд — перевір", "not embedded in build — check"))
 	}
 
 	notify(cb, StatusChecking, cb.meme(StatusChecking, 0))

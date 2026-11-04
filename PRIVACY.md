@@ -7,8 +7,15 @@ It does not contain advertising and does not sell data.
 
 - **Game files and metadata:** Mojang/Microsoft (versions, libraries, assets, skins), mod-loader metadata and downloads
   (Forge, NeoForge, Fabric, Quilt, Paper, Purpur and others), Modrinth and CurseForge (mod/modpack search and downloads).
-- **Updates:** the launcher downloads its own components from the Shaurma CDN and verifies them (SHA-256 and size against a mandatory Ed25519-signed manifest
-  in production builds). Requests carry the release channel and a channel access token.
+- **Updates:** the launcher asks `api.shaurma-launcher.org` for the current version (it sends the release channel, the installed
+  version and the platform) and downloads its components from this repository's GitHub Releases, verifying them against an
+  Ed25519-signed manifest. If an update is rejected, the launcher sends a short report (version and reason, no personal data).
+  Older builds still fetch updates from the Shaurma CDN with a channel access token.
+- **Access to private modpacks (only if you add a certificate):** activation sends the certificate file, a public device key
+  generated on your computer, the launcher version and operating system, and optionally your nickname. The server stores the
+  device record (key, time, IP address, launcher version) to grant, log and revoke access; inactive devices expire after
+  180 days. The private part of the device key never leaves your computer (Windows: protected with DPAPI). "Unlink this
+  device" in Settings → Access deletes the key locally and revokes it on the server.
 - **Microsoft sign-in:** handled by Microsoft/Xbox services in your browser; the launcher stores the resulting tokens locally.
 
 ## Only if you use the feature

@@ -286,7 +286,12 @@ Name: "skinservice"; Description: "{cm:SkinServiceTask}"
 ; backend.dll, frontend.zip) качає САМ (реальний) shell при першому
 ; запуску.
 #ifdef LocalInstall
-; ── ЛОКАЛЬНА ПОВНА ЗБІРКА (/DLocalInstall=1) ─────────────────────────────
+; ── ПОВНИЙ НАБІР КОМПОНЕНТІВ (/DLocalInstall=1) ───────────────────────────
+; Два випадки: (1) локальна офлайн-збірка (/DLocalOnly=1 → local-only.flag,
+; апдейтер не ходить у мережу); (2) єдиний лаунчер з GitHub Releases (без
+; токена CDN — bootstrap не має звідки докачати компоненти, тож setup ставить
+; усе одразу, а оновлює вже апдейтер за підписаним маніфестом v2).
+; ── ЛОКАЛЬНА ПОВНА ЗБІРКА ───────────────────────────────────────────────────
 ; setup.exe ставить УСІ компоненти з локальних файлів: shell.exe,
 ; backend.dll, updater.dll, frontend.zip/updater-frontend.zip (уже
 ; розпаковані у staging) і launcher-version.json. CDN не потрібен,
@@ -299,7 +304,9 @@ Source: "{#AppImageDir}\updater.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#AppImageDir}\frontend.zip"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#AppImageDir}\updater-frontend.zip"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#AppImageDir}\launcher-version.json"; DestDir: "{app}"; Flags: ignoreversion
+#ifdef LocalOnly
 Source: "{#AppImageDir}\local-only.flag"; DestDir: "{app}"; Flags: ignoreversion
+#endif
 Source: "{#AppImageDir}\frontend\*"; DestDir: "{app}\frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AppImageDir}\updater-frontend\*"; DestDir: "{app}\updater-frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
 #else
@@ -405,6 +412,15 @@ Type: filesandordirs; Name: "{app}\launcher-version-beta.json"
 ; Маркер локальної збірки (створює лише /DLocalInstall=1). В офіційній
 ; збірці файлу немає — видалення неіснуючого файлу безпечне.
 Type: files; Name: "{app}\local-only.flag"
+; Нова система оновлень і доступу: стан, маркер здоров'я, lock, дані пристрою.
+Type: files; Name: "{app}\update-state.json"
+Type: files; Name: "{app}\update-health.json"
+Type: files; Name: "{app}\.update.lock"
+Type: files; Name: "{app}\launcher-version.json.previous"
+Type: files; Name: "{app}\access-device.json"
+Type: files; Name: "{app}\access-key.bin"
+Type: files; Name: "{app}\master.cert"
+Type: files; Name: "{app}\backend.dll.previous"
 Type: filesandordirs; Name: "{app}\bootstrap.log"
 ; Кеш WebView2 (двигун фронтенду) — теж компонент, видаляється повністю.
 Type: filesandordirs; Name: "{app}\webview2"
@@ -725,12 +741,48 @@ begin
   end;
 end;
 
+// Сертифікат доступу (план «Єдиний лаунчер», §3.3): якщо поруч із setup.exe
+// лежить сертифікат ШАУРМА — копіюємо його в {app}. Шукаємо ЗА ВМІСТОМ
+// (*.cert з маркером "shaurma_cert"), тож «master (1).cert» теж підійде.
+// Підпис перевіряє сам лаунчер; файл із чужим підписом він ігнорує і на
+// сервер не відправляє. Вихідну копію НЕ чіпаємо — її можна пересилати далі.
+procedure CopyAccessCertificate;
+var
+  FindRec: TFindRec;
+  SrcDir, Src: String;
+  Content: AnsiString;
+begin
+  SrcDir := ExtractFilePath(ExpandConstant('{srcexe}'));
+  if FindFirst(SrcDir + '*.cert', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY = 0) and (FindRec.SizeHigh = 0) and (FindRec.SizeLow <= 16384) then
+        begin
+          Src := SrcDir + FindRec.Name;
+          if LoadStringFromFile(Src, Content) and (Pos('"shaurma_cert"', String(Content)) > 0) then
+          begin
+            if FileCopy(Src, ExpandConstant('{app}\master.cert'), False) then
+              Log('Access certificate copied from ' + Src)
+            else
+              Log('Access certificate copy failed: ' + Src);
+            Exit;
+          end;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
 // Apply the selected P2P permission after installing the launcher.
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
     CleanupOtherEditionArtifacts();
+    CopyAccessCertificate();
     if not WizardIsTaskSelected('skinservice') then
     begin
       if not SaveStringToFile(ExpandConstant('{app}\disable-skins-once'), 'disabled', False) then

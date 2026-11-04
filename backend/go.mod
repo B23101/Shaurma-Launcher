@@ -60,7 +60,7 @@ require (
 	github.com/x448/float16 v0.8.4 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
 	go4.org/netipx v0.0.0-20231129151722-fdeea329fbba // indirect
-	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/crypto v0.46.0
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b // indirect
 	golang.org/x/net v0.48.0 // indirect
 	golang.org/x/oauth2 v0.32.0 // indirect
@@ -91,3 +91,7 @@ require (
 // свідомо не додані сюди. Якщо `go mod tidy` покаже, що якийсь
 // internal-пакет реально їх використовує напряму (малоймовірно —
 // перевірено, internal/* не імпортує wails), додати відповідний рядок.
+
+require shaurma-trust v0.0.0-00010101000000-000000000000
+
+replace shaurma-trust => ../updater-backend/trust

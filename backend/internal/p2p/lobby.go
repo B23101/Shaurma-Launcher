@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptrace"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"time"
 
@@ -247,7 +248,7 @@ func (c *LobbyClient) doJSONH(ctx context.Context, method, path string, hdr map[
 		return err
 	}
 	req.Header.Set("User-Agent", lobbyUserAgent)
-	req.Header.Set("X-Shaurma-Token", c.token)
+	creds.Apply(req.Header, c.token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}

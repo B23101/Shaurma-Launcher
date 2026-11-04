@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	stdsync "sync"
 	"time"
@@ -92,6 +93,9 @@ func (c *ShaurmaClient) GetPackWiki(packID string) (*sync.PackWikiDoc, error) {
 func (c *ShaurmaClient) BaseURL() string { return cdnBaseURL }
 func (c *ShaurmaClient) Token() string   { return tokenShaurma }
 
+// HasBuiltinToken — чи вшито токен каналу (міст R1). Єдиний лаунчер — ні.
+func HasBuiltinToken() bool { return tokenShaurma != "" }
+
 // HTTPClientForSync повертає http.Client для sync.Runner: БЕЗ загального
 // Timeout (він рахувався б для читання всього тіла — вбивав би якання
 // великих файлів), з розумним keep-alive для повторних запитів у межах
@@ -141,8 +145,10 @@ func (c *ShaurmaClient) GetPackIndex() ([]PackIndexEntry, error) {
 	// Захист від «тихого» регресу: якщо хтось зібрав shaurma-редакцію без
 	// -ldflags, токен порожній → воркер віддає 401 → список збірок порожній,
 	// і вкладка «Шаурма» зникає без жодної помилки. Робимо помилку явною.
-	if tokenShaurma == "" {
-		return nil, fmt.Errorf("tokenShaurma is empty — build shaurma with -ldflags -X shaurma-launcher-backend/internal/api.tokenShaurma=...")
+	// Єдиний лаунчер без вшитого токена ходить із токеном доступу
+	// (creds.Apply); без активації список приватних збірок порожній.
+	if tokenShaurma == "" && creds.Entitlement() == "" {
+		return []PackIndexEntry{}, nil
 	}
 
 	idx, err := c.mc.FetchPacksIndex()

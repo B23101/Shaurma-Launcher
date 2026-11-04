@@ -638,6 +638,13 @@ func (a *App) ServiceStartup() error {
 	// вище: launcher-version.json лежить у теці встановлення, а не в
 	// теці даних.
 	appLog.Info("App version: %s", readLauncherVersion(a.cfg.InstallDir()))
+	// Двофазне оновлення (план «Єдиний лаунчер», §8.3): версія вважається
+	// робочою, коли backend прожив перші секунди без краху. Тоді оновлювач
+	// при наступному старті підтвердить її, інакше після кількох невдалих
+	// стартів поверне попередню.
+	go markUpdateHealthy(a.cfg.InstallDir(), readLauncherVersion(a.cfg.InstallDir()))
+	// Активація приватного доступу (§3): сертифікат біля лаунчера → ключ пристрою.
+	a.startAccess()
 
 	// Системна інформація (ОС / CPU / RAM / hostname)
 	appLog.Info("Platform: %s %s (%s)", runtime.GOOS, osVersion(), runtime.GOARCH)

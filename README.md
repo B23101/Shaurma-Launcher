@@ -57,10 +57,12 @@ Release builds require their edition's CDN token and manifest public keys. AI ke
 by the user at runtime and are not embedded by these release scripts.
 
 Releases are produced only by GitHub Actions (`.github/workflows/release.yml`) from a `v*` tag.
-Full (shaurma) releases are built and published by `.github/workflows/release-full.yml`, which
-Pack Manager triggers with a complete `X.Y.Z` version; publishing is refused in a public repository
-(full builds embed the Shaurma CDN token) unless the `ALLOW_FULL_EDITION_RELEASE` repository
-variable is `true`.
+There is one launcher and one release workflow: `.github/workflows/build-launcher.yml`. It runs only
+when the maintainer's Pack Manager dispatches it with a build order signed by the release key; there
+are no tag triggers. The workflow builds exactly the ordered commit from `main`, takes the version
+from `installer/VERSION`, uses no dependency caches and embeds no channel tokens. It attests the
+final (signed) files and creates a draft release. The release becomes official only after Pack
+Manager verifies the attestation and hashes and uploads the signed `launcher-manifest.json`.
 
 ## Code signing policy
 
@@ -74,7 +76,16 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 - Team roles
   - Authors and reviewers: [B23101](https://github.com/B23101)
   - Approvers: [B23101](https://github.com/B23101)
+- Signed files: `ShaurmLauncher.exe`, `backend.dll`, `updater.dll` and `ShaurmaLauncher-setup.exe` built by
+  `build-launcher.yml` from a commit on `main`. Nothing built outside this repository is signed.
+- Multi-factor authentication is required for everyone with access to this repository and to SignPath.
+- The signed binaries contain no proprietary components and no credentials; private modpacks are data on
+  a server, not code of the launcher.
 - Linux archives are not Authenticode-signed; they carry GitHub build-provenance attestations instead.
+- Report a suspicious binary through [security reporting](.github/SECURITY.md).
+
+Two independent layers protect updates: Authenticode (for the operating system) and an Ed25519-signed
+update manifest (for the launcher). A failure of one does not open the other.
 
 ## Privacy policy
 
@@ -93,9 +104,10 @@ private and public Windows networks, with administrator approval. Remote server 
 requires the owner's explicit permission. Existing firewall blocks and organization policies
 can still take precedence. No global firewall or antivirus protection is disabled.
 
-The public workflow builds Base only. Full Shaurma builds must run in an approved private
-repository and remain private; both editions have separate updater binaries and signing
-configurations. Service-side access must use user authorization, not possession of an embedded token.
+There are no editions any more. Access to private modpacks is granted by the server: you add the
+shared certificate file once (next to `setup.exe` or in Settings → Access), the launcher creates a
+personal device key and receives short-lived access tokens. Without activation the section is not
+shown; the launcher is otherwise fully functional and receives all updates.
 Shaurma account, social and update services are operated separately from this open-source client.
 
 See [release preparation and remaining account settings](scripts/RELEASING.md),
@@ -109,10 +121,21 @@ Review the privacy policy; it can be disabled during installation or in Settings
 
 ## Component downloads and verification
 
-The installer embeds a bootstrap; first launch downloads the shell, backend, updater and
-frontend archives from the Shaurma CDN. Production bootstrap, shell and updater require
-an Ed25519 signature over the exact manifest bytes with the domain prefix
-`shaurma-launcher-manifest-v1\n`, using public keys embedded at build time.
-Missing/invalid signatures or component SHA-256/size mismatches block installation of
-that update. A CDN channel token is not a substitute for a signature. Private signing
-keys are never included in the client. See [release preparation](scripts/RELEASING.md).
+Updates come only from this repository's GitHub Releases. The launcher asks
+`api.shaurma-launcher.org` which version is current (the answer contains a version name and a
+rollout pace, never an address); if the server is silent it asks GitHub directly. It then downloads
+`launcher-manifest.json` and its `.sig` from the release and accepts it only if:
+
+- it is signed by a release key listed in `keyset.json`, which is signed by the offline root key
+  embedded in the launcher (keys rotate without reinstalling);
+- its version is newer than the installed one and than any version seen before (no rollback), it has
+  not expired, and it belongs to your channel;
+- every file matches the size and SHA-256 in the manifest and, unless the manifest says otherwise,
+  carries a valid Authenticode signature from a publisher listed in the keyset.
+
+Download addresses are built by the launcher itself from the repository name and the tag; redirects
+are allowed only to GitHub's asset hosts. Updates are applied in two phases: if the new version does
+not start three times in a row, the previous files are restored automatically.
+
+Verify a file yourself: `gh attestation verify <file> -R B23101/Shaurma-Launcher`.
+The commit, build run and SHA-256 of every file are listed in the release and in the manifest.

@@ -1,9 +1,9 @@
 package sync
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"context"
 	"fmt"
+	"shaurma-launcher-backend/internal/crashguard"
 	"sync"
 )
 

@@ -36,6 +36,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"time"
 
@@ -287,7 +288,7 @@ func (a *App) fetchWithToken(url string) ([]byte, error) {
 		return nil, err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-	req.Header.Set("X-Shaurma-Token", update.Token())
+	creds.Apply(req.Header, update.Token())
 	return doFetch(req)
 }
 

@@ -11,6 +11,7 @@
   import LauncherAppearance from './LauncherAppearance.svelte'
   import MinecraftDefaultsTab from './MinecraftDefaultsTab.svelte'
   import MigrationSettingsWidget from './MigrationSettingsWidget.svelte'
+  import AccessSettingsWidget from './AccessSettingsWidget.svelte'
   import AccountProfilePanel from './AccountProfilePanel.svelte'
   import SCard from './settings/SCard.svelte'
   import Setting from './settings/Setting.svelte'
@@ -552,6 +553,7 @@
           </SCard>
           <div data-setting-key="x:mcOptions"><MinecraftDefaultsTab /></div>
           <AutoPacksCard {autoPacks} busy={autoPacksBusy} onToggle={onAutoPacksToggle} onDelete={onAutoPacksDelete} onOpen={onAutoPacksOpen} />
+          <div data-setting-key="x:access"><AccessSettingsWidget /></div>
           <div data-setting-key="x:import"><MigrationSettingsWidget /></div>
 
         <!-- ═══════════════ КОНСОЛЬ ═══════════════ -->

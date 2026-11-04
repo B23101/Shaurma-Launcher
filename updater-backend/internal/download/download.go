@@ -91,6 +91,14 @@ type DownloadedComponent struct {
 // півшляху ламала качку і лаунчер лишався без стилів). М'яка перевірка
 // дає діагностику «CDN віддав інший файл» без ризику для оновлення.
 func Download(ctx context.Context, baseURL, token, tmpDir string, components []manifest.Component, lang string, onProgress ProgressFunc) ([]DownloadedComponent, error) {
+	return DownloadWith(ctx, baseURL, token, tmpDir, components, lang, onProgress, nil)
+}
+
+// DownloadWith — те саме, але з білим списком хостів редиректу (нова система
+// оновлень: GitHub перенаправляє ассети на свій CDN). allowRedirect == nil —
+// стара поведінка: редирект дозволено, але токен на чужий хост не йде.
+// Хост поза списком = помилка, файл не качається.
+func DownloadWith(ctx context.Context, baseURL, token, tmpDir string, components []manifest.Component, lang string, onProgress ProgressFunc, allowRedirect func(host string) bool) ([]DownloadedComponent, error) {
 	if err := os.MkdirAll(tmpDir, 0o755); err != nil {
 		if lang == "en" {
 			return nil, fmt.Errorf("creating temp dir: %w", err)
@@ -136,6 +144,9 @@ func Download(ctx context.Context, baseURL, token, tmpDir string, components []m
 			}
 			if len(via) >= 5 {
 				return fmt.Errorf("забагато редиректів")
+			}
+			if allowRedirect != nil && !allowRedirect(req.URL.Hostname()) {
+				return fmt.Errorf("редирект на недозволений хост %q відхилено", req.URL.Hostname())
 			}
 			if req.URL.Host != via[0].URL.Host {
 				req.Header.Del("X-Shaurma-Token")
@@ -269,7 +280,9 @@ func downloadOne(ctx context.Context, client *http.Client, baseURL, token string
 	// префіксу ShaurmaLauncher/ (див. shrm-cdn-worker/worker.js, крок
 	// 5 у fetch handler), інакше отримаємо 404 замість файлу.
 	req.Header.Set("User-Agent", "ShaurmaLauncher/updater")
-	req.Header.Set("X-Shaurma-Token", token)
+	if token != "" {
+		req.Header.Set("X-Shaurma-Token", token)
+	}
 
 	resp, err := client.Do(req)
 	if err != nil {

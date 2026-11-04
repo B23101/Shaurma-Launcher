@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"shaurma-launcher-backend/internal/crashguard"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -812,7 +813,7 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 		}
 		req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
 		if isWorker {
-			req.Header.Set("X-Shaurma-Token", r.WorkerToken)
+			creds.Apply(req.Header, r.WorkerToken)
 		}
 		if existingBytes > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", existingBytes))

@@ -619,6 +619,12 @@ export const App = {
   // виходу, без прапорця (на відміну від build:exit).
   WasLastExitUserStop: (): Promise<boolean> => call('WasLastExitUserStop'),
   IsShaurmaEdition: (): Promise<boolean> => call('IsShaurmaEdition'),
+  // Доступ до приватних збірок (Налаштування → Доступ)
+  GetAccessStatus: (): Promise<any> => call('GetAccessStatus'),
+  PickAndActivateAccess: (): Promise<any> => call('PickAndActivateAccess'),
+  ActivateAccessFromFile: (path: string): Promise<any> => call('ActivateAccessFromFile', path),
+  ActivateAccessFromText: (text: string): Promise<any> => call('ActivateAccessFromText', text),
+  UnlinkAccessDevice: (): Promise<any> => call('UnlinkAccessDevice'),
   HasSkinSupport: (): Promise<boolean> => call('HasSkinSupport'),
   LaunchInstance: (id: string): Promise<void> => call('LaunchInstance', id),
   // Фіксує акаунт, активний У МОМЕНТ КЛІКУ «Грати» — викликати СИНХРОННО

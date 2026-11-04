@@ -10,7 +10,6 @@ package main
 // Усі запити йдуть на VPS (vpsPool). Worker акаунтів не веде і токенів не бачить.
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"bytes"
 	"context"
 	"errors"
@@ -19,6 +18,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/crashguard"
+	"shaurma-launcher-backend/internal/creds"
 	"strings"
 	"sync"
 	"time"
@@ -65,7 +66,7 @@ func (vpsTransport) Do(ctx context.Context, method, path string, headers map[str
 			return nil, err
 		}
 		req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-		req.Header.Set("X-Shaurma-Token", update.Token())
+		creds.Apply(req.Header, update.Token())
 		for k, v := range headers {
 			req.Header.Set(k, v)
 		}
@@ -129,7 +130,7 @@ func (a *App) shaurmaRequest(launcherID, method, path string, body []byte) (*htt
 				return nil, err
 			}
 			req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-			req.Header.Set("X-Shaurma-Token", update.Token())
+			creds.Apply(req.Header, update.Token())
 			req.Header.Set("Authorization", "Bearer "+token)
 			req.Header.Set("X-Shaurma-HWID", hwid)
 			if body != nil {

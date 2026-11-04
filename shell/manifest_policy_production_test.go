@@ -4,9 +4,9 @@ package main
 
 import "testing"
 
-// Політика: перевірка підпису вмикається лише коли вшито ключі.
-func TestProductionManifestPolicyFollowsKeys(t *testing.T) {
-	if got, want := manifestSigEnabled(), manifestSigEnabledWith(trustedKeys); got != want {
-		t.Fatalf("manifestSigEnabled=%v, очікувалось %v", got, want)
+// Політика: у production-збірці перевірка підпису увімкнена завжди, навіть без вшитих ключів.
+func TestProductionManifestPolicyAlwaysRequiresSignature(t *testing.T) {
+	if !manifestSigEnabled() {
+		t.Fatal("production build must always require a signed manifest")
 	}
 }

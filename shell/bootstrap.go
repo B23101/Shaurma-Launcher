@@ -117,6 +117,11 @@ func validateManifestArchitecture(m *bootstrapRemoteManifest) error {
 // передає цикл завантаження в bootstrapAll (спільний з тестами).
 func bootstrapUpdater() error {
 	if cdnToken == "" {
+		// Єдиний лаунчер (без токена CDN): компоненти — з GitHub Releases за
+		// підписаним маніфестом v2 (bootstrap_github.go).
+		if rootKeys != "" {
+			return bootstrapFromGitHub()
+		}
 		return fmt.Errorf("токен CDN не вшитий у збірку (build.ps1: -X shaurma-shell.cdnToken=...)")
 	}
 
@@ -245,7 +250,16 @@ func urlOf(c bootstrapComponent) string {
 	if strings.HasPrefix(c.URL, "http") {
 		return c.URL
 	}
-	return cdnBase + c.URL
+	return downloadBase() + c.URL
+}
+
+// downloadBase — звідки качаємо компоненти: реліз GitHub (єдиний лаунчер)
+// або старий CDN.
+func downloadBase() string {
+	if ghReleaseBase != "" {
+		return ghReleaseBase
+	}
+	return cdnBase
 }
 
 // fetchWithToken — HTTP GET з токеном (X-Shaurma-Token) та UA апдейтера.
@@ -327,7 +341,7 @@ func validateComponent(c bootstrapComponent) error {
 // checkDownloadURL: токен каналу і виконувані файли ходять лише на НАШ CDN
 // (cdnBase) і лише по HTTPS (loopback — для тестів/dev).
 func checkDownloadURL(u string) error {
-	if !strings.HasPrefix(u, cdnBase+"/") {
+	if !strings.HasPrefix(u, downloadBase()+"/") {
 		return fmt.Errorf("відхилено адресу поза довіреним CDN: %s", u)
 	}
 	pu, err := neturl.Parse(u)
@@ -392,9 +406,15 @@ func downloadComponent(url string, comp bootstrapComponent, installDir string) e
 	if err != nil {
 		return err
 	}
-	req.Header.Set("X-Shaurma-Token", cdnToken)
 	req.Header.Set("User-Agent", "ShaurmaLauncher/updater")
-	resp, err := cdnClient(5 * time.Minute).Do(req)
+	client := cdnClient(5 * time.Minute)
+	if ghReleaseBase != "" {
+		// GitHub: без токена CDN, редиректи лише на ассет-хости GitHub.
+		client = ghClient(5 * time.Minute)
+	} else {
+		req.Header.Set("X-Shaurma-Token", cdnToken)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

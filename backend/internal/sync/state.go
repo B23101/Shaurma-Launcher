@@ -54,7 +54,7 @@ type InstallState struct {
 	Files               map[string]FileRecord `json:"files"` // ключ: Path з маніфесту
 	InstalledOnMissing  map[string]bool       `json:"installedOnMissing"`
 	UpdatedAt           time.Time             `json:"updatedAt"`
-}// StateStore — збереження/читання InstallState. Джерело правди — файли
+} // StateStore — збереження/читання InstallState. Джерело правди — файли
 // install-state/<packID>.json у dataDir (temp+rename для атомарності).
 type StateStore struct {
 	mu      sync.Mutex

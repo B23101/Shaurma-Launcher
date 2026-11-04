@@ -20,7 +20,14 @@ foreach ($module in @('backend', 'shell', 'bootstrap', 'updater-backend')) {
         $dependencies = @($dependencies | Where-Object { $_.Module } | ForEach-Object { $_.Module } | Sort-Object Path, Version -Unique)
         foreach ($dependency in $dependencies) {
             if ($dependency.Main) { continue }
-            if ($dependency.Replace) { throw "Unreviewed module replacement: $($dependency.Path)" }
+            if ($dependency.Replace) {
+                # Єдина дозволена заміна — власний модуль довіри цього репозиторію
+                # (updater-backend/trust, ліцензія проєкту). Будь-яка інша — стоп.
+                $ownTrust = [IO.Path]::GetFullPath((Join-Path $root 'updater-backend/trust'))
+                if ($dependency.Path -eq 'shaurma-trust' -and $dependency.Replace.Dir -and
+                    [IO.Path]::GetFullPath($dependency.Replace.Dir) -eq $ownTrust) { continue }
+                throw "Unreviewed module replacement: $($dependency.Path)"
+            }
             $id = ($dependency.Path + '@' + $dependency.Version) -replace '[^A-Za-z0-9._@-]', '_'
             $target = Join-Path $Destination $id
             New-Item -ItemType Directory -Force -Path $target | Out-Null
