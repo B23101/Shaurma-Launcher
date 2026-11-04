@@ -169,3 +169,45 @@ func TestPackArchiveRejectsOversizedHeaders(t *testing.T) {
 		t.Fatal("oversized entry accepted")
 	}
 }
+func TestBundleReservesDistinctDirectories(t *testing.T) {
+	archive := securityPack(t, nil, map[string]string{
+		BundleManifestFile:                     `{"packs":[{"id":"Survival"},{"id":"survival"}]}`,
+		"packs/Survival/overrides/options.txt": "first",
+		"packs/survival/overrides/options.txt": "second",
+	})
+	target := t.TempDir()
+	result, err := ImportBundle(BundleImportOptions{
+		ShaurmBundlePath: archive, TargetBaseDir: target,
+		IDMap: map[string]string{"Survival": "same", "survival": "same"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Packs) != 2 {
+		t.Fatal(result.Packs)
+	}
+	for i, want := range []string{"first", "second"} {
+		data, err := os.ReadFile(filepath.Join(result.Packs[i].GameDir, "options.txt"))
+		if err != nil || string(data) != want {
+			t.Fatalf("pack %d: %q, %v", i, data, err)
+		}
+	}
+}
+
+func TestBundlePackCountLimit(t *testing.T) {
+	data, err := json.Marshal(BundleManifest{Packs: make([]BundlePackInfo, maxBundlePacks+1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := securityPack(t, nil, map[string]string{BundleManifestFile: string(data)})
+	target := filepath.Join(t.TempDir(), "instances")
+	if _, err := ReadBundleManifest(archive); err == nil {
+		t.Fatal("oversized preview accepted")
+	}
+	if _, err := ImportBundle(BundleImportOptions{ShaurmBundlePath: archive, TargetBaseDir: target}); err == nil {
+		t.Fatal("oversized bundle accepted")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("unexpected target: %v", err)
+	}
+}

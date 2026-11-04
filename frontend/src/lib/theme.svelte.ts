@@ -52,15 +52,15 @@ export interface AccentDef {
 }
 
 export const ACCENTS: Record<string, AccentDef> = {
-  orange: { name: 'accent.orange', main: '#ff8a00', deep: '#ff5e00', rgb: '255, 138, 0' },
-  violet: { name: 'accent.violet', main: '#7b4dff', deep: '#5a2eff', rgb: '123, 77, 255' },
-  green:  { name: 'accent.green',  main: '#10b981', deep: '#059669', rgb: '16, 185, 129' },
-  blue:   { name: 'accent.blue',   main: '#3b82f6', deep: '#2563eb', rgb: '59, 130, 246' },
-  red:    { name: 'accent.red',    main: '#ef4444', deep: '#dc2626', rgb: '239, 68, 68' },
+  orange: { name: 'accent.orange', main: '#c24b00', deep: '#a83b00', rgb: '194, 75, 0' },
+  violet: { name: 'accent.violet', main: '#7536e8', deep: '#561bc6', rgb: '117, 54, 232' },
+  green:  { name: 'accent.green',  main: '#008052', deep: '#006b44', rgb: '0, 128, 82' },
+  blue:   { name: 'accent.blue',   main: '#1664d9', deep: '#064db8', rgb: '22, 100, 217' },
+  red:    { name: 'accent.red',    main: '#d62438', deep: '#b81029', rgb: '214, 36, 56' },
   // Градієнтні акценти: дві РІЗНІ кольорові «точки» в одному акценті.
-  sunset: { name: 'accent.sunset', main: '#ff7a3d', deep: '#ff3cac', rgb: '255, 122, 61', gradient: true },
-  ocean:  { name: 'accent.ocean',  main: '#00b8ff', deep: '#7c5cff', rgb: '0, 184, 255', gradient: true },
-  aurora: { name: 'accent.aurora', main: '#7f5cea', deep: '#00d4ff', rgb: '127, 92, 234', gradient: true },
+  sunset: { name: 'accent.sunset', main: '#bf4600', deep: '#be146f', rgb: '191, 70, 0', gradient: true },
+  ocean:  { name: 'accent.ocean',  main: '#0075ab', deep: '#643bda', rgb: '0, 117, 171', gradient: true },
+  aurora: { name: 'accent.aurora', main: '#7835cb', deep: '#007d87', rgb: '120, 53, 203', gradient: true },
 }
 
 export const DEFAULT_ACCENT = 'orange'
@@ -96,6 +96,29 @@ export function applyAccent(accent: string, customHex?: string, customMode?: str
   // Готовий градієнтний рядок акценту (135deg) — для surface-елементів,
   // які хочуть використовувати акцент як градієнт, не дублюючи формулу.
   root.style.setProperty('--accent-grad', `linear-gradient(135deg, ${a.main}, ${a.deep})`)
+  // Колір тексту на акцентній заливці: білий чи темний — той, що дає
+  // більший контраст з ОБОМА точками градієнта (помаранч → темний текст,
+  // фіолетовий/синій → білий). Так основні кнопки читаються з будь-яким акцентом.
+  root.style.setProperty('--accent-ink', accentInk(a.main, a.deep))
+}
+
+const DARK_INK = '#1c0e00'
+
+function luminance(hex: string): number {
+  const { r, g, b } = hexToRgb(hex)
+  const ch = (v: number) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4 }
+  return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+}
+
+function contrast(a: string, b: string): number {
+  const la = luminance(a), lb = luminance(b)
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05)
+}
+
+function accentInk(main: string, deep: string): string {
+  const white = Math.min(contrast('#ffffff', main), contrast('#ffffff', deep))
+  const dark = Math.min(contrast(DARK_INK, main), contrast(DARK_INK, deep))
+  return dark > white ? DARK_INK : '#ffffff'
 }
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {

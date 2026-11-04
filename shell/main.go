@@ -389,6 +389,9 @@ func main() {
 	launchPackID = parseLaunchArg(os.Args)
 	openPackFilePath = parsePackFilePathArg(os.Args)
 	openFriendLink = parseFriendLinkArg(os.Args)
+	// Схема shaurma:// для запрошень із сайту: відновлюємо, якщо лаунчер
+	// оновлювався без установлювача (url_protocol_windows.go). У фоні — не гальмує старт.
+	go ensureURLProtocol()
 	// --background: автозапуск «у фоні» (startupMode=background) — головне
 	// вікно не показується, лише трей. Лише для ХОЛОДНОГО старту.
 	startBackground = hasArg(os.Args[1:], "--background")

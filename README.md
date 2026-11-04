@@ -69,8 +69,11 @@ Free code signing provided by [SignPath.io](https://about.signpath.io), certific
 - Signed files: `ShaurmLauncher.exe`, `backend.dll`, `updater.dll` and `ShaurmaLauncher-setup.exe` built by
   `build-launcher.yml` from a commit on `main`. Nothing built outside this repository is signed.
 - Multi-factor authentication is required for everyone with access to this repository and to SignPath.
-- The signed binaries contain no proprietary components and no credentials; private modpacks are data on
-  a server, not code of the launcher.
+- The signed binaries contain no proprietary components. Like other open-source launchers, `backend.dll`
+  embeds public client identifiers of third-party APIs (CurseForge API key, Google OAuth desktop sign-in
+  client); they identify the app, not a user, and grant no access to user data or project infrastructure.
+  No signing keys, tokens of users or server secrets are embedded. Private modpacks are data on a server,
+  not code of the launcher.
 - Linux archives are not Authenticode-signed; they carry GitHub build-provenance attestations instead.
 - Report a suspicious binary through [security reporting](.github/SECURITY.md).
 

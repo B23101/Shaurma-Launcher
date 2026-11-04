@@ -182,6 +182,8 @@ type BundleImportPack struct {
 	FilesMissing int
 }
 
+const maxBundlePacks = 1024
+
 // ExportBundle експортує кілька збірок в .shaurmbundle файл.
 func ExportBundle(opts BundleExportOptions) (*BundleExportResult, error) {
 	if opts.OutPath == "" {
@@ -220,6 +222,20 @@ func ExportBundle(opts BundleExportOptions) (*BundleExportResult, error) {
 		CreatedAt: time.Now().UTC().Format(time.RFC3339),
 	}
 
+	// Скільки збірок РЕАЛЬНО піде в архів (з даними й текою гри) — щоб
+	// лічильник прогресу (done/total) сходився в кінці, а не зависав на
+	// меншому числі через пропущені порожні збірки.
+	exportable := 0
+	for _, p := range opts.Packs {
+		if len(p.PackData) > 0 && p.GameDir != "" {
+			exportable++
+		}
+	}
+
+	if exportable > maxBundlePacks {
+		return nil, fmt.Errorf("у бандлі дозволено до %d збірок", maxBundlePacks)
+	}
+
 	// Створюємо ZIP
 	outFile, err := os.Create(opts.OutPath)
 	if err != nil {
@@ -231,16 +247,6 @@ func ExportBundle(opts BundleExportOptions) (*BundleExportResult, error) {
 
 	var totalFiles int
 	var totalSize int64
-
-	// Скільки збірок РЕАЛЬНО піде в архів (з даними й текою гри) — щоб
-	// лічильник прогресу (done/total) сходився в кінці, а не зависав на
-	// меншому числі через пропущені порожні збірки.
-	exportable := 0
-	for _, p := range opts.Packs {
-		if len(p.PackData) > 0 && p.GameDir != "" {
-			exportable++
-		}
-	}
 
 	// Перша подія (0/total) — одразу, до першої збірки: експорт пакує
 	// збірки послідовно, і резолв/хешування файлів ПЕРШОЇ збірки може
@@ -409,6 +415,10 @@ func ReadBundleManifest(path string) (*BundleManifest, error) {
 		return nil, err
 	}
 
+	return readBundleManifest(r)
+}
+
+func readBundleManifest(r *zip.ReadCloser) (*BundleManifest, error) {
 	for _, f := range r.File {
 		if f.Name == BundleManifestFile {
 			rc, err := f.Open()
@@ -420,6 +430,9 @@ func ReadBundleManifest(path string) (*BundleManifest, error) {
 			if err := json.NewDecoder(io.LimitReader(rc, 16<<20)).Decode(&bundle); err != nil {
 				return nil, fmt.Errorf("парсинг bundle.json: %w", err)
 			}
+			if len(bundle.Packs) > maxBundlePacks {
+				return nil, fmt.Errorf("у бандлі дозволено до %d збірок", maxBundlePacks)
+			}
 			return &bundle, nil
 		}
 	}
@@ -427,9 +440,9 @@ func ReadBundleManifest(path string) (*BundleManifest, error) {
 }
 
 // readBundleFiles читає packs/<id>/files.json (nil, якщо його немає/битий).
-func readBundleFiles(r *zip.ReadCloser, packPrefix string) []PackFile {
+func readBundleFiles(files []*zip.File, packPrefix string) []PackFile {
 	want := packPrefix + BundleFilesFile
-	for _, f := range r.File {
+	for _, f := range files {
 		if f.Name != want {
 			continue
 		}
@@ -465,11 +478,12 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 		return nil, err
 	}
 
-	bundle, err := ReadBundleManifest(opts.ShaurmBundlePath)
+	bundle, err := readBundleManifest(r)
 	if err != nil {
 		return nil, err
 	}
 
+	entries := make(map[string][]*zip.File)
 	for _, f := range r.File {
 		rel := strings.TrimSuffix(f.Name, "/")
 		if rel == "" {
@@ -480,6 +494,11 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 		}
 		if f.Mode()&os.ModeSymlink != 0 {
 			return nil, fmt.Errorf("bundle symlink")
+		}
+		if rest, ok := strings.CutPrefix(f.Name, "packs/"); ok {
+			if id, _, ok := strings.Cut(rest, "/"); ok {
+				entries[id] = append(entries[id], f)
+			}
 		}
 	}
 	result := &BundleImportResult{}
@@ -507,9 +526,24 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 		if strings.ContainsAny(destID, "/\\:") {
 			return nil, fmt.Errorf("invalid destination ID")
 		}
-		packDir, err := safeDestination(opts.TargetBaseDir, destID)
-		if err != nil {
+		if err := os.MkdirAll(opts.TargetBaseDir, 0755); err != nil {
 			return nil, err
+		}
+		baseID := destID
+		var packDir string
+		for suffix := 2; ; suffix++ {
+			packDir, err = safeDestination(opts.TargetBaseDir, destID)
+			if err != nil {
+				return nil, err
+			}
+			err = os.Mkdir(packDir, 0755)
+			if err == nil {
+				break
+			}
+			if !os.IsExist(err) {
+				return nil, err
+			}
+			destID = fmt.Sprintf("%s-%d", baseID, suffix)
 		}
 		gameDir := filepath.Join(packDir, ".minecraft")
 		if err := os.MkdirAll(gameDir, 0755); err != nil {
@@ -529,7 +563,7 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 		// (їх байтів в архіві немає). Старі бандли files.json не мають —
 		// там такі файли просто в overrides/.
 		var toDownload []PackFile
-		for _, pf := range readBundleFiles(r, packPrefix) {
+		for _, pf := range readBundleFiles(entries[packInfo.ID], packPrefix) {
 			if _, err := safeDestination(gameDir, pf.Path); err != nil {
 				return nil, err
 			}
@@ -538,10 +572,7 @@ func ImportBundle(opts BundleImportOptions) (*BundleImportResult, error) {
 			}
 		}
 
-		for _, f := range r.File {
-			if !strings.HasPrefix(f.Name, packPrefix) {
-				continue
-			}
+		for _, f := range entries[packInfo.ID] {
 			relInPack := strings.TrimPrefix(f.Name, packPrefix)
 
 			switch {
@@ -717,7 +748,7 @@ func BundleToShaurmaPack(bundlePath string, packID string, outPath string) error
 					inst["versionId"] = "1.0.0"
 				}
 				// Файли з онлайн-джерелом (їх байтів у бандлі немає) — у files
-				if sourced := readBundleFiles(r, packPrefix); len(sourced) > 0 {
+				if sourced := readBundleFiles(r.File, packPrefix); len(sourced) > 0 {
 					inst["files"] = sourced
 				}
 				// Пишемо як manifest.json

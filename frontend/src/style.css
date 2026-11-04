@@ -84,13 +84,14 @@ select option { background:var(--bg-panel); color:var(--text); }
   --hover-strong:rgba(255,255,255,.10);
   --text:        #ffffff;
   --text-mute:   #a0a0a0;
-  --text-dim:    #666666;
-  --orange:      #ff8a00;
-  --orange-2:    #ff5e00;
-  --orange-rgb:  255, 138, 0; /* для rgba(var(--orange-rgb), .x) — акцентна тема */
+  /* #666 на #1e1e1e давав ~3.3:1; #8c8c8c ≥ 4.5:1 на картках і панелях */
+  --text-dim:    #8c8c8c;
+  --orange:      #c24b00;
+  --orange-2:    #a83b00;
+  --orange-rgb:  194, 75, 0; /* для rgba(var(--orange-rgb), .x) — акцентна тема */
   /* Готовий акцентний градієнт (ставиться applyAccent), дефолт = помаранч.
      Для «градієнтних» акцентів (sunset/ocean/aurora) — видимий двоколір. */
-  --accent-grad: linear-gradient(135deg, #ff8a00, #ff5e00);
+  --accent-grad: linear-gradient(135deg, var(--orange), var(--orange-2));
   --violet:      #7b4dff;
   --violet-l:    #9d7cff;
   --green:       #10b981;
@@ -107,6 +108,16 @@ select option { background:var(--bg-panel); color:var(--text); }
   --modal-gap: 30px;
   --font-ui:  'Inter','Segoe UI',sans-serif;
   --font-mono: 'JetBrains Mono','Consolas',monospace;
+  /* ── Глибина (як на сайті): одна шкала тіней замість рамок «для об'єму».
+     --lift — поверхня, що лежить на фоні (тонкий обвід + м'яка тінь);
+     --elev-1..4 — дедалі вищі шари: підказки → меню → модалки → повноекранні. */
+  --lift: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0 1px var(--border), 0 1px 2px rgba(0,0,0,.3), 0 12px 32px -12px rgba(0,0,0,.5);
+  --elev-1: 0 1px 2px rgba(0,0,0,.3);
+  --elev-2: 0 6px 16px -6px rgba(0,0,0,.5);
+  --elev-3: 0 18px 40px -14px rgba(0,0,0,.6);
+  --elev-4: 0 40px 90px -30px rgba(0,0,0,.7);
+  --accent-ink: #fff; /* текст на акцентній заливці; applyAccent уточнює */
+  --ease-out: cubic-bezier(.2,0,0,1);
 }
 
 /* Світла тема: data-theme="light" на <html> (встановлюється theme.svelte.ts
@@ -124,7 +135,13 @@ html[data-theme="light"] {
   --hover-strong:rgba(0,0,0,.09);
   --text:        #1a1a1a;
   --text-mute:   #5c6570;
-  --text-dim:    #9aa1ab;
+  /* #9aa1ab на білому давав 2.6:1 — нечитабельно; #646b76 ≥ 4.5:1 на всіх фонах теми */
+  --text-dim:    #646b76;
+  --lift: 0 0 0 1px var(--border), 0 1px 2px rgba(0,0,0,.06), 0 12px 32px -14px rgba(0,0,0,.18);
+  --elev-1: 0 1px 2px rgba(0,0,0,.08);
+  --elev-2: 0 6px 16px -6px rgba(0,0,0,.16);
+  --elev-3: 0 18px 40px -14px rgba(0,0,0,.2);
+  --elev-4: 0 40px 90px -30px rgba(0,0,0,.28);
 }
 
 /* OLED-тема: СУТНЬО чистий чорний — класичний #000 (не #0f0f0f!).
@@ -144,7 +161,7 @@ html[data-theme="oled"] {
   --hover-strong:rgba(255,255,255,.11);
   --text:        #f5f5f5;
   --text-mute:   #9a9a9a;
-  --text-dim:    #5c5c5c;
+  --text-dim:    #878787;
 }
 
 html, body { width:100%; height:100%; overflow:hidden; }
@@ -2283,13 +2300,9 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .input::placeholder { color:var(--text-dim); }
 .input:focus { border-color:var(--orange); }
 
-.btn { border:none; cursor:pointer; font-family:inherit; font-size:12px; font-weight:600; padding:9px 15px; border-radius:var(--r-md); display:inline-flex; align-items:center; gap:7px; position:relative; overflow:hidden; isolation:isolate; transition:background .15s, transform .18s cubic-bezier(.34,1.56,.64,1), border-color .15s, box-shadow .2s ease; }
-/* Підйом на hover для УСІХ варіантів кнопок (раніше лише .btn-primary
-   мав translateY) — уніфікована мікровзаємодія по всьому лаунчеру. */
-.btn:not(:disabled):hover { transform:translateY(-1px); }
-/* Пружний «натиск» на клік замість плоского scale: трохи «просідає»
-   і одразу пружинить назад завдяки cubic-bezier з overshoot вище. */
-.btn:not(:disabled):active { transform:translateY(0) scale(.95); transition-duration:.08s; }
+.btn {
+  border:none; cursor:pointer; font-family:inherit; font-size:12px; font-weight:600; padding:9px 15px; border-radius:var(--r-md); display:inline-flex; align-items:center; gap:7px; position:relative; overflow:hidden; isolation:isolate;
+  transition:background .15s, border-color .15s, color .15s; }
 .btn i { font-size:14px; transition:transform .18s cubic-bezier(.34,1.56,.64,1); }
 .btn:not(:disabled):hover i { transform:scale(1.12); }
 .btn-time {
@@ -2298,7 +2311,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 }
 .btn-ghost { background:var(--hover); color:var(--text); border:1px solid var(--border); }
 .btn-ghost:hover { background:var(--hover-strong); border-color:var(--border-hi); }
-.btn-primary { background:var(--orange); color:#fff; box-shadow:0 6px 16px rgba(var(--orange-rgb),.3); }
+.btn-primary { background:var(--orange); color:var(--accent-ink); }
 .btn-primary:hover { background:var(--orange-2); }
 /* .btn-secondary — раніше без ЖОДНОГО правила в усьому style.css: кнопка
    отримувала лише дефолтний вигляд <button> з WebView2 (світлий/білий
@@ -2315,8 +2328,8 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
    активними завантаженнями/встановленням збірок. */
 .btn-update { background:rgba(var(--blue-rgb),.15); color:var(--blue); }
 .btn-update:hover { background:var(--blue); color:#fff; }
-.btn-violet { background:var(--violet); color:#fff; box-shadow:0 6px 16px rgba(123,77,255,.3); }
-.btn-violet:hover { background:var(--violet-l); transform:translateY(-1px); }
+.btn-violet { background:#7536e8; color:#fff; }
+.btn-violet:hover { background:#561bc6; }
 .btn-danger { background:transparent; color:var(--red); border:1px solid rgba(239,68,68,.4); }
 .btn-danger:hover { background:rgba(239,68,68,.1); border-color:var(--red); }
 .btn-warning { background:rgba(245,158,11,.15); color:var(--yellow); border:1px solid rgba(245,158,11,.35); }
@@ -2325,7 +2338,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .btn-info:hover { background:rgba(59,130,246,.25); }
 .btn-sm { padding:6px 10px; font-size:11px; }
 .btn-lg { padding:12px 22px; font-size:13px; }
-.btn:disabled { opacity:.7; cursor:default; pointer-events:none; transform:none; box-shadow:none; }
+.btn:disabled { opacity:.7; cursor:default; pointer-events:none; transform:none; translate:none; box-shadow:none; }
 .btn:disabled:hover { transform:none; }
 /* Кнопка запуску з живим станом: плавний перехід кольору при зміні стадії */
 .play-launch-btn { transition:background .3s, color .3s, border-color .3s, box-shadow .3s; }

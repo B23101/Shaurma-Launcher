@@ -260,7 +260,8 @@ jobs:
           wait-for-completion-timeout-in-seconds: 18000
           output-artifact-directory: dist/signed-setup
 
-      # Release assets = the exact files the launcher downloads (flat names) + setup.
+      # Two releases: components (the exact files the launcher downloads, flat
+      # names) and the installer on its own (tag installer-v<version>).
       # Order: build -> Authenticode -> hash -> attest (users can verify the final files).
       - name: Collect release assets and checksums
         shell: pwsh
@@ -268,10 +269,15 @@ jobs:
           SIGN: ${{ inputs.sign }}
         run: |
           $out = 'dist/release'
-          New-Item -ItemType Directory -Force $out | Out-Null
+          $inst = 'dist/installer'
+          New-Item -ItemType Directory -Force $out, $inst | Out-Null
           $setupDir = if ($env:SIGN -eq 'true') { 'dist/signed-setup' } else { 'dist' }
           if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $setupDir -Edition shaurma -Stage installer }
-          Copy-Item "$setupDir/*-setup.exe" "$out/ShaurmaLauncher-setup.exe"
+          $setup = @(Get-ChildItem "$setupDir/*-setup.exe")
+          if ($setup.Count -ne 1) { throw "expected exactly one setup.exe, found $($setup.Count)" }
+          Copy-Item $setup[0].FullName "$inst/ShaurmaLauncher-setup.exe"
+          '{0}  {1}' -f (Get-FileHash "$inst/ShaurmaLauncher-setup.exe" -Algorithm SHA256).Hash.ToLower(), 'ShaurmaLauncher-setup.exe' |
+            Set-Content "$inst/SHA256SUMS" -Encoding ascii
           Copy-Item dist/final/shaurma/ShaurmLauncher.exe "$out/ShaurmLauncher.exe"
           Copy-Item dist/final/shaurma/backend.dll "$out/backend.dll"
           Copy-Item dist/final/shaurma/updater.dll "$out/updater.dll"
@@ -289,12 +295,21 @@ jobs:
             dist/release/*.dll
             dist/release/*.zip
             dist/release/SHA256SUMS
+            dist/installer/ShaurmaLauncher-setup.exe
 
       - name: Upload release assets
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-assets
           path: dist/release
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload installer assets
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: installer-assets
+          path: dist/installer
           if-no-files-found: error
           retention-days: 30
 
@@ -308,6 +323,10 @@ jobs:
         with:
           name: release-assets
           path: release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: installer-assets
+          path: installer
       # DRAFT only. Pack Manager verifies attestation + hashes, uploads the signed
       # launcher-manifest.json (+ .sig, keyset.json) and only then publishes.
       - name: Create draft release
@@ -315,9 +334,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ inputs.release_notes }}
         run: |
+          policy="[Code signing policy]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY#code-signing-policy)"
           gh release create "v$BUILD_VERSION" release/* --repo "$GITHUB_REPOSITORY" --target "$BUILD_SHA" \
             --draft --title "v$BUILD_VERSION" \
             --notes "${NOTES:-Release v$BUILD_VERSION}
 
           Built from $BUILD_SHA by run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID.
-          Verify: gh attestation verify <file> -R $GITHUB_REPOSITORY"
+          Verify: gh attestation verify <file> -R $GITHUB_REPOSITORY
+
+          $policy"
+          # Installer: separate release, never Latest (Pack Manager publishes it).
+          gh release create "installer-v$BUILD_VERSION" installer/* --repo "$GITHUB_REPOSITORY" --target "$BUILD_SHA" \
+            --draft --latest=false --title "Installer v$BUILD_VERSION" \
+            --notes "Installer for Shaurma Launcher v$BUILD_VERSION. Built from $BUILD_SHA.
+
+          $policy"
