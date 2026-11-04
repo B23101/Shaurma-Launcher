@@ -1,4 +1,5 @@
 <script lang="ts">
+  import javaLogo from '../assets/images/java.svg'
   // Sidebar.svelte — ліва навігаційна колонка лаунчера (лого, розділи,
   // список збірок з перемикачем Shaurma/Кастомні, папки, футер акаунтів).
   // Вся логіка/стан лишаються в App.svelte — сюди приходять пропсами:
@@ -621,7 +622,9 @@
                  качку компонентів гри (раніше зупинити було неможливо
                  до кінця завантаження). -->
             <button class="sp-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
-              {#if limg}
+              {#if lp?.stage === 'java'}
+              <img src={javaLogo} alt="" />
+            {:else if limg}
                 <img src={limg} alt="" />
               {:else}
                 <i class="ti {sti.icon}"></i>
@@ -811,7 +814,9 @@
                  качку компонентів гри (раніше зупинити було неможливо
                  до кінця завантаження). -->
             <button class="sp-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
-              {#if limg}
+              {#if lp?.stage === 'java'}
+              <img src={javaLogo} alt="" />
+            {:else if limg}
                 <img src={limg} alt="" />
               {:else}
                 <i class="ti {sti.icon}"></i>

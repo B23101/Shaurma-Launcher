@@ -1,4 +1,5 @@
 <script lang="ts">
+  import javaLogo from '../assets/images/java.svg'
   // ── Сторінка "Нова збірка" ────────────────────────────────────────────
   // Дві вкладки:
   //  · «Вручну» — вибір версії Minecraft + лоадера (як у старому лаунчері),
@@ -607,7 +608,7 @@
   )
   const previewIsSyncing = $derived(previewState === 'downloading' || previewState === 'updating' || !!previewSyncStage)
   const previewPaused = $derived(previewState === 'paused')
-  const previewLimg = $derived(previewLaunchStage === 'loader' ? loaderImgFor(tab === 'manual' ? loader : detected?.loader) : undefined)
+  const previewLimg = $derived(previewLaunchStage === 'java' ? javaLogo : previewLaunchStage === 'loader' ? loaderImgFor(tab === 'manual' ? loader : detected?.loader) : undefined)
 
   // Дефолтна назва збірки: коли поле назви порожнє — формується
   // "<Лоадер> <Версія ГРИ>" (напр. "Fabric 1.20.1"), для Vanilla — сама

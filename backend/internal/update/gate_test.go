@@ -77,9 +77,22 @@ func TestCheckUpdateAvailable(t *testing.T) {
 }
 
 func TestCheckNoToken(t *testing.T) {
-	c := NewChecker("2.1.0") // токен не заданий
-	if _, err := c.Check(); err == nil {
-		t.Fatal("очікувалась помилка про порожній токен")
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/update/check" || r.URL.Query().Get("current") != "2.1.0" {
+			t.Errorf("unexpected signal request: %s", r.URL)
+		}
+		json.NewEncoder(w).Encode(map[string]string{"version": "2.2.0"})
+	}))
+	defer srv.Close()
+	oldURL := signalURL
+	signalURL = srv.URL
+	defer func() { signalURL = oldURL }()
+
+	c := NewChecker("2.1.0")
+	c.SetToken("")
+	info, err := c.Check()
+	if err != nil || !info.Available || info.Version != "2.2.0" {
+		t.Fatalf("Check without token: info=%+v err=%v", info, err)
 	}
 }
 

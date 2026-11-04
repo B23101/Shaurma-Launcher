@@ -1,4 +1,5 @@
 <script lang="ts">
+  import javaLogo from './assets/images/java.svg'
   import UiModal from './lib/UiModal.svelte'
   import P2PNetworkDialog from './lib/P2PNetworkDialog.svelte'
   import './lib/settings/settings.css'
@@ -5852,7 +5853,9 @@
            кнопка стає «Стоп» (скасувати встановлення) — 1:1 як
            у sidebar (.sp-st). -->
       <button class="it-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
-        {#if limg}
+        {#if lp?.stage === 'java'}
+              <img src={javaLogo} alt="" />
+            {:else if limg}
           <img src={limg} alt="" />
         {:else}
           <i class="ti {sti.icon}"></i>
