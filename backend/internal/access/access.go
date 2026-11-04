@@ -160,6 +160,12 @@ func (m *Manager) keyset() (*trust.Keyset, error) {
 	return best, nil
 }
 
+// ServerURL — адреса сервера доступу з чинного keyset (там же й збірки).
+func (m *Manager) ServerURL() string {
+	ks, _ := m.keyset()
+	return m.server(ks)
+}
+
 // testServerURL — лише для тестів (локальний фейковий сервер).
 var testServerURL = ""
 

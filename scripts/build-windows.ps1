@@ -196,9 +196,6 @@ function Check-Secrets {
         return
     }
     if (-not $PubKeys) { Fail 'SHAURMA_MANIFEST_PUBKEYS is required for production builds' }
-    if ($GoogleSecret -and (Get-Secret 'SHAURMA_GOOGLE_CLIENT_KIND') -ne 'desktop') {
-        Fail 'Only public Desktop OAuth client credentials may be embedded; set SHAURMA_GOOGLE_CLIENT_KIND=desktop after verifying the client type'
-    }
     $missing = @()
     if (($Editions -contains 'shaurma') -and -not $TokenShaurma) { $missing += 'SHRM_BUILD_TOKEN_SHAURMA' }
     if (($Editions -contains 'base') -and -not $TokenBase) { $missing += 'SHRM_BUILD_TOKEN_BASE' }
@@ -221,32 +218,40 @@ function Check-Secrets {
 function Get-Token([string]$ed) { if ($ed -eq 'base') { return $TokenBase } else { return $TokenShaurma } }
 
 # ---- resources (version info, icon, manifest) -------------------------------
-# shell + bootstrap: Wails template (icon + manifest + version info).
-function New-WailsSyso([string]$DestDir) {
-    $wails3 = Ensure-GoTool 'wails3.exe' "github.com/wailsapp/wails/v3/cmd/wails3@$WailsCliVersion"
+# shell + bootstrap: icon + manifest + version info.
+# Через go-winres, а не `wails3 generate syso`: wails3 alpha пише таблицю
+# рядків версії так, що Windows (і SignPath) бачать порожні ProductName/
+# ProductVersion. go-winres дає ту саму іконку й маніфест і читабельну версію.
+function New-WailsSyso([string]$DestDir, [string]$OriginalName = 'ShaurmLauncher.exe') {
+    $gw = Ensure-GoTool 'go-winres.exe' "github.com/tc-hib/go-winres@$GoWinresVersion"
     $winDir = Join-Path $Root 'shell\build\windows'
-    $render = Join-Path $OutDir '_render'
+    $render = Join-Path $OutDir ('_render/exe-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force -Path $render | Out-Null
-    $utf8 = New-Object System.Text.UTF8Encoding($false)   # no BOM: wails3 rejects BOM
+    $utf8 = New-Object System.Text.UTF8Encoding($false)
 
     $manifest = (Get-Content (Join-Path $winDir 'wails.exe.manifest') -Raw -Encoding UTF8).
         Replace('{{.Info.ProductVersion}}', $ProductVersion).Replace('{{.Name}}', 'shell')
-    [IO.File]::WriteAllText((Join-Path $render 'wails.exe.manifest'), $manifest, $utf8)
+    [IO.File]::WriteAllText((Join-Path $render 'app.manifest'), $manifest, $utf8)
+    Copy-Item (Join-Path $winDir 'icon.ico') (Join-Path $render 'icon.ico') -Force
 
-    $info = (Get-Content (Join-Path $winDir 'info.json') -Raw -Encoding UTF8).
-        Replace('{{.Info.ProductVersion}}', $ProductVersion).
-        Replace('{{.Info.ProductName}}', $ProductName).
-        Replace('{{.Info.CompanyName}}', $CompanyName).
-        Replace('{{.Info.Copyright}}', $Copyright).
-        Replace('{{.Info.Comments}}', $ProductName)
-    [IO.File]::WriteAllText((Join-Path $render 'info.json'), $info, $utf8)
-
-    $out = Join-Path $DestDir 'wails_windows_amd64.syso'
-    Invoke-Native $wails3 @('generate', 'syso', '-arch', 'amd64',
-        '-manifest', (Join-Path $render 'wails.exe.manifest'),
-        '-info', (Join-Path $render 'info.json'),
-        '-icon', (Join-Path $winDir 'icon.ico'), '-out', $out) $Root
-    return $out
+    # Шляхи у go-winres — відносно JSON, тому все лежить поруч у $render.
+    $resource = [ordered]@{
+        RT_GROUP_ICON = @{ '#1' = @{ '0000' = 'icon.ico' } }
+        RT_MANIFEST   = @{ '#1' = @{ '0409' = 'app.manifest' } }
+        RT_VERSION    = @{ '#1' = @{ '0000' = @{
+            fixed = @{ file_version = $ProductVersion; product_version = $ProductVersion }
+            info  = @{ '0000' = @{
+                CompanyName = $CompanyName; ProductName = $ProductName
+                ProductVersion = $ProductVersion; FileVersion = $ProductVersion
+                OriginalFilename = $OriginalName; FileDescription = $ProductName
+                LegalCopyright = $Copyright; Comments = $ProductName
+            } }
+        } } }
+    }
+    $resourceFile = Join-Path $render 'winres.json'
+    [IO.File]::WriteAllText($resourceFile, ($resource | ConvertTo-Json -Depth 10), $utf8)
+    Invoke-Native $gw @('make', '--arch', 'amd64', '--in', $resourceFile, '--out', 'rsrc') $DestDir
+    return (Join-Path $DestDir 'rsrc_windows_amd64.syso')
 }
 
 # DLLs: version info only (no icon / manifest), via go-winres.
@@ -312,7 +317,7 @@ function Build-Shell([string]$ed) {
     $dir = Join-Path $Root 'shell'
     $out = Join-Path $UnsignedDir "$ed\$name"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $out) | Out-Null
-    $syso = New-WailsSyso $dir
+    $syso = New-WailsSyso $dir $ShellNames[$ed]
     try {
         $ld = '-H windowsgui -buildid='
         if ($Strip) { $ld = "-w -s $ld" }
@@ -335,11 +340,12 @@ function Build-Bootstrap([string]$ed) {
     Write-Step "bootstrap ($ed)"
     # Локальний інсталятор ставить ГОТОВИЙ shell і всі компоненти, тож
     # bootstrap-качка (перший запуск з CDN) у такій збірці не потрібна.
-    if ($LocalInstall) { return }
+    # Повний набір у setup (-Bundle) теж обходиться без bootstrap-докачки.
+    if ($LocalInstall -or $Bundle) { return }
     $dir = Join-Path $Root 'bootstrap'
     $out = Join-Path $UnsignedDir "$ed\bootstrap\$($ShellNames[$ed])"
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $out) | Out-Null
-    $syso = New-WailsSyso $dir
+    $syso = New-WailsSyso $dir $ShellNames[$ed]
     try {
         $ld = "-H windowsgui -buildid= -X main.cdnToken=$(Get-Token $ed) -X main.trustedKeys=$PubKeys"
         Invoke-Native 'go' @('build', '-tags', 'production', '-buildmode=pie', '-trimpath', '-buildvcs=false',

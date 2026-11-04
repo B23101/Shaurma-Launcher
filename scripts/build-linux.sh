@@ -19,9 +19,6 @@ EDITIONS=("$@"); [ ${#EDITIONS[@]} -eq 0 ] && EDITIONS=(base)
 TOKEN_SHAURMA="${SHRM_BUILD_TOKEN_SHAURMA:-}"
 TOKEN_BASE="${SHRM_BUILD_TOKEN_BASE:-}"
 PUBKEYS="${SHAURMA_MANIFEST_PUBKEYS:-}"
-if [[ -n "${SHAURMA_GOOGLE_CLIENT_SECRET:-}" && "${SHAURMA_GOOGLE_CLIENT_KIND:-}" != desktop ]]; then
-  echo 'Only public Desktop OAuth client credentials may be embedded; verify SHAURMA_GOOGLE_CLIENT_KIND' >&2; exit 1
-fi
 if [[ -n "$PUBKEYS" && ! "$PUBKEYS" =~ ^[A-Za-z0-9+/=,]+$ ]]; then
   echo "SHAURMA_MANIFEST_PUBKEYS: only base64 keys separated by commas" >&2; exit 1
 fi

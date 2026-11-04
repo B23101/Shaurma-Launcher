@@ -511,6 +511,8 @@ func NewApp() *App {
 		suggestResolveCache: map[string]*suggestResolveEntry{},
 		autoRefreshBusy:     map[string]bool{},
 	}
+	// Сховище збірок єдиного лаунчера — сервер доступу з чинного keyset.
+	api.SetNewPacksBase(a.accessManager().ServerURL() + "/v1")
 	a.packs = newPackProvider(a)
 	// Гардероб: пресети в SQLite (wardrobe_presets), PNG текстури скінів —
 	// у .shaurm/skins (постійна тека даних, а НЕ cache: скіни пресетів —
@@ -645,6 +647,24 @@ func (a *App) ServiceStartup() error {
 	go markUpdateHealthy(a.cfg.InstallDir(), readLauncherVersion(a.cfg.InstallDir()))
 	// Активація приватного доступу (§3): сертифікат біля лаунчера → ключ пристрою.
 	a.startAccess()
+	// Shell до 2.7.28 вшитий з невідповідним ключем маніфесту й відкидає
+	// updater.dll.new та <exe>.new — backend перевіряє їх правильним ключем і
+	// ставить на місце (діють з наступного запуску).
+	go func() {
+		defer crashguard.Recover("app.go:FinishLegacyPending")
+		exe, _ := os.Executable()
+		res, err := update.FinishLegacyPending(a.cfg.InstallDir(), exe)
+		if err != nil {
+			appLog.Warn("legacy pending update: %v", err)
+			return
+		}
+		if len(res.Applied) > 0 {
+			appLog.Info("legacy pending update applied: %v (active after restart)", res.Applied)
+		}
+		for name, why := range res.Rejected {
+			appLog.Warn("legacy pending update rejected: %s: %s", name, why)
+		}
+	}()
 
 	// Системна інформація (ОС / CPU / RAM / hostname)
 	appLog.Info("Platform: %s %s (%s)", runtime.GOOS, osVersion(), runtime.GOARCH)

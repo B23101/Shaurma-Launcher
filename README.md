@@ -1,68 +1,58 @@
 # Shaurma Launcher
 
-A Minecraft launcher for Shaurma modpacks and servers: modpack and mod manager (Modrinth, CurseForge),
-Microsoft/Shaurma accounts, friends, game console, server tools and an automatic updater.
-Windows and Linux. Official site: <https://shaurma-launcher.org/>
+A Minecraft launcher for Shaurma modpacks and servers: modpack and mod manager, Microsoft/Shaurma
+accounts, friends, game console, server tools and an automatic, signed updater.
+Windows (Linux builds follow). Official site: <https://shaurma-launcher.org/>
 
 ## Download
 
-Get installers from the [Releases](../../releases) page or the official site.
-Signing is planned and requires SignPath approval. Check the signature of the actual download;
-unsigned dry runs are not signed releases. Linux release archives carry a GitHub build attestation:
+Get `ShaurmaLauncher-setup.exe` from the [Releases](../../releases) page. Stable releases are marked
+*Latest*; beta versions (`X.Y.Z.W`) are published as *pre-releases* and reach only users who chose the beta
+channel. Every file can be checked against the build that produced it:
 
 ```
-gh attestation verify shaurma-launcher-linux-shaurma.tar.gz -R B23101/Shaurma-Launcher
+gh attestation verify ShaurmaLauncher-setup.exe -R B23101/Shaurma-Launcher
 ```
 
 ## How it is built
 
 | Part | Folder | Output |
 |---|---|---|
-| Native shell (Wails v3) | `shell/` | `ShaurmLauncher.exe` / `ShaurmLauncherBase.exe` |
-| One-time bootstrap | `bootstrap/` | first-run downloader embedded in the installer |
-| Backend (C ABI library) | `backend/` | `backend.dll` / `backend.so` |
-| Updater (C ABI library) | `updater-backend/`, `updater-frontend/` | `updater.dll` / `updater.so` |
+| Native shell (Wails v3) | `shell/` | `ShaurmLauncher.exe` |
+| Backend (C ABI library) | `backend/` | `backend.dll` |
+| Updater (C ABI library) | `updater-backend/`, `updater-frontend/` | `updater.dll` |
+| Signature contracts (keyset, manifest, tokens) | `updater-backend/trust/` | shared Go module |
 | User interface (Svelte) | `frontend/` | `frontend.zip` |
-| Windows installer (Inno Setup) | `installer/` | `*-setup.exe` |
+| Windows installer (Inno Setup) | `installer/` | `ShaurmaLauncher-setup.exe` |
 
-Requirements (Windows): Go (see `backend/go.mod`), Node.js 20+, a C compiler for cgo (MSYS2 clang64 or mingw-w64 gcc),
-Inno Setup 6.
+Requirements (Windows): Go (see `backend/go.mod`), Node.js 20+, a C compiler for cgo (MSYS2 clang64 or
+mingw-w64 gcc), Inno Setup 6.
 
 ```
-scripts\build-windows.bat                      # everything, unsigned
-scripts\build-windows.bat -Step components     # only the binaries
-bash scripts/build-linux.sh                    # Linux (needs libgtk-4-dev, libwebkitgtk-6.0-dev)
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Step all -Bundle -Edition shaurma -Version 0.0.0
 ```
 
-### Local full build with an offline installer
+`-Bundle` makes the installer ship every component (nothing is downloaded on first start). Public keys of
+the update system come from `SHAURMA_ROOT_PUBKEYS`, `SHAURMA_KEYSET_B64` and `SHAURMA_KEYSET_SIG`.
+Private keys and tokens are **never** stored in this repository.
+
+### Local offline build
 
 ```
 powershell -ExecutionPolicy Bypass -File scripts\build-local-full.ps1
 ```
 
-Builds only the full (shaurma) edition and writes `dist\local\ShaurmLauncher-setup.exe` plus a
-portable `dist\app-shaurma-local\`. The installer ships shell, backend, updater, both frontend
-archives and `launcher-version.json` from local files; `local-only.flag` disables the updater so
-nothing is downloaded from the CDN. The Shaurma token is embedded only in `backend.dll` (needed to
-download Shaurma packs) and never in `shell.exe` or `updater.dll`. Needs Inno Setup 6; the Base
-edition is not built by this script. If Go is missing or older than `backend/go.mod` requires, the
-script downloads the official toolchain into `%LOCALAPPDATA%\ShaurmaLauncherBuild` (no administrator
-rights).
-```
+Writes `dist\local\ShaurmLauncher-setup.exe` and a portable copy; `local-only.flag` disables the updater.
 
-Tokens and API keys are **never** stored in this repository. The build reads them from environment variables
-(`SHRM_BUILD_TOKEN_SHAURMA`, `SHRM_BUILD_TOKEN_BASE`, `CF_API_KEY`, Desktop OAuth client settings,
-`SHAURMA_MANIFEST_PUBKEYS`; see `scripts/build-windows.ps1` and `scripts/RELEASING.md`).
-Release builds require their edition's CDN token and manifest public keys. AI keys are supplied
-by the user at runtime and are not embedded by these release scripts.
+## Releases
 
-Releases are produced only by GitHub Actions (`.github/workflows/release.yml`) from a `v*` tag.
-There is one launcher and one release workflow: `.github/workflows/build-launcher.yml`. It runs only
-when the maintainer's Pack Manager dispatches it with a build order signed by the release key; there
-are no tag triggers. The workflow builds exactly the ordered commit from `main`, takes the version
-from `installer/VERSION`, uses no dependency caches and embeds no channel tokens. It attests the
-final (signed) files and creates a draft release. The release becomes official only after Pack
-Manager verifies the attestation and hashes and uploads the signed `launcher-manifest.json`.
+There is one launcher and one release workflow: `.github/workflows/build-launcher.yml`. It runs only when
+the maintainer's Pack Manager dispatches it with a build order signed by the release key; there are no tag
+triggers. The workflow builds exactly the ordered commit from `main`, takes the version from
+`installer/VERSION`, uses no dependency caches and embeds no channel tokens. It attests the final (signed)
+files and creates a draft release. Pack Manager then verifies the attestation and hashes, uploads the signed
+`launcher-manifest.json`, publishes the release with generated notes and announces the version to
+`api.shaurma-launcher.org`. See [scripts/RELEASING.md](scripts/RELEASING.md).
 
 ## Code signing policy
 
@@ -114,8 +104,6 @@ See [release preparation and remaining account settings](scripts/RELEASING.md),
 [security reporting](.github/SECURITY.md), [contributing](.github/CONTRIBUTING.md), and
 [third-party notices](frontend/public/licenses/THIRD_PARTY_NOTICES.md).
 
-Base includes all launcher features: accounts, skins, friends, chat, P2P, sharing and remote
-server access. Only the private modpack catalog and its download client require the full edition.
 The optional skin service can route game session requests through Shaurma for all account types.
 Review the privacy policy; it can be disabled during installation or in Settings.
 

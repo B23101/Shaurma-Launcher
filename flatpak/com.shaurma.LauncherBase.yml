@@ -41,8 +41,7 @@ finish-args:
   # коли він є, але ГРА — це Minecraft: його LWJGL/GLFW працює через X11
   # (XWayland). fallback-x11 віддає X11-сокет ЛИШЕ коли Wayland-сокета нема,
   # тож на Wayland-сесії (GNOME/KDE за замовчуванням) гра в пісочниці не
-  # мала б дисплея і не відкрила б вікно. Prism Launcher і решта
-  # Minecraft-лаунчерів у Flatpak роблять так само.
+  # мала б дисплея і не відкрила б вікно.
   - --device=dri
   - --share=ipc
   - --socket=wayland

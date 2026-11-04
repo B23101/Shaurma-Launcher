@@ -1,7 +1,7 @@
 $ErrorActionPreference = 'Stop'
 $source = Join-Path $PSScriptRoot 'build-windows.ps1'
 $ast = [Management.Automation.Language.Parser]::ParseFile($source, [ref]$null, [ref]$null)
-foreach ($name in @('Get-Token', 'Check-Secrets', 'Build-Updater', 'Build-Backend')) {
+foreach ($name in @('Get-Token', 'Get-NewUpdateLdflags', 'Check-Secrets', 'Build-Updater', 'Build-Backend')) {
     $definition = $ast.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $name }, $true)
     if (-not $definition) { throw "Missing build function: $name" }
     Invoke-Expression $definition.Extent.Text
@@ -21,6 +21,9 @@ $RequireSecrets = $true
 $GoogleId = [guid]::NewGuid().ToString('N')
 $GoogleSecret = ''
 $CfKey = ''
+$RootKeys = [Convert]::ToBase64String((New-Object byte[] 32))
+$KeysetB64 = 'a2V5c2V0'
+$KeysetSig = 'c2ln'
 foreach ($ed in @('base', 'shaurma')) {
     $Editions = @($ed)
     Check-Secrets
@@ -29,6 +32,7 @@ foreach ($ed in @('base', 'shaurma')) {
     $forbidden = if ($ed -eq 'base') { $TokenShaurma } else { $TokenBase }
     if (-not $captured.Flags.Contains($expected) -or $captured.Flags.Contains($forbidden)) { throw 'Updater edition isolation failed' }
     if ($captured.Tags -ne 'production' -or -not $captured.Out.EndsWith("$ed\updater.dll")) { throw 'Updater output/tag isolation failed' }
+    if (-not $captured.Flags.Contains("newupdate.RootKeys=$RootKeys") -or -not $captured.Flags.Contains("newupdate.EmbeddedKeyset=$KeysetB64")) { throw 'Updater misses new update trust material' }
     Build-Backend $ed
     if ($ed -eq 'base' -and ($captured.Tags -ne 'production' -or $captured.Flags.Contains($TokenShaurma))) { throw 'Base skin build leaked private edition support' }
 }

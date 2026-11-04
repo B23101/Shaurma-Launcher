@@ -11,35 +11,22 @@ Pack Manager після успішної збірки сам зробить git 
 Пункт = одна змістовна зміна, одним рядком, без секретів і без згадок ШІ.
 -->
 
-## 2026-11-04 14:00
-- [feat] Модуль довіри shaurma-trust: keyset із ролями root/release/server, маніфест оновлень v2, master.cert, токени доступу й активації, доменні префікси підписів || add shaurma-trust module with keyset, v2 update manifest, master cert and signed tokens
-- [feat] Нова система оновлень: сигнал від api.shaurma-launcher.org і запасний шлях через GitHub Releases, адреси файлів будує лише клієнт || add new update engine with worker signal and GitHub releases fallback
-- [feat] Захист оновлень: підпис release-ключем, заборона відкату (highest_seen), термін дії, канал, білий список хостів редиректу, обмеження rollout сервером || enforce signature, anti-rollback, expiry and redirect allowlist for updates
-- [feat] Перевірка Authenticode завантажених exe/dll з видавцями з keyset (WinVerifyTrust) || verify Authenticode of downloaded binaries against keyset signers
-- [feat] Двофазне оновлення: стан swapped, підтвердження backend через update-health.json і автоматичний відкат після трьох невдалих стартів || add two-phase update with health check and automatic rollback
-- [feat] Lock-файл проти двох одночасних оновлень і перевірка вільного місця || add update lock file and free space check
-- [feat] Ворота сертифіката для мосту R1: updater повної редакції розпаковує вшитий master.cert у теку лаунчера до будь-якого оновлення || add certificate gate that unpacks embedded master cert before updating
-- [feat] Shell перевіряє відкладені .new-файли за доказом v2 (keyset + маніфест) || verify pending components with v2 proofs in shell
-- [feat] Backend позначає версію робочою через 20 с після старту || mark launcher version healthy after startup
-- [fix] Production-збірки завжди вимагають підписаний маніфест оновлення || always require signed update manifests in production builds
-- [build] scripts/build-windows.ps1 вшиває root-ключ і keyset нової системи зі змінних середовища (без сертифіката) || embed new update system public keys in windows build script
+## 2026-11-04 15:30
+- [feat] Єдиний лаунчер бере збірки з api.shaurma-launcher.org/v1 за токеном доступу пристрою; міст R1 і старші лаунчери — як раніше, через старий сервер || load packs from api.shaurma-launcher.org in the single launcher
 
 ## 2026-11-04 18:00
-- [feat] Активація приватного доступу: пошук сертифіката за вмістом, ключ пристрою Ed25519 під DPAPI, перевірка підписаної відповіді сервера, видалення cert лише після збереженого ключа || add access activation with device key and signed server response
-- [feat] Короткоживучий токен доступу X-Shaurma-Entitlement замість вшитого токена в єдиному лаунчері; секретні заголовки не йдуть на чужий хост при редиректі || use short-lived entitlement header instead of embedded channel token
-- [feat] Налаштування → «Доступ»: вибір файлу, перетягування, вставлення тексту, відв'язування пристрою; вкладка збірок з'являється без перезапуску || add access section to settings
-- [feat] «Перевірити оновлення» в єдиному лаунчері питає сигнал нового сервера або GitHub || check updates via new signal server or github in single launcher
-- [feat] Інсталятор копіює сертифікат доступу, що лежить поруч із setup.exe, у теку лаунчера || copy access certificate next to setup into install folder
-- [ci] Один workflow build-launcher.yml лише за підписаним замовленням: збірка заданого коміту з main, версія з installer/VERSION, без кешів і токенів, attestation на фінальних файлах, чернетка релізу || add single order-signed build-launcher workflow
-- [ci] Видалено build-windows.yml, release.yml, release-full.yml і release-local.yml (тег-тригери, секрети в збірці, реліз без підпису) || remove legacy release workflows
-- [build] installer/VERSION — версія релізу в коміті || add installer/VERSION
-- [build] Скрипти: set-github-secret.ps1 (прихований ввід), audit-github-settings.ps1 (лише читання), sync-github-secrets.ps1 без токена з файлу, build-windows.ps1 вшиває ключі доступу в backend || add github secret and audit scripts, drop file token fallback
-- [docs] README і PRIVACY: нова система оновлень, політика підпису, дані активації; SYSTEM-CHANGES.txt оновлено || document new update system, signing policy and activation privacy
-- [ci] build-launcher.yml вшиває ключі CurseForge і входу Google зі секретів GitHub, як і раніше (без серверного проксі) || keep embedding curseforge and google sign-in keys in build-launcher workflow
+- [ci] build-launcher.yml збирає компоненти й інсталятор єдиного лаунчера в режимі -Bundle, без bootstrap; перевірки підписів і секретів для shaurma || build single launcher components without bootstrap in workflow
+- [build] SignPath: дві конфігурації (components, installer) під ShaurmLauncher.exe, backend.dll, updater.dll і ShaurmLauncher-setup.exe; team-конфігурації видалено || simplify signpath configuration to single launcher
+- [build] verify-signatures.ps1: bootstrap перевіряється лише якщо він є у збірці || make bootstrap optional in signature verification
+- [fix] Оновлювач не повідомляє про помилку, якщо в релізі немає файлів для цієї платформи || skip releases without files for the current platform
+- [docs] README і RELEASING.md описують єдиний лаунчер, новий потік випуску, бета як pre-release і сховище збірок || document single launcher release process
+- [docs] Прибрано згадки редакцій Base/повна з політики приватності та порівняння з іншими лаунчерами || remove edition wording and launcher comparisons from docs
 
-## 2026-11-04 21:00
-- [build] Режим -Bundle: setup.exe єдиного лаунчера ставить усі компоненти одразу, без докачки з CDN за токеном; local-only.flag лише для локальної офлайн-збірки || add bundle installer mode for the single launcher
-- [ci] build-launcher.yml збирає інсталятор у режимі -Bundle || build bundled installer in build-launcher workflow
-- [feat] Shell відновлює відсутні компоненти з GitHub Releases за підписаним маніфестом v2, якщо токена CDN немає || restore missing components from github releases via signed v2 manifest
-- [fix] Деінсталятор прибирає файли нової системи оновлень і доступу || remove new update and access files on uninstall
-- [build] collect-licenses.ps1 дозволяє лише одну локальну заміну модуля — власний updater-backend/trust || allow own trust module replacement in license collection
+## 2026-11-04 19:30
+- [ci] Перевірка політики збірки знає про вшивання ключів нової системи оновлень і перевіряє, що вони потрапляють в updater || fix build policy test for new update trust material
+- [build] frontend/package-lock.json узгоджено з npm 10 на CI (опційна залежність chokidar 3 для nunjucks) || sync frontend lockfile with npm 10
+- [fix] Сторінка офіційної збірки більше не падає через виклик неіснуючого методу дизайну сторінки; лишаються вбудовані дизайни || stop calling missing pack page design method
+- [build] Ресурси версії, іконка й маніфест exe генеруються через go-winres: Windows і SignPath бачать назву продукту й версію || generate exe version resources with go-winres
+- [chore] Збірки перенесено в нове сховище; старий сервер читає їх звідти, порожні «теки» дашборда не переносяться || migrate packs to new storage and read them upstream
+- [build] Прибрано перевірку типу клієнта Google у збірці: вона блокувала збірку на GitHub і нічого не захищала || drop google client kind build check
+- [fix] Лаунчер сам довстановлює оновлені updater і exe, які старий shell відкидав через невідповідний ключ підпису: перевіряє їх підписаним маніфестом і ставить на місце з наступного запуску || backend finishes pending updater and shell swap rejected by old shells

@@ -288,6 +288,11 @@ func (e *Engine) Check(ctx context.Context) (*Plan, error) {
 	if trust.CompareVersions(m.Version, e.state.FailedVersion) == 0 && !m.Required(e.opt.CurrentVersion) {
 		return nil, nil
 	}
+	// Реліз без файлів для цієї платформи (напр. Linux ще на старому шляху) —
+	// для цього клієнта оновлення немає, без помилки.
+	if len(m.FilesFor(Platform())) == 0 {
+		return nil, nil
+	}
 	if signal != nil && !trust.RolloutAllows(m, signal.Rollout, e.opt.CurrentVersion, t) {
 		return nil, ErrDeferred
 	}

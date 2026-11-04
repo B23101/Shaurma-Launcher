@@ -8,7 +8,10 @@ $ErrorActionPreference = 'Stop'
 $shell = if ($Edition -eq 'base') { 'ShaurmLauncherBase.exe' } else { 'ShaurmLauncher.exe' }
 $setup = if ($Edition -eq 'base') { 'ShaurmLauncherBase-setup.exe' } else { 'ShaurmLauncher-setup.exe' }
 $expected = if ($Stage -eq 'components') {
-    @("$Edition/$shell", "$Edition/bootstrap/$shell", "$Edition/backend.dll", "$Edition/updater.dll")
+    $list = @("$Edition/$shell", "$Edition/backend.dll", "$Edition/updater.dll")
+    # bootstrap є лише у збірках із докачкою; єдиний лаунчер (-Bundle) його не має.
+    if (Test-Path -LiteralPath (Join-Path $Directory "$Edition/bootstrap/$shell")) { $list += "$Edition/bootstrap/$shell" }
+    $list
 } else { @($setup) }
 foreach ($relative in $expected) {
     $path = Join-Path $Directory $relative

@@ -1,36 +1,34 @@
 # Signing configuration
 
-These files are templates to install in the SignPath project `shaurma-launcher`.
-Their presence does not activate the service or confirm that an application was approved.
+Templates for the SignPath project `shaurma-launcher` (SignPath Foundation). Their presence does not
+activate the service or confirm that the application was approved.
 
-| Configuration slug | File | Build visibility |
+| Configuration slug | File | Signs |
 |---|---|---|
-| components | artifact-configuration.xml | public Base |
-| installer | artifact-configuration/installer.xml | public Base |
-| components-team | artifact-configuration/components-team.xml | private Shaurma |
-| installer-team | artifact-configuration/installer-team.xml | private Shaurma |
+| `components` | `artifact-configuration.xml` | `ShaurmLauncher.exe`, `backend.dll`, `updater.dll` |
+| `installer` | `artifact-configuration/installer.xml` | `ShaurmLauncher-setup.exe` |
 
-All configurations restrict product name to `Shaurma Launcher` and product version to
-`1.0.0`, matching the existing PE metadata contract. The application release version is
-separate. Changing this contract requires updating the build script, signature verifier
-and approved SignPath configurations together; a fixed metadata version does not guarantee
-SmartScreen reputation or approval.
+There is one launcher and one build origin: `.github/workflows/build-launcher.yml` on GitHub-hosted runners,
+started only by a signed build order for a commit on `main`. No dependency caches are used in the release
+jobs; the version comes from `installer/VERSION` in the commit. The binaries contain no proprietary
+components and no channel tokens: private modpacks are data on a server, not code of the launcher.
 
-Configure GitHub as a trusted build system. Permit only the approved repository/workflow
-origins. Include both editions and both build origins in one application. Approval must
-explicitly cover the full-edition private origin as well as public Base. If Foundation cannot accept that origin,
-full-edition signing remains blocked until an approved signing arrangement is available.
+All configurations restrict product name to `Shaurma Launcher` and product version to `1.0.0`, matching
+the PE metadata contract (`scripts/build-windows.ps1`, `scripts/verify-signatures.ps1`). The application
+release version is separate and lives in `installer/VERSION` and the signed update manifest.
 
-Use `release-signing` with a required human approver for every signing request; never configure
-automatic approval. `test-signing` is for testing and is not a public trusted release certificate.
-Only project-owned binaries are signed. Do not submit downloaded Java, Minecraft, mod-loader
-or other upstream binaries under this project certificate.
+## Setup in SignPath
 
-Source policy: https://signpath.org/terms
-Artifact syntax: https://docs.signpath.io/artifact-configuration/syntax
-Metadata restrictions: https://docs.signpath.io/artifact-configuration/reference
+1. GitHub as trusted build system; allowed origin: this repository, workflow `build-launcher.yml`, branch `main`.
+2. Artifact configurations `components` and `installer` from the files above.
+3. Signing policies: `release-signing` (manual approval by an Approver for every request, origin verification
+   on, branch `main`) and `test-signing` (for checks only; not a publicly trusted certificate).
+4. MFA for everyone with access to the repository or to SignPath.
+5. GitHub secret `SIGNPATH_API_TOKEN` in environment `release` (`scripts/set-github-secret.ps1`) and
+   repository variable `SIGNPATH_ORGANIZATION_ID`.
 
-Foundation eligibility requires open-source components without proprietary code:
-https://signpath.org/terms . A private build origin or a team configuration is not
-an exemption. Do not submit proprietary editions or dependencies under this subscription.
-Confirm eligibility with Foundation before enabling any additional origin.
+Only project-owned binaries are signed. Downloaded Java, Minecraft, mod-loader or other upstream binaries are
+never submitted. Until approval, releases go out with `authenticode: waived` in the signed update manifest:
+update security does not depend on Authenticode.
+
+Source policy: https://signpath.org/terms · Artifact syntax: https://docs.signpath.io/artifact-configuration/syntax

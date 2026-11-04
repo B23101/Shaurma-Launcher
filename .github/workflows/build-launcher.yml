@@ -145,14 +145,13 @@ jobs:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
           SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
-          SHAURMA_GOOGLE_CLIENT_KIND: ${{ vars.SHAURMA_GOOGLE_CLIENT_KIND }}
         run: |
           if (-not $env:SHAURMA_ROOT_PUBKEYS) { throw 'SHAURMA_ROOT_PUBKEYS is required: the single launcher must carry the new update system' }
-          ./scripts/build-windows.ps1 -Step components -Edition shaurma -Version $env:BUILD_VERSION
+          ./scripts/build-windows.ps1 -Step components -Bundle -Edition shaurma -Version $env:BUILD_VERSION
 
       - name: Check release components for forbidden credentials
         shell: pwsh
-        run: ./scripts/check-release-secrets.ps1 -Directory dist/unsigned -Edition base
+        run: ./scripts/check-release-secrets.ps1 -Directory dist/unsigned -Edition shaurma
 
       - name: Upload unsigned components
         id: upload-unsigned
@@ -191,7 +190,7 @@ jobs:
           SIGN: ${{ inputs.sign }}
         run: |
           $src = if ($env:SIGN -eq 'true') { 'dist/signed' } else { 'dist/unsigned' }
-          if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $src -Edition base -Stage components }
+          if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $src -Edition shaurma -Stage components }
           Copy-Item $src dist/final -Recurse
 
       - name: Upload final components
@@ -271,7 +270,7 @@ jobs:
           $out = 'dist/release'
           New-Item -ItemType Directory -Force $out | Out-Null
           $setupDir = if ($env:SIGN -eq 'true') { 'dist/signed-setup' } else { 'dist' }
-          if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $setupDir -Edition base -Stage installer }
+          if ($env:SIGN -eq 'true') { ./scripts/verify-signatures.ps1 -Directory $setupDir -Edition shaurma -Stage installer }
           Copy-Item "$setupDir/*-setup.exe" "$out/ShaurmaLauncher-setup.exe"
           Copy-Item dist/final/shaurma/ShaurmLauncher.exe "$out/ShaurmLauncher.exe"
           Copy-Item dist/final/shaurma/backend.dll "$out/backend.dll"

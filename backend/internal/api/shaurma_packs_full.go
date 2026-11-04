@@ -17,6 +17,27 @@ import (
 
 const cdnBaseURL = "https://shaurma-proxy.shaurmaofficial2210.workers.dev"
 
+// newPacksBase — сховище збірок єдиного лаунчера (новий worker, токен доступу
+// пристрою). Міст R1 і старші (вшитий токен) ходять на старий worker, який
+// сам бере збірки з того самого нового сховища.
+var newPacksBase = "https://api.shaurma-launcher.org/v1"
+
+// SetNewPacksBase — адреса з чинного keyset (викликається до створення клієнта).
+func SetNewPacksBase(u string) {
+	u = strings.TrimRight(strings.TrimSpace(u), "/")
+	if strings.HasPrefix(u, "https://") {
+		newPacksBase = u
+	}
+}
+
+// packsBase — звідки брати збірки цій збірці лаунчера.
+func packsBase() string {
+	if tokenShaurma != "" {
+		return cdnBaseURL
+	}
+	return newPacksBase
+}
+
 // tokenShaurma вшивається на етапі збірки через -ldflags
 // (-X shaurma-launcher-backend/internal/api.tokenShaurma=...). Воркер без нього
 // віддає 401 навіть на існуючий packs-index.json, тож без токена список
@@ -49,7 +70,7 @@ type ShaurmaClient struct {
 
 func NewShaurmaClient() *ShaurmaClient {
 	return &ShaurmaClient{
-		mc: sync.NewManifestClient(cdnBaseURL, tokenShaurma),
+		mc: sync.NewManifestClient(packsBase(), tokenShaurma),
 	}
 }
 
@@ -66,10 +87,10 @@ func (c *ShaurmaClient) AssetDataURL(assetURL string) (string, error) {
 		return v.(string), nil
 	}
 	// Захист від довільних URL: дозволяємо лише асети власного CDN.
-	if !strings.HasPrefix(assetURL, cdnBaseURL+"/") {
+	if !strings.HasPrefix(assetURL, packsBase()+"/") {
 		return "", fmt.Errorf("asset URL поза CDN збірок: %s", assetURL)
 	}
-	path := strings.TrimPrefix(assetURL, cdnBaseURL+"/")
+	path := strings.TrimPrefix(assetURL, packsBase()+"/")
 	data, ct, err := c.mc.FetchAsset(path)
 	if err != nil {
 		return "", err
@@ -90,7 +111,7 @@ func (c *ShaurmaClient) GetPackWiki(packID string) (*sync.PackWikiDoc, error) {
 
 // BaseURL і Token — потрібні app_shaurma_full.go для побудови sync.Runner
 // (Worker-запити воркер-файлів ідуть з тим самим базовим URL і токеном).
-func (c *ShaurmaClient) BaseURL() string { return cdnBaseURL }
+func (c *ShaurmaClient) BaseURL() string { return packsBase() }
 func (c *ShaurmaClient) Token() string   { return tokenShaurma }
 
 // HasBuiltinToken — чи вшито токен каналу (міст R1). Єдиний лаунчер — ні.
@@ -214,7 +235,7 @@ func resolveAssetURL(path string) string {
 	if path == "" {
 		return ""
 	}
-	return cdnBaseURL + "/" + path
+	return packsBase() + "/" + path
 }
 
 func (c *ShaurmaClient) GetPackByID(id string) (*PackIndexEntry, error) {

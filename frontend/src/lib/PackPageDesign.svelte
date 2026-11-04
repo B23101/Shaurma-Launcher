@@ -1,6 +1,5 @@
 <script lang="ts">
   import { untrack, type Snippet } from 'svelte'
-  import { App } from './wails'
   import mafia from './page-designs/mafia.html?raw'
   import './page-designs/mafia.css'
   let { packId, official, background = '', onLayoutChange, children } = $props<{ packId: string; official: boolean; background?: string; onLayoutChange?: (active: boolean) => void; children: Snippet }>()
@@ -69,8 +68,8 @@
         html = '<!doctype html>' + doc.documentElement.outerHTML
       }
       if (isOfficial) {
+        // Лише вбудовані дизайни: віддаленого методу в backend немає.
         if (id.toLowerCase() === 'mafia') apply(mafia)
-        App.GetPackPageDesign(id).then(apply).catch(() => { /* standard or bundled design remains usable offline */ })
       }
       return () => { cancelled = true }
     })

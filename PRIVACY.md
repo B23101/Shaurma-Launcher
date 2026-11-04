@@ -20,7 +20,7 @@ It does not contain advertising and does not sell data.
 
 ## Only if you use the feature
 
-- **Friends, chat, shared playtime (full Shaurma edition):** your account identifiers, nickname, friend list,
+- **Friends, chat, shared playtime:** your account identifiers, nickname, friend list,
   messages and total playtime per day are exchanged with Shaurma servers. Playtime synced to the cloud is visible only to you.
 - **Peer-to-peer play and server tools:** connections are relayed or brokered by Shaurma servers. A friend can start or stop
   your servers remotely **only** if you explicitly grant that permission; nothing is allowed by default and every attempt is
@@ -32,7 +32,7 @@ It does not contain advertising and does not sell data.
 ## Anonymous statistics (opt-in, OFF by default)
 
 If you accept the one-time question in the launcher, it sends a small report at most every few hours: nickname (encrypted on
-arrival), anonymous device hash, total playtime and session count, launcher version/edition and platform.
+arrival), anonymous device hash, total playtime and session count, launcher version and platform.
 It never sends tokens, e-mail, file paths, modpack names or mod lists. You can turn it off in Settings at any time.
 
 ## Local data
@@ -84,14 +84,13 @@ services; uninstalling removes local application files, not remote account data.
 account databases or unredacted logs to public issues. Security reporting instructions:
 https://github.com/B23101/Shaurma-Launcher/blob/main/.github/SECURITY.md
 
-## Shared account and skin service (Base and full editions)
+## Shared account and skin service
 
-Both editions support a Shaurma identity for skin management and Google/Microsoft sign-in.
+The launcher supports a Shaurma identity for skin management and Google/Microsoft sign-in.
 The identity service receives the provider identity token needed to verify sign-in and account
 identifiers used for the skin account. Friends, chat, P2P sharing, remote server access and
-cloud playtime are available in both editions under the same account and permission rules.
-Base excludes only the private modpack catalog and its download client; it does not receive
-the private pack token.
+cloud playtime follow the same account and permission rules for everyone. The private modpack
+catalog is shown only on devices activated with an access certificate (see above).
 
 When the Shaurma skin service is enabled, the launcher attaches authlib-injector to Minecraft
 for all account types, including Microsoft accounts. The local proxy sends game session
