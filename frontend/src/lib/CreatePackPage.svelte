@@ -791,7 +791,7 @@
 {/snippet}
 
 <div class="create-page">
-  <div class="tabbar">
+  <div class="tabbar" data-tour="tabs">
   <button class="tab-btn" class:active={tab === 'manual'} onclick={() => tab = 'manual'}>
     <i class="ti ti-adjustments"></i> {t('createPack.tab.manual')}
   </button>
@@ -806,7 +806,7 @@
   <div class="create-grid">
     <div>
       <!-- ОСНОВНЕ -->
-      <div class="card">
+      <div class="card" data-tour="basic">
         <div class="card-head">
           <div class="ci"><i class="ti ti-id"></i></div>
           <div class="ctw"><div class="ct">{t('createPack.section.basic')}</div><div class="cd">{t('createPack.section.basic.desc')}</div></div>
@@ -846,7 +846,7 @@
       </div>
 
       <!-- ВЕРСІЯ ГРИ -->
-      <div class="card">
+      <div class="card" data-tour="version">
         <div class="card-head">
           <div class="ci violet"><i class="ti ti-versions"></i></div>
           <div class="ctw"><div class="ct">{t('createPack.section.version')}</div><div class="cd">{t('createPack.section.version.desc')}</div></div>
@@ -875,7 +875,7 @@
           {#if availabilityChecked && availableLoaders.length < loaders.length}
             <div class="field-hint" style="margin-bottom:6px;color:var(--yellow)"><i class="ti ti-alert-triangle"></i> {t('createPack.loader.unavailableHint')}</div>
           {/if}
-          <div class="loader-grid">
+          <div class="loader-grid" data-tour="loader">
             {#each loaders.filter(l => availableLoaders.includes(l.id)) as l (l.id)}
               <div class="loader-opt" class:sel={loader === l.id} onclick={() => selectLoader(l.id)} role="button" tabindex="0">
                 <img class="loader-ic" src={l.icon} alt="" style="--lcol:{l.color}" />
@@ -920,7 +920,7 @@
       {/if}
 
       <!-- ПРОДУКТИВНІСТЬ -->
-      <div class="card">
+      <div class="card" data-tour="perf">
         <div class="card-head">
           <div class="ci green"><i class="ti ti-cpu"></i></div>
           <div class="ctw"><div class="ct">{t('createPack.section.perf')}</div><div class="cd">{t('createPack.section.perf.desc')}</div></div>
@@ -946,7 +946,7 @@
       </div>
 
       <!-- JAVA -->
-      <div class="card">
+      <div class="card" data-tour="java">
         <div class="card-head">
           <div class="ci"><i class="ti ti-coffee"></i></div>
           <div class="ctw"><div class="ct">{t('createPack.section.java')}</div><div class="cd">{t('createPack.section.java.desc')}</div></div>
@@ -969,7 +969,7 @@
     </div>
 
     <!-- ПРАВА КОЛОНКА -->
-    <div class="preview-col">
+    <div class="preview-col" data-tour="visual">
       <!-- Вигляд — СПІЛЬНИЙ віджет із збіркою та сторінкою сервера. -->
       <AppearanceEditor
         title={t('createPack.section.visual')}
@@ -1148,7 +1148,7 @@
      (особливо вкладка «Імпортувати» з міграцією модів), і кнопки
      «Скасувати»/«Створити» вгорі доводилось шукати гортанням назад.
      Тепер вони завжди на видноті, під активною вкладкою. -->
-<div class="create-footer">
+<div class="create-footer" data-tour="submit">
   <button class="btn btn-ghost" onclick={onCancel}><i class="ti ti-x"></i> {t('createPack.cancel')}</button>
   <button class="btn btn-primary" disabled={submitting || (tab === 'import' && !importReady) || (tab === 'manual' && loader !== 'vanilla' && !loaderVersion)} onclick={submit}>
     <i class="ti {submitting ? 'ti-loader spin' : tab === 'import' ? 'ti-download' : 'ti-check'}"></i>

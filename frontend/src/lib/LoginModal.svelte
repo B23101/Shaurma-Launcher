@@ -106,7 +106,6 @@
           <span>Google</span>
         </button>
       </div>
-      <div class="skin-hint"><i class="ti ti-info-circle"></i> {t('login.hint')}</div>
       <!-- Офлайн-акаунт «просто нік» — БЕЗ реєстрації Шаурми (для
            розробки/тестів і тих, кому не потрібен Google/Microsoft).
            Раніше в Shaurma-редакції цієї опції не було взагалі: модалка

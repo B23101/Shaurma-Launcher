@@ -34,9 +34,12 @@ package main
 // доставки.
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // flatpakSeedDir — тека всередині Flatpak-образу, куди
@@ -93,6 +96,11 @@ func seedFromFlatpakIfNeeded() {
 	needCore := launcherIncomplete()
 	needManifest := !fileExists(filepath.Join(dir, "launcher-version.json"))
 	needUpdaterUI := !dirHasFiles(filepath.Join(dir, "updater-frontend"))
+	// Пакет оновлено (flatpak install --reinstall нової версії): у теці даних
+	// лежить набір старішої версії — розкладаємо запечений набір повністю.
+	if seedNewerThan(filepath.Join(flatpakSeedDir, "launcher-version.json"), filepath.Join(dir, "launcher-version.json")) {
+		needCore, needManifest, needUpdaterUI = true, true, true
+	}
 	if !needCore && !needManifest && !needUpdaterUI {
 		return // все на місці (звичайний повторний запуск) — нема що копіювати
 	}
@@ -189,4 +197,49 @@ func copyDirRecursive(src, dst string) error {
 		}
 		return copyFile(path, target)
 	})
+}
+
+// seedNewerThan — версія запеченого маніфесту новіша за маніфест у теці даних.
+func seedNewerThan(seedManifest, dataManifest string) bool {
+	seed := manifestVersion(seedManifest)
+	if seed == "" {
+		return false
+	}
+	data := manifestVersion(dataManifest)
+	return data == "" || compareVersions(seed, data) > 0
+}
+
+func manifestVersion(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var m struct {
+		Version string `json:"version"`
+	}
+	if json.Unmarshal(raw, &m) != nil {
+		return ""
+	}
+	return strings.TrimPrefix(strings.TrimSpace(m.Version), "v")
+}
+
+// compareVersions — числове порівняння X.Y.Z[.W].
+func compareVersions(a, b string) int {
+	x, y := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(x) || i < len(y); i++ {
+		var p, q int
+		if i < len(x) {
+			p, _ = strconv.Atoi(x[i])
+		}
+		if i < len(y) {
+			q, _ = strconv.Atoi(y[i])
+		}
+		if p != q {
+			if p > q {
+				return 1
+			}
+			return -1
+		}
+	}
+	return 0
 }

@@ -87,10 +87,14 @@ type API struct {
 	// OnHostStopped — тунель зупинено не користувачем (оренду забрано / співхоста відкликано). App
 	// перетворює це на подію для UI.
 	OnHostStopped func(subdomain, reason string)
+	// OnDisabledJoin — P2P вимкнено, а гравець пробує зайти на P2P-адресу
+	// (disabled_notice.go). App показує вікно з пропозицією увімкнути P2P.
+	OnDisabledJoin func(address string)
 
 	guest        *GuestService
 	guestStarted bool
 	guestErr     error
+	disabledNote *disabledNotice
 }
 
 // NewAPI створює P2P API.
@@ -919,6 +923,8 @@ func (a *API) EnsureP2PGuestService() error {
 
 // ensureGuestLocked — власне запуск. Виклик ЛИШЕ з-під a.mu.
 func (a *API) ensureGuestLocked() error {
+	// Автовідповідач «P2P вимкнено» займає той самий вхід — звільняємо його.
+	a.stopDisabledNoticeLocked()
 	if a.guestStarted {
 		// A failed bind is not a running service. Retry on the next explicit
 		// request after the port/permission issue has been resolved, without
@@ -971,9 +977,34 @@ func (a *API) SetGuestEnabled(enabled bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if !enabled {
-		return a.stopGuestLocked()
+		err := a.stopGuestLocked()
+		a.startDisabledNoticeLocked()
+		return err
 	}
 	return a.ensureGuestLocked()
+}
+
+// startDisabledNoticeLocked піднімає автовідповідач на вході P2P (лише коли
+// P2P вимкнено). Зайнятий порт — не помилка для лаунчера: просто без пояснення.
+func (a *API) startDisabledNoticeLocked() {
+	if a.disabledNote != nil {
+		return
+	}
+	d, err := startDisabledNotice(PlaySuffix, func(address string) {
+		if cb := a.OnDisabledJoin; cb != nil {
+			cb(address)
+		}
+	})
+	if err != nil {
+		launchlog.Warn(compGuest, "автовідповідач «P2P вимкнено» не запущено: %v", err)
+		return
+	}
+	a.disabledNote = d
+}
+
+func (a *API) stopDisabledNoticeLocked() {
+	a.disabledNote.stop()
+	a.disabledNote = nil
 }
 
 func errString(err error) string {

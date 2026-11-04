@@ -156,6 +156,7 @@ export const P2P_REJECT_KEYS = [
   'hostOffline', 'hostOfflineAnon', 'notAllowed', 'onlyFriends', 'onlyList', 'onlyAccounts',
   'accountRequired', 'tunnelDisabled', 'rateLimited', 'lobbyUnreachable', 'networkDown', 'noSlot',
   'hostNoResponse', 'gameNotRunning', 'ticketRejected', 'checkUnavailable', 'badAddress', 'internal',
+  'p2pDisabled',
 ] as const
 
 /** Переклади повідомлень про відмову поточною мовою (для бекенду). */

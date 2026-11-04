@@ -68,6 +68,7 @@ const (
 	RejCheckUnavailable              // хост не зміг перевірити доступ (вузол недоступний)
 	RejBadAddress                    // адреса введена не у форматі <код>.play.<суфікс>
 	RejInternal                      // внутрішня помилка лаунчера
+	RejP2PDisabled                   // гравець сам вимкнув P2P у своєму лаунчері
 	rejMax                           // службова межа — завжди остання
 )
 
@@ -92,6 +93,7 @@ var rejectKeys = [...]string{
 	RejCheckUnavailable: "checkUnavailable",
 	RejBadAddress:       "badAddress",
 	RejInternal:         "internal",
+	RejP2PDisabled:      "p2pDisabled",
 }
 
 // RejectKey — стабільний ключ причини ("hostOffline", …); для логів і перекладів.
@@ -134,6 +136,7 @@ var builtinRejectTexts = map[string]map[string]string{
 		"checkUnavailable": "Хост не зміг перевірити доступ. Спробуйте за хвилину.",
 		"badAddress":       "Невірна P2P-адреса. Перевірте, чи ввели її повністю.",
 		"internal":         "Внутрішня помилка лаунчера. Спробуйте ще раз.",
+		"p2pDisabled":      "Ви вимкнули систему P2P у лаунчері. Щоб зайти на сервер друга, увімкніть «Гру через інтернет» у налаштуваннях лаунчера.",
 	},
 	"en": {
 		"hostOffline":      "The host is offline right now. Try again later.",
@@ -154,10 +157,11 @@ var builtinRejectTexts = map[string]map[string]string{
 		"checkUnavailable": "The host could not verify your access. Try again in a minute.",
 		"badAddress":       "Invalid P2P address. Check that you typed it in full.",
 		"internal":         "Internal launcher error. Please try again.",
+		"p2pDisabled":      "You turned off P2P in the launcher. To join a friend's server, turn on online play in the launcher settings.",
 	},
 }
 
-// maxRejectTexts — скільки ключів приймаємо від фронтенду за раз (ключів у нас 18).
+// maxRejectTexts — скільки ключів приймаємо від фронтенду за раз (ключів у нас 19).
 const maxRejectTexts = 64
 
 var (

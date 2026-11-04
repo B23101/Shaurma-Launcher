@@ -99,12 +99,9 @@ jobs:
             console.log("build order OK:", o.version, o.sha);
           '
 
-  checks:
-    needs: validate
-    uses: ./.github/workflows/ci.yml
-
+  # Перевірки коду (ci.yml) йдуть на кожен push у main окремо й випуск не гальмують.
   windows-components:
-    needs: [validate, checks]
+    needs: [validate]
     environment: release
     runs-on: windows-latest
     timeout-minutes: 360
@@ -201,8 +198,67 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Linux: увесь лаунчер одним пакетом Flatpak, зібраним усередині
+  # org.gnome.Sdk//50 (сумісний з будь-яким дистрибутивом, де є flatpak).
+  # Фронтенд — ті самі zip, що й у Windows-компонентах.
+  linux-flatpak:
+    needs: [validate, windows-components]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.sha }}
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: launcher-assets
+          path: dist/assets
+
+      - name: Install flatpak-builder
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder unzip
+          # bubblewrap у flatpak-builder потребує непривілейованих user namespaces.
+          if [ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Build ShaurmaLauncher.flatpak
+        env:
+          SHAURMA_MANIFEST_PUBKEYS: ${{ vars.SHAURMA_MANIFEST_PUBKEYS }}
+          SHAURMA_ROOT_PUBKEYS: ${{ vars.SHAURMA_ROOT_PUBKEYS }}
+          SHAURMA_KEYSET_B64: ${{ vars.SHAURMA_KEYSET_B64 }}
+          SHAURMA_KEYSET_SIG: ${{ vars.SHAURMA_KEYSET_SIG }}
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
+          SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          [ -n "$SHAURMA_ROOT_PUBKEYS" ] || { echo 'SHAURMA_ROOT_PUBKEYS is required'; exit 1; }
+          bash scripts/build-linux-flatpak.sh "$BUILD_VERSION" dist/assets dist/linux
+
+      - name: Smoke test (install bundle, check files)
+        run: |
+          flatpak install --user --noninteractive -y --bundle dist/linux/ShaurmaLauncher.flatpak
+          flatpak info --user com.shaurma.Launcher
+          flatpak run --command=sh com.shaurma.Launcher -c 'ls -la /app/bin/ShaurmLauncher /app/shaurma-seed /app/bin/xrandr && cat /app/shaurma-seed/launcher-version.json'
+          flatpak run --command=sh com.shaurma.Launcher -c '! ldd /app/bin/ShaurmLauncher | grep "not found"'
+
+      - name: Upload Linux package
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: linux-flatpak
+          path: |
+            dist/linux/ShaurmaLauncher.flatpak
+            dist/linux/install-linux.sh
+          if-no-files-found: error
+          retention-days: 14
+
   windows-installer:
-    needs: windows-components
+    needs: [windows-components, linux-flatpak]
     environment: release
     runs-on: windows-latest
     timeout-minutes: 360
@@ -231,6 +287,11 @@ jobs:
         with:
           name: launcher-assets
           path: dist/assets
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: linux-flatpak
+          path: dist/linux
 
       - name: Build installer
         shell: pwsh
@@ -283,6 +344,9 @@ jobs:
           Copy-Item dist/final/shaurma/updater.dll "$out/updater.dll"
           Copy-Item dist/assets/frontend.zip "$out/frontend.zip"
           Copy-Item dist/assets/updater-frontend.zip "$out/updater-frontend.zip"
+          # Linux: пакет Flatpak (входить у підписаний маніфест) і скрипт встановлення.
+          Copy-Item dist/linux/ShaurmaLauncher.flatpak "$out/ShaurmaLauncher.flatpak"
+          Copy-Item dist/linux/install-linux.sh "$out/install-linux.sh"
           Get-ChildItem $out -File | Sort-Object Name | ForEach-Object {
             '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
           } | Set-Content "$out/SHA256SUMS" -Encoding ascii
@@ -294,6 +358,8 @@ jobs:
             dist/release/*.exe
             dist/release/*.dll
             dist/release/*.zip
+            dist/release/*.flatpak
+            dist/release/*.sh
             dist/release/SHA256SUMS
             dist/installer/ShaurmaLauncher-setup.exe
 

@@ -16,6 +16,7 @@
   import { syncAppearance } from './theme.svelte'
   import type { SocialNotifyPayload } from './types'
   import notifySoundUrl from '../assets/sounds/chat-notify.mp3'
+  import appIcon from '../assets/images/appicon.png'
 
   // Тривалість показу картки. ОСНОВНЕ джерело — поле durationMs у самій
   // події (бекенд підставляє його з налаштувань «Час показу» при
@@ -230,8 +231,10 @@
       onclick={() => open(c)}
       onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(c) } }}
     >
-      <span class="np-av">
-        {#if c.kind !== 'info' && heads[c.title]}<img src={heads[c.title]} alt="" />{:else}<i class="ti ti-flame"></i>{/if}
+      <span class="np-av" class:app={c.kind === 'info' || !heads[c.title]}>
+        {#if c.kind !== 'info' && heads[c.title]}<img src={heads[c.title]} alt="" />{:else}<img class="np-app" src={appIcon} alt="" />{/if}
+        {#if c.kind === 'chat'}<span class="np-badge"><i class="ti ti-message-circle-filled"></i></span>
+        {:else if c.kind === 'invite'}<span class="np-badge inv"><i class="ti ti-user-plus"></i></span>{/if}
       </span>
       <span class="np-text">
         <span class="np-title">{c.title}</span>
@@ -250,113 +253,68 @@
 </div>
 
 <style>
-  /* Вікно тостів ВСУЦІЛЬНУ заповнене стосом карток: без прозорих відступів,
-     тіней і заокруглень. Раніше навколо карток був прозорий відступ 12px —
-     якщо WebView2/DWM не давав справжньої прозорості (віддалений робочий
-     стіл, ВМ, без GPU-прискорення), він малювався сірим прямокутником.
-     Тепер вікно = стос, тож прозорість не потрібна взагалі і однаково
-     виглядає на Windows та Linux. Фон html/body — суцільний, !important,
-     щоб його не перекрив інлайн-стиль чи style.css. */
-  :global(html), :global(body) { background: var(--bg-panel) !important; margin: 0; }
+  /* Вікно тостів суцільне (без прозорих ділянок: на ВМ/RDP без GPU прозорість
+     малювалась сірим). Тому картки лежать на суцільній «підкладці» кольору
+     фону лаунчера, а відступи між ними — це та сама підкладка. */
+  :global(html), :global(body) { background: var(--bg-app) !important; margin: 0; }
   :global(#app) { background: transparent !important; height: auto !important; display: block !important; }
 
-  /* Контейнер — ЄДИНЕ джерело висоти вікна. overflow:hidden обрізає
-     анімацію появи/зникнення карток по межі вікна. */
+  /* Контейнер — ЄДИНЕ джерело висоти вікна. */
   .np {
-    box-sizing: border-box;
-    width: 360px;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-hi);
-    overflow: hidden;
+    box-sizing: border-box; width: 360px;
+    display: flex; flex-direction: column; gap: 6px; padding: 8px;
+    background: var(--bg-app); overflow: hidden;
   }
 
   .np-card {
-    position: relative;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 9px 30px 9px 10px;
-    background: var(--bg-panel);
-    border-bottom: 1px solid var(--border);
+    position: relative; display: flex; align-items: center; gap: 11px;
+    padding: 10px 34px 10px 11px; border-radius: 12px;
+    background: var(--bg-card); border: 1px solid var(--border-hi);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, .28);
     cursor: pointer;
-    animation: np-in .26s cubic-bezier(.22, 1.1, .36, 1) both;
-    transition: opacity .24s ease, transform .24s ease;
+    animation: np-in .42s cubic-bezier(.22, 1.2, .36, 1) both;
+    transition: opacity .24s ease, transform .24s ease, border-color .15s, background .15s;
   }
-  .np-card:last-child { border-bottom: 0; }
-  .np-card.leaving {
-    opacity: 0;
-    transform: translateY(8px);
-    pointer-events: none;
-  }
-  .np-card:hover { background: var(--hover); }
+  .np-card:hover { border-color: rgba(var(--orange-rgb), .55); background: color-mix(in srgb, var(--bg-card) 92%, var(--orange)); }
+  .np-card.leaving { opacity: 0; transform: translateX(30px); pointer-events: none; }
   .np-card:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
-
-  @keyframes np-in {
-    from { opacity: 0; transform: translateY(-14px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes np-in { from { opacity: 0; transform: translateX(44px) } to { opacity: 1; transform: none } }
 
   .np-av {
-    flex: 0 0 auto;
-    width: 34px;
-    height: 34px;
-    border-radius: 9px;
-    background: var(--bg-input);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--orange);
-    font-size: 17px;
-    overflow: hidden;
+    position: relative; flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px;
+    background: var(--bg-input); display: grid; place-items: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, .3);
+    animation: np-pop .45s cubic-bezier(.34, 1.56, .64, 1) backwards .12s;
   }
-  .np-av img { width: 100%; height: 100%; image-rendering: pixelated; }
+  .np-av > img:first-child { width: 100%; height: 100%; border-radius: 8px; image-rendering: pixelated; }
+  .np-av.app { background: rgba(var(--orange-rgb), .14); box-shadow: none; }
+  .np-av .np-app { width: 24px !important; height: 24px !important; object-fit: contain; image-rendering: auto !important; }
+  @keyframes np-pop { from { transform: scale(.4); opacity: 0 } }
+  .np-badge {
+    position: absolute; right: -4px; bottom: -4px; width: 16px; height: 16px; border-radius: 50%;
+    display: grid; place-items: center; font-size: 10px; color: #fff;
+    background: var(--orange); border: 2px solid var(--bg-card);
+  }
+  .np-badge.inv { background: var(--green); }
 
-  .np-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .np-title {
-    font: 650 12.5px/1.25 var(--font-ui);
-    color: var(--text);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+  .np-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .np-title { font: 700 12.5px/1.25 var(--font-ui); color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .np-sub {
-    font: 500 11.5px/1.35 var(--font-ui);
-    color: var(--text-mute);
-    display: -webkit-box;
-    line-clamp: 2;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    word-break: break-word;
+    font: 500 11.5px/1.35 var(--font-ui); color: var(--text-mute);
+    display: -webkit-box; line-clamp: 2; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; word-break: break-word;
   }
 
   .np-x {
-    position: absolute;
-    top: 50%;
-    right: 8px;
-    transform: translateY(-50%);
-    width: 24px;
-    height: 24px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--hover);
-    color: var(--text-mute);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 13px;
-    cursor: pointer;
-    opacity: .55;
-    transition: opacity .14s, background .14s, color .14s, border-color .14s, transform .14s;
+    position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+    width: 22px; height: 22px; border: none; border-radius: 7px;
+    background: transparent; color: var(--text-dim);
+    display: grid; place-items: center; font-size: 13px; cursor: pointer;
+    opacity: 0; transition: opacity .14s, background .14s, color .14s;
   }
-  .np-card:hover .np-x,
-  .np-x:focus-visible { opacity: 1; }
-  .np-x:hover { background: rgba(239,68,68,.12); border-color: rgba(239,68,68,.45); color: var(--red); }
-  .np-x:active { transform: translateY(-50%) scale(.92); }
+  .np-card:hover .np-x, .np-x:focus-visible { opacity: 1; }
+  .np-x:hover { background: rgba(239, 68, 68, .14); color: var(--red); }
   .np-x:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 
-  /* Запрошення в друзі — акцентна смужка зліва. */
-  .np-card.invite { box-shadow: inset 3px 0 0 var(--orange); }
+  @media (prefers-reduced-motion: reduce) { .np-card, .np-av { animation: none; } }
 </style>

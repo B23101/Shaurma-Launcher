@@ -232,7 +232,9 @@ func (a *App) EnsureP2PGuestService() error {
 		return nil
 	}
 	if a.p2pDisabled() {
-		return nil
+		// P2P вимкнено: на вході працює лише автовідповідач, який пояснює
+		// гравцеві в грі, що P2P вимкнено, і просить лаунчер показати вікно.
+		return a.p2pAPI.SetGuestEnabled(false)
 	}
 	// Приєднання до чужих світів працює БЕЗ акаунта Шаурми (join потребує лише токена лаунчера).
 	return a.p2pAPI.EnsureP2PGuestService()
@@ -263,6 +265,9 @@ func (a *App) wireP2PEvents() {
 	p2p.SetNetworkFailureHandler(func() { a.emit("p2p:network_failure", nil) })
 	a.p2pAPI.OnHostStopped = func(subdomain, reason string) {
 		a.emit("p2p:host_stopped", map[string]string{"subdomain": subdomain, "reason": reason})
+	}
+	a.p2pAPI.OnDisabledJoin = func(address string) {
+		a.emit("p2p:disabled_join", map[string]string{"address": address})
 	}
 }
 

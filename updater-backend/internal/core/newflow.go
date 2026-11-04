@@ -126,6 +126,8 @@ func runNew(ctx context.Context, installDir string, edition Channel, updateChann
 	if installUpdates || !launcherInstalled {
 		toDownload = mergeUnique(toDownload, missingRequiredComponents(installDir, best.remote))
 	}
+	inFlatpak := runningInFlatpak()
+	toDownload = filterFlatpakBundle(toDownload, inFlatpak)
 	if len(toDownload) == 0 {
 		notify(cb, StatusUpToDate, cb.tr("Лаунчер актуальний", "Launcher is up to date"))
 		holdSplash(start, minSplashShow)
@@ -177,6 +179,26 @@ func runNew(ctx context.Context, installDir string, edition Channel, updateChann
 	}
 
 	notify(cb, StatusInstalling, cb.meme(StatusInstalling, 0))
+	// Flatpak: новий пакет ставить flatpak на хості, потім лаунчер перезапускається.
+	if inFlatpak {
+		for _, dc := range downloaded {
+			if !isFlatpakBundle(dc.Component) {
+				continue
+			}
+			info, err := installFlatpakBundle(ctx, dc.TempPath)
+			if err != nil {
+				return launchCurrent(cb.tr("Не вдалося встановити оновлення Flatpak: ", "Couldn't install the Flatpak update: ") + err.Error())
+			}
+			eng.RecordInstalled(best.remote.Version)
+			notify(cb, StatusLaunching, cb.tr("Оновлено до %s — перезапуск…", "Updated to %s — restarting…", best.remote.Version))
+			if err := relaunchFlatpak(info); err != nil {
+				return launchCurrent(cb.tr("Оновлення встановлено, перезапустіть лаунчер", "Update installed, please restart the launcher"))
+			}
+			eng.Close() // стан і lock-файл — до виходу (defer не спрацює після os.Exit)
+			time.Sleep(launchPause)
+			os.Exit(0)
+		}
+	}
 	if best.plan != nil {
 		if err := eng.BeforeApply(best.plan); err != nil {
 			return launchCurrent(err.Error())

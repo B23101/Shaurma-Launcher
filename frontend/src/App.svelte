@@ -35,6 +35,7 @@
   import PackInstancePage from './lib/PackInstancePage.svelte'
   import LaunchIntro from './lib/LaunchIntro.svelte'
   import CreatePackPage from './lib/CreatePackPage.svelte'
+  import CoachTour from './lib/CoachTour.svelte'
   import AnalyticsPanel from './lib/AnalyticsPanel.svelte'
   import FriendsPage from './lib/FriendsPage.svelte'
   import AddFriendModal from './lib/friends/AddFriendModal.svelte'
@@ -635,6 +636,7 @@
 
   // Login modal
   let loginMsStep = $state<'idle' | 'waiting'>('idle')
+  let p2pDisabledAsking = false
   // Google-флоу скін-системи (незалежний від Microsoft-кроку вище):
   // 'waiting' — чекаємо повернення з браузера; 'need-nick' — OAuth
   // пройдено, а в акаунта ще нема ніка на сервері (лише тоді питаємо).
@@ -4735,14 +4737,30 @@
     showWizard = true
   }
 
-  async function wizardFinished() {
+  async function wizardFinished(o?: { createPack?: boolean }) {
     showWizard = false
     toast(t('settings.saved'), 'success')
     await loadData()
+    // Обрав «Створити першу збірку» — після заставки відкриваємо створення
+    // збірки з підказками (CoachTour).
+    if (o?.createPack) { openCreatePack(); createPackTour = true }
     // Після майстра — повноекранна заставка (LaunchIntro). Показуємо поверх
     // основного UI; її завершення керується всередині компонента (onDone).
     showIntro = true
   }
+  // Підказки на сторінці створення збірки для новачка (після майстра).
+  let createPackTour = $state(false)
+  $effect(() => { if (!showCreatePack && createPackTour && !showIntro && !showWizard) createPackTour = false })
+  const packTourSteps = $derived([
+    { id: 'tabs', icon: 'ti-route', title: t('tour.pack.tabs'), text: t('tour.pack.tabsD') },
+    { id: 'basic', icon: 'ti-id', title: t('tour.pack.basic'), text: t('tour.pack.basicD') },
+    { id: 'version', icon: 'ti-versions', title: t('tour.pack.version'), text: t('tour.pack.versionD') },
+    { id: 'loader', icon: 'ti-puzzle', title: t('tour.pack.loader'), text: t('tour.pack.loaderD') },
+    { id: 'perf', icon: 'ti-cpu', title: t('tour.pack.perf'), text: t('tour.pack.perfD') },
+    { id: 'java', icon: 'ti-coffee', title: t('tour.pack.java'), text: t('tour.pack.javaD') },
+    { id: 'visual', icon: 'ti-palette', title: t('tour.pack.visual'), text: t('tour.pack.visualD') },
+    { id: 'submit', icon: 'ti-check', title: t('tour.pack.submit'), text: t('tour.pack.submitD') },
+  ])
 
   // ── Login modal ──
   // msLoginTimer — автоскасування очікування Microsoft-входу. Якщо
@@ -4828,7 +4846,8 @@
     await refreshAccountsAfterSignIn()
     modalLogin = false; loginGate = false
     // Новий НЕліцензійний акаунт → одразу пропонуємо поставити скін (гардероб відкриється з ним).
-    if (!r.licensed && !r.existing && r.nickname) skinOfferNick = r.nickname
+    // Під час майстра першого запуску пропозицію скіна не показуємо: майстер сам веде далі.
+    if (!r.licensed && !r.existing && r.nickname && !showWizard) skinOfferNick = r.nickname
     else maybeShowPostLoginPrompts()
   }
 
@@ -5382,6 +5401,21 @@
     // бекенд уже скинув кеш голови (avatar.Service.Invalidate), тож
     // GetAccountHead поверне голову вже з нового скіна.
     on('avatar:changed', () => refreshHeads())
+    // Гравець пробує зайти на P2P-адресу друга, а «Гра через інтернет»
+    // вимкнена: гра вже показала пояснення, тут пропонуємо увімкнути одразу.
+    on('p2p:disabled_join', async (p: any) => {
+      if (p2pDisabledAsking) return
+      p2pDisabledAsking = true
+      try {
+        const ok = await confirmDialog(t('p2pOff.title'), t('p2pOff.text', { address: p?.address || '' }), {
+          confirmLabel: t('p2pOff.enable'), cancelLabel: t('p2pOff.keep'),
+        })
+        if (ok) {
+          updateSetting('disableP2P', false)
+          toast(t('p2pOff.enabled'), 'success')
+        }
+      } finally { p2pDisabledAsking = false }
+    })
     // Бекенд дізнався, що refresh-токен Google-сесії відхилено: оновлюємо
     // статус і самі показуємо вікно перезаходу (див. skinReloginStart).
     on('skin-auth:expired', async () => {
@@ -5899,7 +5933,22 @@
 <!-- ═══════════════════ FULL SCREEN WIZARD ═══════════════════ -->
 {#if showWizard}
   <div class="wiz-wrap">
-    <Wizard onFinished={wizardFinished} />
+    <Wizard
+      onFinished={wizardFinished}
+      {accounts}
+      msStep={loginMsStep}
+      googleStep={googleShaurmaStep}
+      skingate={skinsEnabled}
+      onMsLogin={loginMsStart}
+      onMsCancel={loginMsCancel}
+      onGoogleLogin={loginGoogleStart}
+      onGoogleCancel={loginGoogleCancel}
+      onPirate={loginPirate}
+      {activeAccountId}
+      nickAsk={signInNick}
+      onConfirmNick={confirmSignInNick}
+      onCancelNick={cancelSignInNick}
+    />
   </div>
 {/if}
 
@@ -6543,6 +6592,10 @@
   />
 {/if}
 
+{#if createPackTour && showCreatePack && !showIntro && !showWizard && !modalLogin && !signInNick}
+  <CoachTour steps={packTourSteps} onDone={() => (createPackTour = false)} />
+{/if}
+
 <!-- ═══ LOGIN MODAL ═══ -->
 <!-- Акаунт Шаурми більше НЕ створюється тут окремим Google-входом: для
      Microsoft-акаунта він створюється автоматично після входу, а для
@@ -6565,7 +6618,7 @@
 
 <!-- ═══ «ПРИДУМАЙ НІК» ПІСЛЯ ВХОДУ (новий акаунт Шаурми; Microsoft без ліцензії теж тут) ═══ -->
 <NickChoiceModal
-  open={!!signInNick}
+  open={!!signInNick && !showWizard}
   provider={signInNick?.provider ?? 'google'}
   noLicense={signInNick?.noLicense ?? ''}
   onconfirm={confirmSignInNick}

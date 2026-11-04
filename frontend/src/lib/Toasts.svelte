@@ -31,7 +31,7 @@
   <div class="toast-stack" class:stack-top={toastAnchor.pos === 'top'}>
     {#each toasts as t (t.id)}
       <div class="toast toast-{t.kind}" role="status" onclick={() => dismissToast(t.id)}>
-        <i class="ti {icons[t.kind] ?? 'ti-info-circle'}"></i>
+        <span class="toast-ico"><i class="ti {icons[t.kind] ?? 'ti-info-circle'}"></i></span>
         <span class="toast-msg">{t.message}</span>
         {#if t.kind === 'error' || t.kind === 'warn'}
           <button
@@ -85,18 +85,22 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 14px;
+    padding: 10px 12px 10px 10px;
     border-radius: 12px;
-    background: var(--bg-panel);
+    background: var(--bg-card);
     border: 1px solid var(--border-hi);
     box-shadow: 0 18px 40px rgba(0, 0, 0, .6);
     font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;
-    animation: toastIn .25s ease;
+    animation: toastIn .42s cubic-bezier(.22, 1.2, .36, 1);
     backdrop-filter: blur(10px);
   }
-  .toast i:first-child { font-size: 17px; }
+  .toast-ico {
+    flex-shrink: 0; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 16px;
+    animation: toastPop .45s cubic-bezier(.34, 1.56, .64, 1) backwards .1s;
+  }
+  @keyframes toastPop { from { transform: scale(.4); opacity: 0 } }
   .toast .toast-msg { min-width: 0; }
   .toast .toast-x { margin-left: auto; color: var(--text-dim); font-size: 13px; flex-shrink: 0; }
   .toast-act {
@@ -126,9 +130,10 @@
   .toast-copy:active { transform: scale(.95); }
   .toast-copy.copied { color: var(--green); border-color: var(--green); }
   .toast:hover { border-color: var(--border-hi); }
-  .toast-success i:first-child { color: var(--green); }
-  .toast-error i:first-child { color: var(--red); }
-  .toast-warn i:first-child { color: var(--yellow); }
-  .toast-info i:first-child { color: var(--blue); }
-  @keyframes toastIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+  .toast-success .toast-ico { color: var(--green); background: rgba(16, 185, 129, .16); }
+  .toast-error .toast-ico { color: var(--red); background: rgba(239, 68, 68, .15); }
+  .toast-warn .toast-ico { color: var(--yellow); background: rgba(234, 179, 8, .15); }
+  .toast-info .toast-ico { color: var(--blue); background: rgba(59, 130, 246, .15); }
+  @keyframes toastIn { from { opacity: 0; transform: translateX(44px); } to { opacity: 1; transform: translateX(0); } }
+  @media (prefers-reduced-motion: reduce) { .toast, .toast-ico { animation: none; } }
 </style>
