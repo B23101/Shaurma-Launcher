@@ -1,10 +1,10 @@
 module shaurma-launcher-backend
 
-go 1.25.5
+go 1.26.0
 
 require (
 	golang.org/x/image v0.44.0
-	golang.org/x/sys v0.47.0
+	golang.org/x/sys v0.49.0
 	modernc.org/sqlite v1.56.0
 	tailscale.com v1.94.0
 )
