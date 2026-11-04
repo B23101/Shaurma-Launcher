@@ -177,6 +177,11 @@ function New-Syso([string]$OutDir, [string]$Version, [string]$ProductName, [stri
     New-Item -ItemType Directory -Force -Path $renderDir | Out-Null
     $manifest = (Get-Content (Join-Path $winDir "wails.exe.manifest") -Raw -Encoding UTF8).
         Replace("{{.Info.ProductVersion}}", $Version).Replace("{{.Name}}", "shell")
+    if ($manifest.Contains('{{')) { throw "wails.exe.manifest: нерозкриті плейсхолдери {{...}}" }
+    foreach ($m in [regex]::Matches($manifest, '<assemblyIdentity\s[^>]*?name="([^"]*)"[^>]*?version="([^"]*)"')) {
+        if ($m.Groups[1].Value -notmatch '^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$') { throw "wails.exe.manifest: некоректне ім'я assembly '$($m.Groups[1].Value)'" }
+        if ($m.Groups[2].Value -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$') { throw "wails.exe.manifest: версія assembly '$($m.Groups[2].Value)' має бути a.b.c.d" }
+    }
     [IO.File]::WriteAllText((Join-Path $renderDir "wails.exe.manifest"), $manifest, $utf8NoBom)
     $info = (Get-Content (Join-Path $winDir "info.json") -Raw -Encoding UTF8).
         Replace("{{.Info.ProductVersion}}", $Version).Replace("{{.Info.ProductName}}", $ProductName).

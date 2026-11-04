@@ -332,7 +332,7 @@
     { k: 'showServerTo', icon: 'ti-device-gamepad-2', title: 'acc.modal.priv.server', hint: 'acc.modal.priv.serverHint',
       opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
     { k: 'showProfileTo', icon: 'ti-id-badge-2', title: 'acc.modal.priv.profile', hint: 'acc.modal.priv.profileHint',
-      opts: [['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
+      opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
     { k: 'whoCanMessage', icon: 'ti-message-circle', title: 'acc.modal.priv.msg', hint: 'acc.modal.priv.msgHint',
       opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
     { k: 'friendRequests', icon: 'ti-user-plus', title: 'acc.modal.priv.req', hint: 'acc.modal.priv.reqHint',

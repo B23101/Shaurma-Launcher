@@ -222,6 +222,20 @@ function Get-Token([string]$ed) { if ($ed -eq 'base') { return $TokenBase } else
 # Через go-winres, а не `wails3 generate syso`: wails3 alpha пише таблицю
 # рядків версії так, що Windows (і SignPath) бачать порожні ProductName/
 # ProductVersion. go-winres дає ту саму іконку й маніфест і читабельну версію.
+# Windows відхиляє exe з поганим маніфестом («side-by-side configuration is
+# incorrect»). Перевіряємо ВИРЕНДЕРЕНИЙ маніфест ще на збірці: ім'я assembly
+# не порожнє/без крапки на краю, версія строго a.b.c.d, плейсхолдерів не лишилось.
+function Assert-ManifestValid([string]$Manifest, [string]$Label) {
+    if ($Manifest.Contains('{{')) { Fail "$Label: manifest has unresolved {{...}} placeholders" }
+    $ids = [regex]::Matches($Manifest, '<assemblyIdentity\s[^>]*?name="([^"]*)"[^>]*?version="([^"]*)"')
+    if ($ids.Count -eq 0) { Fail "$Label: manifest has no assemblyIdentity" }
+    foreach ($m in $ids) {
+        $n = $m.Groups[1].Value; $v = $m.Groups[2].Value
+        if ($n -notmatch '^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$') { Fail "$Label: invalid assembly name '$n' (empty, dot at edge or bad chars)" }
+        if ($v -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$') { Fail "$Label: invalid assembly version '$v' for '$n' (need a.b.c.d)" }
+    }
+}
+
 function New-WailsSyso([string]$DestDir, [string]$OriginalName = 'ShaurmLauncher.exe') {
     $gw = Ensure-GoTool 'go-winres.exe' "github.com/tc-hib/go-winres@$GoWinresVersion"
     $winDir = Join-Path $Root 'shell\build\windows'
@@ -231,6 +245,7 @@ function New-WailsSyso([string]$DestDir, [string]$OriginalName = 'ShaurmLauncher
 
     $manifest = (Get-Content (Join-Path $winDir 'wails.exe.manifest') -Raw -Encoding UTF8).
         Replace('{{.Info.ProductVersion}}', $ProductVersion).Replace('{{.Name}}', 'shell')
+    Assert-ManifestValid $manifest 'shell/build/windows/wails.exe.manifest'
     [IO.File]::WriteAllText((Join-Path $render 'app.manifest'), $manifest, $utf8)
     Copy-Item (Join-Path $winDir 'icon.ico') (Join-Path $render 'icon.ico') -Force
 

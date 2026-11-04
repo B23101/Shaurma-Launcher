@@ -35,7 +35,7 @@ const (
 	ProfileVisNobody  = "nobody"
 )
 
-func validProfileVis(v string) bool { return v == ProfileVisFriends || v == ProfileVisNobody }
+func validProfileVis(v string) bool { return v == "everyone" || v == ProfileVisFriends || v == ProfileVisNobody }
 
 // GetFriendProfile читає профіль друга. Помилки сервера: 403 not_friends, 404 user_not_found.
 func (c *Client) GetFriendProfile(accountID string) (FriendProfile, error) {

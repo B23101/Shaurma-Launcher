@@ -3077,7 +3077,7 @@ export interface SocialFriendProfile {
   friendsCount?: number
 }
 // Кому я показую свій профіль (біо, колір, статистику). Діє на сервері.
-export type SocialProfileVisibility = 'friends' | 'nobody'
+export type SocialProfileVisibility = 'everyone' | 'friends' | 'nobody'
 export interface SocialPresenceEvent {
   accountId: string
   presence: SocialPresence

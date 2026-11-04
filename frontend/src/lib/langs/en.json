@@ -937,7 +937,7 @@
   "acc.modal.opt.nobody": "No one",
   "acc.modal.opt.fof": "Friends of friends",
   "acc.modal.priv.profile": "My profile",
-  "acc.modal.priv.profileHint": "Who can see my bio, colour, play time, builds and sign-up date",
+  "acc.modal.priv.profileHint": "Choose Everyone to show your portrait, bio and colour on invite pages. Only friends can see statistics.",
   "acc.modal.friend.hidden": "This player has hidden their profile",
   "acc.modal.friend.hiddenHint": "Bio, colour and stats are unavailable: the server does not send them.",
   "acc.modal.friend.noBio": "This player hasn't written anything about themselves.",

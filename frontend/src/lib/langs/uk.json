@@ -937,7 +937,7 @@
   "acc.modal.opt.nobody": "Ніхто",
   "acc.modal.opt.fof": "Друзі друзів",
   "acc.modal.priv.profile": "Мій профіль",
-  "acc.modal.priv.profileHint": "Хто бачить біо, колір, ігровий час, збірки та дату реєстрації",
+  "acc.modal.priv.profileHint": "Виберіть «Усі», щоб показувати іконку, біо та колір на сайті запрошень. Статистику бачать лише друзі.",
   "acc.modal.friend.hidden": "Гравець приховав свій профіль",
   "acc.modal.friend.hiddenHint": "Біо, колір і статистика недоступні: сервер їх не віддає.",
   "acc.modal.friend.noBio": "Гравець нічого не написав про себе.",
