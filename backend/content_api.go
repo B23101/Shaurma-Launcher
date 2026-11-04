@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"shaurma-launcher-backend/internal/model"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // ── Менеджер контенту збірки (ресурспаки/датапаки/шейдери) ───────────────
@@ -232,7 +233,7 @@ func (a *App) DeleteContentFile(packID, contentDir, fileName string) error {
 	}
 	var firstErr error
 	for _, p := range paths {
-		if err := os.RemoveAll(p); err != nil && !os.IsNotExist(err) && firstErr == nil {
+		if err := safedel.RemoveAll(p); err != nil && !os.IsNotExist(err) && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -288,7 +289,7 @@ func (a *App) TransferContentFile(packID, contentDir, fileName, targetPackID str
 // copyContent копіює файл АБО теку (для датапаків-тек) зі збереженням
 // прав. Ціль попередньо видаляється (при overwrite).
 func copyContent(src, dst string) error {
-	if err := os.RemoveAll(dst); err != nil {
+	if err := safedel.RemoveAll(dst); err != nil {
 		return err
 	}
 	info, err := os.Stat(src)

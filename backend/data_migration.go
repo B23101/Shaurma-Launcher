@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // ── Міграція папки даних з прогресом та crash recovery ────────────────────
@@ -265,7 +267,7 @@ func (a *App) executeMigration(state *MigrationState) error {
 				Current: sub,
 				Percent: 0,
 			})
-			os.RemoveAll(src)
+			safedel.RemoveAll(src)
 			log.Printf("migration: видалено кешову теку %s (перекачується автоматично)", src)
 		} else {
 			// Юзерські дані — переносимо
@@ -292,7 +294,7 @@ func (a *App) executeMigration(state *MigrationState) error {
 	})
 
 	if rest, _ := os.ReadDir(state.OldDir); len(rest) == 0 {
-		_ = os.RemoveAll(state.OldDir)
+		_ = safedel.RemoveIfEmpty(state.OldDir)
 		log.Printf("SetAppDir: стара папка видалена: %s", state.OldDir)
 	}
 
@@ -361,7 +363,7 @@ func (a *App) moveTreeWithProgress(src, dst string, state *MigrationState, doneF
 	// Прибираємо порожню теку-джерело
 	if firstErr == nil {
 		if rest, _ := os.ReadDir(src); len(rest) == 0 {
-			_ = os.RemoveAll(src)
+			_ = safedel.RemoveIfEmpty(src)
 		}
 	}
 	return firstErr

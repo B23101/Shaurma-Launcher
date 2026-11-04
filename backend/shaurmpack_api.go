@@ -22,6 +22,7 @@ import (
 	"shaurma-launcher-backend/internal/crashguard"
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/export"
+	"shaurma-launcher-backend/internal/safedel"
 	"shaurma-launcher-backend/internal/shaurmpack"
 )
 
@@ -175,7 +176,7 @@ func (a *App) registerShaurmpackPlaceholder(path, name, color, iconSrcPath, icon
 		}
 	}
 	if err := a.customPacks.Save(placeholder); err != nil {
-		_ = os.RemoveAll(packDir)
+		_ = safedel.RemoveAll(packDir)
 		return custompack.Pack{}, "", fmt.Errorf("не вдалося зареєструвати збірку: %w", err)
 	}
 	return placeholder, gameDir, nil

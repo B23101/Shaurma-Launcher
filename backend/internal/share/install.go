@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // Встановлення прийнятого (перенесення files/ у теку збірки/сервера + реєстрація в
@@ -76,7 +78,7 @@ func RecoverInstall(stage string, registered func(InstallMarker) bool) (m Instal
 	switch {
 	case srcErr == nil && dstErr == nil:
 		// Обірване копіювання між дисками: оригінали ще в stage, у призначенні — уламок.
-		if err := os.RemoveAll(m.Dst); err != nil {
+		if err := safedel.RemoveAll(m.Dst); err != nil {
 			return m, false, err
 		}
 	case srcErr != nil && dstErr == nil:

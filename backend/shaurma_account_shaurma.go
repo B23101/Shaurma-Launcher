@@ -26,6 +26,7 @@ import (
 
 	"shaurma-launcher-backend/internal/auth"
 	"shaurma-launcher-backend/internal/model"
+	"shaurma-launcher-backend/internal/safedel"
 	"shaurma-launcher-backend/internal/shaurmaid"
 	"shaurma-launcher-backend/internal/social"
 	"shaurma-launcher-backend/internal/update"
@@ -395,7 +396,7 @@ func (a *App) DeleteShaurmaAccount() error {
 	if err := a.shaurmaManager().Delete(ctx, acc.ID); err != nil {
 		return a.shaurmaUserError(err)
 	}
-	_ = os.RemoveAll(a.socialDirFor(acc.ID)) // ключі E2E цієї комірки
+	_ = safedel.RemoveAll(a.socialDirFor(acc.ID)) // ключі E2E цієї комірки
 	a.emit("shaurma-account:changed", "")
 	a.socialOnAccountChanged()
 	return nil
@@ -518,7 +519,7 @@ func (a *App) socialForgetMS(acc model.Account) {
 		defer crashguard.Recover("shaurma_account_shaurma.go:517")
 		_ = a.shaurmaManager().Forget(id) // лише локально
 		if d := a.socialDirFor(id); d != "" {
-			_ = os.RemoveAll(d)
+			_ = safedel.RemoveAll(d)
 		}
 	}()
 }
@@ -750,13 +751,13 @@ func (a *App) purgeLegacyAccountData() {
 	legacyPurgeOnce.Do(func() {
 		base := filepath.Join(a.cfg.Dir(), ".shaurma")
 		_ = os.Remove(filepath.Join(a.cfg.Dir(), "skin-auth.json"))
-		_ = os.RemoveAll(filepath.Join(base, "social-auth"))
-		_ = os.RemoveAll(filepath.Join(base, "keys"))
+		_ = safedel.RemoveAll(filepath.Join(base, "social-auth"))
+		_ = safedel.RemoveAll(filepath.Join(base, "keys"))
 		if ents, err := os.ReadDir(filepath.Join(base, "social")); err == nil {
 			for _, e := range ents {
 				n := e.Name()
 				if strings.HasPrefix(n, "google-") || strings.HasPrefix(n, "ms-") {
-					_ = os.RemoveAll(filepath.Join(base, "social", n))
+					_ = safedel.RemoveAll(filepath.Join(base, "social", n))
 				}
 			}
 		}

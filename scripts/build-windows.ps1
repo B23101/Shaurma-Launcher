@@ -226,13 +226,13 @@ function Get-Token([string]$ed) { if ($ed -eq 'base') { return $TokenBase } else
 # incorrect»). Перевіряємо ВИРЕНДЕРЕНИЙ маніфест ще на збірці: ім'я assembly
 # не порожнє/без крапки на краю, версія строго a.b.c.d, плейсхолдерів не лишилось.
 function Assert-ManifestValid([string]$Manifest, [string]$Label) {
-    if ($Manifest.Contains('{{')) { Fail "$Label: manifest has unresolved {{...}} placeholders" }
+    if ($Manifest.Contains('{{')) { Fail "${Label}: manifest has unresolved {{...}} placeholders" }
     $ids = [regex]::Matches($Manifest, '<assemblyIdentity\s[^>]*?name="([^"]*)"[^>]*?version="([^"]*)"')
-    if ($ids.Count -eq 0) { Fail "$Label: manifest has no assemblyIdentity" }
+    if ($ids.Count -eq 0) { Fail "${Label}: manifest has no assemblyIdentity" }
     foreach ($m in $ids) {
         $n = $m.Groups[1].Value; $v = $m.Groups[2].Value
-        if ($n -notmatch '^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$') { Fail "$Label: invalid assembly name '$n' (empty, dot at edge or bad chars)" }
-        if ($v -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$') { Fail "$Label: invalid assembly version '$v' for '$n' (need a.b.c.d)" }
+        if ($n -notmatch '^[A-Za-z0-9]+([._-][A-Za-z0-9]+)*$') { Fail "${Label}: invalid assembly name '$n' (empty, dot at edge or bad chars)" }
+        if ($v -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$') { Fail "${Label}: invalid assembly version '$v' for '$n' (need a.b.c.d)" }
     }
 }
 

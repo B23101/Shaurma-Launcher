@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // MoveTree переносить прийняту теку src у dst. dst не має існувати. Спершу
@@ -35,10 +37,10 @@ func MoveTree(src, dst string) error {
 		return copyFile(p, target)
 	})
 	if err != nil {
-		_ = os.RemoveAll(dst) // не лишаємо напів-копію
+		_ = safedel.RemoveAll(dst) // не лишаємо напів-копію
 		return err
 	}
-	return os.RemoveAll(src)
+	return safedel.RemoveAll(src)
 }
 
 func copyFile(src, dst string) error {

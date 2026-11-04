@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"shaurma-launcher-backend/internal/minecraft"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // ── Швидкий підрахунок розмірів (паралельний, з кешем) ────────────────────
@@ -454,7 +455,7 @@ func (a *App) CleanupUnusedVersions(ids []string) error {
 			continue
 		}
 		dir := filepath.Join(mcBase, "versions", id)
-		if err := os.RemoveAll(dir); err != nil {
+		if err := safedel.RemoveAll(dir); err != nil {
 			return fmt.Errorf("видалення версії %s: %w", id, err)
 		}
 	}
@@ -850,7 +851,7 @@ func (a *App) CleanupVersionsAfterPackDelete() (removed []string) {
 	}
 	for _, id := range info.Unused {
 		dir := filepath.Join(a.cfg.Dir(), "minecraft", "versions", id)
-		if os.RemoveAll(dir) == nil {
+		if safedel.RemoveAll(dir) == nil {
 			removed = append(removed, id)
 		}
 	}

@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"shaurma-launcher-backend/internal/safedel"
 	shsync "shaurma-launcher-backend/internal/sync"
 )
 
@@ -601,7 +602,7 @@ func resolveVerified(opts ImportOptions, pf PackFile) error {
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(staging)
+	defer safedel.RemoveAll(staging)
 	tmp := filepath.Join(staging, "download")
 	if err := opts.ResolveDownload(tmp, pf); err != nil {
 		return err

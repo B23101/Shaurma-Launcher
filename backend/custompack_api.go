@@ -14,6 +14,7 @@ import (
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/java"
 	"shaurma-launcher-backend/internal/minecraft"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // ── Версії Minecraft / лоадерів (форма "Нова збірка → Вручну") ──────────
@@ -355,7 +356,7 @@ func (a *App) UpdateCustomPack(id string, p CustomPackFormParams) (custompack.Pa
 	// заново через EnsureVersion. Зміна лоадера не лишає файлів, які
 	// треба чистити (інсталяторів лоадерів у лаунчері поки немає).
 	if old.MCVersion != "" && old.MCVersion != pack.MCVersion {
-		_ = os.RemoveAll(filepath.Join(a.cfg.Dir(), "minecraft", "versions", old.MCVersion))
+		_ = safedel.RemoveAll(filepath.Join(a.cfg.Dir(), "minecraft", "versions", old.MCVersion))
 	}
 	// Той самий сіяння RAM у per-instance конфіг, що й при створенні: якщо
 	// у формі зняли «свою RAM» — чистимо override-и; якщо поставили —
@@ -867,7 +868,7 @@ func (a *App) cancelCustomImport(packID string) {
 		// Браузерний модпак: картка «не завантажено» лишається (її можна
 		// качати заново), але часткові .part модів і .download-архів прибираємо.
 		removePartFiles(filepath.Join(packDir, ".minecraft"))
-		_ = os.RemoveAll(filepath.Join(packDir, ".download"))
+		_ = safedel.RemoveAll(filepath.Join(packDir, ".download"))
 	}
 	a.emit("sync:progress", customSyncProgressPayload{PackID: packID, PackName: packName, Mode: "cancelled", Done: true})
 }

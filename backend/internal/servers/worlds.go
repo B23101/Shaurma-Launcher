@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"shaurma-launcher-backend/internal/safedel"
 	shsync "shaurma-launcher-backend/internal/sync"
 	"sort"
 	"strings"
@@ -396,7 +397,7 @@ func RestoreBackup(serverDir, worldName, backupsDir, backupID string) error {
 	cleanup := true
 	defer func() {
 		if cleanup {
-			_ = os.RemoveAll(staged)
+			_ = safedel.RemoveAll(staged)
 		}
 	}()
 	if err := unzipTo(zipPath, staged); err != nil {

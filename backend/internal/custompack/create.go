@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"shaurma-launcher-backend/internal/imageconvert"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // CreateParams — усі поля з форми "Нова збірка → Вручну". Дзеркалить
@@ -264,7 +265,7 @@ func Delete(store *Store, instanceDir, id string) error {
 	packDir := filepath.Join(instanceDir, id)
 	// RemoveAll на теці конкретної збірки — безпечно, бо id завжди
 	// підконтрольний slug (SlugifyName), а не довільний ввід користувача.
-	return os.RemoveAll(packDir)
+	return safedel.RemoveAll(packDir)
 }
 
 // copyAssetInto копіює файл іконки/фону в теку збірки під фіксованим

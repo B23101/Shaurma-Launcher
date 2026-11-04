@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"shaurma-launcher-backend/internal/builds"
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/model"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // retryRemoveAll видаляє теку з кількома спробами. На Windows каталог
@@ -21,9 +23,12 @@ import (
 func retryRemoveAll(dir string) error {
 	var lastErr error
 	for attempt := 0; attempt < 4; attempt++ {
-		if err := os.RemoveAll(dir); err == nil {
+		if err := safedel.RemoveAll(dir); err == nil {
 			return nil
 		} else {
+			if errors.Is(err, safedel.ErrProtected) {
+				return err // захищений шлях: ніколи не повторюємо
+			}
 			lastErr = err
 		}
 		if _, err := os.Stat(dir); os.IsNotExist(err) {

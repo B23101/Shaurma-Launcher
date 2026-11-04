@@ -10,6 +10,7 @@ import (
 	"shaurma-launcher-backend/internal/builds"
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/export"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // ── Дублювання збірок (не-Shaurma, кастомні створюються як нові записи) ──
@@ -247,7 +248,7 @@ func (a *App) DuplicatePack(req DuplicatePackRequest) (DuplicatePackResult, erro
 	if err != nil {
 		// Часткову копію прибираємо, щоб не лишати «напів-збірку» без
 		// запису в Store (її неможливо було б відкрити/видалити карткою).
-		_ = os.RemoveAll(newPackDir)
+		_ = safedel.RemoveAll(newPackDir)
 		return DuplicatePackResult{}, fmt.Errorf("копіювання файлів: %w", err)
 	}
 
@@ -287,7 +288,7 @@ func (a *App) DuplicatePack(req DuplicatePackRequest) (DuplicatePackResult, erro
 		Source: "manual",
 	}
 	if err := a.customPacks.Save(pack); err != nil {
-		_ = os.RemoveAll(newPackDir)
+		_ = safedel.RemoveAll(newPackDir)
 		return DuplicatePackResult{}, fmt.Errorf("не вдалося зберегти копію збірки: %w", err)
 	}
 

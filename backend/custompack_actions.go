@@ -7,6 +7,7 @@ import (
 
 	"shaurma-launcher-backend/internal/java"
 	"shaurma-launcher-backend/internal/minecraft"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // ── Перевстановлення / полагодження збірок (кнопки на сторінці збірки) ──
@@ -34,7 +35,7 @@ func removeMinecraftVersionFiles(mcBase, versionID string) {
 		return
 	}
 	versionsDir := filepath.Join(mcBase, "versions")
-	os.RemoveAll(filepath.Join(versionsDir, versionID))
+	safedel.RemoveAll(filepath.Join(versionsDir, versionID))
 	os.Remove(filepath.Join(versionsDir, versionID+".json"))
 }
 
@@ -79,7 +80,7 @@ func (a *App) ReinstallPack(id string) error {
 	}
 
 	mcDir := a.packMinecraftDir(id)
-	if err := os.RemoveAll(mcDir); err != nil {
+	if err := safedel.RemoveAll(mcDir); err != nil {
 		return fmt.Errorf("не вдалося очистити файли збірки: %w", err)
 	}
 	if err := os.MkdirAll(mcDir, 0755); err != nil {
@@ -149,7 +150,7 @@ func (a *App) RepairPack(id string) error {
 		if major := java.RecommendedMajor(cp.MCVersion); major > 0 {
 			javaDir := filepath.Join(a.cfg.JavaDir(), fmt.Sprintf("java-%d", major))
 			if fi, err := os.Stat(javaDir); err == nil && fi.IsDir() {
-				os.RemoveAll(javaDir)
+				safedel.RemoveAll(javaDir)
 				a.emit("installer:log", fmt.Sprintf("Java %d видалено — буде встановлена заново.", major))
 			}
 		}

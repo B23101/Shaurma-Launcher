@@ -37,6 +37,7 @@ import (
 	"shaurma-launcher-backend/internal/mods"
 	"shaurma-launcher-backend/internal/neterr"
 	"shaurma-launcher-backend/internal/p2p"
+	"shaurma-launcher-backend/internal/safedel"
 	"shaurma-launcher-backend/internal/servers"
 	"shaurma-launcher-backend/internal/sessions"
 	"shaurma-launcher-backend/internal/store"
@@ -1161,7 +1162,7 @@ func (a *App) CancelDownload(packID string) {
 		// Повне скасування: прибираємо .part-архів, щоб наступний запуск
 		// почав чисто, а не продовжував наполовину скачаний файл.
 		if dir := filepath.Join(a.packDir(packID, ""), ".download"); dir != "" {
-			_ = os.RemoveAll(dir)
+			_ = safedel.RemoveAll(dir)
 		}
 		return
 	}
@@ -3329,6 +3330,15 @@ func (a *App) rewireComponents() {
 	a.javaInst = java.NewInstaller(a.cfg.JavaDir())
 	servers.SetLauncherJavaDir(a.cfg.JavaDir())
 	a.srvAPI = servers.NewAPI(a.cfg.Dir(), a.javaInst, a.versionsProv)
+	// Захист даних користувача: корінь даних і контейнери збірок/серверів
+	// неможливо видалити жодним кодом лаунчера (див. internal/safedel).
+	safedel.SetResolver(func() []string {
+		return []string{
+			a.cfg.Dir(), a.cfg.InstancesDir(), a.cfg.ShaurmaPacksDir(),
+			filepath.Join(a.cfg.Dir(), "servers"), filepath.Join(a.cfg.Dir(), "minecraft"),
+			a.cfg.JavaDir(),
+		}
+	})
 	// P2P-лобі ("LAN через інтернет"): токен/base URL беремо лінькво через
 	// update.Token() — той самий токен-gate, що й решта запитів лаунчера. База лобі
 	// (/p2p/*) — вузол кластера (p2pLobbyBase), а не Worker: лобі переїхало на Postgres.
@@ -3878,7 +3888,7 @@ func (a *App) ClearPackLogs() error {
 			return
 		}
 		for _, e := range entries {
-			if err := os.RemoveAll(filepath.Join(dir, e.Name())); err != nil && firstErr == nil {
+			if err := safedel.RemoveAll(filepath.Join(dir, e.Name())); err != nil && firstErr == nil {
 				firstErr = err
 			}
 		}
@@ -3916,7 +3926,7 @@ func (a *App) ClearCache() error {
 		return err
 	}
 	for _, e := range entries {
-		if err := os.RemoveAll(filepath.Join(cacheDir, e.Name())); err != nil {
+		if err := safedel.RemoveAll(filepath.Join(cacheDir, e.Name())); err != nil {
 			return err
 		}
 	}
@@ -4043,7 +4053,7 @@ func (a *App) AnalyzeUnusedJava() UnusedJavaInfo {
 func (a *App) CleanupUnusedJava(majors []int) error {
 	for _, major := range majors {
 		dir := filepath.Join(a.cfg.JavaDir(), fmt.Sprintf("java-%d", major))
-		if err := os.RemoveAll(dir); err != nil {
+		if err := safedel.RemoveAll(dir); err != nil {
 			return fmt.Errorf("видалення Java %d: %w", major, err)
 		}
 	}

@@ -41,6 +41,7 @@ import (
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/export"
 	"shaurma-launcher-backend/internal/p2p"
+	"shaurma-launcher-backend/internal/safedel"
 	"shaurma-launcher-backend/internal/servers"
 	"shaurma-launcher-backend/internal/share"
 	"shaurma-launcher-backend/internal/social"
@@ -850,7 +851,7 @@ func applySharedLook(pack *custompack.Pack, m *share.Manifest, gameDir string) {
 			pack.IconPath = name
 		}
 	}
-	_ = os.RemoveAll(filepath.Join(gameDir, share.SharedIconDir))
+	_ = safedel.RemoveAll(filepath.Join(gameDir, share.SharedIconDir))
 }
 
 func shareTopDir(rel string) string {
@@ -1534,7 +1535,7 @@ func (a *App) runShareIn(ctx context.Context, in *shareIn) {
 		fail(fmt.Errorf("не вдалося відновити перерване встановлення: %w", err))
 		return
 	} else if done {
-		_ = os.RemoveAll(in.stage)
+		_ = safedel.RemoveAll(in.stage)
 		in.mu.Lock()
 		in.view.ResultID = a.shareResultIDFor(m)
 		in.mu.Unlock()
@@ -1674,7 +1675,7 @@ func (a *App) finalizeShareIn(in *shareIn, m *share.Manifest) {
 		a.setShareInPhase(in, "error", err.Error(), share.ReasonError, false)
 		return
 	}
-	_ = os.RemoveAll(in.stage)
+	_ = safedel.RemoveAll(in.stage)
 	in.mu.Lock()
 	in.view.ResultID = resultID
 	in.mu.Unlock()
@@ -1707,7 +1708,7 @@ func (a *App) installSharedBuild(in *shareIn, m *share.Manifest, files string) (
 	}
 	if err := a.customPacks.Save(pack); err != nil {
 		_ = share.MoveTree(dst, files) // файли лишаємо в stage — можна повторити
-		_ = os.RemoveAll(a.packDir(newID, ""))
+		_ = safedel.RemoveAll(a.packDir(newID, ""))
 		share.ClearInstall(in.stage)
 		return "", fmt.Errorf("не вдалося зберегти збірку: %w", err)
 	}
@@ -1730,7 +1731,7 @@ func (a *App) installSharedServer(in *shareIn, m *share.Manifest, files string) 
 	// .shaurma — службова тека лаунчера (launch_config.json визначає, що саме запускати з
 	// JVM). Відправник її не передає, але одержувач не вірить цьому на слово: чужий
 	// launch_config.json не має потрапити в сервер.
-	_ = os.RemoveAll(filepath.Join(files, ".shaurma"))
+	_ = safedel.RemoveAll(filepath.Join(files, ".shaurma"))
 	marker := share.InstallMarker{Dst: dst}
 	if err := share.BeginInstall(in.stage, marker); err != nil {
 		return "", fmt.Errorf("не вдалося почати встановлення: %w", err)
@@ -1867,7 +1868,7 @@ func (a *App) ShareDiscard(sid, encoded, fromAccountID string) error {
 		case <-time.After(3 * time.Second):
 		}
 	}
-	return os.RemoveAll(a.shareStageDir(card.MID))
+	return safedel.RemoveAll(a.shareStageDir(card.MID))
 }
 
 // ListShareIn — активні прийоми цього сеансу + недавні підсумки (з історії).
@@ -1907,16 +1908,16 @@ func (a *App) shareBoot() {
 		for _, e := range entries {
 			stage := filepath.Join(inDir, e.Name())
 			if !e.IsDir() || !shareKeyRe.MatchString(e.Name()) {
-				_ = os.RemoveAll(stage)
+				_ = safedel.RemoveAll(stage)
 				continue
 			}
 			if _, done, err := share.RecoverInstall(stage, a.shareInstallRegistered); err == nil && done {
-				_ = os.RemoveAll(stage)
+				_ = safedel.RemoveAll(stage)
 				continue
 			}
 			st, err := os.Stat(filepath.Join(stage, "card.json"))
 			if err != nil || time.Since(st.ModTime()) > shareStageMaxAge {
-				_ = os.RemoveAll(stage)
+				_ = safedel.RemoveAll(stage)
 			}
 		}
 		h := a.shareHist()
@@ -2037,7 +2038,7 @@ func (a *App) ShareDiscardRecovered(mid string) error {
 	if !shareKeyRe.MatchString(mid) {
 		return errors.New("некоректний ідентифікатор")
 	}
-	return os.RemoveAll(a.shareStageDir(mid))
+	return safedel.RemoveAll(a.shareStageDir(mid))
 }
 
 // ── Перегляд вмісту до прийняття ─────────────────────────────────────────

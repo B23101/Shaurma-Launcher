@@ -37,6 +37,7 @@ import (
 
 	"shaurma-launcher-backend/internal/gallery"
 	"shaurma-launcher-backend/internal/model"
+	"shaurma-launcher-backend/internal/safedel"
 	"shaurma-launcher-backend/internal/store"
 )
 
@@ -225,7 +226,7 @@ func (a *App) migrateBrowserAICache(st *store.Store) {
 		log.Printf("migration: browser-ai імпортовано (%d записів) у SQLite", total)
 	}
 	// Теку прибираємо цілком — кеш тепер у БД.
-	_ = os.RemoveAll(root)
+	_ = safedel.RemoveAll(root)
 }
 
 // migrateInstallState — legacy migration. InstallState вже зберігається
@@ -308,14 +309,14 @@ func (a *App) cleanupLegacyGarbage() {
 	// (він може бути на іншому диску і лишати сміття на C:). Прибираємо
 	// залишки один раз.
 	if tmpRoot := filepath.Join(os.TempDir(), "shaurma-forge"); pathExists(tmpRoot) {
-		_ = os.RemoveAll(tmpRoot)
+		_ = safedel.RemoveAll(tmpRoot)
 		log.Printf("migration: видалено легасі кеш Forge з системного temp %s", tmpRoot)
 	}
 
 	for _, name := range []string{"download-state", ".locks", "logs"} {
 		dir := filepath.Join(base, name)
 		if _, err := os.Stat(dir); err == nil {
-			_ = os.RemoveAll(dir)
+			_ = safedel.RemoveAll(dir)
 			log.Printf("migration: видалено легасі теку %s", dir)
 		}
 	}
@@ -381,7 +382,7 @@ func (a *App) moveDirContents(src, dst string) {
 		log.Printf("migration: %s → %s (%d файлів)", src, dst, moved)
 	}
 	// Джерело тепер порожнє (або взагалі не існувало) — прибираємо.
-	_ = os.RemoveAll(src)
+	_ = safedel.RemoveAll(src)
 }
 
 // samePath — чи два шляхи вказують на одне й те саме місце (нормалізовані
@@ -476,7 +477,7 @@ func moveTree(src, dst string) error {
 	// Текa-джерело тепер порожня (або містить лише те, що не перенеслося) —
 	// прибираємо її, якщо вона спорожніла.
 	if rest, _ := os.ReadDir(src); len(rest) == 0 {
-		_ = os.RemoveAll(src)
+		_ = safedel.RemoveAll(src)
 	}
 	return firstErr
 }

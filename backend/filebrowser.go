@@ -12,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // FileEntry — один елемент списку теки.
@@ -321,5 +323,5 @@ func deleteEntry(rootDir, relPath string) error {
 	if _, err := os.Stat(abs); err != nil {
 		return fmt.Errorf("елемент не знайдено: %s", relPath)
 	}
-	return os.RemoveAll(abs)
+	return safedel.RemoveAll(abs)
 }

@@ -18,6 +18,7 @@ import (
 	"shaurma-launcher-backend/internal/java"
 	"shaurma-launcher-backend/internal/model"
 	"shaurma-launcher-backend/internal/modsource"
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // API — загальний контекст для серверних API-викликів.
@@ -413,7 +414,7 @@ func (a *API) DeleteServerWithFiles(id string) error {
 		return err
 	}
 	a.SyncNetworksFor(id) // проксі забуває видалений сервер
-	return os.RemoveAll(srv.Dir)
+	return safedel.RemoveAll(srv.Dir)
 }
 
 // SaveServerConfig оновлює конфігурацію сервера.
@@ -581,7 +582,7 @@ func removeCoreArtifacts(dir string) error {
 	}
 
 	for _, name := range coreArtifactDirs {
-		if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
+		if err := safedel.RemoveAll(filepath.Join(dir, name)); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
 	}

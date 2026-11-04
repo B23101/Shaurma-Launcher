@@ -518,42 +518,17 @@ begin
   Result := ExpandConstant('{userappdata}\.shaurm');
 end;
 
-// Never recursively delete an arbitrary path read from a user-writable JSON.
-// Automatic removal is limited to the launcher's default dedicated data root.
-// Custom locations may contain unrelated files and must be cleaned manually.
-function CanDeleteDataDir(const Dir: String): Boolean;
-var
-  Normalized, Expected: String;
-begin
-  Normalized := RemoveBackslash(ExpandFileName(Dir));
-  Expected := RemoveBackslash(ExpandConstant('{userappdata}\.shaurm'));
-  Result := (Dir <> '') and (CompareText(Normalized, Expected) = 0);
-end;
-
 function InitializeUninstall: Boolean;
-var
-  Answer: Integer;
 begin
+  // ДАНІ КОРИСТУВАЧА НЕ ВИДАЛЯЮТЬСЯ НІКОЛИ (збірки, сервери, світи, акаунти,
+  // налаштування). Раніше тут було питання «Видалити також всі дані?» і
+  // DelTree папки .shaurm — один хибний клік знищував усе без можливості
+  // відновлення. Тепер деінсталятор прибирає лише компоненти лаунчера, а
+  // папку даних лише повідомляє користувачу. Видалити її можна тільки руками.
   UninstallDataDir := GetDataDir();
   UninstallDeleteData := False;
-  if UninstallSilent then begin Result := True; Exit; end;
-  if not CanDeleteDataDir(UninstallDataDir) then
-  begin
-    MsgBox('Дані у власній теці буде збережено. За потреби видаліть їх вручну після деінсталяції:' + #13#10 + UninstallDataDir, mbInformation, MB_OK);
-    Result := True;
-    Exit;
-  end;
-  // Питання про видалення даних користувача — ПЕРЕД початком видалення.
-  //
-  // ВАЖЛИВО: робимо це через MsgBox, а НЕ через CreateCustomPage. Inno
-  // Setup забороняє CreateCustomPage у фазі Uninstall (помилка "Cannot
-  // call CreateCustomPage function during Uninstall"): кастомні сторінки
-  // доступні лише майстру ВСТАНОВЛЕННЯ (InitializeWizard). Раніше тут
-  // була кастомна сторінка з чекбоксом — і деінсталяція падала одразу
-  // при запуску, лаунчер було неможливо видалити.
-  Answer := MsgBox('Видалити також всі дані користувача (збірки, акаунти, налаштування, гардероб)?' + #13#10 + #13#10 + UninstallDataDir + #13#10 + #13#10 + 'Якщо Ні — дані збережуться і будуть доступні після повторного встановлення лаунчера.', mbConfirmation, MB_YESNO or MB_DEFBUTTON2);
-  UninstallDeleteData := (Answer = IDYES);
-  // Обов'язковий результат функції (Inno вимагає InitializeUninstall: Boolean).
+  if not UninstallSilent then
+    MsgBox('Ваші дані (збірки, сервери, світи, акаунти, налаштування) НЕ видаляються і лишаються тут:' + #13#10 + #13#10 + UninstallDataDir + #13#10 + #13#10 + 'Після повторного встановлення лаунчер підхопить їх автоматично.', mbInformation, MB_OK);
   Result := True;
 end;
 
@@ -816,20 +791,7 @@ begin
   begin
     RemoveP2PFirewallRules('{#MyShellExeName}');
     RemoveP2PFirewallRules('{#MyOtherShellExeName}');
-    // Користувач явно обрав «видалити все» — прибираємо папку даних
-    // (.shaurm: збірки, акаунти, налаштування, гардероб). Інакше вона
-    // зберігається (див. коментар до InitializeUninstall).
-    if UninstallDeleteData then
-    begin
-      // Папка даних може бути поза {app} (користувач сам обрав baseDir).
-      if CanDeleteDataDir(UninstallDataDir) then
-        DelTree(UninstallDataDir, True, True, True);
-      // База даних і конфіг у теці встановлення теж дані користувача.
-      DeleteFile(ExpandConstant('{app}\shaurma.db'));
-      DeleteFile(ExpandConstant('{app}\shaurma.db-wal'));
-      DeleteFile(ExpandConstant('{app}\shaurma.db-shm'));
-      DeleteFile(ExpandConstant('{app}\launcher-location.json'));
-      DeleteFile(ExpandConstant('{app}\ui.json'));
-    end;
+    // Дані користувача (.shaurm, shaurma.db, launcher-location.json, ui.json)
+    // не видаляються за жодних умов — див. InitializeUninstall.
   end;
 end;

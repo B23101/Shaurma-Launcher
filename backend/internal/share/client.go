@@ -21,6 +21,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"shaurma-launcher-backend/internal/safedel"
 )
 
 // Стани одержувача (Progress.State).
@@ -777,7 +779,7 @@ func (d *Downloader) prepare(ctx context.Context, m *Manifest) error {
 	files := FilesDir(stage)
 	if j, ok := loadJournal(stage); ok && j.ManifestID != m.ID() {
 		// Інший вміст — старі шматки не змішуємо.
-		if err := os.RemoveAll(files); err != nil {
+		if err := safedel.RemoveAll(files); err != nil {
 			return err
 		}
 		_ = os.Remove(journalPath(stage))

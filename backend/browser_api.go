@@ -26,6 +26,7 @@ import (
 	"shaurma-launcher-backend/internal/imageconvert"
 	"shaurma-launcher-backend/internal/model"
 	"shaurma-launcher-backend/internal/neterr"
+	"shaurma-launcher-backend/internal/safedel"
 	syncengine "shaurma-launcher-backend/internal/sync"
 )
 
@@ -2130,7 +2131,7 @@ func (a *App) DownloadBrowserModpack(packID string) (custompack.Pack, error) {
 		}
 		// Архів і .part більше не потрібні — прибираємо, щоб не лежали
 		// в теці збірки назавжди.
-		os.RemoveAll(dlDir)
+		safedel.RemoveAll(dlDir)
 		ensureBuildsRegistered(a, res.ID)
 		a.emit("builds:changed", res.ID)
 	}()
@@ -2276,7 +2277,7 @@ func (a *App) UpdatePackFromSource(packID, versionID string) (custompack.Pack, e
 	if err != nil {
 		return custompack.Pack{}, err
 	}
-	defer os.RemoveAll(tmpDir)
+	defer safedel.RemoveAll(tmpDir)
 	archivePath := filepath.Join(tmpDir, safeFileName(fileName, "modpack.mrpack"))
 	if err := downloadFileTo(archiveURL, archivePath); err != nil {
 		return custompack.Pack{}, fmt.Errorf("не вдалося завантажити нову версію: %w", err)
