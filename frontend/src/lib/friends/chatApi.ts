@@ -39,6 +39,7 @@ export interface GroupChatInfo {
   title: string
   icon: string
   color: string
+  memberIds: string[]
   members: number
   adminName: string
   isAdmin: boolean
@@ -52,6 +53,10 @@ export interface GroupChatInfo {
   /** Текст системної події (вступ, вихід, нова адмінка…). */
   sysText(body: string): string
   onSettings(): void
+  onMembers(): void
+  readers(messageId: number): Promise<string[]>
+  muted: boolean
+  toggleMute(): void
   /** «Отримати збірку» з картки build_offer. */
   claim(messageId: number, from: string): void
 }

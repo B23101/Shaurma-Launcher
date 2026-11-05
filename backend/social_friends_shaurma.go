@@ -420,6 +420,10 @@ func (a *App) socialWindowActive(active bool) {
 
 // notifyFromSocial — розподіл подій соціальної системи на тости віджета.
 func (a *App) notifyFromSocial(event string, payload any) {
+	if event == "group:event" {
+		a.notifyGroupEvent(payload)
+		return
+	}
 	if !a.notificationsAllowed() {
 		return
 	}
@@ -461,6 +465,14 @@ func (a *App) notifyFromSocial(event string, payload any) {
 		if nick == "" {
 			return // нік невідомий — не показуємо
 		}
+		// Службові повідомлення (картка збірки/сервера, мод) — окремий вигляд
+		// з кнопками; невалідна картка не показується взагалі.
+		if rp, handled := a.richChatPayload(ev, nick); handled {
+			if rp.Event != "" {
+				a.pushNotify(rp)
+			}
+			return
+		}
 		a.pushNotify(NotifyPayload{
 			Kind:      "chat",
 			Title:     nick,
@@ -469,6 +481,19 @@ func (a *App) notifyFromSocial(event string, payload any) {
 			TS:        ev.TS, // VPS шле unix-МІЛІСЕКУНДИ (раніше тут було ×1000 — час у тості ламався)
 			ID:        fmt.Sprintf("chat-%d", ev.ID),
 		})
+
+	case "chat:server_invite":
+		// Запрошення на світ/сервер (тимчасове або постійне P2P) від друга.
+		ev, ok := payload.(social.ServerInviteEvent)
+		if !ok || ev.From == "" || ev.ServerAddr == "" || socialViewCovers(ev.From) || a.IsChatMuted(ev.From) {
+			return
+		}
+		if svc := currentSocialService(); svc != nil && svc.Snapshot().Me == ev.From {
+			return // власне ехо запрошення
+		}
+		if nick := a.socialNickname(ev.From); nick != "" {
+			go a.notifyServerInvite(ev, nick) // стан кімнати — мережевий запит
+		}
 
 	case "friends:update":
 		st, ok := payload.(social.State)
@@ -493,9 +518,11 @@ func (a *App) notifyFromSocial(event string, payload any) {
 			// відкриється шухляда «Друзі» (без конкретного діалогу).
 			a.pushNotify(NotifyPayload{
 				Kind:      "invite",
+				Event:     "friend_request",
 				Title:     nick,
 				Body:      "", // текст підставляє фронтенд за ключем i18n
-				AccountID: "",
+				AccountID: inv.FromAccountID,
+				Ref:       inv.ID, // кнопки «Прийняти/Відхилити» відповідають саме на цей запит
 				TS:        inv.CreatedAt,
 				ID:        "invite-" + inv.ID,
 			})
@@ -566,4 +593,86 @@ func notifyPreviewText(plain string) string {
 		return plain
 	}
 	return "\U0001F4E6 " + slug
+}
+
+// Group metadata comes only from authenticated server snapshots, never message text.
+type notifyGroupInfo struct {
+	ID       string `json:"id"`
+	Title    string `json:"title"`
+	Settings struct {
+		Icon  string `json:"icon"`
+		Color string `json:"color"`
+	} `json:"settings"`
+	Members []struct {
+		AccountID string `json:"accountId"`
+		Nickname  string `json:"nickname"`
+	} `json:"members"`
+}
+
+var notifyGroups = struct {
+	sync.Mutex
+	owner  string
+	groups map[string]notifyGroupInfo
+}{groups: map[string]notifyGroupInfo{}}
+
+func (a *App) notifyGroupEvent(payload any) {
+	ev, ok := payload.(social.GroupEvent)
+	if !ok {
+		return
+	}
+	svc := currentSocialService()
+	if svc == nil {
+		return
+	}
+	me := svc.Snapshot().Me
+	var d struct {
+		Groups  []notifyGroupInfo `json:"groups"`
+		Group   notifyGroupInfo   `json:"group"`
+		GroupID string            `json:"groupId"`
+		Message struct {
+			ID      int64  `json:"id"`
+			GroupID string `json:"groupId"`
+			From    string `json:"from"`
+			Kind    string `json:"kind"`
+			Body    string `json:"body"`
+			TS      int64  `json:"ts"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(ev.Data, &d) != nil {
+		return
+	}
+	notifyGroups.Lock()
+	if notifyGroups.owner != me {
+		notifyGroups.owner = me
+		notifyGroups.groups = map[string]notifyGroupInfo{}
+	}
+	switch ev.Type {
+	case "groups_snapshot":
+		notifyGroups.groups = map[string]notifyGroupInfo{}
+		for _, g := range d.Groups {
+			notifyGroups.groups[g.ID] = g
+		}
+	case "group_changed":
+		notifyGroups.groups[d.Group.ID] = d.Group
+	case "group_removed":
+		delete(notifyGroups.groups, d.GroupID)
+	}
+	g, known := notifyGroups.groups[d.Message.GroupID]
+	notifyGroups.Unlock()
+	m := d.Message
+	if ev.Type != "group_message" || !known || m.From == me || m.Kind != "text" || m.ID <= 0 || !a.notificationsAllowed() || a.IsChatMuted(g.ID) || socialViewCovers(g.ID) {
+		return
+	}
+	sender := ""
+	for _, member := range g.Members {
+		if member.AccountID == m.From {
+			sender = social.CleanText(member.Nickname, 40)
+			break
+		}
+	}
+	body := notifyPreviewText(m.Body)
+	if sender != "" {
+		body = sender + ": " + body
+	}
+	a.pushNotify(NotifyPayload{Kind: "group", Title: social.CleanText(g.Title, 60), Body: body, AccountID: g.ID, GroupIcon: g.Settings.Icon, GroupColor: g.Settings.Color, TS: m.TS, ID: fmt.Sprintf("group-%s-%d", g.ID, m.ID)})
 }

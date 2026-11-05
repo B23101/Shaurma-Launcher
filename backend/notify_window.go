@@ -58,18 +58,40 @@ const (
 // NotifyPayload — одна картка сповіщення. Серіалізується у подію
 // "notify:push" і віддається вікну через TakeNotifyPopup.
 type NotifyPayload struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`      // "chat" | "invite"
-	Title     string `json:"title"`     // нік відправника (SANITIZED на бекенді)
-	Body      string `json:"body"`      // превʼю тексту (SANITIZED, обрізане)
-	AccountID string `json:"accountId"` // ціль кліку: відкрити чат із цим другом
-	TS        int64  `json:"ts"`        // unix ms
+	GroupIcon  string `json:"groupIcon,omitempty"`
+	GroupColor string `json:"groupColor,omitempty"`
+	ID         string `json:"id"`
+	Kind       string `json:"kind"`      // "chat" | "invite" | "group" | "info" | "event"
+	Title      string `json:"title"`     // нік відправника (SANITIZED на бекенді)
+	Body       string `json:"body"`      // превʼю тексту (SANITIZED, обрізане)
+	AccountID  string `json:"accountId"` // ціль кліку: відкрити чат із цим другом
+	TS         int64  `json:"ts"`        // unix ms
 	// DurationMs — час показу САМЕ цієї картки (налаштування «Час показу»).
 	// Заповнюється на бекенді при постановці в чергу, а не читається
 	// вікном із налаштувань окремо: так час показу завжди свіжий (користувач
 	// міг змінити його секунду тому) і не треба додатковий місток
 	// вікно→бекенд на кожне сповіщення.
 	DurationMs int `json:"durationMs,omitempty"`
+
+	// ── Багаті сповіщення (кожна подія виглядає по-своєму) ──
+	// Event — семантичний тип: download_done, install_failed, action_needed,
+	// friend_request, share_build, share_server, share_mod, invite_temp,
+	// invite_perm, server_started, server_stopped. Порожній — звичайний чат/
+	// службове. Вигляд (колір, іконка, кнопки) вибирає вікно за цим полем.
+	Event string `json:"event,omitempty"`
+	// Sub — другий рядок-контекст (назва збірки/сервера/мода).
+	Sub string `json:"sub,omitempty"`
+	// Chips — короткі мітки під текстом (версія гри, лоадер, розмір…).
+	Chips []string `json:"chips,omitempty"`
+	// Icon — data:image/… мініатюра (іконка сервера); IconName — "ti-…".
+	Icon     string `json:"icon,omitempty"`
+	IconName string `json:"iconName,omitempty"`
+	// Color — #RRGGBB (колір збірки/сервера); порожній — колір типу події.
+	Color string `json:"color,omitempty"`
+	// PackID — збірка, чия іконка/колір беруться з індексу збірок у вікні.
+	PackID string `json:"packId,omitempty"`
+	// Ref — аргумент дії кнопки (id запиту, sid передачі, адреса, "source:id" мода).
+	Ref string `json:"ref,omitempty"`
 }
 
 // notifyDurationBounds — межі часу показу картки (мс). Дзеркалять
@@ -184,6 +206,7 @@ func (a *App) pushNotify(p NotifyPayload) {
 	// (та й картка фізично вміщує ~2 рядки).
 	p.Body = truncateNotifyRunes(p.Body, 140)
 	p.Title = truncateNotifyRunes(p.Title, 32)
+	sanitizeNotifyRich(&p)
 
 	notifyWinMu.Lock()
 	for _, q := range notifyPending {
@@ -231,6 +254,9 @@ func (a *App) ensureNotifyWindow() {
 		Hidden: true,
 		// Не зʼявляється в панелі завдань (тост — не «вікно»).
 		HiddenOnTaskbar: true,
+		// Без системної рамки/тіні DWM: інакше навколо прозорого вікна
+		// видно сірий контур і воно блимає при поверненні фокуса.
+		DisableFramelessDecorations: true,
 		// Поверх усіх застосунків.
 		AlwaysOnTop: true,
 		// Правий нижній кут робочої області (без панелі завдань).

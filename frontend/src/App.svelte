@@ -29,7 +29,8 @@
   import BirthdayMode from './lib/BirthdayMode.svelte'
   import Toasts from './lib/Toasts.svelte'
   import NewScreenshotWidget from './lib/NewScreenshotWidget.svelte'
-  import { initShareStore, shareRecoverable, shareUi } from './lib/friends/shareStore.svelte'
+  import { initShareStore, shareRecoverable, shareUi, showOffer } from './lib/friends/shareStore.svelte'
+  import P2PJoinModal from './lib/servers/components/P2PJoinModal.svelte'
   import ConfirmModal from './lib/ConfirmModal.svelte'
   import ErrorPanel from './lib/ErrorPanel.svelte'
   import PackInstancePage from './lib/PackInstancePage.svelte'
@@ -1754,7 +1755,7 @@
   async function deletePack(id: string) {
     const pk = packIndex.find(p => p.id === id)
     const bv = builds.find(b => b.build.id === id)
-    const ok = await confirmDialog(t('pack.deleteConfirm'), `${pk?.name ?? id}\n\n${t('pack.deleteConfirmHint')}`, {
+    const ok = await confirmDialog(t('pack.deleteConfirm'), `${pk?.name ?? id}\n\n${t(bv?.build.kind === 'shaurma' ? 'pack.deleteConfirmHint' : 'pack.deleteConfirmHintCustom')}`, {
       confirmLabel: t('pack.delete'), cancelLabel: t('cancel'), danger: true
     })
     if (!ok) return
@@ -3495,6 +3496,8 @@
   // allowModrinth=false = другий раунд (Modrinth уже спробований, усе, що
   // там було, вже скачано) — діалог ховає кнопку «Завантажити з Modrinth»
   // і лишає лише ручне встановлення / пропустити / скасувати.
+  // Адреса світу друга, до якого заходимо з кнопки «Запустити» у сповіщенні.
+  let notifyPlayAddr = $state('')
   let blockedModsDialog = $state<{ packId: string; mods: BlockedCFMod[]; allowModrinth: boolean } | null>(null)
   function respondBlocked(decision: 'modrinth' | 'skip' | 'manual' | 'cancel', checked: Set<string>) {
     const d = blockedModsDialog
@@ -5431,6 +5434,12 @@
           mods: payload.mods,
           allowModrinth: payload.allowModrinth !== false,
         }
+        // Потрібне ручне завантаження модів — якщо лаунчер не на екрані, кличемо користувача.
+        if (!windowActive) {
+          const pid = String(payload.packId ?? '')
+          const pk = packIndex.find(p => p.id === pid)
+          App.NotifyEvent({ event: 'action_needed', title: pk?.name || t('notify.title'), body: t('notify.blockedMods', { n: payload.mods.length }), packId: pid }).catch(() => {})
+        }
       }
     })
     // Офіційний сервер збірки переїхав на новий IP (опція officialServerSync
@@ -5441,14 +5450,16 @@
       toast(msg, 'info', 7000)
       if (!windowActive) App.NotifyOS(t('notify.title'), msg)
     })
-    on('download:complete', () => {
+    on('download:complete', (packId?: string) => {
       installError = ''
       loadData()
       // Фонове завантаження/оновлення завершилось, а користувач не дивиться
       // на лаунчер (вікно неактивне) — системний тост Windows замість
       // пропущеного моменту.
       if (!windowActive) {
-        App.NotifyOS(t('notify.title'), t('notify.downloadDone'))
+        const pid = typeof packId === 'string' ? packId : ''
+        const pk = pid ? packIndex.find(p => p.id === pid) : undefined
+        App.NotifyEvent({ event: 'download_done', title: pk?.name || t('notify.title'), body: t('notify.downloadDone'), packId: pid }).catch(() => {})
       }
     })
     // Помилка встановлення: показуємо у віджеті-тості (і в OS-сповіщенні),
@@ -5497,7 +5508,9 @@
       showToast('error', t('notify.installFailed'), msg)
       // Помилка встановлення — сповіщаємо ЗАВЖДИ (не лише в неактивному
       // вікні): користувач може бути в іншій вкладці UI.
-      App.NotifyOS(t('notify.installFailed'), msg)
+      const pid = typeof err?.packId === 'string' ? err.packId : ''
+      const pk = pid ? packIndex.find(p => p.id === pid) : undefined
+      App.NotifyEvent({ event: 'install_failed', title: pk?.name || t('notify.installFailed'), sub: pk ? t('notify.installFailed') : '', body: msg, packId: pid }).catch(() => {})
     })
     on('installer:log', (msg: string) => {
       if (typeof msg === 'string' && /Помилка|помилка|error|Error|ERROR|failed|Failed/i.test(msg)) {
@@ -5577,6 +5590,33 @@
       socialChatTarget = accountId || ''
       if (accountId) socialActiveId = accountId
       navigate('friends')
+    })
+    // Кнопки на картках віджета сповіщень (NotifyPopup → бекенд → сюди).
+    on('notify:action', async (p: { action: string; ref: string; accountId: string }) => {
+      if (!p) return
+      switch (p.action) {
+        case 'share-offer':
+          // Те саме вікно «Прийняти збірку?», що з'являється при отриманні картки.
+          if (!showOffer(p.ref)) { socialChatTarget = p.accountId || ''; if (p.accountId) socialActiveId = p.accountId; navigate('friends') }
+          break
+        case 'mod-view': {
+          const [src, id] = String(p.ref).split(':')
+          if (src && id) openModPageFromPack(src, id)
+          break
+        }
+        case 'invite-play':
+          try { await App.JoinTempInvite(p.ref) } catch { /* постійна P2P-адреса: квиток не потрібен */ }
+          notifyPlayAddr = p.ref
+          break
+        case 'open-pack':
+          if (p.ref) openPackPage(p.ref)
+          break
+        case 'open-friends':
+          socialChatTarget = p.accountId || ''
+          if (p.accountId) socialActiveId = p.accountId
+          navigate('friends')
+          break
+      }
     })
     on('build:started', (e: BuildStartEvent) => {
       patchBuild(e.buildId, b => {
@@ -6504,6 +6544,9 @@
      Автор(-и) цих модів заборонили завантаження зі сторонніх джерел —
      CurseForge не віддає пряме посилання. Як BlockedModsDialog у Prism:
      імпорт стоїть на паузі, поки користувач не обере рішення. -->
+{#if notifyPlayAddr}
+  <P2PJoinModal address={notifyPlayAddr} onclose={() => (notifyPlayAddr = '')} />
+{/if}
 {#if blockedModsDialog}
   <BlockedModsDialog
     mods={blockedModsDialog.mods}
@@ -6814,13 +6857,15 @@
         <div class="ctx-item" onclick={() => { const pid = ctxPack.build.id; ctxMenu = null; folderEditor = { id: '', name: t('packs.folderNewName'), color: '#ff8a00', icon: 'ti-folder', mode: 'create', selected: new Set([pid]) } }}>
           <i class="ti ti-folder-plus"></i> {t('packs.folderCreate')}
         </div>
-        <!-- Видалення доступне і для кастомних збірок БЕЗ файлів (щойно
-             створена «не завантажена» картка з браузера контенту, або
-             ручна незаповнена збірка) — раніше пункт «Видалити» ховався
-             усередині {#if ctxPack.installed}, тож такі збірки не можна
-             було прибрати інакше, ніж вручну з файлової системи. -->
+      {/if}
+      <!-- Видалення: кастомні збірки — завжди (і БЕЗ файлів: щойно створена «не завантажена»
+           картка з браузера контенту чи порожня ручна збірка, інакше їх не прибрати інакше, ніж
+           вручну з диска). Офіційні Shaurma-збірки — коли вони встановлені: DeletePack прибирає
+           файли, а сама збірка лишається в каталозі й нижче показується як «не встановлена»
+           (її можна завантажити знову) — тому діалог підтвердження і не страшний. -->
+      {#if ctxPack.build.kind === 'custom' || ctxPack.installed}
         <div class="ctx-sep"></div>
-        <div class="ctx-item danger" onclick={() => ctxAction('delete', ctxPack.build.id)}>
+        <div class="ctx-item danger" data-testid="ctx-pack-delete" onclick={() => ctxAction('delete', ctxPack.build.id)}>
           <i class="ti ti-trash"></i> {t('pack.delete')}
         </div>
       {/if}

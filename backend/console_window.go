@@ -61,6 +61,9 @@ type windowOptions struct {
 	HiddenOnTaskbar bool `json:"hiddenOnTaskbar,omitempty"`
 	// NoActivate — показ вікна не викрадає фокус у головного вікна.
 	NoActivate bool `json:"noActivate,omitempty"`
+	// DisableFramelessDecorations — прибрати системну рамку/тінь DWM у
+	// frameless-вікна (Windows).
+	DisableFramelessDecorations bool `json:"disableFramelessDecorations,omitempty"`
 	// Position — "bottom-right": правий нижній кут робочої області.
 	Position string `json:"position,omitempty"`
 	X        int    `json:"x,omitempty"`

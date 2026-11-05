@@ -7,10 +7,11 @@
 // WSS і зберігаються на сервері зашифрованими ключем сервера — це НЕ наскрізне шифрування, і UI
 // про це чесно каже в налаштуваннях групи.
 // ══════════════════════════════════════════════════════════════════════════
-import { getContext, setContext } from 'svelte'
+import { getContext, setContext, untrack } from 'svelte'
 import { App, on } from '../wails'
 import { toast } from '../toast.svelte'
 import { t } from '../i18n.svelte'
+import { toMs, readActivity, saveActivity, mergeActivity } from '../friends/activityCache'
 import type {
   Group, GroupInvite, GroupMessage, GroupPolicy, GroupSettingsPatch,
 } from './groupTypes'
@@ -29,6 +30,7 @@ export class GroupsStore {
   enabled = $state(false)
   loaded = $state(false)
   groups = $state<Group[]>([])
+  activity = $state<Record<string, number>>({})
   invites = $state<GroupInvite[]>([])
   whoCanAdd = $state<GroupPolicy>('friends')
   activeId = $state('')
@@ -65,13 +67,51 @@ export class GroupsStore {
       on('group:event', (e: { type?: string; data?: any }) => this.#handle(e?.type ?? '', e?.data)),
       // Після (пере)підключення сервер сам шле знімок, але повторимо запит: пуші йдуть лише на
       // цей вузол, тож історію відкритої групи теж підтягуємо знову.
-      on('friends:conn', (c: string) => { if (c === 'online') void this.refresh() }),
+      on('friends:conn', (c: string) => { if (c === 'online') { this.#activityVerified.clear(); void this.refresh() } }),
     ]
     void this.refresh()
     return () => {
       offs.forEach((off) => off())
       Object.values(this.#typingTimers).forEach(clearTimeout)
     }
+  }
+
+  // Порядок чатів: останній відомий час активності зберігається локально (як у FriendsStore), тож
+  // список груп одразу впорядкований, а мережа лише уточнює.
+  #actKey = () => `sg.activity.${this.me}`
+  #activityFor = ''
+  #activityVerified = new Set<string>()
+  restoreActivity() {
+    untrack(() => {
+      if (!this.me || this.#activityFor === this.me) return
+      this.#activityFor = this.me
+      this.#activityVerified.clear()
+      mergeActivity(this.activity, readActivity(this.#actKey()))
+    })
+  }
+  #bump(id: string, ts: number) {
+    const ms = toMs(ts)
+    if (!id || ms <= (this.activity[id] ?? 0)) return
+    this.activity[id] = ms
+    if (this.me) saveActivity(this.#actKey(), () => ({ ...this.activity }))
+  }
+
+  async refreshActivity() {
+    this.restoreActivity()
+    // Звіряємо лише групи, яких ще не звіряли в цій сесії: живі group_message вже оновлюють activity.
+    const ids = this.groups.map(g => g.id).filter(id => !this.#activityVerified.has(id))
+    const worker = async () => {
+      for (let id = ids.shift(); id; id = ids.shift()) {
+        try {
+          const r = await this.#op('history', { groupId: id, before: 0, limit: 1 })
+          if (this.group(id)) {
+            this.#bump(id, Math.max(0, ...(r?.history?.messages ?? []).map((m: GroupMessage) => m.ts)))
+            this.#activityVerified.add(id)
+          }
+        } catch { /* Keep known activity while offline. */ }
+      }
+    }
+    await Promise.all([worker(), worker(), worker()])
   }
 
   async refresh() {
@@ -142,6 +182,7 @@ export class GroupsStore {
         for (const g of this.groups) if ((g.unread ?? 0) > 0 && g.id !== this.activeId) un[g.id] = g.unread as number
         this.unread = un
         if (this.activeId && !this.group(this.activeId)) this.activeId = ''
+        void this.refreshActivity()
         this.loaded = true
         break
       }
@@ -193,8 +234,7 @@ export class GroupsStore {
     if (!m?.groupId || !m.id) return
     this.#addMsg(m)
     const seen = this.activeId === m.groupId && this.#windowActive()
-    if (seen) void this.markRead(m.groupId, m.id)
-    else if (m.from !== this.me && m.kind !== 'system') this.unread[m.groupId] = (this.unread[m.groupId] ?? 0) + 1
+    if (!seen && m.from !== this.me && m.kind !== 'system') this.unread[m.groupId] = (this.unread[m.groupId] ?? 0) + 1
     if (m.from !== this.me) this.#clearTyping(m.groupId, m.from)
   }
 
@@ -202,6 +242,7 @@ export class GroupsStore {
   addOwn(m: GroupMessage) { this.#addMsg(m) }
 
   #addMsg(m: GroupMessage) {
+    this.#bump(m.groupId, m.ts)
     const list = this.msgs[m.groupId] ?? []
     if (list.some((x) => x.id === m.id)) return
     const next = [...list, m].sort((a, b) => a.id - b.id)
@@ -253,8 +294,6 @@ export class GroupsStore {
     this.openedUnread[id] = this.unread[id] ?? 0
     this.unread[id] = 0
     await this.loadHistory(id, true)
-    const last = this.msgs[id]?.at(-1)
-    if (last) void this.markRead(id, last.id)
   }
   close() { this.activeId = '' }
 

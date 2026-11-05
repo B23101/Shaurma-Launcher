@@ -7,6 +7,10 @@ New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 $inventory = @()
 foreach ($module in @('backend', 'shell', 'bootstrap', 'updater-backend')) {
     Push-Location (Join-Path $root $module)
+    # go list віддає JSON в UTF-8; з OEM-кодуванням консолі кирилиця в шляху
+    # (Replace.Dir) псується, і порівняння з $ownTrust хибно не збігається.
+    $prevOutputEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
     try {
         $packageJson = @(& go list -mod=readonly -deps -json -tags production .)
         if ($LASTEXITCODE -ne 0) { throw "Cannot enumerate dependencies: $module" }
@@ -39,7 +43,7 @@ foreach ($module in @('backend', 'shell', 'bootstrap', 'updater-backend')) {
             foreach ($notice in $notices) { Copy-Item -LiteralPath $notice.FullName -Destination $target -Force }
             $inventory += [pscustomobject]@{ Module = $module; Dependency = $dependency.Path; Version = $dependency.Version; Notices = @($notices.Name) }
         }
-    } finally { Pop-Location }
+    } finally { [Console]::OutputEncoding = $prevOutputEncoding; Pop-Location }
 }
 $bundleInventory = Join-Path $root 'frontend/dist/licenses/bundled-packages.json'
 if (-not (Test-Path -LiteralPath $bundleInventory)) { throw 'Build the frontend before collecting bundled dependency licenses' }

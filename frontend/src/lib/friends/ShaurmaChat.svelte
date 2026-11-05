@@ -45,6 +45,7 @@ import { windowActive } from '../windowActive.svelte'
   import { parseShareMessage, parseShareCtl, ctlText, type ShareCtl } from './shareMsg'
   import { shareIn, shareOut, openTransfer } from './shareStore.svelte'
   import InviteCard from './InviteCard.svelte'
+  import UiModal from '../UiModal.svelte'
   import TempInviteModal from './TempInviteModal.svelte'
   import P2PJoinModal from '../servers/components/P2PJoinModal.svelte'
   import { privateChatApi, type ChatApi, type GroupChatInfo } from './chatApi'
@@ -575,6 +576,7 @@ import { windowActive } from '../windowActive.svelte'
     atBottom = near && !hasNewer
     if (near && !hasNewer) unseen = 0
     if (settling || loading) return
+    if (group && near && !hasNewer) markReadUpToLatest()
     // Нескінченна прокрутка: ближче до верху — підвантажуємо старіше, до низу — новіше.
     if (el.scrollTop < 240 && hasMore && !loadingMore) loadHistory(cursorOf(messages[0]), true)
     if (near && hasNewer && !loadingNewer) loadNewer()
@@ -792,7 +794,7 @@ import { windowActive } from '../windowActive.svelte'
   // «переглянув»: повідомлення лишається непрочитаним, а тост показує бекенд. Коли
   // вікно знову стає активним, effect нижче дочитує до останнього повідомлення.
   function markReadUpToLatest() {
-    if (!windowActive.active) return
+    if (!windowActive.active || (group && (!stickBottom || hasNewer))) return
     const id = lastServerId()
     if (id > markReadSent && peer?.accountId) {
       markReadSent = id
@@ -856,7 +858,7 @@ import { windowActive } from '../windowActive.svelte'
           peerTyping = false
           if (!stickBottom) unseen++
           // Вікно неактивне — не позначаємо прочитаним (див. markReadUpToLatest).
-          if (windowActive.active && e.id && e.id > markReadSent && peer?.accountId) {
+          if (windowActive.active && (!group || stickBottom) && e.id && e.id > markReadSent && peer?.accountId) {
             markReadSent = e.id
             api.markRead(peer.accountId, e.id).catch(() => {})
           }
@@ -1291,6 +1293,32 @@ import { windowActive } from '../windowActive.svelte'
 
   // ── Тимчасові запрошення: живий стан карток (опитування видимих P2P-адрес кожні 10 с) ──
   const P2P_SUFFIX = '.play.shaurma-launcher.org'
+  let joiningGroup = $state(false)
+  async function joinGroupLink(text: string) {
+    const token = /^https:\/\/shaurma-launcher\.org\/group\/join#([a-f0-9]{64})$/.exec(text.trim())?.[1]
+    if (!token || joiningGroup) return
+    if (!await confirmDialog(t('groups.link.join'), t('groups.link.confirm'), { confirmLabel: t('groups.link.join'), cancelLabel: t('cancel') })) return
+    joiningGroup = true
+    try { await App.GroupRequest('link_join', { token }); await App.GroupRequest('list'); toast(t('groups.link.joined'), 'success') }
+    catch { toast(t('groups.link.failed'), 'error') }
+    finally { joiningGroup = false }
+  }
+  async function joinGroupWorld(text: string) {
+    const addr = text.slice('shaurma-p2p:v1:'.length)
+    try { await App.JoinTempInvite(addr); playAddr = addr }
+    catch { toast(t('groups.link.failed'), 'error') }
+  }
+  let readersOpen = $state(false)
+  let readersBusy = $state(false)
+  let readersNames = $state<string[]>([])
+  let readersError = $state('')
+  async function showReaders(id: number) {
+    if (!group || readersBusy) return
+    readersOpen = true; readersBusy = true; readersNames = []; readersError = ''
+    try { readersNames = await group.readers(id) }
+    catch { readersError = t('groups.err.unknown') }
+    finally { readersBusy = false }
+  }
   let showTempInvite = $state(false)
 
   // ── Мут діалогу ──
@@ -1518,17 +1546,16 @@ import { windowActive } from '../windowActive.svelte'
       </button>
     {/if}
     {#if group}
-      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-      <div class="sc-gav clk" onclick={() => group.onSettings()}>
+      <button class="sc-gav clk" onclick={() => group.onMembers()} aria-label={t('groups.members.title')}>
         <GroupAvatar title={group.title} icon={group.icon} color={group.color} size={38} />
-      </div>
+      </button>
     {:else}
       <div class="sc-av lg" class:clk={!!onOpenProfile} onclick={() => onOpenProfile?.()} role="presentation">
         {#if head}<img src={head} alt="" />{:else}<span>{initial(peer?.nickname)}</span>{/if}
         <i class="sc-st {peerStatus}"></i>
       </div>
     {/if}
-    <div class="sc-who" class:clk={!!(group || onOpenProfile)} onclick={() => (group ? group.onSettings() : onOpenProfile?.())} role="presentation">
+    <div class="sc-who" class:clk={!!(group || onOpenProfile)} onclick={() => (group ? group.onMembers() : onOpenProfile?.())} role="presentation">
       <div class="sc-name">{group ? clean(group.title) : clean(peer?.nickname)}{#if !group && peer?.handle}<span class="sc-handle">@{peer.handle}</span>{/if}</div>
       {#key typingNow ? 'typ' : group ? 'grp' : peerStatusText}
         <div class="sc-sub" class:typ={typingNow} in:fly={{ y: 6, duration: 180, easing: cubicOut }}>
@@ -1542,6 +1569,11 @@ import { windowActive } from '../windowActive.svelte'
          Раніше в шапці жили ДВІ різні кнопки запрошення (швидка в уже
          відкритий світ і текстова «Запросити») — обидві легко було натиснути
          випадково, бо вони виглядали як плейсхолдер, а не як кнопка. -->
+    {#if group}
+      <button class="sc-hbtn sc-hbtn-txt" onclick={() => showTempInvite = true} disabled={group.memberIds.filter(id => id !== me).length === 0}>
+        <i class="ti ti-player-play"></i> {t('social.chat.inviteTip')}
+      </button>
+    {/if}
     {#if isFriend && !group}
       <div class="sc-qi">
         <button class="sc-hbtn sc-hbtn-txt" data-testid="chat-temp-invite-btn" disabled={quickBusy}
@@ -1579,6 +1611,7 @@ import { windowActive } from '../windowActive.svelte'
          вимкненого дзвінка; блокування гравця — у його ПРОФІЛІ (клік по
          аватарці/імені в шапці), а не в чаті. -->
     {#if group}
+      <button class="sc-hbtn" onclick={() => group.toggleMute()} aria-label={t(group.muted ? 'groups.unmute' : 'groups.mute')} use:tip={t(group.muted ? 'groups.unmute' : 'groups.mute')}><i class="ti {group.muted ? 'ti-bell-off' : 'ti-bell'}"></i></button>
       <button class="sc-hbtn" onclick={() => group.onSettings()} use:tip={t('groups.settings.open')} aria-label={t('groups.settings.open')}>
         <i class="ti ti-settings"></i>
       </button>
@@ -1591,7 +1624,7 @@ import { windowActive } from '../windowActive.svelte'
     {/if}
   </div>
   {#if showTempInvite}
-    <TempInviteModal friends={allFriends.length ? allFriends : [peer]} preselect={peer.accountId} onclose={() => { showTempInvite = false; loadOpenInvites(); setTimeout(refreshTempStates, 1500) }} />
+    <TempInviteModal friends={group || allFriends.length ? allFriends : [peer]} preselect={group ? '' : peer.accountId} preselectGroup={group?.id ?? ''} onclose={() => { showTempInvite = false; loadOpenInvites(); setTimeout(refreshTempStates, 1500) }} />
   {/if}
   {#if playAddr}
     <P2PJoinModal address={playAddr} onclose={() => (playAddr = '')} />
@@ -1755,6 +1788,10 @@ import { windowActive } from '../windowActive.svelte'
                     {/if}
                     {#if m.decryptFailed}
                       <div class="sc-txt sc-bad"><i class="ti ti-lock-off"></i> {t('social.chat.decryptFailed')}</div>
+                    {:else if /^https:\/\/shaurma-launcher\.org\/group\/join#[a-f0-9]{64}$/.test((m.text ?? '').trim())}
+                      <button class="btn btn-secondary" disabled={joiningGroup} onclick={() => joinGroupLink(m.text ?? '')}><i class="ti ti-users-plus"></i>{t('groups.link.join')}</button>
+                    {:else if /^shaurma-p2p:v1:[a-z0-9.-]+(?::[0-9]+)?$/.test(m.text ?? '')}
+                      <button class="btn btn-primary" onclick={() => joinGroupWorld(m.text ?? '')}><i class="ti ti-world"></i>{t('groups.p2p.join')}</button>
                     {:else if m.bodyType === 'build_offer'}
                       {@const offer = parseOffer(m.text ?? '')}
                       {#if offer}<GroupOfferCard {offer} {own} onClaim={() => group?.claim(m.id, m.from)} />{/if}
@@ -1786,6 +1823,7 @@ import { windowActive } from '../windowActive.svelte'
                         {#if pinnedIds.has(m.id)}<span class="sc-pinmark"><i class="ti ti-pin"></i> {t('social.chat.pinned')}</span>{/if}
                         {#if m.editedAt}<span class="sc-edited" use:tip={fullTime(m.editedAt)}>{t('social.chat.edited')}</span>{/if}
                         <time use:tip={fullTime(m.ts)}>{timeOf(m.ts)}</time>
+                        {#if own && group && m.id > 0}<button class="sc-link" onclick={() => showReaders(m.id)} aria-label={t('groups.readers.title')}><i class="ti ti-eye"></i></button>{/if}
                         {#if own}{#key st}{@render tickIcon(st)}{/key}{/if}
                       </div>
                     </div>
@@ -1979,7 +2017,17 @@ import { windowActive } from '../windowActive.svelte'
   {/if}
 </div>
 
+{#if readersOpen}
+  <UiModal open={true} title={t('groups.readers.title')} icon="ti-eye" onclose={() => readersOpen = false}>
+    {#if readersBusy}<p>…</p>{:else if readersError}<p role="alert">{readersError}</p>{:else}
+      {#each readersNames as name}<p>{name}</p>{:else}<p>{t('groups.readers.empty')}</p>{/each}
+    {/if}
+  </UiModal>
+{/if}
+
 <style>
+  button.sc-gav { border: 0; padding: 0; background: transparent; border-radius: 12px; }
+  button.sc-gav:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
   .sc { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
 
   /* ── Шапка ── */

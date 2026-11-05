@@ -10,7 +10,6 @@
   import { tip } from './tooltip'
   import { buildModMessage } from './modShare'
   import FriendPickerModal from './FriendPickerModal.svelte'
-  import GroupPickerModal from '../groups/GroupPickerModal.svelte'
   import type { Group } from '../groups/groupTypes'
   import type { BrowserProjectDetail, SocialFriend } from '../types'
 
@@ -21,7 +20,6 @@
   } = $props()
 
   let pickerOpen = $state(false)
-  let groupOpen = $state(false)
   let sending = $state(false)
   // Список беремо з того самого GetFriendsState, яким перевіряємо вхід, і
   // передаємо у пікер: він не робить другий запит при відкритті.
@@ -55,7 +53,7 @@
     sending = true
     try {
       await App.GroupRequest('send', { groupId: gr.id, body: buildModMessage(detail), clientMessageId: crypto.randomUUID().replace(/-/g, '') })
-      groupOpen = false
+      pickerOpen = false
       toast(t('social.mod.sentTo', { name: gr.title }), 'success')
     } catch (err) {
       const m = /social:([A-Za-z_ ]+)/.exec(String((err as any)?.message ?? err ?? ''))
@@ -96,18 +94,10 @@
           aria-label={t('social.pack.shareTip')} aria-haspopup="dialog">
     {#if sending}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-share-3"></i>{/if}
   </button>
-  <button class="sh-btn" onclick={(e) => { e.stopPropagation(); groupOpen = true }} disabled={sending} use:tip={t('groups.share.modTip')}
-          aria-label={t('groups.share.modTip')} aria-haspopup="dialog">
-    <i class="ti ti-users-group"></i>
-  </button>
 </div>
 
-{#if groupOpen}
-  <GroupPickerModal kind="mods" busy={sending} onpick={shareToGroup} onclose={() => { if (!sending) groupOpen = false }} />
-{/if}
-
 {#if pickerOpen}
-  <FriendPickerModal
+  <FriendPickerModal groupKind="mods" ongroup={shareToGroup} busy={sending}
     title={t('social.pack.sharePick')}
     subtitle={detail.name || ''}
     confirmLabel={sending ? t('social.pack.sharing') : t('social.pack.shareAction')}

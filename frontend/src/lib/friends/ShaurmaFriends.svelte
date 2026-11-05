@@ -74,7 +74,7 @@
   // що й так на екрані, але слати в усіх інших випадках.
   // Неактивне вікно лаунчера = користувач нічого не бачить: тост НЕ ховаємо.
   $effect(() => {
-    const id = activePeer ? activePeer.accountId : ''
+    const id = activeGroup?.id ?? activePeer?.accountId ?? ''
     App.SetSocialView(windowActive.active, id).catch(() => {})
   })
 
@@ -94,7 +94,8 @@
   $effect(() => {
     if (openAccountId && openAccountId !== consumed) {
       consumed = openAccountId
-      activeId = openAccountId
+      if (/^g[a-f0-9]{32}$/.test(openAccountId)) void g.open(openAccountId)
+      else { g.close(); activeId = openAccountId }
     }
   })
 </script>

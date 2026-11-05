@@ -52,15 +52,15 @@ export interface AccentDef {
 }
 
 export const ACCENTS: Record<string, AccentDef> = {
-  orange: { name: 'accent.orange', main: '#c24b00', deep: '#a83b00', rgb: '194, 75, 0' },
-  violet: { name: 'accent.violet', main: '#7536e8', deep: '#561bc6', rgb: '117, 54, 232' },
-  green:  { name: 'accent.green',  main: '#008052', deep: '#006b44', rgb: '0, 128, 82' },
-  blue:   { name: 'accent.blue',   main: '#1664d9', deep: '#064db8', rgb: '22, 100, 217' },
-  red:    { name: 'accent.red',    main: '#d62438', deep: '#b81029', rgb: '214, 36, 56' },
+  orange: { name: 'accent.orange', main: '#ff901e', deep: '#ff8633', rgb: '255, 144, 30' },
+  violet: { name: 'accent.violet', main: '#9774ff', deep: '#8f6fff', rgb: '151, 116, 255' },
+  green:  { name: 'accent.green',  main: '#28ca90', deep: '#3bbf92', rgb: '40, 202, 144' },
+  blue:   { name: 'accent.blue',   main: '#5296fa', deep: '#5d92f5', rgb: '82, 150, 250' },
+  red:    { name: 'accent.red',    main: '#f75c66', deep: '#ee6068', rgb: '247, 92, 102' },
   // Градієнтні акценти: дві РІЗНІ кольорові «точки» в одному акценті.
-  sunset: { name: 'accent.sunset', main: '#bf4600', deep: '#be146f', rgb: '191, 70, 0', gradient: true },
-  ocean:  { name: 'accent.ocean',  main: '#0075ab', deep: '#643bda', rgb: '0, 117, 171', gradient: true },
-  aurora: { name: 'accent.aurora', main: '#7835cb', deep: '#007d87', rgb: '120, 53, 203', gradient: true },
+  sunset: { name: 'accent.sunset', main: '#db8845', deep: '#d373a3', rgb: '219, 136, 69', gradient: true },
+  ocean:  { name: 'accent.ocean',  main: '#45a9ce', deep: '#9284db', rgb: '69, 169, 206', gradient: true },
+  aurora: { name: 'accent.aurora', main: '#a677db', deep: '#50bcb7', rgb: '166, 119, 219', gradient: true },
 }
 
 export const DEFAULT_ACCENT = 'orange'
@@ -76,7 +76,10 @@ export const DEFAULT_FONT = 'inter'
  *   вираховується автозатемненням на 18% (стара поведінка, лишена як
  *   найпростіший дефолт — «просто клікнув колір і воно виглядає добре»).
  */
+let currentAccent: [string, string?, string?, string?] = [DEFAULT_ACCENT]
+
 export function applyAccent(accent: string, customHex?: string, customMode?: string, customHex2?: string) {
+  currentAccent = [accent, customHex, customMode, customHex2]
   let a = ACCENTS[accent]
   if (accent === 'custom' && customHex && /^#[0-9a-fA-F]{6}$/.test(customHex)) {
     const { r, g, b } = hexToRgb(customHex)
@@ -90,6 +93,17 @@ export function applyAccent(accent: string, customHex?: string, customMode?: str
   }
   a = a ?? ACCENTS[DEFAULT_ACCENT]
   const root = document.documentElement
+  // Keep accent labels readable on light surfaces without changing custom colors.
+  if (accent !== 'custom' && root.getAttribute('data-theme') === 'light') {
+    const readable = (hex: string) => {
+      let color = hex
+      while (contrast(color, '#ffffff') < 4.5) color = darkenHex(color, .94)
+      return color
+    }
+    const main = readable(a.main), deep = readable(a.deep)
+    const { r, g, b } = hexToRgb(main)
+    a = { ...a, main, deep, rgb: `${r}, ${g}, ${b}` }
+  }
   root.style.setProperty('--orange', a.main)
   root.style.setProperty('--orange-2', a.deep)
   root.style.setProperty('--orange-rgb', a.rgb)
@@ -157,11 +171,12 @@ export function applyTheme(theme: string, custom?: { bg?: string; card?: string;
     const mql = window.matchMedia('(prefers-color-scheme: light)')
     resolved = mql.matches ? 'light' : 'dark'
     systemThemeMql = mql
-    systemThemeHandler = () => root.setAttribute('data-theme', mql.matches ? 'light' : 'dark')
+    systemThemeHandler = () => { root.setAttribute('data-theme', mql.matches ? 'light' : 'dark'); applyAccent(...currentAccent) }
     mql.addEventListener('change', systemThemeHandler)
   }
   const t = resolved === 'light' ? 'light' : resolved === 'oled' ? 'oled' : 'dark'
   root.setAttribute('data-theme', t)
+  applyAccent(...currentAccent)
 
   // Кастомна тема: прибираємо старі inline-змінні та ставимо кольори юзера.
   if (theme === 'custom' && custom?.bg && custom?.card && custom?.text) {

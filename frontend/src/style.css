@@ -86,9 +86,9 @@ select option { background:var(--bg-panel); color:var(--text); }
   --text-mute:   #a0a0a0;
   /* #666 на #1e1e1e давав ~3.3:1; #8c8c8c ≥ 4.5:1 на картках і панелях */
   --text-dim:    #8c8c8c;
-  --orange:      #c24b00;
-  --orange-2:    #a83b00;
-  --orange-rgb:  194, 75, 0; /* для rgba(var(--orange-rgb), .x) — акцентна тема */
+  --orange:      #ff901e;
+  --orange-2:    #ff8633;
+  --orange-rgb:  255, 144, 30; /* для rgba(var(--orange-rgb), .x) — акцентна тема */
   /* Готовий акцентний градієнт (ставиться applyAccent), дефолт = помаранч.
      Для «градієнтних» акцентів (sunset/ocean/aurora) — видимий двоколір. */
   --accent-grad: linear-gradient(135deg, var(--orange), var(--orange-2));
@@ -116,7 +116,7 @@ select option { background:var(--bg-panel); color:var(--text); }
   --elev-2: 0 6px 16px -6px rgba(0,0,0,.5);
   --elev-3: 0 18px 40px -14px rgba(0,0,0,.6);
   --elev-4: 0 40px 90px -30px rgba(0,0,0,.7);
-  --accent-ink: #fff; /* текст на акцентній заливці; applyAccent уточнює */
+  --accent-ink: #1c0e00; /* текст на акцентній заливці; applyAccent уточнює */
   --ease-out: cubic-bezier(.2,0,0,1);
 }
 
@@ -2301,17 +2301,25 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .input:focus { border-color:var(--orange); }
 
 .btn {
-  border:none; cursor:pointer; font-family:inherit; font-size:12px; font-weight:600; padding:9px 15px; border-radius:var(--r-md); display:inline-flex; align-items:center; gap:7px; position:relative; overflow:hidden; isolation:isolate;
-  transition:background .15s, border-color .15s, color .15s; }
-.btn i { font-size:14px; transition:transform .18s cubic-bezier(.34,1.56,.64,1); }
-.btn:not(:disabled):hover i { transform:scale(1.12); }
+  box-sizing: border-box; min-height: 36px; border: 1px solid transparent; cursor: pointer;
+  font-family: inherit; font-size: 13px; line-height: 1.25; font-weight: 600;
+  padding: 9px 15px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 8px; position: relative; overflow: hidden; isolation: isolate;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.btn i { font-size: 16px; flex-shrink: 0; }
+.btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
+@media (prefers-reduced-motion: no-preference) {
+  html:not([data-animations="off"]) .btn { transition: background-color 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, box-shadow 150ms ease-out, scale 150ms cubic-bezier(.2,0,0,1); }
+  html:not([data-animations="off"]) .btn:not(:disabled):active { scale: .96; }
+}
 .btn-time {
   font-family:var(--font-mono); font-size:11px; opacity:.85;
   margin-left:4px; font-weight:600;
 }
 .btn-ghost { background:var(--hover); color:var(--text); border:1px solid var(--border); }
 .btn-ghost:hover { background:var(--hover-strong); border-color:var(--border-hi); }
-.btn-primary { background:var(--orange); color:var(--accent-ink); }
+.btn-primary { background:var(--orange); color:var(--accent-ink); box-shadow: inset 0 1px 0 rgba(255,255,255,.16), 0 2px 6px rgba(0,0,0,.12); }
 .btn-primary:hover { background:var(--orange-2); }
 /* .btn-secondary — раніше без ЖОДНОГО правила в усьому style.css: кнопка
    отримувала лише дефолтний вигляд <button> з WebView2 (світлий/білий
@@ -2336,8 +2344,8 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .btn-warning:hover { background:rgba(245,158,11,.25); }
 .btn-info { background:rgba(59,130,246,.15); color:var(--blue); border:1px solid rgba(59,130,246,.35); }
 .btn-info:hover { background:rgba(59,130,246,.25); }
-.btn-sm { padding:6px 10px; font-size:11px; }
-.btn-lg { padding:12px 22px; font-size:13px; }
+.btn-sm { min-height:30px; padding:6px 11px; font-size:12px; }
+.btn-lg { min-height:44px; padding:12px 22px; font-size:14px; }
 .btn:disabled { opacity:.7; cursor:default; pointer-events:none; transform:none; translate:none; box-shadow:none; }
 .btn:disabled:hover { transform:none; }
 /* Кнопка запуску з живим станом: плавний перехід кольору при зміні стадії */

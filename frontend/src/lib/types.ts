@@ -3198,8 +3198,18 @@ export interface SocialServerInviteEvent {
 // Окреме вікно (notify.html). Бекенд уже санітизував текст і обрізав його —
 // тут ми ЛИШЕ показуємо. kind: "chat" (превʼю повідомлення) |
 // "invite" (запит у друзі; body може бути порожнім — підставляє i18n).
-export type SocialNotifyKind = 'chat' | 'invite'
+export type SocialNotifyKind = 'chat' | 'invite' | 'group' | 'info' | 'event'
+
+/** Семантичний тип багатого сповіщення (див. backend/notify_events_shaurma.go). */
+export type NotifyEventKind =
+  | 'download_done' | 'install_failed' | 'action_needed'
+  | 'friend_request'
+  | 'share_build' | 'share_server' | 'share_mod'
+  | 'invite_temp' | 'invite_perm'
+  | 'server_started' | 'server_stopped'
 export interface SocialNotifyPayload {
+  groupIcon?: string
+  groupColor?: string
   id: string
   kind: SocialNotifyKind
   title: string
@@ -3210,6 +3220,15 @@ export interface SocialNotifyPayload {
   // «Час показу» при постановці в чергу. Відсутнє → вікно бере своє
   // налаштування з GetSettings (запасний варіант).
   durationMs?: number
+  // ── Багаті сповіщення ──
+  event?: NotifyEventKind
+  sub?: string
+  chips?: string[]
+  icon?: string
+  iconName?: string
+  color?: string
+  packId?: string
+  ref?: string
 }
 
 

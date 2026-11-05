@@ -10,7 +10,6 @@
   import UiModal from './UiModal.svelte'
   import ExportTreeNode, { type ExportTreeNodeData } from './ExportTreeNode.svelte'
   import FriendPickerModal from './friends/FriendPickerModal.svelte'
-  import GroupPickerModal from './groups/GroupPickerModal.svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
   import { t } from './i18n.svelte'
@@ -30,7 +29,7 @@
   const Z = '2100000'
 
   // Обидва види починають з вибору файлів (у сервера теж бувають зайві паки, бекапи, світи).
-  let step = $state<'files' | 'friends' | 'group'>('files')
+  let step = $state<'files' | 'friends'>('files')
   let candidates = $state<ExportCandidate[]>([])
   let tree = $state<ExportTreeNodeData[]>([])
   let included = $state<string[]>([])
@@ -275,19 +274,13 @@
 
     {#snippet footer()}
       <button class="btn btn-ghost" onclick={onClose}>{t('share.cancel')}</button>
-      <button class="btn btn-ghost" disabled={!canNext} onclick={() => step = 'group'}>
-        <i class="ti ti-users-group"></i> {t('groups.share.toGroup')}
-      </button>
       <button class="sm-cta" disabled={!canNext} onclick={() => step = 'friends'}>
         {t('share.send.next')} <i class="ti ti-arrow-right"></i>
       </button>
     {/snippet}
   </UiModal>
-{:else if step === 'group'}
-  <GroupPickerModal kind="builds" title={t('groups.share.pickTitle', { name })} busy={starting} zIndex={Number(Z)}
-    onpick={startGroup} onback={() => { if (!starting) step = 'files' }} onclose={() => { if (!starting) onClose() }} />
 {:else}
-  <FriendPickerModal
+  <FriendPickerModal groupKind="builds" ongroup={startGroup}
     title={t(kind === 'build' ? 'share.send.pickTitle' : 'share.send.pickTitleServer', { name })}
     subtitle={t('share.send.pickSub', { max: MAX_FRIENDS })}
     multi={true}

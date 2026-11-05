@@ -770,6 +770,7 @@ export const App = {
   ProbeLocalServer: (port: number): Promise<LocalServer> => call('ProbeLocalServer', port),
   ListTempInvites: (): Promise<TempInvite[]> => call('ListTempInvites'),
   // udpPort: 0 = авто (порт голосового мода), -1 = без голосу, 1..65535 = свій UDP-порт.
+  InviteGroupToWorld: (groupId: string, existingId: string, port: number, udpPort: number): Promise<TempInvite> => call('InviteGroupToWorld', groupId, existingId, port, udpPort),
   CreateTempInvite: (port: number, friendIds: string[], packId: string, packName: string, udpPort = 0): Promise<TempInvite> => call('CreateTempInvite', port, friendIds, packId, packName, udpPort),
   DetectTempVoice: (port: number): Promise<TempVoiceInfo> => call('DetectTempVoice', port),
   SetTempInviteUDP: (id: string, udpPort: number): Promise<TempInvite> => call('SetTempInviteUDP', id, udpPort),
@@ -814,6 +815,10 @@ export const App = {
   // Клік по картці: показати/активізувати головне вікно і відкрити діалог
   // (порожній peerAccountId — просто відкрити шухляду «Друзі»).
   OpenChatFromNotification: (peerAccountId: string): Promise<void> => call('OpenChatFromNotification', peerAccountId),
+  // Типізоване сповіщення з головного вікна (завантаження/помилка/потрібна дія).
+  NotifyEvent: (e: { event: 'download_done' | 'install_failed' | 'action_needed'; title: string; body?: string; sub?: string; packId?: string; ref?: string }): Promise<void> => call('NotifyEvent', e),
+  // Дія кнопки на картці: accept-friend | decline-friend | share-offer | mod-view | invite-play | open-pack | open-friends.
+  NotifyAction: (action: string, ref: string, accountId: string): Promise<void> => call('NotifyAction', action, ref, accountId),
   LogoutSkinAccount: (): Promise<void> => call('LogoutSkinAccount'),
   // Перевірка ніка ДО Google-логіну (available/reason/message) — щоб не
   // ганяти юзера через весь OAuth-браузер лише для того, щоб дізнатись,

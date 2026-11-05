@@ -7,13 +7,15 @@
   // Візуальний шар чату (шапка, бульбашки, поле вводу) перестилізований тут через
   // :global під .cs — сам ShaurmaChat (логіка, шифрування, стани) не чіпали.
   import { useFriendsStore } from './FriendsStore.svelte'
+  import { App } from '../wails'
   import { t } from '../i18n.svelte'
   import ShaurmaChat from './ShaurmaChat.svelte'
   import type { SocialFriend } from '../types'
   import type { GroupChatInfo } from './chatApi'
   import { useGroupsStore } from '../groups/GroupsStore.svelte'
   import { groupChatApi } from '../groups/groupChatApi'
-  import { GROUP_MAX_BODY, parseSystem, safeGroupColor, type Group } from '../groups/groupTypes'
+  import { GROUP_MAX_BODY, parseSystem, type Group } from '../groups/groupTypes'
+  import GroupMembersModal from '../groups/GroupMembersModal.svelte'
   import GroupSettingsModal from '../groups/GroupSettingsModal.svelte'
 
   let { peer, group = null, onBack, onOpenMod, onAdd, onPrivacy }: {
@@ -29,7 +31,7 @@
   const g = useGroupsStore()
 
   let settingsOpen = $state(false)
-  const groupColor = $derived(group ? safeGroupColor(group.settings.color) : '')
+  let membersOpen = $state(false)
 
   // Текст системної події групи — переклад за кодом, імена з довідника учасників.
   function sysText(gr: Group, body: string): string {
@@ -48,10 +50,17 @@
     if (!gr) return undefined
     return {
       id: gr.id, title: gr.title, icon: gr.settings.icon ?? '', color: gr.settings.color,
-      members: gr.members.length, adminName: g.nameOf(gr.admin, gr), isAdmin: g.isAdmin(gr),
+      memberIds: gr.members.map(m => m.accountId), members: gr.members.length, adminName: g.nameOf(gr.admin, gr), isAdmin: g.isAdmin(gr),
       canPin: g.canPin(gr, true), canUnpin: g.canPin(gr, false), typing: g.typingNames(gr.id), maxLen: GROUP_MAX_BODY,
       nameOf: (id) => g.nameOf(id, gr), headOf: (id) => headOf(gr, id), sysText: (b) => sysText(gr, b),
       onSettings: () => (settingsOpen = true),
+      onMembers: () => (membersOpen = true),
+      muted: s.isMuted(gr.id),
+      toggleMute: () => { void s.toggleMutePeer({ accountId: gr.id, nickname: gr.title } as SocialFriend) },
+      readers: async (messageId) => {
+        const result = await App.GroupRequest('history', { groupId: gr.id, limit: 1 })
+        return (result?.history?.reads ?? []).filter((r: { by: string; upTo: number }) => r.by !== s.me && r.upTo >= messageId && gr.members.some(m => m.accountId === r.by)).map((r: { by: string }) => g.nameOf(r.by, gr))
+      },
       claim: (messageId, from) => { void g.claimBuild({ groupId: gr.id, id: messageId, from } as any) },
     }
   })
@@ -63,7 +72,7 @@
   const groupPeer = $derived(group ? ({ accountId: group.id, nickname: group.title } as SocialFriend) : null)
 </script>
 
-<section class="cs" class:colored={!!groupColor} style={groupColor ? `--gc:${groupColor}` : undefined} aria-live="polite">
+<section class="cs" aria-live="polite">
   {#if group && groupPeer && info && chatApi}
     {#key group.id}
       <div class="cs-in">
@@ -106,7 +115,11 @@
 </section>
 
 {#if settingsOpen && group}
-  <GroupSettingsModal {group} friends={s.st.friends} onclose={() => (settingsOpen = false)} />
+  <GroupSettingsModal {group} onmembers={() => { settingsOpen = false; membersOpen = true }} onclose={() => (settingsOpen = false)} />
+{/if}
+
+{#if membersOpen && group}
+  <GroupMembersModal {group} friends={s.st.friends} onclose={() => (membersOpen = false)} />
 {/if}
 
 <style>
@@ -114,8 +127,6 @@
      заокруглення; шапка як .st-card-head, роздільники — var(--border). */
   .cs { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg, 16px); }
-  /* Колір обведення групи (налаштування групи) — лише рамка картки. */
-  .cs.colored { border-color: var(--gc); }
   .cs-in { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; animation: cs-in .22s ease both; }
   @keyframes cs-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   /* «Назад» потрібна лише коли панелі показуються по одній. */
@@ -148,9 +159,9 @@
   .cs.cs :global(.sc-sub) { font-size: 12px; color: var(--text-mute); }
   .cs.cs :global(.sc-hbtn) { width: 32px; height: 32px; border-radius: var(--r-sm, 8px); font-size: 15px; }
   /* «Запросити» — як .btn-primary лаунчера: суцільний помаранчевий, без власного градієнта. */
-  .cs.cs :global(.sc-hbtn-txt) { width: auto; padding: 0 12px; font: 600 12px/1 var(--font-ui); color: #fff; border-color: transparent;
+  .cs.cs :global(.sc-hbtn-txt) { width: auto; padding: 0 12px; font: 600 12px/1 var(--font-ui); color: var(--accent-ink); border-color: transparent;
     background: var(--orange); box-shadow: 0 6px 16px rgba(var(--orange-rgb), .3); }
-  .cs.cs :global(.sc-hbtn-txt:hover:not(:disabled)) { color: #fff; border-color: transparent; background: var(--orange-2, var(--orange)); }
+  .cs.cs :global(.sc-hbtn-txt:hover:not(:disabled)) { color: var(--accent-ink); border-color: transparent; background: var(--orange-2, var(--orange)); }
   .cs.cs :global(.sc-back) { width: 32px; height: 32px; border-radius: var(--r-sm, 8px); }
   .cs.cs :global(.sc-pinbar) { background: color-mix(in srgb, var(--bg-card) 92%, var(--orange) 8%); }
 
@@ -167,7 +178,7 @@
   .cs.cs :global(.sc-input) { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--border-hi); background: var(--bg-input); font-size: 13.5px; }
   .cs.cs :global(.sc-input:focus) { border-color: rgba(var(--orange-rgb), .7); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .15); }
   .cs.cs :global(.sc-send) { width: 40px; height: 40px; border-radius: 12px; font-size: 17px; }
-  .cs.cs :global(.sc-send.ready) { color: #fff; background: linear-gradient(135deg, var(--orange), var(--orange-2, var(--orange))); box-shadow: 0 8px 16px rgba(var(--orange-rgb), .25); }
+  .cs.cs :global(.sc-send.ready) { color: var(--accent-ink); background: linear-gradient(135deg, var(--orange), var(--orange-2, var(--orange))); box-shadow: 0 8px 16px rgba(var(--orange-rgb), .25); }
 
   @media (prefers-reduced-motion: reduce) { .cs-in, .cs-empty { animation: none; } .cs-card { transition: none; } }
   :global([data-animations="off"]) .cs-in, :global([data-animations="off"]) .cs-empty { animation: none; }

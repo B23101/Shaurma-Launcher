@@ -10,12 +10,17 @@
   import UiModal from '../UiModal.svelte'
   import '../settings/settings.css'
   import FriendAvatar from './FriendAvatar.svelte'
-  import { App } from '../wails'
+  import { App, on } from '../wails'
   import { t } from '../i18n.svelte'
   import { friendColor } from './friendHead'
   import type { SocialFriend, SocialStatus } from '../types'
 
+  import type { Group } from '../groups/groupTypes'
+  import GroupAvatar from '../groups/GroupAvatar.svelte'
+
   let {
+    groupKind = undefined,
+    ongroup = undefined,
     title = '',
     subtitle = '',
     multi = true,
@@ -32,6 +37,8 @@
     onconfirm = (_f: SocialFriend[]) => {},
     onclose = () => {},
   }: {
+    groupKind?: 'mods' | 'builds'
+    ongroup?: (g: Group) => void
     title?: string
     subtitle?: string
     multi?: boolean
@@ -47,6 +54,16 @@
     onclose?: () => void
   } = $props()
 
+  let groups = $state<Group[]>([])
+  let selectedGroup = $state<Group | null>(null)
+  onMount(() => {
+    if (!groupKind) return
+    const off = on('group:event', (e: { type?: string; data?: any }) => {
+      if (e.type === 'groups_snapshot' && Array.isArray(e.data?.groups)) groups = e.data.groups
+    })
+    App.GroupRequest('list').catch(() => {})
+    return off
+  })
   let friends = $state<SocialFriend[]>(given ?? [])
   let loading = $state(!given)
   let loggedIn = $state(true)
@@ -76,7 +93,8 @@
   const onlineCount = $derived(friends.filter((f) => statusOf(f) !== 'offline').length)
 
   function pick(f: SocialFriend) {
-    if (taken(f)) return
+    if (taken(f) || busy) return
+    selectedGroup = null
     if (!multi) { onconfirm([f]); return }
     if (busy) return
     const s = new Set(chosen)
@@ -87,7 +105,9 @@
   }
   const full = $derived(max > 0 && chosen.size >= max)
   function confirm() {
-    if (busy || chosen.size === 0) return
+    if (busy) return
+    if (selectedGroup) { ongroup?.(selectedGroup); return }
+    if (chosen.size === 0) return
     onconfirm(friends.filter((f) => chosen.has(f.accountId)))
   }
   function close() { if (!busy) onclose() }
@@ -99,7 +119,7 @@
          title={title || t('friendPicker.title')} {subtitle} width="480px" maxHeight="min(640px, calc(100vh - 48px))"
          bodyClass="no-pad" footer={multi ? foot : null}>
   <div class="fp-wrap">
-  {#if friends.length > 6}
+  {#if friends.length + groups.length > 6}
     <div class="st-search fp-search">
       <i class="ti ti-search st-search-ic"></i>
       <input bind:value={query} placeholder={t('friendPicker.search')} spellcheck="false" autocomplete="off" />
@@ -107,6 +127,15 @@
   {/if}
 
   <div class="fp-list">
+    {#each groups.filter(g => !query.trim() || g.title.toLowerCase().includes(query.trim().toLowerCase())) as g (g.id)}
+      <button class="fp-row" class:on={selectedGroup?.id === g.id}
+        disabled={busy || !(groupKind === 'mods' ? g.settings.allowMods : g.settings.allowBuilds)}
+        onclick={() => { chosen = new Set(); selectedGroup = g }}>
+        <GroupAvatar title={g.title} icon={g.settings.icon} color={g.settings.color} size={34} />
+        <span class="fp-main"><span class="fp-nick">{g.title}</span><span class="fp-meta">{t('groups.members', { n: g.members.length })}</span></span>
+        <i class="ti {selectedGroup?.id === g.id ? 'ti-circle-check-filled' : 'ti-circle'} fp-check"></i>
+      </button>
+    {/each}
     {#if loading}
       <div class="fp-state"><i class="ti ti-loader-2 spin"></i></div>
     {:else if !loggedIn}
@@ -141,7 +170,7 @@
   <span class="fp-count">{max > 0 ? `Вибрано ${chosen.size} з ${max}` : ''}{max > 0 ? ' · ' : ''}{t('friendPicker.count', { n: chosen.size, online: onlineCount })}</span>
   {#if onback}<button class="btn btn-ghost" onclick={onback} disabled={busy}><i class="ti ti-arrow-left"></i> Назад</button>{/if}
   <button class="btn btn-ghost" onclick={close} disabled={busy}>{t('cancel')}</button>
-  <button class="btn btn-primary" onclick={confirm} disabled={chosen.size === 0 || busy}>
+  <button class="btn btn-primary" onclick={confirm} disabled={(!selectedGroup && chosen.size === 0) || busy}>
     {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-check"></i>{/if} {confirmLabel || t('friendPicker.add')}
   </button>
 {/snippet}

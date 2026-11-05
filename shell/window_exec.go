@@ -80,6 +80,9 @@ type winOptions struct {
 	AlwaysOnTop bool `json:"alwaysOnTop,omitempty"`
 	// HiddenOnTaskbar — НЕ показувати вікно в панелі завдань (WS_EX_TOOLWINDOW).
 	HiddenOnTaskbar bool `json:"hiddenOnTaskbar,omitempty"`
+	// DisableFramelessDecorations — прибрати системну рамку/тінь DWM у
+	// frameless-вікна (Windows): без неї прозоре вікно не має видимого контуру.
+	DisableFramelessDecorations bool `json:"disableFramelessDecorations,omitempty"`
 	// Position — спеціальне позиціонування: "bottom-right" = правий нижній
 	// кут робочої області основного монітора (з MarginX/MarginY відступом).
 	// "" або інше → X/Y як звичайні координати.
@@ -188,7 +191,8 @@ func windowCreate(id, optsJSON string) {
 		// вікна. Fallback від крадіжки фокуса реалізований окремою
 		// операцією window_op "show-inactive" (див. window_show_*.go).
 		Windows: application.WindowsWindow{
-			HiddenOnTaskbar: o.HiddenOnTaskbar,
+			HiddenOnTaskbar:                   o.HiddenOnTaskbar,
+			DisableFramelessWindowDecorations: o.DisableFramelessDecorations,
 		},
 		// Linux: GPU-політика webview. «Економний режим» вимикає апаратне
 		// прискорення WebKitGTK (WebviewGpuPolicyNever) — разом з env-фіксами

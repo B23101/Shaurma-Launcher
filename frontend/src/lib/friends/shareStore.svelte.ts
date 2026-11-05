@@ -55,6 +55,14 @@ export async function loadPreview(sid: string, force = false): Promise<void> {
     sharePreview[sid] = { loading: false, error: errText(e) }
   }
 }
+/** Показати модалку «Прийняти?» саме для цієї пропозиції (кнопка «Завантажити» у сповіщенні). */
+export function showOffer(sid: string): boolean {
+  const i = shareUi.offers.findIndex(o => o.card.sid === sid)
+  if (i < 0) return false
+  if (i > 0) shareUi.offers = [shareUi.offers[i], ...shareUi.offers.filter((_, j) => j !== i)]
+  shareUi.offersHidden = false
+  return true
+}
 export function openContents(sid: string) { shareUi.contents = sid; loadPreview(sid) }
 
 // Перехід на сторінку мода в браузері контенту (обробник дає App через TransferWidget).

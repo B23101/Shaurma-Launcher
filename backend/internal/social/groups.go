@@ -17,6 +17,7 @@ import (
 
 // Дозволені операції group_op (дзеркало сервера). Усе інше відкидаємо ще на клієнті.
 var groupOps = map[string]bool{
+	"link_create": true, "link_join": true, "p2p_authorize": true,
 	"create": true, "add": true, "invite": true, "invite_respond": true, "invite_revoke": true,
 	"leave": true, "kick": true, "transfer": true, "settings": true, "delete": true,
 	"send": true, "edit": true, "delete_message": true, "pin": true, "react": true,
@@ -25,6 +26,7 @@ var groupOps = map[string]bool{
 
 // Поля, які можна передати в group_op. Службові (type, reqId, op) задаємо самі.
 var groupOpFields = map[string]bool{
+	"token": true, "revoke": true,
 	"groupId": true, "title": true, "members": true, "account": true, "inviteId": true, "accept": true,
 	"messageId": true, "kind": true, "body": true, "clientMessageId": true, "replyToId": true,
 	"emoji": true, "pin": true, "before": true, "after": true, "limit": true, "settings": true,

@@ -1112,7 +1112,9 @@ type inEvent struct {
 	PackName   string `json:"packName"`
 	PackColor  string `json:"packColor"`
 	Code       string `json:"code"`
-	Message    string `json:"message"`
+	// Message — об'єкт у групових подіях (group_message / group_message_edited). Раніше було string, і
+	// json.Unmarshal падав на КОЖНОМУ груповому повідомленні → кадр мовчки відкидався (чат групи не оновлювався).
+	Message    json.RawMessage `json:"message"`
 
 	// Чат (розділи 1.5.2): поля названі буквально як у VPS-протоколі.
 	ChatID          string         `json:"chatId"`
@@ -1162,6 +1164,14 @@ func (p *PresenceClient) readLoop(ctx context.Context, conn *websocket.Conn) err
 		}
 		var ev inEvent
 		if json.Unmarshal(data, &ev) != nil {
+			// Групові кадри мають вкладені об'єкти, які не обов'язково лягають у плоский inEvent: не губимо їх —
+			// віддаємо UI як є (тип читаємо окремо).
+			var head struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(data, &head) == nil && strings.HasPrefix(head.Type, "group_") {
+				p.handleGroupFrame(head.Type, data)
+			}
 			continue
 		}
 		switch ev.Type {

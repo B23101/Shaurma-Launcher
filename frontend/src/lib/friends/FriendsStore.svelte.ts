@@ -10,12 +10,13 @@
 // {@html}, колір перевіряється регуляркою, помилки показуються ПЕРЕКЛАДОМ
 // за кодом, а не сирим текстом сервера.
 // ══════════════════════════════════════════════════════════════════════════
-import { getContext, setContext } from 'svelte'
+import { getContext, setContext, untrack } from 'svelte'
 import { App, on } from '../wails'
 import { toast, confirmDialog } from '../toast.svelte'
 import { t } from '../i18n.svelte'
 import { buildFriendLink, parseFriendLink } from './friendLink'
 import { parseFriendInput } from './handle'
+import { toMs, readActivity, saveActivity, mergeActivity } from './activityCache'
 import type { ChatKeyStatus } from '../wails'
 import type {
   SocialState, SocialFriend, SocialPresenceEvent, SocialConn, SocialPrivacy,
@@ -71,7 +72,7 @@ export class FriendsStore {
   search = $state('')
   /** Швидкий фільтр за статусом (чіпи над списком). */
   statusFilter = $state<'all' | 'online' | 'in_game'>('all')
-  listTab = $state<'chats' | 'requests' | 'groups'>('chats')
+  listTab = $state<'chats' | 'requests'>('chats')
   compact = $state((() => { try { return localStorage.getItem(COMPACT_KEY) === '1' } catch { return false } })())
   /** Ширина розгорнутого списку (перетягується правим краєм, зберігається). */
   listW = $state((() => { try { const v = Number(localStorage.getItem(WIDTH_KEY)); return v >= LIST_W_MIN && v <= LIST_W_MAX ? v : 264 } catch { return 264 } })())
@@ -95,6 +96,12 @@ export class FriendsStore {
   former = $state<SocialFriend[]>([])
   formerOpen = $state(false)
   peerProfiles = $state<Record<string, SocialPeerProfile>>({})
+  /** accountId співрозмовника → час (мс) останнього повідомлення. Живе в кеші по акаунту (activityCache). */
+  activity = $state<Record<string, number>>({})
+  #activityPending = new Set<string>()
+  /** Чати, активність яких уже звірена з сервером у ЦІЙ сесії (кеш показуємо одразу, звіряємо тихо). */
+  #activityVerified = new Set<string>()
+  #activityFor = ''
   typingNow = $state<Record<string, boolean>>({})
 
   myHandle = $state('')
@@ -112,6 +119,50 @@ export class FriendsStore {
 
   constructor(setActive: (id: string) => void) {
     this.#setActive = setActive
+  }
+
+  #actKey = () => `sf.activity.${this.me}`
+  /** Підхоплює збережений порядок чатів цього акаунта — список одразу впорядкований, без «стрибка». */
+  restoreActivity() {
+    untrack(() => {
+      const me = this.me
+      if (!me || this.#activityFor === me) return
+      this.#activityFor = me
+      this.#activityVerified.clear()
+      mergeActivity(this.activity, readActivity(this.#actKey()))
+    })
+  }
+  #bump(id: string, ts: number) {
+    const ms = toMs(ts)
+    if (!id || ms <= (this.activity[id] ?? 0)) return
+    this.activity[id] = ms
+    saveActivity(this.#actKey(), () => ({ ...this.activity }))
+  }
+
+  syncActivity(ids: string[]) {
+    if (!this.st.loggedIn) return
+    this.restoreActivity()
+    const me = this.me
+    const pending = ids.filter(id => !this.#activityVerified.has(id) && !this.#activityPending.has(id))
+    pending.forEach(id => this.#activityPending.add(id))
+    const worker = async () => {
+      for (let id = pending.shift(); id; id = pending.shift()) {
+        try {
+          const page = await App.GetChatHistory(id, 0, 1)
+          if (this.me === me) {
+            this.#bump(id, Math.max(0, ...page.messages.map(m => m.createdAt)))
+            this.#activityVerified.add(id)
+          }
+        } catch { /* Retry on reconnect. */ }
+        finally { this.#activityPending.delete(id) }
+      }
+    }
+    void Promise.all([worker(), worker(), worker()])
+  }
+  #recordActivity(e: { chatId?: string; from?: string; ts?: number }) {
+    const parts = e.chatId?.split('_')
+    const id = parts?.length === 2 && parts.includes(this.me) ? parts.find(id => id !== this.me) : undefined
+    if (id && e.ts) this.#bump(id, e.ts)
   }
 
   // ── Похідні ───────────────────────────────────────────────────────────
@@ -196,7 +247,7 @@ export class FriendsStore {
 
     const offs = [
       on('friends:update', (s: SocialState) => { this.st = normalize(s); this.loading = false; this.#markReady() }),
-      on('friends:conn', (c: SocialConn) => { this.st.conn = c }),
+      on('friends:conn', (c: SocialConn) => { this.st.conn = c; if (c === 'online') { this.#activityVerified.clear(); this.syncActivity([...this.st.friends, ...this.otherChats].map(f => f.accountId)) } }),
       on('chat:keys', (k: ChatKeyStatus) => { if (k) this.keys = k }),
       on('friends:presence', (e: SocialPresenceEvent) => {
         const f = this.st.friends.find((x) => x.accountId === e?.accountId)
@@ -210,7 +261,8 @@ export class FriendsStore {
         clearTimeout(this.#typingTimers[id])
         this.#typingTimers[id] = setTimeout(() => { this.typingNow[id] = false }, 4000)
       }),
-      on('chat:message', (e: { from?: string }) => { if (e?.from) this.typingNow[e.from] = false }),
+      on('chat:message', (e: { from?: string; chatId?: string; ts?: number }) => { if (e?.from) this.typingNow[e.from] = false; this.#recordActivity(e) }),
+      on('chat:ack', (e: { chatId?: string; ts?: number }) => this.#recordActivity(e)),
     ]
     return () => {
       clearInterval(tick)

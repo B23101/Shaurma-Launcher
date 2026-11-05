@@ -254,6 +254,7 @@ func (a *App) remoteHooks() *social.RemoteHooks {
 				r.lists[l.Owner] = l
 			}
 			r.mu.Unlock()
+			notifyRemoteBaseline(lists)
 			emitServers()
 		},
 		OnList: func(l social.RemoteOwnerList) {
@@ -265,6 +266,7 @@ func (a *App) remoteHooks() *social.RemoteHooks {
 				r.lists[l.Owner] = l
 			}
 			r.mu.Unlock()
+			a.notifyRemoteDiff(l)
 			emitServers()
 		},
 		OnCmd:    func(in social.RemoteIncoming) { go rt().host.Handle(in) },

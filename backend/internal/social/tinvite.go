@@ -101,3 +101,10 @@ func (s *Service) TempInviteMine() ([]TempInviteState, error) {
 	err := s.client.call(http.MethodGet, "/friends/tinvite/mine", nil, &r)
 	return r.Items, err
 }
+
+func (s *Service) TempInviteAddGroupGuests(id, groupID string, accounts []string) error {
+	if !ValidGroupID(groupID) {
+		return ErrBadInput
+	}
+	return s.client.call(http.MethodPost, "/friends/tinvite/guests", map[string]any{"id": id, "add": accounts, "groupId": groupID}, nil)
+}

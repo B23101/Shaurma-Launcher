@@ -1,6 +1,7 @@
 <script lang="ts">
   // ── Ліва панель: «Чати» / «Запити» ───────────────────────────────────────
-  // Вкладки — той самий ковзний таббар, що на сторінках збірки й сервера, пошук, групи друзів за
+  // Єдиний список приватних і групових чатів за часом останнього повідомлення.
+  // Вкладки — той самий ковзний таббар, що на сторінках збірки й сервера, пошук, фільтр за
   // статусом, запити, «інші чати». Режим «лише іконки» (рейка 72px) — для тих,
   // кому потрібен максимум місця під чат.
   import { useFriendsStore, LIST_W_MIN, LIST_W_MAX } from './FriendsStore.svelte'
@@ -13,14 +14,32 @@
   import FriendsNotices from './FriendsNotices.svelte'
   import { slideTabs } from '../slideTabs'
   import GroupsPanel from '../groups/GroupsPanel.svelte'
+  import GroupAvatar from '../groups/GroupAvatar.svelte'
+  import type { SocialFriend } from '../types'
+  import type { Group } from '../groups/groupTypes'
   import { useGroupsStore } from '../groups/GroupsStore.svelte'
+  import { toMs } from './activityCache'
 
   let { activeId = '', onAdd, onCreateGroup }: { activeId?: string; onAdd: () => void; onCreateGroup: () => void } = $props()
   const s = useFriendsStore()
   const gs = useGroupsStore()
 
+  type ChatRow = { key: string; name: string; time: number; friend?: SocialFriend; group?: Group }
+  const chats = $derived.by(() => {
+    const q = s.search.trim().toLowerCase()
+    const people = [...s.filtered, ...s.otherChats.filter(f => !q || f.nickname.toLowerCase().includes(q))]
+    const rows: ChatRow[] = people.map(f => ({ key: 'friend:' + f.accountId, name: f.nickname, time: s.activity[f.accountId] ?? 0, friend: f }))
+    if (s.statusFilter === 'all') for (const g of gs.groups) {
+      if (!q || g.title.toLowerCase().includes(q)) rows.push({ key: 'group:' + g.id, name: g.title, time: gs.activity[g.id] ?? toMs(g.createdAt), group: g })
+    }
+    return rows.sort((a, b) => b.time - a.time || a.name.localeCompare(b.name) || a.key.localeCompare(b.key))
+  })
+  // Порядок «останніх активних» береться з локального кешу ОДРАЗУ (restoreActivity), мережа лише уточнює —
+  // тому список більше не «прогрівається» й не стрибає після відкриття.
+  $effect(() => { void s.me; void gs.me; s.restoreActivity(); gs.restoreActivity() })
+  $effect(() => { s.syncActivity([...s.st.friends, ...s.otherChats].map(f => f.accountId)) })
   const compact = $derived(s.rail)
-  const showControls = $derived(s.listTab === 'chats' && !compact && s.st.friends.length > 0)
+  const showControls = $derived(s.listTab === 'chats' && !compact && (s.st.friends.length > 0 || gs.groups.length > 0))
   // У стислому списку рядків запитів у друзі немає: вони з'являлись/зникали над чатами й зсували їх
   // просто під курсором. Про вхідні нагадує бейдж на кнопці «Розгорнути».
   const showRequests = $derived(!compact && s.listTab === 'requests')
@@ -75,18 +94,12 @@
       <div class="tabbar tb-slide fl-tabs" role="tablist" use:slideTabs>
         <button class="tab-btn fl-tab" role="tab" aria-selected={s.listTab === 'chats'} class:active={s.listTab === 'chats'} onclick={() => (s.listTab = 'chats')}>
           <i class="ti ti-message-circle-2"></i><span>{t('friends.tab.chats')}</span>
-          {#if s.hasUnread}<i class="fl-dot"></i>{/if}
+          {#if s.hasUnread || gs.totalUnread > 0}<i class="fl-dot"></i>{/if}
         </button>
         <button class="tab-btn fl-tab" role="tab" aria-selected={s.listTab === 'requests'} class:active={s.listTab === 'requests'} onclick={() => (s.listTab = 'requests')}>
           <i class="ti ti-user-plus"></i><span>{t('friends.tab.requests')}</span>
-          {#if s.st.invites.length > 0}<span class="ff-badge">{s.st.invites.length}</span>{/if}
+          {#if s.st.invites.length + gs.invites.length > 0}<span class="ff-badge">{s.st.invites.length + gs.invites.length}</span>{/if}
         </button>
-        {#if gs.enabled || !gs.loaded}
-          <button class="tab-btn fl-tab" role="tab" aria-selected={s.listTab === 'groups'} class:active={s.listTab === 'groups'} onclick={() => (s.listTab = 'groups')}>
-            <i class="ti ti-users-group"></i><span>{t('groups.tab')}</span>
-            {#if gs.totalUnread + gs.invites.length > 0}<span class="ff-badge">{gs.totalUnread + gs.invites.length}</span>{/if}
-          </button>
-        {/if}
       </div>
     {/if}
   </div>
@@ -102,7 +115,7 @@
       </div>
     </div>
     <div class="fl-chips" role="group">
-      <button class="fl-chip" class:on={s.statusFilter === 'all'} aria-pressed={s.statusFilter === 'all'} onclick={() => (s.statusFilter = 'all')}><span class="fl-chip-t">{t('ff.filter.all')}</span><b>{s.st.friends.length}</b></button>
+      <button class="fl-chip" class:on={s.statusFilter === 'all'} aria-pressed={s.statusFilter === 'all'} onclick={() => (s.statusFilter = 'all')}><span class="fl-chip-t">{t('ff.filter.all')}</span><b>{s.st.friends.length + gs.groups.length + s.otherChats.length}</b></button>
       <button class="fl-chip online" class:on={s.statusFilter === 'online'} aria-pressed={s.statusFilter === 'online'} onclick={() => (s.statusFilter = 'online')}><i></i><span class="fl-chip-t">{t('social.group.online')}</span><b>{s.onlineCount}</b></button>
       <button class="fl-chip game" class:on={s.statusFilter === 'in_game'} aria-pressed={s.statusFilter === 'in_game'} onclick={() => (s.statusFilter = 'in_game')}><i></i><span class="fl-chip-t">{t('social.group.in_game')}</span><b>{s.inGameCount}</b></button>
     </div>
@@ -123,53 +136,49 @@
       </section>
     {/if}
 
-    {#if s.listTab === 'requests' && !compact && s.st.invites.length === 0 && s.sent.length === 0}
+    {#if s.listTab === 'requests' && !compact && s.st.invites.length === 0 && s.sent.length === 0 && gs.invites.length === 0}
       <EmptyState icon="ti-user-heart" title={t('friends.requests.empty')} hint={t('friends.requests.emptyHint')}>
         <button class="btn btn-primary btn-sm" onclick={onAdd}><i class="ti ti-user-plus"></i> {t('friends.addFriend')}</button>
       </EmptyState>
     {/if}
 
-    {#if !compact && s.listTab === 'groups'}
-      <GroupsPanel oncreate={onCreateGroup} />
+    {#if showRequests && gs.invites.length > 0}
+      <GroupsPanel invitesOnly oncreate={onCreateGroup} />
     {/if}
-
     {#if showChats}
-      {#if s.st.friends.length === 0 && s.otherChats.length === 0}
-        <EmptyState icon="ti-users" title={t('social.empty')} hint={t('ff.empty.hint')} {compact}>
-          <button class="btn btn-primary btn-sm" onclick={onAdd}><i class="ti ti-user-plus"></i> {t('friends.addFriend')}</button>
-        </EmptyState>
-      {:else if s.st.friends.length > 0 && s.groups.length === 0}
-        <EmptyState icon="ti-search-off" title={t('social.searchEmpty')} {compact} />
+      {#if !compact && gs.enabled}
+        <button class="btn btn-ghost btn-sm fl-new" onclick={onCreateGroup}><i class="ti ti-users-plus"></i>{t('groups.new')}</button>
+      {/if}
+      {#each chats as row (row.key)}
+        {#if row.group}
+          {@const gr = row.group}
+          <button class="fl-group" class:active={gs.activeId === gr.id} class:compact onclick={() => gs.open(gr.id)} title={gr.title}>
+            <GroupAvatar title={gr.title} icon={gr.settings.icon} color={gr.settings.color} />
+            {#if !compact}<span><b>{gr.title}{#if s.isMuted(gr.id)} <i class="ti ti-bell-off" aria-label={t('groups.mute')}></i>{/if}</b><small>{t('groups.members', { n: gr.members.length })}</small></span>{/if}
+            {#if gs.unread[gr.id]}<span class="ff-badge">{gs.unread[gr.id]}</span>{/if}
+          </button>
+        {:else if row.friend}
+          <FriendRow f={row.friend} readonly={!s.isFriend(row.friend.accountId)} selected={activeId === row.friend.accountId} {compact} animate={false} />
+        {/if}
       {:else}
-        {#each s.groups as grp (grp.key)}
-          <section class="fl-sec">
-            {#if !compact}<h3 class="fl-sh"><i class="ti {grp.icon}"></i>{t(`social.group.${grp.key}`)}<span>{grp.list.length}</span></h3>{/if}
-            {#each grp.list as f (f.accountId)}
-              <FriendRow {f} selected={activeId === f.accountId} {compact} animate={s.ready} />
-            {/each}
-          </section>
-        {/each}
-      {/if}
-
-      {#if s.otherChats.length > 0}
-        <section class="fl-sec">
-          {#if !compact}
-            <button class="fl-sh fl-toggle" onclick={() => (s.formerOpen = !s.formerOpen)} aria-expanded={s.formerOpen}>
-              <i class="ti {s.formerOpen ? 'ti-chevron-down' : 'ti-chevron-right'}"></i>{t('social.former.title')}<span>{s.otherChats.length}</span>
-            </button>
-          {/if}
-          {#if s.formerOpen || s.strangerRows.length > 0 || compact}
-            {#each s.otherChats as f (f.accountId)}
-              <FriendRow {f} readonly selected={activeId === f.accountId} {compact} animate={s.ready} subtitle={t('social.former.sub')} />
-            {/each}
-          {/if}
-        </section>
-      {/if}
+        <EmptyState icon="ti-message-circle-2" title={s.search ? t('social.searchEmpty') : t('social.empty')} {compact} />
+      {/each}
     {/if}
   </div>
 </aside>
 
 <style>
+  .fl-new { width: 100%; justify-content: center; margin-bottom: 8px; }
+  .fl-group { width: 100%; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+  .fl-group:hover { background: var(--hover); }
+  .fl-group.active { background: rgba(var(--orange-rgb), .12); }
+  .fl-group > span:not(.ff-badge) { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 4px; }
+  .fl-group b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .fl-group small { color: var(--text-mute); font-size: 12px; }
+  .fl-group.compact { justify-content: center; position: relative; }
+  .fl-group.compact .ff-badge { position: absolute; top: 2px; right: 2px; }
+  .fl-group:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
+
   /* Список — як бокове меню налаштувань (.st-nav): без власної картки, на
      фоні сторінки; заголовки груп — дрібні великі літери, активний чат —
      помаранчевий відтінок. position:relative — для кнопки згортання й

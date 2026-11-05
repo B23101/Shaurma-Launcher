@@ -1066,7 +1066,7 @@
           {#if status === 'updating'}
             <i class="ti ti-refresh spin"></i> {t('build.status.updating')}
           {:else}
-            <i class="ti ti-download spin"></i> {t('build.status.downloading')}
+            <i class="ti ti-download download-bounce"></i> {t('build.status.downloading')}
           {/if}
         </button>
       {:else if status === 'needs-update'}
@@ -1128,7 +1128,9 @@
              не через дизайн, а тому що його розмітку сюди просто не
              додали при впровадженні pack-hero-full). Стилізовано як
              .ib-lock/.ib-time (напівпрозора плашка на арт-фоні, той самий
-             namespace .pack-hero-full > .ib-running у <style> нижче), а не
+             namespace .pack-hero-full > .ib-running у <style>
+  @media (prefers-reduced-motion: no-preference) { .download-bounce { animation: download-bounce 1s ease-in-out infinite; } }
+  @keyframes download-bounce { 0%, 100% { transform: translateY(-2px); } 50% { transform: translateY(2px); } } нижче), а не
              як картку .pip-running (--bg-card) — та розрахована на
              непрозорий фон звичайної сторінки, на арт-банері виглядала б
              чужою плямою. -->
@@ -1260,7 +1262,7 @@
         {#if status === 'updating'}
           <i class="ti ti-refresh spin"></i> {t('build.status.updating')}
         {:else}
-          <i class="ti ti-download spin"></i> {t('build.status.downloading')}
+          <i class="ti ti-download download-bounce"></i> {t('build.status.downloading')}
         {/if}
       </button>
     {:else if status === 'needs-update'}

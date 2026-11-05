@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -163,6 +164,9 @@ func (a *App) ListTempInvites() []tempInvite {
 // Якщо для цього порту доступ уже є — нового не створюємо, лише запрошуємо.
 // udpPort: 0 = авто (порт голосового мода зі збірки/сервера), -1 = без голосу, 1..65535 = свій порт.
 func (a *App) CreateTempInvite(port int, friendIDs []string, packID, packName string, udpPort int) (tempInvite, error) {
+	return a.createTempInvite(port, friendIDs, packID, packName, udpPort, "")
+}
+func (a *App) createTempInvite(port int, friendIDs []string, packID, packName string, udpPort int, groupID string) (tempInvite, error) {
 	if a.p2pDisabled() {
 		return tempInvite{}, errP2PDisabled()
 	}
@@ -174,7 +178,7 @@ func (a *App) CreateTempInvite(port int, friendIDs []string, packID, packName st
 		if t.Meta.Port == port {
 			id := t.ID
 			tinvMu.Unlock()
-			return a.InviteToTempInvite(id, friendIDs)
+			return a.inviteToTempInvite(id, friendIDs, groupID)
 		}
 	}
 	tinvMu.Unlock()
@@ -234,11 +238,14 @@ func (a *App) CreateTempInvite(port int, friendIDs []string, packID, packName st
 		defer crashguard.Recover("tempInviteWatch")
 		a.watchTempInvite(ctx, t)
 	}()
-	return a.InviteToTempInvite(id, friendIDs)
+	return a.inviteToTempInvite(id, friendIDs, groupID)
 }
 
 // InviteToTempInvite — запросити ще друзів у вже відкритий доступ (одна кнопка).
 func (a *App) InviteToTempInvite(id string, friendIDs []string) (tempInvite, error) {
+	return a.inviteToTempInvite(id, friendIDs, "")
+}
+func (a *App) inviteToTempInvite(id string, friendIDs []string, groupID string) (tempInvite, error) {
 	tinvMu.Lock()
 	t, ok := tinvs[id]
 	tinvMu.Unlock()
@@ -249,11 +256,20 @@ func (a *App) InviteToTempInvite(id string, friendIDs []string) (tempInvite, err
 	if svc == nil {
 		return tempInvite{}, social.ErrNotLoggedIn
 	}
-	if err := svc.TempInviteAddGuests(id, friendIDs); err != nil {
+	var grantErr error
+	if groupID != "" {
+		grantErr = svc.TempInviteAddGroupGuests(id, groupID, friendIDs)
+	} else {
+		grantErr = svc.TempInviteAddGuests(id, friendIDs)
+	}
+	if err := grantErr; err != nil {
 		return tempInvite{}, err
 	}
 	var sendErr error
 	for _, f := range friendIDs {
+		if groupID != "" {
+			continue
+		}
 		if err := svc.SendServerInvite(f, t.Address, t.PackID, t.PackName, tempInviteTTL.Milliseconds()); err != nil {
 			sendErr = err
 		} else {
@@ -275,6 +291,9 @@ func (a *App) InviteToTempInvite(id string, friendIDs []string) (tempInvite, err
 	c := *t
 	c.Guests = append([]string(nil), t.Guests...)
 	tinvMu.Unlock()
+	if groupID != "" {
+		_, sendErr = svc.GroupOp("send", map[string]any{"groupId": groupID, "body": "shaurma-p2p:v1:" + c.Address})
+	}
 	return c, sendErr
 }
 
@@ -375,4 +394,41 @@ func (a *App) watchTempInvite(ctx context.Context, t *tempInvite) {
 			}
 		}
 	}
+}
+
+// Group recipients are resolved from a fresh server snapshot; caller cannot choose outsiders.
+func (a *App) InviteGroupToWorld(groupID, existingID string, port, udpPort int) (tempInvite, error) {
+	if !social.ValidGroupID(groupID) {
+		return tempInvite{}, social.ErrBadInput
+	}
+	svc := a.socialService()
+	if svc == nil {
+		return tempInvite{}, social.ErrNotLoggedIn
+	}
+	// This explicit operation fails on old servers instead of silently granting unscoped access.
+	raw, err := svc.GroupOp("p2p_authorize", map[string]any{"groupId": groupID})
+	if err != nil {
+		return tempInvite{}, err
+	}
+	var reply struct {
+		Group notifyGroupInfo `json:"group"`
+	}
+	if json.Unmarshal(raw, &reply) != nil || reply.Group.ID != groupID {
+		return tempInvite{}, social.ErrBadInput
+	}
+	g := reply.Group
+	me := svc.Snapshot().Me
+	var ids []string
+	for _, m := range g.Members {
+		if m.AccountID != me {
+			ids = append(ids, m.AccountID)
+		}
+	}
+	if len(ids) == 0 {
+		return tempInvite{}, errors.New("у групі немає інших учасників")
+	}
+	if existingID != "" {
+		return a.inviteToTempInvite(existingID, ids, groupID)
+	}
+	return a.createTempInvite(port, ids, "", "", udpPort, groupID)
 }

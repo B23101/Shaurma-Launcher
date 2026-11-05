@@ -5,14 +5,14 @@
   import { safeGroupColor } from './groupTypes'
   import GroupAvatar from './GroupAvatar.svelte'
 
-  let { compact = false, oncreate }: { compact?: boolean; oncreate: () => void } = $props()
+  let { compact = false, invitesOnly = false, oncreate }: { compact?: boolean; invitesOnly?: boolean; oncreate: () => void } = $props()
   const g = useGroupsStore()
 </script>
 
 {#if !g.enabled && g.loaded}
   <p class="gl-off">{t('groups.disabled')}</p>
 {:else}
-  {#if !compact}
+  {#if !compact && !invitesOnly}
     <button class="btn btn-primary btn-sm gl-new" onclick={oncreate}><i class="ti ti-plus"></i> {t('groups.new')}</button>
   {/if}
 
@@ -29,6 +29,7 @@
     {/each}
   {/if}
 
+  {#if !invitesOnly}
   {#each g.groups as gr (gr.id)}
     <button class="gl-row" class:active={g.activeId === gr.id} class:compact onclick={() => g.open(gr.id)}
             style="--gc:{safeGroupColor(gr.settings.color) || 'var(--border-hi)'}" title={gr.title}>
@@ -41,6 +42,7 @@
   {:else}
     {#if !compact}<p class="gl-empty">{t('groups.empty')}</p>{/if}
   {/each}
+  {/if}
 {/if}
 
 <style>
@@ -53,7 +55,7 @@
   .gl-it b { font-size: 13px; overflow-wrap: anywhere; }
   .gl-it small { font-size: 11.5px; color: var(--text-mute); }
   .gl-ia { display: flex; gap: 6px; }
-  .gl-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 4px; border-radius: 12px; border: 1px solid var(--gc); background: transparent; color: var(--text); cursor: pointer; text-align: left; position: relative; }
+  .gl-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin-bottom: 4px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--text); cursor: pointer; text-align: left; position: relative; }
   .gl-row:hover { background: var(--hover); }
   .gl-row.active { background: rgba(var(--orange-rgb), .1); }
   .gl-row.compact { justify-content: center; padding: 6px; }
