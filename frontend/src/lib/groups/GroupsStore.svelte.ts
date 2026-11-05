@@ -40,6 +40,9 @@ export class GroupsStore {
   typing = $state<Record<string, Record<string, number>>>({})
   histLoading = $state<Record<string, boolean>>({})
   busy = $state(false)
+  /** Непрочитане на момент відкриття групи (роздільник «Нові» у чаті). */
+  openedUnread: Record<string, number> = {}
+  #listeners = new Set<(type: string, d: any) => void>()
 
   /** Мій accountId і довідник нікнеймів друзів (дає батьківський компонент). */
   me = $state('')
@@ -116,8 +119,19 @@ export class GroupsStore {
 
   // ── Живі події ─────────────────────────────────────────────────────────
 
+  /** Живі події груп для чату (groupChatApi): викликається ПІСЛЯ оновлення стану стору. */
+  listen(fn: (type: string, d: any) => void): () => void {
+    this.#listeners.add(fn)
+    return () => { this.#listeners.delete(fn) }
+  }
+
   #handle(type: string, d: any) {
     if (!d || typeof d !== 'object') return
+    this.#apply(type, d)
+    for (const fn of this.#listeners) { try { fn(type, d) } catch { /* слухач не ламає стор */ } }
+  }
+
+  #apply(type: string, d: any) {
     switch (type) {
       case 'groups_snapshot': {
         this.enabled = !!d.enabled
@@ -184,6 +198,9 @@ export class GroupsStore {
     if (m.from !== this.me) this.#clearTyping(m.groupId, m.from)
   }
 
+  /** Повідомлення, яке щойно надіслав цей пристрій (сервер не шле його нам назад). */
+  addOwn(m: GroupMessage) { this.#addMsg(m) }
+
   #addMsg(m: GroupMessage) {
     const list = this.msgs[m.groupId] ?? []
     if (list.some((x) => x.id === m.id)) return
@@ -233,6 +250,7 @@ export class GroupsStore {
   async open(id: string) {
     this.#onOpen()
     this.activeId = id
+    this.openedUnread[id] = this.unread[id] ?? 0
     this.unread[id] = 0
     await this.loadHistory(id, true)
     const last = this.msgs[id]?.at(-1)

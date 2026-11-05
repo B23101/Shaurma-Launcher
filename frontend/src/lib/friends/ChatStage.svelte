@@ -10,19 +10,68 @@
   import { t } from '../i18n.svelte'
   import ShaurmaChat from './ShaurmaChat.svelte'
   import type { SocialFriend } from '../types'
+  import type { GroupChatInfo } from './chatApi'
+  import { useGroupsStore } from '../groups/GroupsStore.svelte'
+  import { groupChatApi } from '../groups/groupChatApi'
+  import { GROUP_MAX_BODY, parseSystem, safeGroupColor, type Group } from '../groups/groupTypes'
+  import GroupSettingsModal from '../groups/GroupSettingsModal.svelte'
 
-  let { peer, onBack, onOpenMod, onAdd, onPrivacy }: {
+  let { peer, group = null, onBack, onOpenMod, onAdd, onPrivacy }: {
     peer: SocialFriend | null
+    // Груповий чат: той самий ShaurmaChat, лише з іншим джерелом даних (groups/groupChatApi.ts).
+    group?: Group | null
     onBack: () => void
     onOpenMod?: (source: string, projectId: string) => void
     onAdd: () => void
     onPrivacy: () => void
   } = $props()
   const s = useFriendsStore()
+  const g = useGroupsStore()
+
+  let settingsOpen = $state(false)
+  const groupColor = $derived(group ? safeGroupColor(group.settings.color) : '')
+
+  // Текст системної події групи — переклад за кодом, імена з довідника учасників.
+  function sysText(gr: Group, body: string): string {
+    const e = parseSystem(body)
+    if (!e) return ''
+    const key = `groups.sys.${e.e}`
+    const txt = t(key)
+    return txt === key ? '' : t(key, { a: e.a ? g.nameOf(e.a, gr) : '', by: e.by ? g.nameOf(e.by, gr) : '' })
+  }
+  function headOf(gr: Group, id: string): string {
+    const nick = gr.members.find((m) => m.accountId === id)?.nickname ?? s.st.friends.find((f) => f.accountId === id)?.nickname ?? ''
+    return nick ? s.heads[nick] ?? '' : ''
+  }
+  const info = $derived.by<GroupChatInfo | undefined>(() => {
+    const gr = group
+    if (!gr) return undefined
+    return {
+      id: gr.id, title: gr.title, icon: gr.settings.icon ?? '', color: gr.settings.color,
+      members: gr.members.length, adminName: g.nameOf(gr.admin, gr), isAdmin: g.isAdmin(gr),
+      canPin: g.canPin(gr, true), canUnpin: g.canPin(gr, false), typing: g.typingNames(gr.id), maxLen: GROUP_MAX_BODY,
+      nameOf: (id) => g.nameOf(id, gr), headOf: (id) => headOf(gr, id), sysText: (b) => sysText(gr, b),
+      onSettings: () => (settingsOpen = true),
+      claim: (messageId, from) => { void g.claimBuild({ groupId: gr.id, id: messageId, from } as any) },
+    }
+  })
+  // Джерело даних створюється раз на групу (залежить лише від id): інакше кожне оновлення групи
+  // давало б новий об'єкт, і підтвердження надсилання (chat:ack) губились би.
+  const gid = $derived(group?.id ?? '')
+  const chatApi = $derived(gid ? groupChatApi(g, gid) : null)
+  // Синтетичний «співрозмовник» для групового чату: ShaurmaChat передає його accountId у джерело даних.
+  const groupPeer = $derived(group ? ({ accountId: group.id, nickname: group.title } as SocialFriend) : null)
 </script>
 
-<section class="cs" aria-live="polite">
-  {#if peer}
+<section class="cs" class:colored={!!groupColor} style={groupColor ? `--gc:${groupColor}` : undefined} aria-live="polite">
+  {#if group && groupPeer && info && chatApi}
+    {#key group.id}
+      <div class="cs-in">
+        <ShaurmaChat peer={groupPeer} me={s.me} conn={s.st.conn} isFriend={false} allFriends={s.st.friends}
+                     api={chatApi} group={info} {onBack} {onOpenMod} />
+      </div>
+    {/key}
+  {:else if peer}
     {#key peer.accountId}
       <div class="cs-in">
         <GroupInviteBanner peerId={peer.accountId} />
@@ -56,11 +105,17 @@
   {/if}
 </section>
 
+{#if settingsOpen && group}
+  <GroupSettingsModal {group} friends={s.st.friends} onclose={() => (settingsOpen = false)} />
+{/if}
+
 <style>
   /* Діалог — картка як .st-card у налаштуваннях: фон картки, рамка,
      заокруглення; шапка як .st-card-head, роздільники — var(--border). */
   .cs { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden;
     background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r-lg, 16px); }
+  /* Колір обведення групи (налаштування групи) — лише рамка картки. */
+  .cs.colored { border-color: var(--gc); }
   .cs-in { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; animation: cs-in .22s ease both; }
   @keyframes cs-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   /* «Назад» потрібна лише коли панелі показуються по одній. */

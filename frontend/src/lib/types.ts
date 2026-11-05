@@ -3098,7 +3098,8 @@ export interface SocialChatInvite {
 export interface SocialChatMessage {
   id: number
   from: string
-  bodyType: 'text' | 'server_invite'
+  // system / build_offer — лише в групових чатах (groups/groupChatApi.ts).
+  bodyType: 'text' | 'server_invite' | 'system' | 'build_offer'
   ciphertext: string
   nonce: string
   createdAt: number

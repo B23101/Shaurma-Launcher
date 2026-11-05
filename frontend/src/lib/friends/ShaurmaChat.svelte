@@ -47,6 +47,10 @@ import { windowActive } from '../windowActive.svelte'
   import InviteCard from './InviteCard.svelte'
   import TempInviteModal from './TempInviteModal.svelte'
   import P2PJoinModal from '../servers/components/P2PJoinModal.svelte'
+  import { privateChatApi, type ChatApi, type GroupChatInfo } from './chatApi'
+  import GroupAvatar from '../groups/GroupAvatar.svelte'
+  import GroupOfferCard from '../groups/GroupOfferCard.svelte'
+  import { parseOffer } from '../groups/groupTypes'
   import type {
     SocialFriend, SocialChatMessage, SocialChatEvent, SocialChatAck, SocialConn, TempInviteState, TempInvite,
     SocialTypingEvent, SocialReadEvent, SocialServerInviteEvent, SocialDeletedEvent, SocialEditedEvent, SocialPinsEvent,
@@ -63,6 +67,8 @@ import { windowActive } from '../windowActive.svelte'
     onOpenProfile,
     allFriends = [] as SocialFriend[],
     isFriend = true,
+    api = privateChatApi,
+    group,
   }: {
     peer: SocialFriend
     me: string
@@ -78,6 +84,10 @@ import { windowActive } from '../windowActive.svelte'
     onOpenMod?: (source: string, projectId: string) => void
     // Клік по аватарці/імені в заголовку → профіль друга (модальне вікно).
     onOpenProfile?: () => void
+    // Джерело даних: особистий чат (типово) або груповий (groups/groupChatApi.ts).
+    api?: ChatApi
+    // Є лише в груповому чаті: шапка групи, імена відправників, права.
+    group?: GroupChatInfo
   } = $props()
 
   // ── Модель повідомлення в UI ─────────────────────────────────────────────
@@ -95,7 +105,7 @@ import { windowActive } from '../windowActive.svelte'
     id: number            // серверний id; 0 — ще не підтверджено
     from: string
     ts: number            // мілісекунди (нормалізуємо із секунд)
-    bodyType: 'text' | 'server_invite'
+    bodyType: 'text' | 'server_invite' | 'system' | 'build_offer'
     text?: string
     decryptFailed?: boolean
     sending?: boolean     // оптимістична бульбашка, ще без chat:ack
@@ -115,6 +125,8 @@ import { windowActive } from '../windowActive.svelte'
     | { kind: 'msg'; key: string; m: Msg; groupEnd: boolean; groupStart: boolean }
     // Подія передачі збірки (службове повідомлення) — окремою «пігулкою» по центру, не бульбашкою.
     | { kind: 'share'; key: string; m: Msg; c: ShareCtl }
+    // Системна подія групи (вступ, вихід, нова адмінка) — «пігулкою» по центру.
+    | { kind: 'sys'; key: string; m: Msg }
 
   const ACK_POLL_MS = 5000
 
@@ -207,7 +219,7 @@ import { windowActive } from '../windowActive.svelte'
 
   // ── Допоміжне ────────────────────────────────────────────────────────────
   // chatId мусить дорівнювати канонічному на бекенді: менший accountId першим.
-  const chatId = $derived(me && peer?.accountId && me !== peer.accountId
+  const chatId = $derived(group ? group.id : me && peer?.accountId && me !== peer.accountId
     ? (me < peer.accountId ? `${me}_${peer.accountId}` : `${peer.accountId}_${me}`)
     : '')
 
@@ -215,6 +227,14 @@ import { windowActive } from '../windowActive.svelte'
   const HIDDEN_CH = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
   const clean = (s?: string) => (s ?? '').replace(HIDDEN_CH, '').trim()
   const initial = (s?: string) => clean(s).charAt(0).toUpperCase()
+  // Хто написав: «Ви», учасник групи або співрозмовник.
+  const who = (id: string) => (id === me ? t('social.chat.you') : group ? clean(group.nameOf(id)) : clean(peer?.nickname))
+  // Курсор історії: час (особисті) або номер повідомлення (групи) — див. ChatApi.cursor.
+  const cursorOf = (m?: Msg) => (!m ? 0 : api.cursor === 'id' ? m.id : m.ts)
+  // Кого назвати в підтвердженнях видалення.
+  const chatName = $derived(group ? clean(group.title) : clean(peer?.nickname))
+  const typingNow = $derived(group ? group.typing.length > 0 : peerTyping)
+  const typingText = $derived(group ? t('groups.typing', { names: group.typing.join(', ') }) : t('social.chat.typing', { name: clean(peer?.nickname) }))
 
   // ── Виділення ────────────────────────────────────────────────────────────
   function startSelect(m: Msg) { selecting = true; selected = new Set([m.key]); lastSelKey = m.key }
@@ -349,8 +369,7 @@ import { windowActive } from '../windowActive.svelte'
     const text = list.length === 1
       ? copyPayload(list[0])
       : list.map(m => {
-          const who = m.from === me ? t('social.chat.you') : clean(peer.nickname)
-          return `${who}, [${new Date(m.ts).toLocaleDateString()} ${timeOf(m.ts)}]\n${copyPayload(m)}`
+          return `${who(m.from)}, [${new Date(m.ts).toLocaleDateString()} ${timeOf(m.ts)}]\n${copyPayload(m)}`
         }).join('\n\n')
     if (!text) return
     try { await App.CopyToClipboard(text) } catch {}
@@ -363,13 +382,13 @@ import { windowActive } from '../windowActive.svelte'
     if (!selectedMsgs.length || bulkBusy || !peer?.accountId) return
     const list = selectedMsgs
     const failedL = list.filter(m => m.failed)
-    const mine = list.filter(m => !m.failed && m.id > 0 && isOwn(m) && m.bodyType === 'text')
-    const local = list.filter(m => !m.failed && m.id > 0 && !(isOwn(m) && m.bodyType === 'text'))
+    const mine = list.filter(m => !m.failed && canDeleteAll(m))
+    const local = list.filter(m => !m.failed && m.id > 0 && !canDeleteAll(m))
     if (!failedL.length && !mine.length && !local.length) { exitSelect(); return }
     const ok = await confirmDialog(
       t('social.chat.deleteSelTitle', { n: list.length }),
       mine.length
-        ? t('social.chat.deleteSelText', { n: mine.length, name: clean(peer.nickname) })
+        ? t('social.chat.deleteSelText', { n: mine.length, name: chatName })
         : t('social.chat.deleteSelLocalText'),
       { confirmLabel: t('social.chat.deleteAllConfirm'), cancelLabel: t('social.chat.deleteAllCancel'), danger: true })
     if (!ok) return
@@ -384,7 +403,7 @@ import { windowActive } from '../windowActive.svelte'
       }
       // По одному й послідовно: кожне видалення — запит до сервера, не штурмуємо його паралеллю.
       for (const m of mine) {
-        try { await App.DeleteChatMessage(peer.accountId, m.id); removeLocal(m.id) }
+        try { await api.remove(peer.accountId, m.id); removeLocal(m.id) }
         catch (e) { toast(errText(e), 'error'); break }
       }
     } finally {
@@ -430,6 +449,7 @@ import { windowActive } from '../windowActive.svelte'
     return m ? m[1].trim().replace(/ /g, '_') : ''
   }
   function errText(e: unknown): string {
+    if (api.errText) return api.errText(e)
     const code = errCode(e)
     const key = `social.err.${code}`
     const txt = code ? t(key) : ''
@@ -437,12 +457,17 @@ import { windowActive } from '../windowActive.svelte'
   }
 
   const isOwn = (m: Msg) => m.from === me
+  // «Видалити для всіх»: своє текстове (і своя картка збірки в групі); адмін групи — будь-яке, крім системних.
+  const canDeleteAll = (m: Msg) => m.id > 0 && m.bodyType !== 'server_invite' && m.bodyType !== 'system' &&
+    (group ? (isOwn(m) || group.isAdmin) : isOwn(m) && m.bodyType === 'text')
+  const canPinMsg = (m: Msg) => m.id > 0 && !m.decryptFailed && (m.bodyType === 'text' || (!!group && m.bodyType === 'build_offer')) &&
+    (!group || (pinnedIds.has(m.id) ? group.canUnpin : group.canPin))
   const stateOf = (m: Msg): MsgState =>
     m.failed ? 'failed' :
     m.sending ? 'sending' :
     (m.id > 0 && peerReadUpTo >= m.id) ? 'read' : 'sent'
 
-  const peerStatus = $derived(peer?.presence?.status ?? 'offline')
+  const peerStatus = $derived(group ? 'online' : peer?.presence?.status ?? 'offline')
   const peerStatusText = $derived(
     peerStatus === 'in_game' ? (clean(peer?.presence?.packName) || t('social.playing')) :
     peerStatus === 'away' ? t('social.status.away') :
@@ -463,6 +488,7 @@ import { windowActive } from '../windowActive.svelte'
       const newDay = !prev || dayKey(prev.ts) !== dayKey(m.ts)
       if (newDay) out.push({ kind: 'day', key: 'd' + dayKey(m.ts), ts: m.ts })
       if (firstUnreadKey && m.key === firstUnreadKey) out.push({ kind: 'new', key: 'new-divider' })
+      if (m.bodyType === 'system') { out.push({ kind: 'sys', key: m.key, m }); continue }
       const c = ctlOf(m)
       if (c) {
         const k = `${c.sid}|${c.e}|${c.r ?? ''}|${m.from}`
@@ -550,7 +576,7 @@ import { windowActive } from '../windowActive.svelte'
     if (near && !hasNewer) unseen = 0
     if (settling || loading) return
     // Нескінченна прокрутка: ближче до верху — підвантажуємо старіше, до низу — новіше.
-    if (el.scrollTop < 240 && hasMore && !loadingMore) loadHistory(messages[0]?.ts ?? 0, true)
+    if (el.scrollTop < 240 && hasMore && !loadingMore) loadHistory(cursorOf(messages[0]), true)
     if (near && hasNewer && !loadingNewer) loadNewer()
   }
   async function scrollToBottom(force = false, smooth = false) {
@@ -589,7 +615,7 @@ import { windowActive } from '../windowActive.svelte'
   async function reconcileInvite(inviteId: string, attempt = 0) {
     if (!inviteId || !peer?.accountId) return
     try {
-      const page = await App.GetChatHistory(peer.accountId, 0, 30)
+      const page = await api.history(peer.accountId, 0, 30)
       const stored = (page?.messages ?? []).find(m => m.invite?.id === inviteId)
       if (!stored) {
         if (attempt < 2) setTimeout(() => { void reconcileInvite(inviteId, attempt + 1) }, 700)
@@ -644,9 +670,9 @@ import { windowActive } from '../windowActive.svelte'
     try {
       let unread = 0
       if (openAtUnread) {
-        try { unread = (await App.GetFriendsState())?.unread?.[peer.accountId] ?? 0 } catch {}
+        try { unread = await api.unread(peer.accountId) } catch {}
       }
-      const page = await App.GetChatHistory(peer.accountId, 0, 50)
+      const page = await api.history(peer.accountId, 0, 50)
       // Курсори «прочитано» з найновішої сторінки: інакше після перезаходу в чат
       // галочки «переглянуто» не з'являлись би до живої події chat:read від друга.
       for (const r of page?.reads ?? []) {
@@ -683,7 +709,7 @@ import { windowActive } from '../windowActive.svelte'
     loadingMore = true
     try {
       // before — ЧАС (мс) найстарішого показаного повідомлення, а не id.
-      const page = await App.GetChatHistory(peer.accountId, before, 50)
+      const page = await api.history(peer.accountId, before, 50)
       const mapped = (page?.messages ?? []).map(toMsg)
       const seen = new Set(messages.map(m => m.key))
       const prevH = scroller?.scrollHeight ?? 0
@@ -703,12 +729,12 @@ import { windowActive } from '../windowActive.svelte'
   async function loadNewer() {
     if (!peer?.accountId || loadingNewer || !hasNewer) return
     let last = 0
-    for (const m of messages) if (m.id > 0 && m.ts > last) last = m.ts
+    for (const m of messages) if (m.id > 0 && cursorOf(m) > last) last = cursorOf(m)
     if (!last) { hasNewer = false; return }
     loadingNewer = true
     try {
       // -1 мс: повідомлення з тією самою мілісекундою не губляться (дублі відсікає ключ).
-      const page = await App.GetChatHistoryAfter(peer.accountId, last - 1, 50)
+      const page = await api.historyAfter(peer.accountId, last - 1, 50)
       messages = mergeSorted(messages, (page?.messages ?? []).map(toMsg))
       hasNewer = !!page?.hasMore
       if (!hasNewer) { await tick(); onScroll(); markReadUpToLatest() }
@@ -733,8 +759,8 @@ import { windowActive } from '../windowActive.svelte'
     if (elByKey(key)) { scrollToKey(key, 'center', true); flash(key); return }
     try {
       const [older, newer] = await Promise.all([
-        App.GetChatHistory(peer.accountId, ts + 1, 30),
-        App.GetChatHistoryAfter(peer.accountId, Math.max(ts - 1, 1), 30),
+        api.history(peer.accountId, ts + 1, 30),
+        api.historyAfter(peer.accountId, Math.max(ts - 1, 1), 30),
       ])
       const win = mergeSorted((older?.messages ?? []).map(toMsg), (newer?.messages ?? []).map(toMsg))
       if (!win.some(m => m.key === key)) { toast(t('social.err.not_found'), 'error'); return }
@@ -770,7 +796,7 @@ import { windowActive } from '../windowActive.svelte'
     const id = lastServerId()
     if (id > markReadSent && peer?.accountId) {
       markReadSent = id
-      App.MarkChatRead(peer.accountId, id).catch(() => {})
+      api.markRead(peer.accountId, id).catch(() => {})
     }
   }
 
@@ -811,7 +837,7 @@ import { windowActive } from '../windowActive.svelte'
     window.addEventListener('mousemove', onDragMove)
     window.addEventListener('mouseup', endDrag)
     const offs = [
-      on('chat:message', (e: SocialChatEvent) => {
+      api.on('chat:message', (e: SocialChatEvent) => {
         if (!e || e.chatId !== chatId || !chatId) return
         if (e.id && messages.some(m => m.id === e.id)) return  // дедуп з історією
         if (hasNewer) { if (e.from !== me) unseen++; return }   // між нами й кінцем — прогалина; дотягнеться вниз
@@ -820,7 +846,7 @@ import { windowActive } from '../windowActive.svelte'
           id: e.id || 0,
           from: e.from,
           ts: normalizeTs(e.ts),
-          bodyType: e.bodyType === 'server_invite' ? 'server_invite' : 'text',
+          bodyType: e.bodyType === 'server_invite' || e.bodyType === 'system' || e.bodyType === 'build_offer' ? e.bodyType : 'text',
           text: e.plaintext,
           decryptFailed: e.decryptFailed,
           replyToId: e.replyToId || 0,
@@ -832,12 +858,12 @@ import { windowActive } from '../windowActive.svelte'
           // Вікно неактивне — не позначаємо прочитаним (див. markReadUpToLatest).
           if (windowActive.active && e.id && e.id > markReadSent && peer?.accountId) {
             markReadSent = e.id
-            App.MarkChatRead(peer.accountId, e.id).catch(() => {})
+            api.markRead(peer.accountId, e.id).catch(() => {})
           }
         }
         scrollToBottom(false, true)
       }),
-      on('chat:ack', (a: SocialChatAck) => {
+      api.on('chat:ack', (a: SocialChatAck) => {
         if (!a || a.chatId !== chatId) return
         let hit = false
         messages = messages.map(m => {
@@ -852,7 +878,7 @@ import { windowActive } from '../windowActive.svelte'
         // Ack міг прийти раніше за відповідь SendChatMessage — збережемо.
         if (!hit) orphanAcks.set(a.clientMessageId, a)
       }),
-      on('chat:failed', (f: { clientMessageId: string; code: string }) => {
+      api.on('chat:failed', (f: { clientMessageId: string; code: string }) => {
         if (!f) return
         messages = messages.map(m => {
           if (m.clientMsgId && m.clientMsgId === f.clientMessageId && m.sending) {
@@ -862,18 +888,18 @@ import { windowActive } from '../windowActive.svelte'
           return m
         })
       }),
-      on('chat:typing', (e: SocialTypingEvent) => {
+      api.on('chat:typing', (e: SocialTypingEvent) => {
         if (!e || e.chatId !== chatId || e.accountId !== peer?.accountId) return
         peerTyping = true
         if (stickBottom) scrollToBottom(false, true)
         if (typingTimer) clearTimeout(typingTimer)
         typingTimer = setTimeout(() => { peerTyping = false }, 4000)
       }),
-      on('chat:read', (e: SocialReadEvent) => {
+      api.on('chat:read', (e: SocialReadEvent) => {
         if (!e || e.chatId !== chatId) return
         peerReadUpTo = Math.max(peerReadUpTo, e.upToMessageId || 0)
       }),
-      on('chat:server_invite', (e: SocialServerInviteEvent) => {
+      api.on('chat:server_invite', (e: SocialServerInviteEvent) => {
         if (!e || e.chatId !== chatId) return
         // Те саме запрошення могло вже прийти з історії або ехом — другу картку не додаємо.
         if (e.inviteId && messages.some(m => m.invite?.id === e.inviteId)) return
@@ -898,11 +924,11 @@ import { windowActive } from '../windowActive.svelte'
         // картку на «справжню» з id/реакціями.
         if (e.inviteId) void reconcileInvite(e.inviteId)
       }),
-      on('chat:deleted', (e: SocialDeletedEvent) => {
+      api.on('chat:deleted', (e: SocialDeletedEvent) => {
         if (!e || e.chatId !== chatId) return
         removeLocal(e.messageId)
       }),
-      on('chat:edited', (e: SocialEditedEvent) => {
+      api.on('chat:edited', (e: SocialEditedEvent) => {
         if (!e || e.chatId !== chatId || !e.messageId) return
         const patch = (m: Msg): Msg => (m.id === e.messageId
           ? { ...m, text: e.plaintext, decryptFailed: !!e.decryptFailed, editedAt: e.editedAt ? normalizeTs(e.editedAt) : Date.now() }
@@ -912,18 +938,18 @@ import { windowActive } from '../windowActive.svelte'
         // Якщо саме це повідомлення зараз редагується, а його змінили деінде — не тримаємо застарілу чернетку.
         if (editing && editing.id === e.messageId && e.by !== me) cancelEdit()
       }),
-      on('chat:pins', (e: SocialPinsEvent) => {
+      api.on('chat:pins', (e: SocialPinsEvent) => {
         if (!e || e.chatId !== chatId) return
         pinned = (e.pinned ?? []).map(toMsg)
         schedulePinTrack()
       }),
-      on('chat:reactions', (e: SocialReactionsEvent) => {
+      api.on('chat:reactions', (e: SocialReactionsEvent) => {
         if (!e || e.chatId !== chatId || !e.messageId) return
         messages = messages.map(m => (m.id === e.messageId
           ? { ...m, reactions: (e.reactions ?? []).filter(r => r && r.by && r.emoji) }
           : m))
       }),
-      on('chat:server_invite_revoked', (inviteId: string) => {
+      api.on('chat:server_invite_revoked', (inviteId: string) => {
         if (!inviteId) return
         messages = messages.map(m =>
           m.invite && m.invite.id === inviteId ? { ...m, invite: { ...m.invite, revoked: true } } : m)
@@ -961,7 +987,7 @@ import { windowActive } from '../windowActive.svelte'
     ackTimers.set(localId, setTimeout(async () => {
       ackTimers.delete(localId)
       try {
-        const st = await App.GetChatSendState(cid)
+        const st = await api.sendState(cid)
         if (st.status === 'acked') {
           patchLocal(localId, { id: st.id || 0, ts: st.ts ? normalizeTs(st.ts) : Date.now(), sending: false, failed: false, failReason: undefined })
         } else if (st.status === 'failed') {
@@ -986,10 +1012,8 @@ import { windowActive } from '../windowActive.svelte'
     patchLocal(localId, { sending: true, failed: false, failReason: undefined })
     try {
       const cid = resendId
-        ? await App.RetryChatMessage(peer.accountId, text, resendId) // той самий ID → без дубля
-        : replyToID > 0
-          ? await App.SendChatMessageReply(peer.accountId, text, replyToID)
-          : await App.SendChatMessage(peer.accountId, text)
+        ? await api.retry(peer.accountId, text, resendId) // той самий ID → без дубля
+        : await api.send(peer.accountId, text, replyToID)
       const early = orphanAcks.get(cid)
       if (early) {
         orphanAcks.delete(cid)
@@ -1079,7 +1103,7 @@ import { windowActive } from '../windowActive.svelte'
     const now = Date.now()
     if (now - lastTypingSent > 3000 && input.trim()) {
       lastTypingSent = now
-      App.SendChatTyping(peer.accountId).catch(() => {})
+      api.typing(peer.accountId).catch(() => {})
     }
   }
 
@@ -1088,6 +1112,8 @@ import { windowActive } from '../windowActive.svelte'
   // для запрошення — адресу сервера.
   function copyPayload(m: Msg): string {
     if (m.invite) return clean(m.invite.serverAddr)
+    if (m.bodyType === 'build_offer') return clean(parseOffer(m.text ?? '')?.n)
+    if (m.bodyType === 'system') return group?.sysText(m.text ?? '') ?? ''
     const mod = parseModMessage(m.text)
     if (mod) return mod.ref.url
     return m.text ?? ''
@@ -1113,11 +1139,11 @@ import { windowActive } from '../windowActive.svelte'
     if (m.id <= 0 || !peer?.accountId) return
     const ok = await confirmDialog(
       t('social.chat.deleteAllTitle'),
-      t('social.chat.deleteAllText', { name: clean(peer.nickname) }),
+      t('social.chat.deleteAllText', { name: chatName }),
       { confirmLabel: t('social.chat.deleteAllConfirm'), cancelLabel: t('social.chat.deleteAllCancel'), danger: true })
     if (!ok) return
     try {
-      await App.DeleteChatMessage(peer.accountId, m.id)
+      await api.remove(peer.accountId, m.id)
       removeLocal(m.id)
     } catch (e) {
       toast(errText(e), 'error')
@@ -1127,8 +1153,7 @@ import { windowActive } from '../windowActive.svelte'
   async function togglePin(m: Msg) {
     if (m.id <= 0 || !peer?.accountId) return
     try {
-      if (pinnedIds.has(m.id)) await App.UnpinChatMessage(peer.accountId, m.id)
-      else await App.PinChatMessage(peer.accountId, m.id)
+      await api.pin(peer.accountId, m.id, !pinnedIds.has(m.id))
     } catch (e) {
       toast(errText(e), 'error')
     }
@@ -1159,7 +1184,7 @@ import { windowActive } from '../windowActive.svelte'
     if (text === (m.text ?? '').trim()) { cancelEdit(); return } // нічого не змінилось
     editBusy = true
     try {
-      await App.EditChatMessage(peer.accountId, m.id, text)
+      await api.edit(peer.accountId, m.id, text)
       // Сервер підтвердив; chat:edited теж оновить стрічку, але не чекаємо на нього.
       const at = Date.now()
       const patch = (x: Msg): Msg => (x.id === m.id ? { ...x, text, editedAt: Math.max(at, x.editedAt ?? 0) } : x)
@@ -1188,11 +1213,13 @@ import { windowActive } from '../windowActive.svelte'
   function replyPreview(m: Msg): { text: string; missing: boolean; who: string } {
     const target = messages.find(x => x.id === m.replyToId)
     if (!target) return { text: t('social.chat.replyGone'), missing: true, who: '' }
-    const who = target.from === me ? t('social.chat.you') : clean(peer.nickname)
-    if (target.decryptFailed) return { text: t('social.chat.decryptFailed'), missing: false, who }
+    const by = who(target.from)
+    if (target.decryptFailed) return { text: t('social.chat.decryptFailed'), missing: false, who: by }
+    if (target.bodyType === 'build_offer') return { text: '📦 ' + clean(parseOffer(target.text ?? '')?.n), missing: false, who: by }
+    if (target.bodyType === 'system') return { text: group?.sysText(target.text ?? '') ?? '', missing: false, who: '' }
     const mod = parseModMessage(target.text)
     const txt = mod ? (clean(mod.comment) || t('social.chat.pinnedMod')) : clean(target.text)
-    return { text: txt || (target.bodyType === 'server_invite' ? t('social.chat.invite.title') : ''), missing: false, who }
+    return { text: txt || (target.bodyType === 'server_invite' ? t('social.chat.invite.title') : ''), missing: false, who: by }
   }
   function jumpReply(m: Msg) {
     if (!m.replyToId) return
@@ -1200,7 +1227,7 @@ import { windowActive } from '../windowActive.svelte'
     if (target) { scrollToKey(target.key, 'center', true); flash(target.key) }
     else {
       // Цілі немає у вікні — довантажуємо вікно навколо її ймовірного часу (id кодує час).
-      const ts = Math.floor(m.replyToId / 1024)
+      const ts = api.cursor === 'id' ? m.replyToId : Math.floor(m.replyToId / 1024)
       if (ts > 0) jumpTo(m.replyToId, ts)
     }
   }
@@ -1210,7 +1237,7 @@ import { windowActive } from '../windowActive.svelte'
     reactFor = null
     if (m.id <= 0 || !peer?.accountId) return
     // Оптимістично: своє змінюємо локально, сервер пришле ПОВНИЙ список (chat:reactions).
-    try { await App.ReactChatMessage(peer.accountId, m.id, emoji) }
+    try { await api.react(peer.accountId, m.id, emoji) }
     catch (e) { toast(errText(e), 'error') }
   }
   function myReaction(m: Msg): string {
@@ -1240,10 +1267,11 @@ import { windowActive } from '../windowActive.svelte'
       }
     }
     pinNearId = target.id // світиться те, куди їдемо — без «стрибка» підсвітки після кліку
-    jumpTo(target.id, target.ts)
+    jumpTo(target.id, cursorOf(target))
   }
   function pinPreview(m: Msg): string {
     if (m.decryptFailed) return '🔒'
+    if (m.bodyType === 'build_offer') return '📦 ' + clean(parseOffer(m.text ?? '')?.n)
     const mod = parseModMessage(m.text)
     if (mod) return '📦 ' + (clean(mod.comment) || t('social.chat.pinnedMod'))
     return clean((m.text ?? '').split('\n')[0])
@@ -1273,6 +1301,7 @@ import { windowActive } from '../windowActive.svelte'
   let chatMuted = $state(false)
   let muteBusy = $state(false)
   onMount(() => {
+    if (group) return
     App.GetChatMuteState().then((s) => {
       chatMuted = (s?.muted ?? []).map((x) => x.toLowerCase()).includes(peer.accountId.toLowerCase())
     }).catch(() => {})
@@ -1339,7 +1368,7 @@ import { windowActive } from '../windowActive.svelte'
   async function pullNewInvites() {
     if (!peer?.accountId || hasNewer) return
     try {
-      const page = await App.GetChatHistory(peer.accountId, 0, 20)
+      const page = await api.history(peer.accountId, 0, 20)
       const fresh = (page?.messages ?? []).map(toMsg).filter(m =>
         m.bodyType === 'server_invite' && m.invite &&
         !messages.some(x => x.key === m.key || x.invite?.id === m.invite!.id))
@@ -1350,6 +1379,7 @@ import { windowActive } from '../windowActive.svelte'
     } catch { /* офлайн — картка з'явиться при наступному відкритті чату */ }
   }
   onMount(() => {
+    if (group) return
     const t0 = setTimeout(refreshTempStates, 600)
     const iv = setInterval(refreshTempStates, 10000)
     const timers: ReturnType<typeof setTimeout>[] = []
@@ -1464,9 +1494,10 @@ import { windowActive } from '../windowActive.svelte'
   const connBanner = $derived(conn !== 'online')
 </script>
 
-{#snippet avatar(cls: string)}
+{#snippet avatar(cls: string, from = '')}
+  {@const h = group ? (from ? group.headOf(from) : '') : head}
   <div class="sc-av {cls}">
-    {#if head}<img src={head} alt="" />{:else}<span>{initial(peer?.nickname)}</span>{/if}
+    {#if h}<img src={h} alt="" />{:else if group && !from}<i class="ti ti-users-group"></i>{:else}<span>{initial(group ? group.nameOf(from) : peer?.nickname)}</span>{/if}
   </div>
 {/snippet}
 
@@ -1486,15 +1517,23 @@ import { windowActive } from '../windowActive.svelte'
         <i class="ti ti-arrow-left"></i>
       </button>
     {/if}
-    <div class="sc-av lg" class:clk={!!onOpenProfile} onclick={() => onOpenProfile?.()} role="presentation">
-      {#if head}<img src={head} alt="" />{:else}<span>{initial(peer?.nickname)}</span>{/if}
-      <i class="sc-st {peerStatus}"></i>
-    </div>
-    <div class="sc-who" class:clk={!!onOpenProfile} onclick={() => onOpenProfile?.()} role="presentation">
-      <div class="sc-name">{clean(peer?.nickname)}{#if peer?.handle}<span class="sc-handle">@{peer.handle}</span>{/if}</div>
-      {#key peerTyping ? 'typ' : peerStatusText}
-        <div class="sc-sub" class:typ={peerTyping} in:fly={{ y: 6, duration: 180, easing: cubicOut }}>
-          {#if peerTyping}<span class="dots"><i></i><i></i><i></i></span> {t('social.chat.typing', { name: clean(peer?.nickname) })}
+    {#if group}
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div class="sc-gav clk" onclick={() => group.onSettings()}>
+        <GroupAvatar title={group.title} icon={group.icon} color={group.color} size={38} />
+      </div>
+    {:else}
+      <div class="sc-av lg" class:clk={!!onOpenProfile} onclick={() => onOpenProfile?.()} role="presentation">
+        {#if head}<img src={head} alt="" />{:else}<span>{initial(peer?.nickname)}</span>{/if}
+        <i class="sc-st {peerStatus}"></i>
+      </div>
+    {/if}
+    <div class="sc-who" class:clk={!!(group || onOpenProfile)} onclick={() => (group ? group.onSettings() : onOpenProfile?.())} role="presentation">
+      <div class="sc-name">{group ? clean(group.title) : clean(peer?.nickname)}{#if !group && peer?.handle}<span class="sc-handle">@{peer.handle}</span>{/if}</div>
+      {#key typingNow ? 'typ' : group ? 'grp' : peerStatusText}
+        <div class="sc-sub" class:typ={typingNow} in:fly={{ y: 6, duration: 180, easing: cubicOut }}>
+          {#if typingNow}<span class="dots"><i></i><i></i><i></i></span> {typingText}
+          {:else if group}{t('groups.members', { n: group.members })} · {t('groups.admin', { name: group.adminName })}
           {:else}{peerStatusText}{/if}
         </div>
       {/key}
@@ -1503,7 +1542,7 @@ import { windowActive } from '../windowActive.svelte'
          Раніше в шапці жили ДВІ різні кнопки запрошення (швидка в уже
          відкритий світ і текстова «Запросити») — обидві легко було натиснути
          випадково, бо вони виглядали як плейсхолдер, а не як кнопка. -->
-    {#if isFriend}
+    {#if isFriend && !group}
       <div class="sc-qi">
         <button class="sc-hbtn sc-hbtn-txt" data-testid="chat-temp-invite-btn" disabled={quickBusy}
                 onclick={openInviteMenu} use:tip={t('social.chat.inviteTip')}
@@ -1539,11 +1578,17 @@ import { windowActive } from '../windowActive.svelte'
          повідомлення лишаються в чаті). Стан видно кольором і іконкою
          вимкненого дзвінка; блокування гравця — у його ПРОФІЛІ (клік по
          аватарці/імені в шапці), а не в чаті. -->
-    <button class="sc-hbtn" class:on={chatMuted} data-testid="chat-mute-btn" disabled={muteBusy}
-            onclick={toggleMute} use:tip={chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')}
-            aria-label={chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')} aria-pressed={chatMuted}>
-      <i class="ti {chatMuted ? 'ti-bell-off' : 'ti-bell'}"></i>
-    </button>
+    {#if group}
+      <button class="sc-hbtn" onclick={() => group.onSettings()} use:tip={t('groups.settings.open')} aria-label={t('groups.settings.open')}>
+        <i class="ti ti-settings"></i>
+      </button>
+    {:else}
+      <button class="sc-hbtn" class:on={chatMuted} data-testid="chat-mute-btn" disabled={muteBusy}
+              onclick={toggleMute} use:tip={chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')}
+              aria-label={chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')} aria-pressed={chatMuted}>
+        <i class="ti {chatMuted ? 'ti-bell-off' : 'ti-bell'}"></i>
+      </button>
+    {/if}
   </div>
   {#if showTempInvite}
     <TempInviteModal friends={allFriends.length ? allFriends : [peer]} preselect={peer.accountId} onclose={() => { showTempInvite = false; loadOpenInvites(); setTimeout(refreshTempStates, 1500) }} />
@@ -1572,9 +1617,11 @@ import { windowActive } from '../windowActive.svelte'
           {#key cur.key}<span class="sc-pinprev" in:fly={{ y: 6, duration: 160 }}>{pinPreview(cur)}</span>{/key}
         </span>
       </button>
-      <button class="sc-pinx" onclick={() => togglePin(cur)} use:tip={t('social.chat.unpin')} aria-label={t('social.chat.unpin')}>
-        <i class="ti ti-pin-off"></i>
-      </button>
+      {#if !group || group.canUnpin}
+        <button class="sc-pinx" onclick={() => togglePin(cur)} use:tip={t('social.chat.unpin')} aria-label={t('social.chat.unpin')}>
+          <i class="ti ti-pin-off"></i>
+        </button>
+      {/if}
     </div>
   {/if}
 
@@ -1594,7 +1641,7 @@ import { windowActive } from '../windowActive.svelte'
       </div>
     {:else}
       {#if hasMore}
-        <button class="sc-more" onclick={() => loadHistory(messages[0]?.ts ?? 0, true)} disabled={loadingMore}>
+        <button class="sc-more" onclick={() => loadHistory(cursorOf(messages[0]), true)} disabled={loadingMore}>
           {#if loadingMore}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-chevrons-up"></i>{/if}
           {t('social.chat.loadOlder')}
         </button>
@@ -1602,9 +1649,9 @@ import { windowActive } from '../windowActive.svelte'
 
       {#if rows.length === 0}
         <div class="sc-center sc-empty" in:fade={{ duration: 260 }}>
-          <div class="sc-empty-ic"><i class="ti ti-messages"></i><i class="ti ti-lock sc-empty-lock"></i></div>
+          <div class="sc-empty-ic"><i class="ti ti-messages"></i>{#if !group}<i class="ti ti-lock sc-empty-lock"></i>{/if}</div>
           <div>{t('social.chat.noMessages')}</div>
-          <div class="sc-hint">{t('social.chat.noMessagesHint')}</div>
+          <div class="sc-hint">{group ? t('groups.chat.empty') : t('social.chat.noMessagesHint')}</div>
         </div>
       {/if}
 
@@ -1628,19 +1675,26 @@ import { windowActive } from '../windowActive.svelte'
             <span class="sc-evt-t">{ctlText(c, own, peer?.nickname ?? '')}</span>
             <span class="sc-evt-tm">{timeOf(row.m.ts)}</span>
           </button>
+        {:else if row.kind === 'sys'}
+          <div class="sc-evt mute sc-sys" title={fullTime(row.m.ts)}>
+            <span class="sc-evt-ic"><i class="ti ti-info-circle"></i></span>
+            <span class="sc-evt-t">{group?.sysText(row.m.text ?? '') ?? ''}</span>
+            <span class="sc-evt-tm">{timeOf(row.m.ts)}</span>
+          </div>
         {:else}
           {@const m = row.m}
           {@const own = isOwn(m)}
           {@const mod = m.bodyType === 'text' && !m.decryptFailed ? parseModMessage(m.text) : null}
-          {@const shr = m.bodyType === 'text' && !m.decryptFailed && !mod ? parseShareMessage(m.text) : null}
+          {@const shr = !group && m.bodyType === 'text' && !m.decryptFailed && !mod ? parseShareMessage(m.text) : null}
           {@const st = own ? stateOf(m) : 'sent'}
           <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div class="sc-row" class:selecting class:picked={selected.has(m.key)} onclickcapture={(e) => onRowClickCapture(e, m.key)} oncontextmenu={(e) => openMenu(e, m)} onmousedown={(e) => onDragDown(e, m.key)} class:own class:fresh={m.fresh} class:flash={flashKey === m.key} class:gstart={row.groupStart} class:gend={row.groupEnd}>
             {#if selecting}<span class="sc-chk" class:on={selected.has(m.key)} aria-hidden="true"><i class="ti ti-check"></i></span>{/if}
             {#if !own}
-              <div class="sc-avcol">{#if row.groupEnd}{@render avatar('sm')}{/if}</div>
+              <div class="sc-avcol">{#if row.groupEnd}{@render avatar('sm', m.from)}{/if}</div>
             {/if}
             <div class="sc-colmsg" class:invite-col={m.bodyType === 'server_invite'}>
+              {#if group && !own && row.groupStart}<div class="sc-from">{who(m.from)}</div>{/if}
               <div class="sc-bwrap" class:invite-bwrap={m.bodyType === 'server_invite'}>
                 {#if m.bodyType === 'server_invite' && m.invite}
                   {@const inv = m.invite}
@@ -1701,6 +1755,9 @@ import { windowActive } from '../windowActive.svelte'
                     {/if}
                     {#if m.decryptFailed}
                       <div class="sc-txt sc-bad"><i class="ti ti-lock-off"></i> {t('social.chat.decryptFailed')}</div>
+                    {:else if m.bodyType === 'build_offer'}
+                      {@const offer = parseOffer(m.text ?? '')}
+                      {#if offer}<GroupOfferCard {offer} {own} onClaim={() => group?.claim(m.id, m.from)} />{/if}
                     {:else if shr}
                       <ShareCard card={shr.card} encoded={shr.encoded} {own} peerAccountId={peer?.accountId ?? ''} peerName={peer?.nickname ?? ''} />
                     {:else if mod}
@@ -1778,9 +1835,9 @@ import { windowActive } from '../windowActive.svelte'
        </div>
       {/each}
 
-      {#if peerTyping}
+      {#if typingNow}
         <div class="sc-row typ-row" in:fly={{ y: 8, duration: 200, easing: cubicOut }} out:fade={{ duration: 120 }}>
-          <div class="sc-avcol">{@render avatar('sm')}</div>
+          <div class="sc-avcol">{@render avatar('sm', group?.typing.length ? '' : peer?.accountId ?? '')}</div>
           <div class="sc-bub sc-typ"><span class="dots big"><i></i><i></i><i></i></span></div>
         </div>
       {/if}
@@ -1811,7 +1868,7 @@ import { windowActive } from '../windowActive.svelte'
           <i class="ti ti-copy"></i> {m.invite ? t('social.chat.invite.copy') : parseModMessage(m.text) ? t('social.chat.copyLink') : t('social.chat.copy')}
         </button>
       {/if}
-      {#if m.id > 0 && m.bodyType === 'text' && !m.decryptFailed}
+      {#if canPinMsg(m)}
         <button role="menuitem" onclick={() => act(() => togglePin(m))}>
           <i class="ti {pinnedIds.has(m.id) ? 'ti-pin-off' : 'ti-pin'}"></i> {pinnedIds.has(m.id) ? t('social.chat.unpin') : t('social.chat.pin')}
         </button>
@@ -1834,7 +1891,7 @@ import { windowActive } from '../windowActive.svelte'
         <hr />
         {#if m.failed}
           <button role="menuitem" class="danger" onclick={() => act(() => hideMsg(m))}><i class="ti ti-trash"></i> {t('social.chat.discard')}</button>
-        {:else if own && m.bodyType === 'text'}
+        {:else if canDeleteAll(m)}
           <button role="menuitem" class="danger" onclick={() => act(() => deleteForAll(m))}><i class="ti ti-trash"></i> {t('social.chat.deleteAll')}</button>
         {:else}
           <button role="menuitem" class="danger" onclick={() => act(() => hideMsg(m))}><i class="ti ti-trash"></i> {t('social.chat.deleteLocal')}</button>
@@ -1891,7 +1948,7 @@ import { windowActive } from '../windowActive.svelte'
     <div class="sc-replybar" transition:fly={{ y: 8, duration: 160, easing: cubicOut }}>
       <i class="ti ti-arrow-back-up"></i>
       <div class="sc-replybar-txt">
-        <b>{replyTo.from === me ? t('social.chat.replyMe') : clean(peer.nickname)}</b>
+        <b>{replyTo.from === me ? t('social.chat.replyMe') : who(replyTo.from)}</b>
         <span>{clean(replyTo.text) || (replyTo.bodyType === 'server_invite' ? t('social.chat.invite.title') : '🔒')}</span>
       </div>
       <button class="sc-replyx" onclick={cancelReply} aria-label={t('social.chat.replyCancel')}><i class="ti ti-x"></i></button>
@@ -1905,7 +1962,7 @@ import { windowActive } from '../windowActive.svelte'
       class="sc-input"
       bind:value={input}
       rows="1"
-      maxlength="4000"
+      maxlength={group?.maxLen ?? 4000}
       placeholder={t('social.chat.placeholder')}
       aria-label={t('social.chat.placeholder')}
       oninput={onInput}
@@ -2107,6 +2164,11 @@ import { windowActive } from '../windowActive.svelte'
   .sc-avcol { flex: 0 0 26px; width: 26px; }
   .sc-colmsg { display: flex; flex-direction: column; min-width: 0; max-width: min(74%, 520px); }
   .sc-row.own .sc-colmsg { align-items: flex-end; }
+  /* Груповий чат: ім'я відправника над першою бульбашкою серії, аватар групи в шапці, системні події. */
+  .sc-from { margin: 0 0 3px 4px; font: 700 11.5px/1.2 var(--font-ui); color: var(--orange); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .sc-gav { flex: 0 0 auto; display: flex; }
+  .sc-gav.clk { cursor: pointer; }
+  .sc-sys { cursor: default; }
   .sc-bwrap { position: relative; display: flex; min-width: 0; max-width: 100%; }
 
   .sc-bub { position: relative; min-width: 0; max-width: 100%; padding: 8px 11px 6px; border-radius: 15px; background: var(--bg-input); border: 1px solid var(--border);

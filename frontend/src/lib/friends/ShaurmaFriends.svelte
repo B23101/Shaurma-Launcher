@@ -24,7 +24,6 @@
   import FriendsList from './FriendsList.svelte'
   import ChatStage from './ChatStage.svelte'
   import { GroupsStore, provideGroupsStore } from '../groups/GroupsStore.svelte'
-  import GroupChat from '../groups/GroupChat.svelte'
   import GroupCreateModal from '../groups/GroupCreateModal.svelte'
   import AddFriendDialog from './AddFriendDialog.svelte'
   import PrivacyDialog from './PrivacyDialog.svelte'
@@ -130,13 +129,8 @@
          style="--fl-w:{s.rail ? LIST_W_RAIL : s.listW}px">
       <FriendsList {activeId} onAdd={() => (addOpen = true)} onCreateGroup={() => (createGroupOpen = true)} />
       <div class="sf-tb"><FriendsToolbar {lead} onAdd={() => (addOpen = true)} onPrivacy={() => (privacyOpen = true)} /></div>
-      {#if activeGroup}
-        {#key activeGroup.id}
-          <GroupChat group={activeGroup} onBack={() => g.close()} {onOpenMod} allFriends={s.st.friends} />
-        {/key}
-      {:else}
-        <ChatStage peer={activePeer} onBack={() => (activeId = "")} {onOpenMod} onAdd={() => (addOpen = true)} onPrivacy={() => (privacyOpen = true)} />
-      {/if}
+      <ChatStage peer={activePeer} group={activeGroup ?? null} onBack={() => (activeGroup ? g.close() : (activeId = ''))} {onOpenMod}
+                 onAdd={() => (addOpen = true)} onPrivacy={() => (privacyOpen = true)} />
     </div>
   {/if}
 </div>
