@@ -7,6 +7,7 @@ package social
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -469,4 +470,71 @@ func randomClientMsgID() string {
 		return ""
 	}
 	return hex.EncodeToString(buf)
+}
+
+// ── Групи (groups.go) ───────────────────────────────────────────────────
+
+// GroupEvent — жива подія групи для UI: тип кадру й його JSON як є (UI екранує текст при показі).
+type GroupEvent struct {
+	Type string          `json:"type"`
+	Data json.RawMessage `json:"data"`
+}
+
+func (s *Service) groupClient() (*PresenceClient, error) {
+	if !s.Running() {
+		return nil, ErrNotLoggedIn
+	}
+	s.mu.Lock()
+	pc := s.pc
+	s.mu.Unlock()
+	if pc == nil {
+		return nil, ErrNotConnected
+	}
+	return pc, nil
+}
+
+// GroupOp виконує операцію над групами (див. PresenceClient.GroupOp) і повертає JSON відповіді.
+func (s *Service) GroupOp(op string, fields map[string]any) (json.RawMessage, error) {
+	pc, err := s.groupClient()
+	if err != nil {
+		return nil, err
+	}
+	return pc.GroupOp(op, fields)
+}
+
+// GroupTyping — «друкує…» у групі (з тим самим обмеженням частоти, що й у приватних чатах).
+func (s *Service) GroupTyping(groupID string) error {
+	pc, err := s.groupClient()
+	if err != nil {
+		return err
+	}
+	if !s.limiter.allowTyping(groupID) {
+		return nil
+	}
+	return pc.SendGroupTyping(groupID)
+}
+
+// GroupShareCard / GroupShareDeny — відповідь відправника збірки на заявку учасника групи.
+func (s *Service) GroupShareCard(claimID, card string) error {
+	pc, err := s.groupClient()
+	if err != nil {
+		return err
+	}
+	return pc.SendGroupShareCard(claimID, card)
+}
+
+func (s *Service) GroupShareDeny(claimID, reason string) error {
+	pc, err := s.groupClient()
+	if err != nil {
+		return err
+	}
+	return pc.SendGroupShareDeny(claimID, reason)
+}
+
+// SetWhoCanAddToGroup зберігає налаштування «хто може додавати мене в групи».
+func (s *Service) SetWhoCanAddToGroup(v string) error {
+	if !s.Running() {
+		return ErrNotLoggedIn
+	}
+	return s.client.SetWhoCanAddToGroup(v)
 }

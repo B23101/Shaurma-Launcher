@@ -71,7 +71,7 @@ export class FriendsStore {
   search = $state('')
   /** Швидкий фільтр за статусом (чіпи над списком). */
   statusFilter = $state<'all' | 'online' | 'in_game'>('all')
-  listTab = $state<'chats' | 'requests'>('chats')
+  listTab = $state<'chats' | 'requests' | 'groups'>('chats')
   compact = $state((() => { try { return localStorage.getItem(COMPACT_KEY) === '1' } catch { return false } })())
   /** Ширина розгорнутого списку (перетягується правим краєм, зберігається). */
   listW = $state((() => { try { const v = Number(localStorage.getItem(WIDTH_KEY)); return v >= LIST_W_MIN && v <= LIST_W_MAX ? v : 264 } catch { return 264 } })())

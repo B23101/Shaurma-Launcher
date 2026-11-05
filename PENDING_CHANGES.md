@@ -11,5 +11,15 @@ Pack Manager після успішної збірки сам зробить git 
 Пункт = одна змістовна зміна, одним рядком, без секретів і без згадок ШІ.
 -->
 
-## 2026-11-05 10:03
-- [build] scripts/build-linux-flatpak.sh: тека результату тепер абсолютна, бо після cd у flatpak-stage відносний dist/linux не знаходився || make flatpak output dir absolute so build-bundle finds it after cd
+## 2026-11-04 22:30
+- [feat] Групові чати на сервері: міграція 0016 (групи, учасники, повідомлення, закріплення, реакції, запрошення), пакет internal/groups (права адміна, передача адмінки тому, хто зайшов після, видимість історії, закріплення, ліміти, шифрування тексту ключем сервера) || feat(vps): group chats storage, rules and admin succession
+- [feat] Групові чати: кадри WebSocket group_op/group_*, розсилка учасникам, запрошення в приватні чати, заявки «Отримати збірку» до відправника з тайм-аутом і лімітами || feat(vps): group chat hub protocol, invites and build-share claims
+- [feat] Нове налаштування приватності «хто може додавати вас у групи» (усі / друзі / ніхто, типово друзі) || feat(social): who-can-add-to-group privacy setting
+- [feat] Лаунчер: канал групових чатів у PresenceClient/Service (операції, події, заявки передачі) і Wails-методи GroupRequest, GroupSendTyping, SetWhoCanAddToGroup, GroupShareClaim || feat(launcher): group chat client channel and Wails API
+- [feat] Передача збірки/сервера в групу: картка без ключів, кожному учаснику окремий ключ і окрема P2P-передача (лише друзям відправника), звільнення слотів через Host.Forget || feat(share): per-member build sharing to groups
+- [feat] Інтерфейс груп: вкладка «Групи», створення з вибором друзів, чат (відповіді, редагування, реакції, закріплення, картки модів і збірок), налаштування (колір обведення, історія для новачків, хто закріплює/відкріплює, моди, збірки), запрошення в приватному чаті, «Поділитися в групі» || feat(ui): group chats UI
+- [refactor] Старий нез'єднаний каркас internal/groups (store.go без викликів, таблиці вже видалені міграцією 0011) замінено новою реалізацією з тими самими CleanTitle/ValidGroupID || refactor(vps): replace unused groups skeleton
+
+## 2026-11-05 10:25
+- [feat] Групи: готова іконка групи (32 іконки на вибір або перша літера назви); сервер приймає лише значення зі списку, міграція 0017 додає колонку icon (Required = 17) || feat(groups): preset group icons
+- [feat] Налаштування групи: розділ «Вигляд» із живим переглядом, рівною сіткою іконок і кольором обведення; одна іконка групи в списку, шапці чату й виборі групи (GroupAvatar) || feat(ui): group appearance editor with icon picker

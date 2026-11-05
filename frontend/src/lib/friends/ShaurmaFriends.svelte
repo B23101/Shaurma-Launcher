@@ -23,6 +23,9 @@
   import FriendsToolbar from './FriendsToolbar.svelte'
   import FriendsList from './FriendsList.svelte'
   import ChatStage from './ChatStage.svelte'
+  import { GroupsStore, provideGroupsStore } from '../groups/GroupsStore.svelte'
+  import GroupChat from '../groups/GroupChat.svelte'
+  import GroupCreateModal from '../groups/GroupCreateModal.svelte'
   import AddFriendDialog from './AddFriendDialog.svelte'
   import PrivacyDialog from './PrivacyDialog.svelte'
   import ProfileModal from '../ProfileModal.svelte'
@@ -43,7 +46,17 @@
     lead?: import('svelte').Snippet
   } = $props()
 
-  const s = provideFriendsStore(new FriendsStore((id) => { activeId = id }))
+  // Групові чати: власне сховище, але в тому ж макеті «список | діалог». Відкритий діалог з другом
+  // і відкрита група взаємно виключають одне одного.
+  const g = provideGroupsStore(new GroupsStore(
+    (id) => s.peerById(id)?.nickname ?? '',
+    () => windowActive.active,
+    () => { activeId = '' },
+  ))
+  const s = provideFriendsStore(new FriendsStore((id) => { activeId = id; if (id) g.close() }))
+  let createGroupOpen = $state(false)
+  const activeGroup = $derived(g.active)
+  $effect(() => { g.me = s.me })
 
   let addOpen = $state(false)
   let privacyOpen = $state(false)
@@ -51,7 +64,7 @@
 
   const activePeer = $derived(activeId ? s.peerById(activeId) : null)
 
-  onMount(() => s.start())
+  onMount(() => { const offGroups = g.start(); const offFriends = s.start(); return () => { offGroups(); offFriends?.() } })
 
   // Дані, що залежать від списку друзів: голови, «колишні», незнайомці.
   $effect(() => { s.syncHeads() })
@@ -87,7 +100,7 @@
   })
 </script>
 
-<div class="sf" class:chat-open={!!activePeer} bind:clientWidth={width}>
+<div class="sf" class:chat-open={!!activePeer || !!activeGroup} bind:clientWidth={width}>
   {#if s.loading}
     <FriendsToolbar minimal {lead} onAdd={() => {}} onPrivacy={() => {}} />
     <div class="sf-state"><div class="sf-spin"><i class="ti ti-loader-2 ff-spin"></i></div><span>{t('friends.loading')}</span></div>
@@ -115,14 +128,23 @@
          під ним меню-список друзів зліва і діалог у картці справа. -->
     <div class="sf-body" class:rail={s.rail} class:resizing={s.listResizing}
          style="--fl-w:{s.rail ? LIST_W_RAIL : s.listW}px">
-      <FriendsList {activeId} onAdd={() => (addOpen = true)} />
+      <FriendsList {activeId} onAdd={() => (addOpen = true)} onCreateGroup={() => (createGroupOpen = true)} />
       <div class="sf-tb"><FriendsToolbar {lead} onAdd={() => (addOpen = true)} onPrivacy={() => (privacyOpen = true)} /></div>
-      <ChatStage peer={activePeer} onBack={() => (activeId = "")} {onOpenMod} onAdd={() => (addOpen = true)} onPrivacy={() => (privacyOpen = true)} />
+      {#if activeGroup}
+        {#key activeGroup.id}
+          <GroupChat group={activeGroup} onBack={() => g.close()} {onOpenMod} allFriends={s.st.friends} />
+        {/key}
+      {:else}
+        <ChatStage peer={activePeer} onBack={() => (activeId = "")} {onOpenMod} onAdd={() => (addOpen = true)} onPrivacy={() => (privacyOpen = true)} />
+      {/if}
     </div>
   {/if}
 </div>
 
 <AddFriendDialog open={addOpen} onclose={() => (addOpen = false)} />
+{#if createGroupOpen}
+  <GroupCreateModal friends={s.st.friends} onclose={() => (createGroupOpen = false)} />
+{/if}
 <PrivacyDialog open={privacyOpen} onclose={() => (privacyOpen = false)} />
 
 <ProfileModal mode="friend" friend={s.profilePeer} head={s.profilePeer ? (s.heads[s.profilePeer.nickname] ?? '') : ''}

@@ -1,6 +1,7 @@
 package social
 
 import (
+	"encoding/json"
 	"errors"
 	"shaurma-launcher-backend/internal/crashguard"
 	"sort"
@@ -198,6 +199,8 @@ func (s *Service) Start() error {
 		OnMessageEdited:       s.onMessageEdited,
 		OnPinsUpdated:         s.onPinsUpdated,
 		OnReactionsUpdated:    s.onReactionsUpdated,
+		OnGroupEvent:          func(t string, raw json.RawMessage) { s.d.Emit("group:event", GroupEvent{Type: t, Data: raw}) },
+		OnGroupShareClaim:     func(c GroupShareClaim) { s.d.Emit("group:share_claim", c) },
 		OnDeviceRevoked:       s.onDeviceRevoked,
 		OnDeviceAdded:         func(e DeviceAddedEvent) { s.d.Emit("account:device_added", e) },
 		OnDevicesChanged:      func() { s.d.Emit("account:devices_changed", nil) },

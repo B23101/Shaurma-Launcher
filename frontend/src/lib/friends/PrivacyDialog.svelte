@@ -4,6 +4,7 @@
   // «Хто що бачить», «Сповіщення», «Заблоковані».
   import { useFriendsStore, clean } from './FriendsStore.svelte'
   import { t } from '../i18n.svelte'
+  import { useGroupsStore } from '../groups/GroupsStore.svelte'
   import UiModal from '../UiModal.svelte'
   import SelectField from '../SelectField.svelte'
   import type { SocialShowTo, SocialFriendRequests, SocialWhoCanMessage } from '../types'
@@ -19,6 +20,7 @@
     { value: 'friends', label: t('social.priv.friends') },
     { value: 'nobody', label: t('social.priv.nobody') },
   ])
+  const gs = useGroupsStore()
   const whoOptions = $derived([
     { value: 'friends', label: t('social.priv.friends') },
     { value: 'everyone', label: t('social.priv.everyone') },
@@ -52,6 +54,11 @@
       <div class="pv-tx"><div class="pv-t">{t('social.priv.whoMsg')}</div><div class="pv-d">{t('social.priv.whoMsgHint')}</div></div>
       <SelectField value={s.st.privacy.whoCanMessage ?? 'friends'} options={whoOptions} ariaLabel={t('social.priv.whoMsg')} minWidth="124px"
                    onchange={(v: string) => s.savePrivacy({ whoCanMessage: v as SocialWhoCanMessage })} />
+    </div>
+    <div class="pv-row">
+      <div class="pv-tx"><div class="pv-t">{t('groups.priv.whoAdd')}</div><div class="pv-d">{t('groups.priv.whoAddHint')}</div></div>
+      <SelectField value={gs.whoCanAdd} options={whoOptions} ariaLabel={t('groups.priv.whoAdd')} minWidth="124px"
+                   onchange={(v: string) => gs.setWhoCanAdd(v as 'friends' | 'everyone' | 'nobody')} />
     </div>
     <div class="pv-row">
       <div class="pv-tx"><div class="pv-t">{t('social.priv.requests')}</div><div class="pv-d">{t('social.priv.requestsHint')}</div></div>

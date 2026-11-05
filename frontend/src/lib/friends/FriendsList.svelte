@@ -12,9 +12,12 @@
   import EmptyState from './EmptyState.svelte'
   import FriendsNotices from './FriendsNotices.svelte'
   import { slideTabs } from '../slideTabs'
+  import GroupsPanel from '../groups/GroupsPanel.svelte'
+  import { useGroupsStore } from '../groups/GroupsStore.svelte'
 
-  let { activeId = '', onAdd }: { activeId?: string; onAdd: () => void } = $props()
+  let { activeId = '', onAdd, onCreateGroup }: { activeId?: string; onAdd: () => void; onCreateGroup: () => void } = $props()
   const s = useFriendsStore()
+  const gs = useGroupsStore()
 
   const compact = $derived(s.rail)
   const showControls = $derived(s.listTab === 'chats' && !compact && s.st.friends.length > 0)
@@ -78,6 +81,12 @@
           <i class="ti ti-user-plus"></i><span>{t('friends.tab.requests')}</span>
           {#if s.st.invites.length > 0}<span class="ff-badge">{s.st.invites.length}</span>{/if}
         </button>
+        {#if gs.enabled || !gs.loaded}
+          <button class="tab-btn fl-tab" role="tab" aria-selected={s.listTab === 'groups'} class:active={s.listTab === 'groups'} onclick={() => (s.listTab = 'groups')}>
+            <i class="ti ti-users-group"></i><span>{t('groups.tab')}</span>
+            {#if gs.totalUnread + gs.invites.length > 0}<span class="ff-badge">{gs.totalUnread + gs.invites.length}</span>{/if}
+          </button>
+        {/if}
       </div>
     {/if}
   </div>
@@ -118,6 +127,10 @@
       <EmptyState icon="ti-user-heart" title={t('friends.requests.empty')} hint={t('friends.requests.emptyHint')}>
         <button class="btn btn-primary btn-sm" onclick={onAdd}><i class="ti ti-user-plus"></i> {t('friends.addFriend')}</button>
       </EmptyState>
+    {/if}
+
+    {#if !compact && s.listTab === 'groups'}
+      <GroupsPanel oncreate={onCreateGroup} />
     {/if}
 
     {#if showChats}

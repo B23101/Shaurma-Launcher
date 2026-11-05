@@ -71,6 +71,10 @@ type PresenceConfig struct {
 	OnRemotePipe       func(PipeFrame)
 	OnRemotePipeEnd    func(tunnel, reason string)
 
+	// Групові чати (groups.go): живі події group_* і заявки «Отримати збірку» до відправника.
+	OnGroupEvent      func(typ string, raw json.RawMessage)
+	OnGroupShareClaim func(GroupShareClaim)
+
 	Logf func(format string, args ...any) // за замовчуванням — нічого (токени/вміст не логуються)
 
 	// Лише для тестів: дозволити ws:// (httptest не вміє TLS без зусиль).
@@ -111,6 +115,8 @@ type PresenceClient struct {
 	histReq map[string]chan histResult
 	// Відповіді op_result (видалити / закріпити): reqId → канал із кодом помилки ("" = ок).
 	opReq map[string]chan string
+	// group_result: reqId → канал (groups.go).
+	grpReq map[string]chan groupResult
 
 	// Публікація моїх серверів друзям (remote.go); під p.mu.
 	rshares remoteShares
@@ -151,6 +157,7 @@ func NewPresenceClient(cfg PresenceConfig) *PresenceClient {
 		outSignal:  make(chan struct{}, 1),
 		histReq:    map[string]chan histResult{},
 		opReq:      map[string]chan string{},
+		grpReq:     map[string]chan groupResult{},
 		rshares:    newRemoteShares(),
 	}
 }
@@ -1308,7 +1315,7 @@ func (p *PresenceClient) readLoop(ctx context.Context, conn *websocket.Conn) err
 		case "rs_pipe_end":
 			p.handleRemotePipeEnd(ev)
 		default:
-			// share_* — у цій фазі не обробляємо.
+			p.handleGroupFrame(ev.Type, data)
 		}
 	}
 }

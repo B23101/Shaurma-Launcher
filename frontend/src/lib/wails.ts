@@ -779,6 +779,13 @@ export const App = {
   JoinTempInvite: (address: string): Promise<void> => call('JoinTempInvite', address),
   // ── Поділитися збіркою / сервером (повне копіювання другові через P2P) ──
   ShareStart: (req: ShareStartRequest): Promise<ShareOutView> => call('ShareStart', req),
+  // ── Групові чати (groups/GroupsStore.svelte.ts) ──
+  // Одна точка входу для всіх операцій над групами; права перевіряє сервер.
+  GroupRequest: (op: string, fields?: Record<string, unknown>): Promise<any> => call('GroupRequest', op, fields ?? {}),
+  GroupSendTyping: (groupId: string): Promise<void> => call('GroupSendTyping', groupId),
+  SetWhoCanAddToGroup: (v: 'friends' | 'everyone' | 'nobody'): Promise<void> => call('SetWhoCanAddToGroup', v),
+  // «Отримати збірку» з картки в групі; повертає claimId. Хід — події group:event / share:in.
+  GroupShareClaim: (groupId: string, messageId: number, senderId: string): Promise<string> => call('GroupShareClaim', groupId, messageId, senderId),
   ShareInviteMore: (id: string, friendIds: string[]): Promise<void> => call('ShareInviteMore', id, friendIds),
   ShareStop: (id: string): Promise<void> => call('ShareStop', id),
   ShareSenderPause: (id: string, accountId: string, paused: boolean): Promise<void> => call('ShareSenderPause', id, accountId, paused),

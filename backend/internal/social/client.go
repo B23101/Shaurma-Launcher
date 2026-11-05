@@ -303,6 +303,15 @@ func (c *Client) SetPrivacy(p Privacy) error {
 	}, nil)
 }
 
+// SetWhoCanAddToGroup — хто може додавати мене в групи: friends (типово) | everyone | nobody.
+// Окремий частковий запит: решту налаштувань приватності Worker/VPS лишає як є.
+func (c *Client) SetWhoCanAddToGroup(v string) error {
+	if v != "friends" && v != "everyone" && v != "nobody" {
+		return ErrBadInput
+	}
+	return c.call(http.MethodPost, "/friends/presence-pref", map[string]string{"whoCanAddToGroup": v}, nil)
+}
+
 // AccountIDFromJWT дістає `sub` з access-JWT БЕЗ перевірки підпису. Це лише
 // для локального відображення («це я»); жодне рішення про права ним не
 // приймається — підпис перевіряє Worker. Повертає "" для будь-якого сміття.

@@ -9,6 +9,8 @@ package main
 // Акаунти, друзі й чат спільні для Base та повної редакції.
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"shaurma-launcher-backend/internal/crashguard"
 	"strings"
@@ -317,6 +319,33 @@ func (a *App) MarkChatRead(peerAccountID string, upToMessageID int64) error {
 // SendChatServerInvite — «Зайти на сервер» у чаті (адреса з P2P-модуля).
 func (a *App) SendChatServerInvite(peerAccountID, serverAddr, packID, packName string, ttlMs int64) error {
 	return a.socialService().SendServerInvite(peerAccountID, serverAddr, packID, packName, ttlMs)
+}
+
+// ── Групові чати (internal/social/groups.go) ───────────────────────────
+
+// GroupRequest виконує операцію над групами (create, add, invite, send, history, …) і повертає
+// відповідь сервера. Права перевіряє сервер; помилка — «social:<code>» (forbidden, not_found, …).
+func (a *App) GroupRequest(op string, fields map[string]any) (map[string]any, error) {
+	a.startSocialIfLoggedIn()
+	raw, err := a.socialService().GroupOp(op, fields)
+	if err != nil {
+		return nil, err
+	}
+	var out map[string]any
+	if json.Unmarshal(raw, &out) != nil {
+		return nil, errors.New("некоректна відповідь сервера")
+	}
+	return out, nil
+}
+
+// GroupSendTyping — індикатор друку в групі.
+func (a *App) GroupSendTyping(groupID string) error {
+	return a.socialService().GroupTyping(groupID)
+}
+
+// SetWhoCanAddToGroup — приватність: хто може додавати мене в групи (friends | everyone | nobody).
+func (a *App) SetWhoCanAddToGroup(v string) error {
+	return a.socialService().SetWhoCanAddToGroup(v)
 }
 
 // ── Віджет сповіщень у трей (notify_window.go) ────────────────────────

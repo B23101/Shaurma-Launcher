@@ -142,6 +142,9 @@ type ShareStartRequest struct {
 	FriendIDs []string `json:"friendIds"`
 	Included  []string `json:"included"`
 	Excluded  []string `json:"excluded"`
+	// GroupID — передача «для групи»: друзі не вказуються, у групу йде картка збірки (без ключів),
+	// а кожен учасник, що натисне «Отримати», дістає ОКРЕМИЙ ключ (share_group_shaurma.go).
+	GroupID string `json:"groupId,omitempty"`
 }
 
 // ── Внутрішній стан ──────────────────────────────────────────────────────
@@ -158,6 +161,8 @@ type shareOut struct {
 	cardFn func(key string) ShareCard
 	// closeReason — чому закриваємо (виставляє той, хто скасовує ctx).
 	closeReason string
+	// groupID — передача для групи (порожньо — звичайна передача друзям).
+	groupID string
 }
 
 type shareIn struct {
@@ -417,7 +422,11 @@ func (a *App) ShareStart(req ShareStartRequest) (ShareOutView, error) {
 	if a.p2pDisabled() {
 		return ShareOutView{}, errP2PDisabled()
 	}
-	if len(req.FriendIDs) == 0 || len(req.FriendIDs) > share.MaxRecipients {
+	group := req.GroupID != ""
+	if group && (len(req.FriendIDs) != 0 || !social.ValidGroupID(req.GroupID)) {
+		return ShareOutView{}, errors.New("некоректна передача для групи")
+	}
+	if !group && (len(req.FriendIDs) == 0 || len(req.FriendIDs) > share.MaxRecipients) {
 		return ShareOutView{}, fmt.Errorf("оберіть від 1 до %d друзів", share.MaxRecipients)
 	}
 	if err := a.shareLockErr(req.Kind, req.RefID); err != nil {
@@ -431,9 +440,12 @@ func (a *App) ShareStart(req ShareStartRequest) (ShareOutView, error) {
 	if svc == nil {
 		return ShareOutView{}, social.ErrNotLoggedIn
 	}
-	friendIDs, names, err := shareCheckFriends(svc, req.FriendIDs)
-	if err != nil {
-		return ShareOutView{}, err
+	var friendIDs []string
+	var names map[string]string
+	if !group {
+		if friendIDs, names, err = shareCheckFriends(svc, req.FriendIDs); err != nil {
+			return ShareOutView{}, err
+		}
 	}
 
 	var root, name string
@@ -491,7 +503,7 @@ func (a *App) ShareStart(req ShareStartRequest) (ShareOutView, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	o := &shareOut{cancel: cancel, keys: map[string]string{}}
+	o := &shareOut{cancel: cancel, keys: map[string]string{}, groupID: req.GroupID}
 	o.view = ShareOutView{ID: newShareID(), Kind: req.Kind, RefID: req.RefID, Name: name, Phase: "preparing",
 		Names: names, CreatedAt: nowMs(), UpdatedAt: nowMs()}
 	shareMu.Lock()
@@ -766,7 +778,12 @@ func (a *App) runShareOut(ctx context.Context, o *shareOut, svc *social.Service,
 	a.emitShareOut(o)
 	a.saveShareOut(o)
 
-	if err := a.shareInvite(o, svc, friends); err != nil {
+	if o.groupID != "" {
+		// Група: ключів ще нема — лише картка збірки в чат групи. Якщо не вийшло, доступ не лишаємо.
+		if err := a.shareGroupPost(o, svc); err != nil {
+			return err
+		}
+	} else if err := a.shareInvite(o, svc, friends); err != nil {
 		// Частину карток не вдалося надіслати — доступ усе одно відкритий, показуємо в UI.
 		o.mu.Lock()
 		o.view.Error = "не всі повідомлення надіслано: " + err.Error()
@@ -1045,7 +1062,7 @@ func (a *App) watchShareOut(ctx context.Context, o *shareOut, svc *social.Servic
 			}
 		}
 		// Усі дали фінальну відповідь → через кілька секунд закриваємо.
-		if host.AllSettled() {
+		if host.AllSettled() && o.groupID == "" { // у групі нові учасники можуть прийти будь-коли
 			if settledAt.IsZero() {
 				settledAt = time.Now()
 			} else if time.Since(settledAt) > 4*time.Second {
@@ -1209,6 +1226,9 @@ func (a *App) ListShareOut() []ShareOutView {
 
 // shareOnSocial — хук на події соцсистеми: службові повідомлення передач.
 func (a *App) shareOnSocial(event string, payload any) {
+	if a.shareGroupOnSocial(event, payload) {
+		return
+	}
 	if event != "chat:message" {
 		return
 	}

@@ -123,6 +123,8 @@ export interface ShareStartRequest {
   friendIds: string[]
   included: string[]
   excluded: string[]
+  /** Передача для групи: friendIds порожній, у групу йде картка, ключі видаються окремо. */
+  groupId?: string
 }
 
 export interface ShareRecoverable {

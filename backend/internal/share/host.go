@@ -199,6 +199,28 @@ func (h *Host) AddRecipient(id string) (string, error) {
 	return r.key, nil
 }
 
+// Forget прибирає одержувача з ФІНАЛЬНИМ станом і звільняє його слот (для передачі в групу, де
+// учасників більше, ніж MaxRecipients, а одночасно їх лише MaxRecipients). Його ключ перестає
+// діяти. false — одержувача нема або він ще не завершив.
+func (h *Host) Forget(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	r := h.recips[id]
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	final := IsFinalState(r.state)
+	r.mu.Unlock()
+	if !final {
+		return false
+	}
+	delete(h.recips, id)
+	delete(h.byKey, r.key)
+	r.revoked.Store(true)
+	return true
+}
+
 // Serve приймає з'єднання на l. expectHandshake=true — кожне з'єднання починається
 // з Minecraft-хендшейку (так приходить трафік через P2P-хост), його відкидаємо.
 // Блокується до Close.

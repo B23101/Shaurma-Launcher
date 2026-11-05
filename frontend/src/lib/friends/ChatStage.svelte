@@ -1,4 +1,5 @@
 <script lang="ts">
+  import GroupInviteBanner from '../groups/GroupInviteBanner.svelte'
   // ── Права панель: діалог або «домашня» сцена ─────────────────────────────
   // Чат перемонтується при зміні співрозмовника ({#key}) — потрібно, щоб історія
   // й скрол не змішувались. Поява — лише fade (CSS).
@@ -24,6 +25,7 @@
   {#if peer}
     {#key peer.accountId}
       <div class="cs-in">
+        <GroupInviteBanner peerId={peer.accountId} />
         <ShaurmaChat {peer} isFriend={s.isFriend(peer.accountId)} allFriends={s.st.friends} me={s.me}
                      head={s.heads[peer.nickname] ?? ''} conn={s.st.conn}
                      {onBack} {onOpenMod} onOpenProfile={() => s.openProfile(peer)} />
