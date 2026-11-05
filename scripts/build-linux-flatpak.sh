@@ -44,6 +44,7 @@ WORK="${FLATPAK_WORK_DIR:-$ROOT/dist}"
 STAGE="$WORK/flatpak-stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE/src" "$OUT"
+OUT="$(cd "$OUT" && pwd)"  # абсолютний шлях: нижче робимо cd "$STAGE"
 (cd "$ROOT" && git ls-files -co --exclude-standard -- shell backend updater-backend \
    | grep -v -E '(^|/)(node_modules|dist|build/bin)/' \
    | while IFS= read -r f; do [[ -f "$f" ]] && printf '%s\0' "$f"; done \
