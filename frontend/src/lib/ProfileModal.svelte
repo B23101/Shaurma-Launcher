@@ -508,7 +508,7 @@
                 {/if}
                 {#if tileOn('showSince')}
                   <div class="am-stat stg" style="--i:5" transition:scale={{ duration: dur(220), start: 0.9 }}>
-                    <i class="ti ti-calendar-heart"></i><b class="sm">{sinceText}</b><small>{t('acc.modal.stat.since')}</small>
+                    <i class="ti ti-calendar-heart"></i><b class="sm" title={sinceText}>{sinceText}</b><small>{t('acc.modal.stat.since')}</small>
                   </div>
                 {/if}
               </div>
@@ -705,12 +705,15 @@
   .am-tab:hover, .am-tab.on { color: var(--text); }
   .am-pane { display: grid; gap: 14px; align-content: start; }
 
-  .am-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+  .am-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
   .am-stat { position: relative; display: grid; gap: 4px; padding: 13px 14px; border-radius: 15px; background: var(--bg-input); border: 1px solid var(--border); overflow: hidden; transition: transform .18s, border-color .18s; }
   .am-stat:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--aura) 55%, var(--border)); }
-  .am-stat > i { position: absolute; right: 10px; top: 10px; font-size: 20px; color: color-mix(in srgb, var(--aura) 70%, var(--text-dim)); opacity: .55; }
-  .am-stat b { font: 800 20px/1.15 var(--font-ui); color: var(--text); font-variant-numeric: tabular-nums; }
-  .am-stat b.sm { font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 26px; }
+  /* Іконка — окремим рядком над значенням: раніше вона лежала absolute у
+     правому куті й наїжджала на довге значення («20 год 58 хв», «жовт. 2026»). */
+  .am-stat > i { display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 4px; border-radius: 9px; font-size: 15px;
+    color: color-mix(in srgb, var(--aura) 80%, var(--text)); background: color-mix(in srgb, var(--aura) 14%, transparent); }
+  .am-stat b { min-width: 0; font: 800 17px/1.2 var(--font-ui); color: var(--text); font-variant-numeric: tabular-nums; text-wrap: balance; }
+  .am-stat b.sm { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .am-stat small { color: var(--text-mute); font: 500 11px/1.2 var(--font-ui); }
 
   .am-block { display: grid; gap: 8px; }

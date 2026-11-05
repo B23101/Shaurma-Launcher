@@ -9,6 +9,9 @@
   import { packAsset } from './packAssets.svelte'
   import { smartImage } from './smartImage'
   import type { MigrationPack } from './types'
+  import PackPicker from './PackPicker.svelte'
+  import { sharedPackPicker } from './packPickerStore.svelte'
+  import { withMigrationTargets } from './modTarget'
 
   let {
     packs = [] as MigrationPack[],
@@ -35,13 +38,20 @@
   let query = $state('')
 
   const selected = $derived(packs.find((p) => p.packId === value))
-  const filtered = $derived.by(() => {
-    const q = query.trim().toLowerCase()
-    if (!q) return packs
-    return packs.filter((p) =>
-      `${p.name} ${p.mcVersion ?? ''} ${p.loader ?? ''}`.toLowerCase().includes(q)
-    )
-  })
+  // Спільний список лаунчера (PackPicker з папками, як у бічній панелі й
+  // «Копіювати в іншу збірку»). Збірки, яких там немає (сервери), додаються
+  // в кінець; allowedIds лишає видимими лише те, що можна обрати тут.
+  const picker = $derived(withMigrationTargets(sharedPackPicker.value, packs))
+  const allowed = $derived(new Set(packs.map((p) => p.packId)))
+  const byId = $derived(new Map(packs.map((p) => [p.packId, p])))
+  const subtitle = (r: { loader?: string; mcVersion?: string }, id: string) => {
+    const base = r.loader && r.mcVersion ? `${r.loader} · ${r.mcVersion}` : (r.mcVersion || r.loader || '')
+    const p = byId.get(id)
+    const parts = [base]
+    if (p && p.modCount > 0) parts.push(t('mods.migrateModCount', { n: p.modCount }))
+    if (id === currentId) parts.push(t('mods.migrateCurrentPack'))
+    return parts.filter(Boolean).join(' · ')
+  }
 
   function openPicker() {
     if (disabled) return
@@ -100,38 +110,18 @@
       {/if}
     </div>
 
-    <div class="pc-list">
-      {#each filtered as p (p.packId)}
-        <button
-          type="button"
-          class="pc-row"
-          class:sel={p.packId === value}
-          onclick={() => pick(p.packId)}
-        >
-          <span class="pc-ic">
-            {#if packAsset(p.iconUrl)}
-              <img src={packAsset(p.iconUrl)} alt="" loading="lazy" use:smartImage />
-            {:else}
-              <i class="ti {p.icon || 'ti-package'}" style="color:{p.color || 'var(--orange)'}"></i>
-            {/if}
-          </span>
-          <span class="pc-info">
-            <span class="pc-rname">
-              {p.name}
-              {#if p.packId === currentId}<span class="pc-tag">{t('mods.migrateCurrentPack')}</span>{/if}
-            </span>
-            <span class="pc-rsub">
-              {#if p.loader || p.mcVersion}{p.loader}{p.loader && p.mcVersion ? ' · ' : ''}{p.mcVersion}{:else}—{/if}
-              {#if p.modCount > 0}<span class="pc-mods"><i class="ti ti-puzzle"></i>{p.modCount}</span>{/if}
-            </span>
-          </span>
-          {#if p.packId === value}<i class="ti ti-check pc-check"></i>{/if}
-        </button>
-      {/each}
-      {#if filtered.length === 0}
-        <div class="pc-empty"><i class="ti ti-search-off"></i> {t('mods.migrateChooseEmpty')}</div>
-      {/if}
-    </div>
+    <PackPicker
+      class="pc-list"
+      items={picker.items}
+      rowById={picker.rowById}
+      folderById={picker.folderById}
+      allowedIds={allowed}
+      selected={value}
+      onselect={pick}
+      {query}
+      {subtitle}
+      emptyText={t('mods.migrateChooseEmpty')}
+    />
   </div>
 </UiModal>
 
@@ -181,28 +171,5 @@
   }
   .pc-search-x:hover { color: var(--text); }
 
-  .pc-list { display: flex; flex-direction: column; gap: 3px; max-height: 360px; overflow-y: auto; }
-  .pc-row {
-    display: flex; align-items: center; gap: 10px; width: 100%;
-    padding: 7px 9px; text-align: left;
-    background: transparent; border: 1px solid transparent; border-radius: var(--r-sm);
-    color: var(--text); font-family: inherit; cursor: pointer;
-    transition: background .14s, border-color .14s;
-  }
-  .pc-row:hover { background: var(--bg-input); border-color: var(--border); }
-  .pc-row.sel { background: rgba(157,124,255,.1); border-color: rgba(157,124,255,.4); }
-
-  .pc-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .pc-rname { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--text); }
-  .pc-tag {
-    font-size: var(--fs-min); font-weight: 800; padding: 1px 6px; border-radius: 999px;
-    background: rgba(var(--orange-rgb), .14); color: var(--orange); white-space: nowrap;
-  }
-  .pc-rsub { display: flex; align-items: center; gap: 8px; font-size: var(--fs-min); color: var(--text-mute); }
-  .pc-mods { display: inline-flex; align-items: center; gap: 3px; }
-  .pc-check { color: var(--violet-l); font-size: 15px; flex-shrink: 0; }
-  .pc-empty {
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    padding: 24px 0; color: var(--text-mute); font-size: 12px;
-  }
+  .pc-body :global(.pc-list) { max-height: min(420px, 60vh); overflow-y: auto; }
 </style>

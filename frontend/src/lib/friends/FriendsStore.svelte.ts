@@ -139,25 +139,32 @@ export class FriendsStore {
     saveActivity(this.#actKey(), () => ({ ...this.activity }))
   }
 
+  /** Своє повідомлення піднімає чат нагору ОДРАЗУ, не чекаючи підтвердження сервера (chat:ack). */
+  touchActivity(id: string) { this.#bump(id, Date.now()) }
+
   syncActivity(ids: string[]) {
     if (!this.st.loggedIn) return
     this.restoreActivity()
     const me = this.me
     const pending = ids.filter(id => !this.#activityVerified.has(id) && !this.#activityPending.has(id))
+    if (!pending.length) return
     pending.forEach(id => this.#activityPending.add(id))
+    // Відповіді збираємо й застосовуємо ОДНИМ махом: раніше кожна приходила окремо, і список
+    // «перешиковувався» десятки разів поспіль — рядок втікав з-під курсора і клік влучав в інший чат.
+    const found: Record<string, number> = {}
     const worker = async () => {
       for (let id = pending.shift(); id; id = pending.shift()) {
         try {
           const page = await App.GetChatHistory(id, 0, 1)
-          if (this.me === me) {
-            this.#bump(id, Math.max(0, ...page.messages.map(m => m.createdAt)))
-            this.#activityVerified.add(id)
-          }
+          if (this.me === me) found[id] = Math.max(0, ...page.messages.map(m => m.createdAt))
         } catch { /* Retry on reconnect. */ }
         finally { this.#activityPending.delete(id) }
       }
     }
-    void Promise.all([worker(), worker(), worker()])
+    void Promise.all(Array.from({ length: 6 }, worker)).then(() => {
+      if (this.me !== me) return
+      for (const [id, ts] of Object.entries(found)) { this.#bump(id, ts); this.#activityVerified.add(id) }
+    })
   }
   #recordActivity(e: { chatId?: string; from?: string; ts?: number }) {
     const parts = e.chatId?.split('_')

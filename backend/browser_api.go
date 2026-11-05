@@ -2287,6 +2287,11 @@ func (a *App) UpdatePackFromSource(packID, versionID string) (custompack.Pack, e
 		return custompack.Pack{}, err
 	}
 
+	// Every source-update entry point protects local worlds before replacing files.
+	if _, err := a.CreatePackWorldSnapshot(packID); err != nil {
+		return custompack.Pack{}, fmt.Errorf("не вдалося зберегти світи; оновлення скасовано: %w", err)
+	}
+
 	settings := a.cfg.GetSettings()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

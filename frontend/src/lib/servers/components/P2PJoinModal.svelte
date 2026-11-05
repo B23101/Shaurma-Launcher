@@ -16,7 +16,7 @@
   import UiModal from '../../UiModal.svelte'
   import '../../settings/settings.css'
   import PackPicker, { type PackPickerItem, type PackRow, type PackFolderRow } from '../../PackPicker.svelte'
-  import type { Build, PackFolder } from '../../types'
+  import type { Build, PackFolder, BuildView, ServerPing } from '../../types'
 
   let {
     address = '',
@@ -24,6 +24,12 @@
     onclose,
   }: { address: string; label?: string; onclose: () => void } = $props()
 
+  let views = $state<BuildView[]>([])
+  let chosen = $state<Build | null>(null)
+  let ping = $state<ServerPing | null>(null)
+  let checking = $state(false)
+  let allowUnverified = $state(false)
+  let checkError = $state('')
   let builds = $state<Build[]>([])
   let folders = $state<PackFolder[]>([])
   let layout = $state<{ order: string[]; pinned: string[] }>({ order: [], pinned: [] })
@@ -66,7 +72,7 @@
 
   $effect(() => {
     Promise.all([
-      App.GetBuilds().then((views) => (views ?? []).map((v) => v.build).filter((b) => !!(b && b.id))).catch(() => [] as Build[]),
+      App.GetBuilds().then((list) => { views = list ?? []; return views.map((v) => v.build).filter((b) => !!(b && b.id)) }).catch(() => [] as Build[]),
       App.GetPackFolders().catch(() => [] as PackFolder[]),
       App.GetPackLayout().catch(() => ({ order: [] as string[], pinned: [] as string[] })),
     ]).then(([b, f, l]) => {
@@ -79,7 +85,20 @@
   function pick(id: string) {
     const b = builds.find((x) => x.id === id)
     if (!b) return
-    if (mode === 'play') play(b); else addToList(b)
+    if (mode === 'play') check(b); else addToList(b)
+  }
+
+  const selectedView = $derived(views.find(v => v.build.id === chosen?.id))
+  const serverVersions = $derived(ping?.version?.match(/\b1\.\d+(?:\.\d+)?\b/g) ?? [])
+  const mismatch = $derived(!!chosen?.mcVersion && serverVersions.length === 1 && serverVersions[0] !== chosen.mcVersion)
+  async function check(b: Build) {
+    if (checking || busy) return
+    chosen = b; checking = true; ping = null; checkError = ''; allowUnverified = false
+    try {
+      const [result, current] = await Promise.all([App.PingServer(address), App.GetBuilds()])
+      ping = result; views = current ?? []
+    } catch (e) { checkError = String(e) }
+    finally { checking = false }
   }
 
   async function play(b: Build) {
@@ -134,6 +153,29 @@
     <input bind:value={query} placeholder={t('servers.p2p.play.search')} spellcheck="false" />
   </div>
 
+  {#if chosen && mode === 'play'}
+    <section class="readiness" aria-live="polite" aria-busy={checking}>
+      <strong>Готовність: {chosen.name}</strong>
+      {#if checking}<p>Перевіряємо сервер і збірку…</p>
+      {:else}
+        <p>{ping?.online ? '✓ Сервер відповідає' : 'Сервер не відповів. Перевірте, чи друг увімкнув його та надав доступ.'}</p>
+        <p>{selectedView?.installed ? '✓ Збірка встановлена' : 'Файли збірки потрібно підготувати під час запуску'}</p>
+        {#if selectedView?.status === 'needs-update'}<p>Перед запуском потрібне оновлення збірки.</p>{/if}
+        <p>Minecraft збірки: {chosen.mcVersion || 'невідомо'} · сервер: {ping?.version || 'невідомо'}</p>
+        {#if mismatch}<p>Версії Minecraft відрізняються. Оберіть відповідну збірку нижче або змініть її версію на сторінці збірки.</p>{/if}
+        <p>Склад модів сервер не повідомляє: переконайтеся, що обрана та сама збірка, що й у друга.</p>
+        {#if checkError}<p role="alert">{checkError}</p>{/if}
+        {#if !ping?.online || mismatch}
+          <label class="pjm-sub"><input type="checkbox" bind:checked={allowUnverified} disabled={!!busy} /> Спробувати вхід попри непідтверджену сумісність або недоступний status ping</label>
+        {/if}
+        <div class="pjm-modes">
+          <button disabled={!!busy} onclick={() => check(chosen!)}>Перевірити знову</button>
+          <button class="on" disabled={!!busy || ((!ping?.online || mismatch) && !allowUnverified) || !selectedView || ['running', 'downloading', 'updating'].includes(selectedView.status)} onclick={() => play(chosen!)}>{busy ? 'Готуємо запуск…' : 'Підготувати й грати'}</button>
+        </div>
+      {/if}
+    </section>
+  {/if}
+
   <div class="pjm-list">
     {#if loading}
       <div class="pjm-empty"><i class="ti ti-loader spin"></i></div>
@@ -143,7 +185,7 @@
         rowById={picker.rowById}
         folderById={picker.folderById}
         {query}
-        selectable={!busy}
+        selectable={!busy && !checking}
         onselect={pick}
         emptyText={t('servers.p2p.play.noPacks')}
       />
@@ -152,6 +194,9 @@
 </UiModal>
 
 <style>
+  .readiness { padding:14px; border:1px solid var(--border-hi); border-radius:12px; background:var(--bg-card); color:var(--text); }
+  .readiness p { font-size:12px; line-height:1.5; color:var(--text-mute); overflow-wrap:anywhere; }
+  button:focus-visible { outline:2px solid var(--orange); outline-offset:2px; }
   .pjm-sub { font: 400 12px/1.45 var(--font-ui); color: var(--text-mute); }
   .pjm-modes { display: flex; gap: 3px; margin-top: 12px; padding: 3px; border-radius: 12px; background: var(--bg-input); border: 1px solid var(--border-hi); }
   .pjm-modes button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 9px 8px; border: 1px solid transparent; border-radius: 9px; cursor: pointer; background: transparent; color: var(--text-mute); font: 600 12.5px/1 var(--font-ui); }

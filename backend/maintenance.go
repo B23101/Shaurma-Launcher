@@ -76,7 +76,6 @@ func (a *App) runMaintenance() {
 	a.cleanupShortcutIcons()
 	a.cleanupCacheTextures()
 	a.cleanupGalleryOrphans(st)
-	a.cleanupSkinOrphans()
 	a.cleanupExpiredTempMods()
 }
 
@@ -272,40 +271,8 @@ func (a *App) cleanupCacheTextures() {
 	}
 }
 
-// cleanupSkinOrphans видаляє з .shaurm/skins PNG-файли, на які більше не
-// посилається ЖОДЕН пресет гардеробу (їхній останній пресет видалили).
-//
-// Чому це безпечно: текстури дедуплікуються за вмістом (skin-<hash>.png),
-// тому один і той самий файл можуть використовувати кілька пресетів —
-// видаляємо ЛИШЕ ті, яких немає в жодному SkinPath/CapePath. Самі скіни
-// лишаються постійними даними (не кеш), за віком не чіпаються.
-func (a *App) cleanupSkinOrphans() {
-	refs := map[string]struct{}{}
-	for _, p := range a.wardrobe.AllReferencedTextures() {
-		refs[filepath.Clean(p)] = struct{}{}
-	}
-	dir := a.wardrobe.SkinsDir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return
-	}
-	removed := 0
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		full := filepath.Join(dir, e.Name())
-		if _, ok := refs[filepath.Clean(full)]; ok {
-			continue // на файл ще посилається хоча б один пресет
-		}
-		if os.Remove(full) == nil {
-			removed++
-		}
-	}
-	if removed > 0 {
-		log.Printf("maintenance: видалено %d PNG-сиріт гардеробу з %s", removed, dir)
-	}
-}
+// Wardrobe textures are permanent user data. Never garbage-collect them from
+// a metadata snapshot: saving a preset or a failed database read can leave it incomplete.
 
 // cleanupGalleryOrphans прибирає метадані галереї для скріншотів, файли
 // яких уже видалені з диска (<inst>/<packID>/.minecraft/screenshots).

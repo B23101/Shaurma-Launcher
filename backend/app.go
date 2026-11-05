@@ -1239,7 +1239,7 @@ func (a *App) GetPackByID(id string) (*api.PackIndexEntry, error) {
 // без мережевого запиту.
 func (a *App) GetPackAsset(assetURL string) (string, error) {
 	if strings.HasPrefix(assetURL, "local-file://") {
-		return localFileDataURL(strings.TrimPrefix(assetURL, "local-file://"))
+		return localFileDataURL(localFilePath(assetURL))
 	}
 	if a.packs == nil {
 		return "", fmt.Errorf("pack provider unavailable")
@@ -1638,6 +1638,9 @@ func (a *App) ensureJavaForLaunch(instanceID, javaPath string, major int, compon
 }
 
 func (a *App) LaunchInstance(instanceID string) error {
+	// Do not start a game while its worlds or graphics are being copied.
+	packCareMu.RLock()
+	defer packCareMu.RUnlock()
 	if err := a.shareLockErr("build", instanceID); err != nil {
 		a.emitLaunchError(instanceID, err)
 		return err
@@ -3918,6 +3921,10 @@ func (a *App) ClearPackLogs() error {
 // mod-storage тощо). Саму теку залишає, щоб лаунчер міг працювати далі.
 func (a *App) ClearCache() error {
 	cacheDir := a.cfg.CacheDir()
+	// Skins are permanent user files, including when selected as a custom cache.
+	if strings.EqualFold(filepath.Base(filepath.Clean(cacheDir)), "skins") {
+		return nil
+	}
 	entries, err := os.ReadDir(cacheDir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -3926,6 +3933,11 @@ func (a *App) ClearCache() error {
 		return err
 	}
 	for _, e := range entries {
+		// Never clear the wardrobe folder as cache.
+		if strings.EqualFold(e.Name(), "skins") {
+			continue
+		}
+
 		if err := safedel.RemoveAll(filepath.Join(cacheDir, e.Name())); err != nil {
 			return err
 		}

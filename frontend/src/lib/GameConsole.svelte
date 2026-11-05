@@ -1865,7 +1865,7 @@
     padding: 10px 12px;
   }
   .ram-label { font-size: 11px; color: var(--text-mute); flex-shrink: 0; }
-  .ram-input { flex: 1; accent-color: var(--violet); height: 4px; }
+  .ram-input { flex: 1; } /* вигляд — спільний input[type=range] зі style.css */
   .ram-value { font-size: 12px; font-weight: 700; color: #fff; font-family: var(--font-mono); width: 56px; text-align: right; flex-shrink: 0; }
 
   /* Футер */

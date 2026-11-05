@@ -49,6 +49,7 @@ import { windowActive } from '../windowActive.svelte'
   import TempInviteModal from './TempInviteModal.svelte'
   import P2PJoinModal from '../servers/components/P2PJoinModal.svelte'
   import { privateChatApi, type ChatApi, type GroupChatInfo } from './chatApi'
+  import { useFriendsStore } from './FriendsStore.svelte'
   import GroupAvatar from '../groups/GroupAvatar.svelte'
   import GroupOfferCard from '../groups/GroupOfferCard.svelte'
   import { parseOffer } from '../groups/groupTypes'
@@ -90,6 +91,8 @@ import { windowActive } from '../windowActive.svelte'
     // Є лише в груповому чаті: шапка групи, імена відправників, права.
     group?: GroupChatInfo
   } = $props()
+  // Може бути відсутнім, якщо чат відкрито поза сторінкою друзів (тоді порядок списку не потрібен).
+  const friendsStore: ReturnType<typeof useFriendsStore> | undefined = useFriendsStore()
 
   // ── Модель повідомлення в UI ─────────────────────────────────────────────
   type MsgState = 'sending' | 'sent' | 'read' | 'failed'
@@ -1010,6 +1013,7 @@ import { windowActive } from '../windowActive.svelte'
 
   // Відправка одного повідомлення (нового або повтор невдалого).
   async function dispatch(localId: number, text: string, resendId = '', replyToID = 0) {
+    if (!group && peer?.accountId) friendsStore?.touchActivity(peer.accountId)
     clearAckTimer(localId)
     patchLocal(localId, { sending: true, failed: false, failReason: undefined })
     try {
@@ -1790,6 +1794,11 @@ import { windowActive } from '../windowActive.svelte'
                       <div class="sc-txt sc-bad"><i class="ti ti-lock-off"></i> {t('social.chat.decryptFailed')}</div>
                     {:else if /^https:\/\/shaurma-launcher\.org\/group\/join#[a-f0-9]{64}$/.test((m.text ?? '').trim())}
                       <button class="btn btn-secondary" disabled={joiningGroup} onclick={() => joinGroupLink(m.text ?? '')}><i class="ti ti-users-plus"></i>{t('groups.link.join')}</button>
+                    {:else if /^shaurma-server:v1:[a-z0-9.-]+(?::[0-9]+)?$/.test(m.text ?? '')}
+                      {@const serverAddress = (m.text ?? '').slice('shaurma-server:v1:'.length)}
+                      <InviteCard title={t('social.chat.invite.title')} addr={serverAddress} kind="Сервер" {own}
+                        onJoin={() => (playAddr = serverAddress)} onPlay={() => (playAddr = serverAddress)}
+                        onCopy={() => App.CopyToClipboard(serverAddress)} />
                     {:else if /^shaurma-p2p:v1:[a-z0-9.-]+(?::[0-9]+)?$/.test(m.text ?? '')}
                       <button class="btn btn-primary" onclick={() => joinGroupWorld(m.text ?? '')}><i class="ti ti-world"></i>{t('groups.p2p.join')}</button>
                     {:else if m.bodyType === 'build_offer'}

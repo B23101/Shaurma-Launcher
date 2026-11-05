@@ -328,6 +328,10 @@ func (f *fakeExec) DisableMods(files []string) ([]string, []string) {
 	f.rec("disable:" + strings.Join(files, ","))
 	return files, nil
 }
+func (f *fakeExec) UpdateMods(files []string) ([]string, []string) {
+	f.rec("update")
+	return files, nil
+}
 func (f *fakeExec) InstallDependencies(ids []string) ([]string, []string) {
 	f.rec("install")
 	return nil, ids
@@ -452,5 +456,52 @@ func TestPickLoaderVersion(t *testing.T) {
 		if got := PickLoaderVersion(c.in, c.min); got != c.want {
 			t.Errorf("%v min=%q: %q != %q", c.in, c.min, got, c.want)
 		}
+	}
+}
+
+// Невідповідна версія залежності: першим (рекомендованим) варіантом має бути
+// оновлення модів, вимкнення — другим.
+func TestWrongDependencyVersionOffersUpdateFirst(t *testing.T) {
+	e := newEnv(t)
+	makeMod(t, e.mods, "alpha-1.0.jar", fab(map[string]any{"schemaVersion": 1, "id": "alpha", "version": "1.0", "depends": map[string]any{"beta": ">=2.0"}}))
+	makeMod(t, e.mods, "beta-1.0.jar", fab(map[string]any{"schemaVersion": 1, "id": "beta", "version": "1.0"}))
+	r := e.run([]string{" - Mod 'Alpha' (alpha) 1.0 requires version 2.0 or later of mod 'Beta' (beta), but only the wrong version is present: 1.0!"},
+		func(in *Input) { in.MinecraftVersion = "1.21.1" })
+	var issue *Issue
+	for i := range r.Issues {
+		if r.Issues[i].ID == "incompatible_mods" {
+			issue = &r.Issues[i]
+		}
+	}
+	if issue == nil || len(issue.Fixes) < 2 {
+		t.Fatalf("expected incompatible_mods with two fixes: %+v", r.Issues)
+	}
+	first := issue.Fixes[0]
+	if first.Action != "update_mods" || !first.Recommended {
+		t.Fatalf("update must be the recommended first fix: %+v", issue.Fixes)
+	}
+	files, _ := first.Params["files"].([]string)
+	if len(files) != 2 {
+		t.Fatalf("both involved mods should be updated: %v", first.Params)
+	}
+	if issue.Fixes[1].Action != "disable_mods" || issue.Fixes[1].Recommended {
+		t.Fatalf("disable must stay as a fallback: %+v", issue.Fixes)
+	}
+}
+
+func TestApplyUpdateMods(t *testing.T) {
+	ex := &fakeExec{total: 8192}
+	res, err := Apply(ex, []Fix{
+		{ID: "u", Action: "update_mods", Params: map[string]any{"files": []any{"a.jar", "../evil.jar", "sub/x.jar"}}},
+		{ID: "empty", Action: "update_mods", Params: map[string]any{"files": []any{"../only-bad.jar"}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res[0].OK || !strings.Contains(res[0].Message, "Оновлено модів: 1") {
+		t.Fatalf("unexpected result: %+v", res[0])
+	}
+	if res[1].OK {
+		t.Fatalf("path traversal only must not report success: %+v", res[1])
 	}
 }

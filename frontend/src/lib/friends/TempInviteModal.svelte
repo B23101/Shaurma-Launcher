@@ -29,12 +29,8 @@
   //   3. LAN-світ на цьому ПК (ScanLocalServers);
   //   4. порт вручну.
   //
-  // КОГО ЗАПРОШУЄМО (праворуч) — і окремих друзів, і ГРУПИ в одному списку, з будь-яким джерелом:
-  //   • постійний сервер → кожному обраному другові (і друзям-учасникам обраних груп) іде картка-запрошення
-  //     в особистий чат (учасникам групи, що не є вашими друзями, картку надіслати не можна — вони пропускаються);
-  //   • тимчасовий світ → друзям через InviteToTempInvite/CreateTempInvite, а групам через InviteGroupToWorld
-  //     (сервер сам бере поточний склад групи й постить у групу картку «Приєднатися»).
-  // Групи й друзі можна поєднувати в одному запрошенні.
+  // Окремі друзі отримують приватні запрошення, групи — одне повідомлення у груповому чаті.
+  // Доступ до тимчасового світу для учасників групи видає сервер через InviteGroupToWorld.
   let {
     friends = [] as SocialFriend[],
     preselectGroup = '',
@@ -69,16 +65,11 @@
   // Групи (лише ті, де є хтось, крім мене) і їхній склад.
   const myId = $derived(gs?.me ?? '')
   const groupList = $derived<Group[]>(gs?.enabled ? gs.groups.filter((g) => g.members.some((m) => m.accountId !== myId)) : [])
-  const membersOf = (g: Group) => g.members.map((m) => m.accountId).filter((id) => id && id !== myId)
   const selectedGroups = $derived(groupList.filter((g) => chosenGroups.has(g.id)))
-  const groupFullyInvited = (g: Group) => !!useExisting && membersOf(g).length > 0 && membersOf(g).every((id) => invitedSet.has(id))
+  // Наявність доступу не означає, що картка вже надіслана саме в цю групу.
+  const groupFullyInvited = (g: Group) => !!useExisting && recentInvites.has('group|' + g.id + '|' + useExisting)
   const friendIdSet = $derived(new Set(friends.map((f) => f.accountId)))
-  // Усі люди, що потраплять у запрошення: обрані друзі + склад обраних груп (без повторів).
-  const targets = $derived(new Set([...chosen, ...selectedGroups.flatMap(membersOf)]))
-  // Постійний сервер шле картку в особистий чат — це можливо лише друзям.
-  const serverSkipped = $derived(useServer ? [...targets].filter((id) => !friendIdSet.has(id)).length : 0)
-  // Скільком людям реально піде запрошення (залежить від вибраного джерела).
-  const willInvite = $derived(useServer ? [...targets].filter((id) => friendIdSet.has(id)).length : [...targets].filter((id) => !invitedSet.has(id)).length)
+  const willInvite = $derived([...chosen].filter(id => friendIdSet.has(id) && (useServer || !invitedSet.has(id))).length + selectedGroups.filter(g => !groupFullyInvited(g)).length)
   const pendingFriends = $derived(friends.filter((f) => !invitedSet.has(f.accountId)))
   const allSelected = $derived(pendingFriends.length > 0 && pendingFriends.every((f) => chosen.has(f.accountId)))
 
@@ -233,6 +224,7 @@
   }
 
   async function send() {
+    if (busy) return
     if (willInvite === 0) { err = 'Оберіть хоча б одного друга або групу'; return }
     busy = true
     err = ''
@@ -242,13 +234,13 @@
       if (useServer) {
         // Кімната сервера вже працює — жодного нового тунелю не піднімаємо:
         // шлемо звичайну картку-запрошення з її адресою. Гість зайде прямо,
-        // бо доступ у кімнати вже налаштований. Група = її друзі-учасники.
+        // бо доступ у кімнати вже налаштований. Групи отримують окрему картку.
         const room = serverRooms.find((r) => r.sub === useServer)
         if (!room) { err = 'Кімната більше не працює'; return }
         // ttl -1 = постійне запрошення: картка в чаті показує стан сервера (онлайн/офлайн/видалено).
         // Антиспам: те саме запрошення цьому другу не шлемо знову 10 хвилин.
         let sent = 0, failed = 0, lastErr: unknown = null
-        for (const id of [...targets].filter((x) => friendIdSet.has(x))) {
+        for (const id of [...chosen].filter((x) => friendIdSet.has(x))) {
           const key = id + '|' + room.address
           if (Date.now() - (recentInvites.get(key) ?? 0) < 10 * 60_000) continue
           try {
@@ -257,7 +249,14 @@
             sent++
           } catch (e) { failed++; lastErr = e }
         }
-        if (sent === 0 && failed > 0) { err = String(lastErr); return }
+        for (const g of selectedGroups) {
+          const key = 'group|' + g.id + '|' + room.address
+          if (Date.now() - (recentInvites.get(key) ?? 0) < 10 * 60_000) continue
+          if (gs && await gs.send(g.id, 'shaurma-server:v1:' + room.address)) {
+            recentInvites.set(key, Date.now()); sent++
+          } else { failed++; lastErr = 'Не вдалося надіслати запрошення у групу «' + g.title + '». Повторіть спробу.' }
+        }
+        if (failed > 0) { err = `Надіслано: ${sent}. Не вдалося: ${failed}. ${String(lastErr)}`; return }
         toast(
           sent > 0 ? `Запрошення надіслано (${sent}) — «${room.name}».${failed ? ` Не вдалося: ${failed}.` : ''}` : 'Вже запрошено — повторно не надсилаю.',
           sent > 0 ? 'success' : 'info',
@@ -277,6 +276,7 @@
         for (const g of selectedGroups.filter((x) => !groupFullyInvited(x))) {
           const ti = await App.InviteGroupToWorld(g.id, tempId, tempId ? 0 : (picked?.port ?? 0), tempId ? 0 : udpValue)
           tempId = ti?.id ?? tempId
+          if (tempId) recentInvites.set('group|' + g.id + '|' + tempId, Date.now())
           partial = true
         }
         toast('Запрошення надіслано. Доступ працює, поки відкритий світ.', 'success')
@@ -310,7 +310,7 @@
 </script>
 
 <UiModal open title={groupList.length ? 'Запросити друзів і групи' : 'Запросити друга'}
-         subtitle={useServer ? 'Друзі отримають у чаті картку-запрошення на ваш сервер — вона працює постійно. Для групи — кожен її учасник-друг.' : 'Тимчасовий доступ: зайти зможуть лише запрошені друзі та поточні учасники обраних груп, поки світ відкритий.'}
+         subtitle={useServer ? 'Окремі друзі отримають приватне запрошення, обрані групи — одне повідомлення у груповому чаті. Правила доступу до сервера залишаються чинними.' : 'Тимчасовий доступ: зайти зможуть лише запрошені друзі та поточні учасники обраних груп, поки світ відкритий.'}
          icon="ti-door-enter" color="var(--orange)" size="xl" bodyClass="inv-ui" onclose={onclose}>
   <div class="inv-body" data-testid="temp-invite-modal">
 
@@ -429,7 +429,7 @@
     <section class="inv-step inv-right">
       <header class="inv-h">
         <span class="inv-num" class:done={willInvite > 0}>{#if willInvite > 0}<i class="ti ti-check"></i>{:else}2{/if}</span>
-        <span class="inv-ht">Кого запросити <em>{willInvite}</em></span>
+        <span class="inv-ht">Куди надіслати <em>{willInvite}</em></span>
         <button class="inv-mini inv-h-act" onclick={selectAll} disabled={pendingFriends.length === 0}>
           <i class="ti {allSelected ? 'ti-square-off' : 'ti-checks'}"></i> {allSelected ? 'Зняти все' : 'Обрати всіх'}
         </button>
@@ -457,12 +457,12 @@
               {@const on = !full && chosenGroups.has(g.id)}
               <button class="inv-fr" class:on class:invited={full} disabled={full}
                       data-testid="temp-invite-group-{g.id}"
-                      title={full ? 'Усі учасники вже мають доступ' : g.title}
+                      title={full ? 'Запрошення вже надіслано в цю групу' : g.title}
                       onclick={() => toggleGroup(g.id)}>
                 <GroupAvatar title={g.title} icon={g.settings.icon} color={g.settings.color} size={32} />
                 <span class="inv-fr-txt">
                   <span class="inv-nick">{g.title}</span>
-                  <small>{full ? 'усі вже мають доступ' : t('groups.members', { n: g.members.length })}</small>
+                  <small>{full ? 'надіслано у групу' : t('groups.members', { n: g.members.length })}</small>
                 </span>
                 <span class="inv-fr-ck" aria-hidden="true"><i class="ti {full ? 'ti-lock' : 'ti-check'}"></i></span>
               </button>
@@ -491,9 +491,6 @@
       {/if}
     </section>
 
-    {#if serverSkipped > 0}
-      <div class="inv-note" data-testid="temp-invite-skipped"><i class="ti ti-info-circle"></i> {serverSkipped} {serverSkipped === 1 ? 'учасник обраних груп не є вашим другом' : 'учасників обраних груп не є вашими друзями'} — картку-запрошення на сервер їм надіслати не можна. Для них відкрийте тимчасовий доступ до світу.</div>
-    {/if}
     {#if err}<div class="inv-err" data-testid="temp-invite-error"><i class="ti ti-alert-circle"></i> {err}</div>{/if}
   </div>
 
@@ -548,9 +545,11 @@
   }
   .inv-num.done { background: var(--orange); border-color: var(--orange); color: #111; transform: scale(1.06); }
   .inv-num i { font-size: 13px; }
-  .inv-ht { font: 700 13px/1 var(--font-ui); color: var(--text); }
-  .inv-ht em { font-style: normal; margin-left: 4px; padding: 2px 7px; border-radius: 999px; background: rgba(var(--orange-rgb), .14); color: var(--orange); font: 800 var(--fs-min)/1.2 var(--font-ui); }
-  .inv-h-act { margin-left: auto; }
+  /* Заголовок і лічильник — одним рядком: у вузькій колонці бейдж
+     переносився під текст і наїжджав на нього. */
+  .inv-ht { display: inline-flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; font: 700 13px/1.2 var(--font-ui); color: var(--text); }
+  .inv-ht em { flex: none; font-style: normal; min-width: 20px; height: 20px; box-sizing: border-box; display: inline-grid; place-items: center; padding: 0 6px; border-radius: 999px; background: rgba(var(--orange-rgb), .14); color: var(--orange); font: 800 var(--fs-min)/1 var(--font-ui); font-variant-numeric: tabular-nums; }
+  .inv-h-act { margin-left: auto; flex: none; white-space: nowrap; }
 
   .inv-src { display: grid; gap: 7px; align-content: start; flex: 1; min-height: 0; overflow-y: auto; padding: 8px 2px 10px 0; }
   .inv-src-row { display: flex; gap: 8px; align-items: stretch; }

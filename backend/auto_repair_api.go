@@ -205,8 +205,53 @@ func (a *App) SetRepairMuted(kinds []string, muted bool) ([]string, error) {
 
 // ── хуки запуску/виходу гри ────────────────────────────────────────────────
 
-// autoRepairTemporarilyOff — аварійний вимикач авто-починки (поставити false, щоб увімкнути).
-const autoRepairTemporarilyOff = true
+// autoRepairTemporarilyOff — аварійний вимикач авто-починки (поставити true, щоб вимкнути для всіх).
+// Користувач може вимкнути її сам у налаштуваннях (DisableAutoRepair).
+const autoRepairTemporarilyOff = false
+
+// Порада без конкретної причини («невідомий краш», «нещодавно додані моди»)
+// корисна лише для крашу на старті: після довгої гри ненульовий код виходу
+// частіше означає закрите через диспетчер задач вікно, ніж зламану збірку.
+const repairGenericWindow = 5 * time.Minute
+
+// Те саме вікно доктора для тієї самої збірки з тими самими проблемами не
+// показуємо частіше, ніж раз на repairRepeatCooldown, — щоб не дратувати
+// гравця, який свідомо запускає збірку попри попередження.
+const repairRepeatCooldown = 10 * time.Minute
+
+var (
+	repairShownMu sync.Mutex
+	repairShown   = map[string]time.Time{}
+)
+
+// repairWorthShowing вирішує, чи відкривати доктора: конкретні причини —
+// завжди, загальні — лише для крашу на старті; і не частіше за кулдаун.
+func repairWorthShowing(packID string, report autorepair.Report, ranFor time.Duration) bool {
+	if len(report.Issues) == 0 {
+		return false
+	}
+	concrete := false
+	ids := make([]string, 0, len(report.Issues))
+	for _, is := range report.Issues {
+		ids = append(ids, is.ID)
+		switch is.ID {
+		case "unknown_crash", "recent_mods":
+		default:
+			concrete = true
+		}
+	}
+	if !concrete && ranFor > repairGenericWindow {
+		return false
+	}
+	key := packID + "|" + strings.Join(ids, ",")
+	repairShownMu.Lock()
+	defer repairShownMu.Unlock()
+	if at, ok := repairShown[key]; ok && time.Since(at) < repairRepeatCooldown {
+		return false
+	}
+	repairShown[key] = time.Now()
+	return true
+}
 
 // onGameExitRepair викликається з exit-хендлера: фіксує успішний запуск,
 // а після краху (не зупинки користувачем) у фоні діагностує й шле repair:report.
@@ -228,7 +273,7 @@ func (a *App) onGameExitRepair(build *launchBuild, account model.Account, buf *c
 			return
 		}
 		report := autorepair.Diagnose(in)
-		if len(report.Issues) > 0 {
+		if repairWorthShowing(build.ID, report, time.Since(startedAt)) {
 			a.emit("repair:report", RepairReportEvent{PackID: build.ID, Report: report})
 		}
 	}()
@@ -258,7 +303,7 @@ func (a *App) repairOnLaunchError(packID string, launchErr error) {
 			kept = append(kept, is)
 		}
 		report.Issues = kept
-		if len(kept) > 0 {
+		if repairWorthShowing(packID, report, 0) {
 			a.emit("repair:report", RepairReportEvent{PackID: packID, Report: report})
 		}
 	}()
@@ -376,6 +421,27 @@ func (e *repairExecutor) DisableMods(files []string) (done, skipped []string) {
 			continue
 		}
 		done = append(done, f)
+	}
+	return
+}
+
+func (e *repairExecutor) UpdateMods(files []string) (updated, failed []string) {
+	byFile := map[string]model.ModEntry{}
+	for _, m := range e.a.ScanModsFull(e.packID) {
+		byFile[m.FileName] = m
+	}
+	for _, f := range files {
+		m, ok := byFile[f]
+		if !ok {
+			failed = append(failed, f+": файл не знайдено")
+			continue
+		}
+		ver, err := e.a.updateModForRepair(e.packID, m, e.build.MCVersion, e.build.Loader)
+		if err != nil {
+			failed = append(failed, f+": "+err.Error())
+			continue
+		}
+		updated = append(updated, f+" → "+ver)
 	}
 	return
 }

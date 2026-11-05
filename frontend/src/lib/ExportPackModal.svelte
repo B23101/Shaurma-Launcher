@@ -11,6 +11,9 @@
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import ExportTreeNode, { type ExportTreeNodeData } from './ExportTreeNode.svelte'
+  import modrinthIcon from '../assets/images/Modrinth_icon.png'
+  import curseforgeIcon from '../assets/images/curseforge_icon.png'
+  import shaurmaIcon from '../assets/images/appicon.png'
   import type { ExportCandidate, ExportProgress, ExportPackResult, ExportShaurmpackRequest, ExportShaurmpackResult } from './types'
 
   let {
@@ -410,7 +413,7 @@
 
 {#if exporting}
   <!-- ── Живий прогрес-оверлей ── -->
-  <UiModal open={true} dismissible={false} zIndex="2100000" icon="ti-package-export" color="var(--violet)" title={t('export.title')}>
+  <UiModal open={true} dismissible={false} zIndex="2100000" icon="ti-package-export" color="var(--orange)" title={t('export.title')}>
     <div class="ep-stage">{stageLabel || (progress ? '' : '…')}</div>
     <div class="ep-track">
       <div class="ep-fill" style="width:{progress ? stagePct : 0}%"></div>
@@ -441,7 +444,7 @@
     title={t('export.title')}
     subtitle={t('export.subtitle')}
     icon="ti-package-export"
-    color="var(--violet)"
+    color="var(--orange)"
     onclose={onClose}
   >
         <div class="ep-grid">
@@ -492,13 +495,16 @@
               <span>{t('export.format')}</span>
               <div class="ep-formats">
                 {#each [
-                  { id: 'mrpack', icon: 'ti-box', cls: 'chip-mrpack', label: t('export.mrpack') },
-                  { id: 'curseforge', icon: 'ti-flame', cls: 'chip-cf', label: t('export.curseforge') },
-                  { id: 'shaurmpack', icon: 'ti-package', cls: 'chip-shaurmpack', label: t('export.shaurmpack') }
+                  { id: 'mrpack', img: modrinthIcon, label: t('export.mrpack') },
+                  { id: 'curseforge', img: curseforgeIcon, label: t('export.curseforge') },
+                  { id: 'shaurmpack', img: shaurmaIcon, label: t('export.shaurmpack') }
                 ] as f (f.id)}
-                  <label class="ep-check" class:on={formats.includes(f.id)}>
-                    <input type="checkbox" checked={formats.includes(f.id)} onclick={(e) => toggleFormat(f.id, (e.currentTarget as HTMLInputElement).checked)} />
-                    <span class="ep-format-chip {f.cls}"><i class="ti {f.icon}"></i> {f.label}</span>                  </label>
+                  <label class="ep-format" class:on={formats.includes(f.id)}>
+                    <input type="checkbox" class="ep-format-input" checked={formats.includes(f.id)} onchange={(e) => toggleFormat(f.id, (e.currentTarget as HTMLInputElement).checked)} />
+                    <img class="ep-format-ico" src={f.img} alt="" draggable="false" />
+                    <span class="ep-format-name">{f.label}</span>
+                    <span class="ep-format-tick" aria-hidden="true"><i class="ti ti-check"></i></span>
+                  </label>
                 {/each}
               </div>
               {#if formats.includes('curseforge')}

@@ -55,7 +55,7 @@ func (d *diagnoser) add(kind, detail string, fixes []*Fix, evidence []string, ti
 					break
 				}
 			}
-			if current == nil && (fix.Action == "disable_mods" || fix.Action == "install_dependencies") {
+			if current == nil && (fix.Action == "disable_mods" || fix.Action == "update_mods" || fix.Action == "install_dependencies") {
 				for i := range existing.Fixes {
 					if existing.Fixes[i].Action == fix.Action {
 						current = &existing.Fixes[i]
@@ -72,6 +72,10 @@ func (d *diagnoser) add(kind, detail string, fixes []*Fix, evidence []string, ti
 				files := head(unique(append(stringList(current.Params["files"]), stringList(fix.Params["files"])...)), maxFilesPerFix)
 				current.Params["files"] = files
 				current.Steps = disableSteps(files)
+			case fix.Action == "update_mods":
+				files := head(unique(append(stringList(current.Params["files"]), stringList(fix.Params["files"])...)), maxFilesPerFix)
+				current.Params["files"] = files
+				current.Steps = updateSteps(files, d.in)
 			case fix.Action == "install_dependencies":
 				ids := head(unique(append(stringList(current.Params["ids"]), stringList(fix.Params["ids"])...)), maxFilesPerFix)
 				current.Params["ids"] = ids
@@ -298,13 +302,18 @@ func Diagnose(in Input) Report {
 	}
 	if len(wrongVersion) > 0 {
 		var reqs, lines, pairs []string
+		var involved []string
 		for _, w := range wrongVersion {
+			involved = append(involved, w.requester, w.dependency)
 			reqs = append(reqs, w.requester)
 			lines = append(lines, w.line)
 			pairs = append(pairs, w.requester+" → "+w.dependency)
 		}
 		d.add("incompatible_mods", "Моди вимагають іншу версію залежності: "+strings.Join(head(pairs, 5), "; ")+".",
-			[]*Fix{disableFix(filesForIDs(reqs, byID), "Вимкнути моди з невідповідними версіями залежностей")}, lines, "", "")
+			[]*Fix{
+				updateFix(in, filesForIDs(involved, byID), "Оновити моди до сумісних версій"),
+				disableFix(filesForIDs(reqs, byID), "Вимкнути моди з невідповідними версіями залежностей"),
+			}, lines, "", "")
 	}
 	if len(wrongGame) > 0 {
 		detail := "Частину модів зібрано для іншої версії Minecraft"
@@ -312,7 +321,10 @@ func Diagnose(in Input) Report {
 			detail += fmt.Sprintf(" (у збірки %s)", in.MinecraftVersion)
 		}
 		d.add("incompatible_mods", detail+".",
-			[]*Fix{disableFix(filesForIDs(wrongGame, byID), "Вимкнути моди для іншої версії Minecraft")},
+			[]*Fix{
+				updateFix(in, filesForIDs(wrongGame, byID), "Оновити моди до версії для цієї збірки"),
+				disableFix(filesForIDs(wrongGame, byID), "Вимкнути моди для іншої версії Minecraft"),
+			},
 			evidenceOf(combined, []string{"minecraft"}), "", "")
 	}
 	var incompatFiles, incompatLines []string
@@ -328,7 +340,10 @@ func Diagnose(in Input) Report {
 	}
 	if len(incompatLines) > 0 {
 		d.add("incompatible_mods", "Завантажувач повідомив про конфлікт модів між собою.",
-			[]*Fix{disableFix(unique(incompatFiles), "Вимкнути конфліктуючі моди")}, incompatLines, "", "")
+			[]*Fix{
+				disableFix(unique(incompatFiles), "Вимкнути конфліктуючі моди"),
+				updateFix(in, unique(incompatFiles), "Спробувати оновити конфліктуючі моди"),
+			}, incompatLines, "", "")
 	}
 	if incompatibleSet.MatchString(combined) && d.issues["incompatible_mods"] == nil && d.issues["missing_dependencies"] == nil {
 		suspects := crashReportSuspects(report, enabled)
@@ -412,7 +427,11 @@ func Diagnose(in Input) Report {
 			detail += fmt.Sprintf(" Винуватець: %s.", strings.Join(head(mixinFiles, 4), ", "))
 		}
 		d.add("mixin_failure", detail,
-			[]*Fix{disableFix(mixinFiles, "Вимкнути мод з помилкою Mixin"), recentFix(enabled, in)},
+			[]*Fix{
+				disableFix(mixinFiles, "Вимкнути мод з помилкою Mixin"),
+				updateFix(in, mixinFiles, "Спробувати оновити мод з помилкою Mixin"),
+				recentFix(enabled, in),
+			},
 			evidenceOf(combined, []string{"mixin"}), "", "")
 	}
 

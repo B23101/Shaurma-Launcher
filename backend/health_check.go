@@ -14,6 +14,7 @@ import (
 	"shaurma-launcher-backend/internal/java"
 	"shaurma-launcher-backend/internal/minecraft"
 	"shaurma-launcher-backend/internal/servers"
+	"shaurma-launcher-backend/internal/sysinfo"
 )
 
 // ── Типи ────────────────────────────────────────────────────────────────
@@ -36,6 +37,33 @@ type HealthCheckItem struct {
 	Detail      string              `json:"detail,omitempty"`
 	Fixable     bool                `json:"fixable"`
 	FixActionID string              `json:"fixActionId,omitempty"`
+	// RAM-пункт: числа для повзунка прямо у вікні діагностики (МБ).
+	AllocatedMB   int   `json:"allocatedMb,omitempty"`
+	AvailableMB   int64 `json:"availableMb,omitempty"`
+	RecommendedMB int   `json:"recommendedMb,omitempty"`
+	TotalMB       int64 `json:"totalMb,omitempty"`
+	SuggestedMB   int   `json:"suggestedMb,omitempty"`
+}
+
+// suggestRAM — безпечне значення пам'яті для збірки: рекомендоване (або
+// поточне), але не більше за вільну зараз пам'ять мінус запас для системи,
+// округлене вниз до 512 МБ і не менше 2 ГБ.
+func suggestRAM(allocated, recommended int, available int64) int {
+	want := recommended
+	if want <= 0 {
+		want = allocated
+	}
+	if available > 0 {
+		limit := int(available) - 1024
+		if limit < want {
+			want = limit
+		}
+	}
+	want = want / 512 * 512
+	if want < 2048 {
+		want = 2048
+	}
+	return want
 }
 
 // HealthCheckReport — повний звіт по збірці.
@@ -120,25 +148,29 @@ func (a *App) RunPackHealthCheck(packID string) HealthCheckReport {
 	}
 
 	// ── 4. RAM: рекомендована vs ефективна ──────────────────────────────
+	// Обидва випадки — ПОПЕРЕДЖЕННЯ, а не помилка: «вільно зараз» стрибає
+	// щохвилини (браузер, Discord), а Java не займає весь -Xmx одразу. Гравець
+	// може виправити це прямо у вікні повзунком (FixActionID "set_ram").
 	w := a.GetLaunchWarnings(packID)
+	total := sysinfo.Collect(a.cfg.Dir()).TotalRAMMB
+	ramItem := func(title, detail string) HealthCheckItem {
+		return HealthCheckItem{
+			ID: "ram", Severity: HealthWarning, Title: title, Detail: detail,
+			Fixable: true, FixActionID: "set_ram",
+			AllocatedMB: w.EffectiveRAMMB, AvailableMB: w.AvailableRAMMB, RecommendedMB: w.RecommendedRAMMB, TotalMB: total,
+			SuggestedMB: suggestRAM(w.EffectiveRAMMB, w.RecommendedRAMMB, w.AvailableRAMMB),
+		}
+	}
 	if w.RecommendedRAMMB > 0 && w.EffectiveRAMMB > 0 && w.EffectiveRAMMB < w.RecommendedRAMMB {
-		items = append(items, HealthCheckItem{
-			ID:       "ram",
-			Severity: HealthWarning,
-			Title:    "RAM менша за рекомендовану для збірки",
-			Detail: fmt.Sprintf("Виділено %d МБ, рекомендовано %d МБ.",
-				w.EffectiveRAMMB, w.RecommendedRAMMB),
-			Fixable: false,
-		})
+		items = append(items, ramItem(
+			"Збірці може не вистачити пам'яті",
+			fmt.Sprintf("Зараз виділено %d МБ, а автор збірки радить %d МБ. Можна підняти пам'ять повзунком нижче.",
+				w.EffectiveRAMMB, w.RecommendedRAMMB)))
 	} else if w.AvailableRAMMB > 0 && int64(w.EffectiveRAMMB) > w.AvailableRAMMB {
-		items = append(items, HealthCheckItem{
-			ID:       "ram",
-			Severity: HealthError,
-			Title:    "Виділено більше RAM, ніж вільно в системі",
-			Detail: fmt.Sprintf("Виділено %d МБ, вільно зараз %d МБ — можливий краш.",
-				w.EffectiveRAMMB, w.AvailableRAMMB),
-			Fixable: false,
-		})
+		items = append(items, ramItem(
+			"Збірці виділено більше пам'яті, ніж зараз вільно",
+			fmt.Sprintf("Виділено %d МБ, а вільно %d МБ. Закрийте зайві програми або зменште пам'ять повзунком — тоді гра не вилетить.",
+				w.EffectiveRAMMB, w.AvailableRAMMB)))
 	} else {
 		items = append(items, HealthCheckItem{
 			ID:       "ram",

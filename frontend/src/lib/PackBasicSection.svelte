@@ -12,7 +12,7 @@
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
-  import { packAsset } from './packAssets.svelte'
+  import { packAsset, forgetLocalAssets } from './packAssets.svelte'
   import AppearanceEditor from './AppearanceEditor.svelte'
   import WhitelistPanel from './WhitelistPanel.svelte'
   import VersionPickerModal from './VersionPickerModal.svelte'
@@ -306,6 +306,7 @@
         useSeparateJava: cp?.useSeparateJava ?? false,
         javaPath: cp?.javaPath ?? '',
       })
+      forgetLocalAssets()
       onUpdated()
       // iconSrcPath/backgroundSrcPath одноразові (шлях до файлу для
       // імпорту) — після збереження бекенд скопіював файл. Скидаємо їх лише
@@ -396,6 +397,7 @@
         useSeparateJava: cp?.useSeparateJava ?? false,
         javaPath: cp?.javaPath ?? '',
       })
+      forgetLocalAssets()
       backgroundRemovePending = false
       toast(t('pack.basic.saved'), 'success')
       onUpdated()

@@ -127,6 +127,17 @@ export function isGifAsset(url: string | undefined | null): boolean {
   return url.startsWith('data:image/gif') || url.startsWith('data:image/webp') || /[.?&_]?\.(gif|webp)($|\?)/i.test(url)
 }
 
+/** Забуває закешовані локальні асети (іконки/фони кастомних збірок), щоб
+ *  щойно збережена чи прибрана картинка з'явилась одразу, без перезапуску. */
+export function forgetLocalAssets() {
+  for (const k of Object.keys(packAssets)) if (k.startsWith('local-file://')) delete packAssets[k]
+  for (const k of [...inflight]) if (k.startsWith('local-file://')) inflight.delete(k)
+  const pc = loadPersistCache()
+  let changed = false
+  for (const k of Object.keys(pc)) if (k.startsWith('local-file://')) { delete pc[k]; changed = true }
+  if (changed) persistNow()
+}
+
 export function packAsset(url: string | undefined | null): string | undefined {
   if (!url) return undefined
   // Уже готова картинка (іконка сервера в списках міграції/порівняння) —

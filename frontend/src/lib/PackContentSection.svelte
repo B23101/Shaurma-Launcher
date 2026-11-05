@@ -982,7 +982,7 @@
   .content-section { display: flex; flex-direction: column; gap: 12px; }
 
   /* ── Під-вкладки: ковзний таббар (style.css), менший і притиснутий ліворуч ── */
-  .ct-subtabs.tabbar { margin: 0; align-self: flex-start; padding: 4px; border-radius: 13px; }
+  .ct-subtabs.tabbar { margin: 0; align-self: center; justify-content: center; max-width: 100%; padding: 4px; border-radius: 13px; }
   .ct-subtabs.tabbar::before { top: 4px; bottom: 4px; border-radius: 10px; }
   .ct-subtabs.tabbar::after { bottom: 4px; }
   .ct-subtabs .ct-subtab.tab-btn { padding: 7px 14px; font-size: 12.5px; }

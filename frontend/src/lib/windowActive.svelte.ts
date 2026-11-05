@@ -29,7 +29,7 @@ const frozenBgs = new WeakMap<HTMLElement, string>()
 let pauseObserver: MutationObserver | null = null
 
 function apply() {
-  const active = nativeWindowActive ?? (typeof document === 'undefined' ? true : document.hasFocus())
+  const active = typeof document === 'undefined' || (!document.hidden && (nativeWindowActive ?? document.hasFocus()))
   windowActive.active = active
   if (typeof document !== 'undefined') {
     document.documentElement.setAttribute('data-window-active', active ? 'on' : 'off')
@@ -70,9 +70,26 @@ export function initWindowActive(eventName = 'window:active') {
     }
   }
   apply()
-  window.addEventListener('focus', apply)
+  // A missed native activation event must not leave a visible, interactive window frozen.
+  const resume = (event: Event) => {
+    if (!event.isTrusted || document.hidden) return
+    if (nativeWindowActive !== true || !windowActive.active) {
+      nativeWindowActive = true
+      apply()
+    }
+  }
+  window.addEventListener('focus', resume)
+  window.addEventListener('pointerdown', resume, true)
+  window.addEventListener('keydown', resume, true)
   window.addEventListener('blur', apply)
   document.addEventListener('visibilitychange', apply)
+  unsubs.push(() => {
+    window.removeEventListener('focus', resume)
+    window.removeEventListener('pointerdown', resume, true)
+    window.removeEventListener('keydown', resume, true)
+    window.removeEventListener('blur', apply)
+    document.removeEventListener('visibilitychange', apply)
+  })
 }
 
 // ── Глобальна заморозка анімованих зображень ─────────────────────────────

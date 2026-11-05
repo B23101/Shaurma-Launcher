@@ -3396,7 +3396,8 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .icon-pick { width:84px; height:84px; min-width:84px; border-radius:16px; background:var(--bg-input); border:1.5px dashed var(--border-hi); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; cursor:pointer; color:var(--text-mute); transition:border-color .15s, color .15s; overflow:hidden; }
 .icon-pick:hover { border-color:var(--orange); color:var(--orange); }
 .icon-pick i { font-size:24px; }
-.icon-pick span { font-size:var(--fs-min); font-weight:600; }
+.icon-pick span { max-width:100%; padding:0 6px; box-sizing:border-box; text-align:center; font-size:11px; font-weight:700; line-height:1.2; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.icon-pick.has-icon:not(:has(img)) i { font-size:38px; }
 .icon-pick img { width:100%; height:100%; object-fit:cover; border-radius:14px; }
 
 /* Пресет-іконка (використовується у PresetIconPicker та інших місцях):
@@ -3700,76 +3701,73 @@ button.sw { appearance:none; -webkit-appearance:none; }
   margin: 0 0 16px;
 }
 .ep-grid {
-  display: grid; grid-template-columns: 1fr 300px; gap: 20px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 22px;
 }
+.ep-settings-col { padding-left: 22px; border-left: 1px solid var(--border); }
+@media (max-width: 760px) { .ep-grid { grid-template-columns: 1fr; } .ep-settings-col { padding-left: 0; border-left: 0; } }
 .ep-tree-col { display: flex; flex-direction: column; min-width: 0; }
 .ep-settings-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ep-tree-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.ep-label { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-dim); }
+.ep-label { font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .05em; color: var(--text-dim); }
 .ep-tree-actions { display: flex; gap: 4px; }
 .ep-hint { font-size: 11px; color: var(--text-mute); margin: 4px 0 10px; }
 .ep-tree {
-  flex: 1; min-height: 260px; max-height: 420px; overflow-y: auto;
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-md);
-  padding: 8px;
+  flex: 1; min-height: 280px; max-height: 440px; overflow-y: auto;
+  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-lg);
+  padding: 6px; scrollbar-gutter: stable;
 }
 .ep-empty {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   min-height: 120px; color: var(--text-mute); font-size: 13px;
 }
 .ep-selected-count {
-  margin-top: 8px; font-size: 11.5px; color: var(--text-dim); font-weight: 700;
-  display: flex; align-items: center; gap: 6px;
+  margin-top: 10px; padding: 9px 12px; border-radius: var(--r-md); font-size: 12px; color: var(--text); font-weight: 700;
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(var(--orange-rgb), .08); border: 1px solid rgba(var(--orange-rgb), .22);
 }
-.ep-selected-count .ti { color: var(--violet); font-size: 13px; }
-.ep-selected-none, .ep-selected-none .ti { color: var(--orange); }
+.ep-selected-count .ti { color: var(--orange); font-size: 15px; }
+.ep-selected-none { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.3); }
+.ep-selected-none, .ep-selected-none .ti { color: var(--red); }
 .ep-selected-size {
   margin-left: auto; font-family: var(--font-mono); font-weight: 600; color: var(--text-mute);
 }
-.ep-node-label {
-  display: flex; align-items: center; gap: 7px; padding: 3px 6px;
-  border-radius: 6px; cursor: pointer; font-size: 12.5px; color: var(--text);
-  transition: background .15s;
-}
-.ep-node-label:hover { background: var(--bg-input-hi); }
-.ep-node-label input[type=checkbox] { accent-color: var(--violet); cursor: pointer; flex: 0 0 auto; }
-.ep-node-icon { color: var(--text-mute); display: inline-flex; }
-.ep-node-icon .ti-folder { color: var(--yellow); }
-.ep-node-name {
-  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.ep-node-size { font-size: var(--fs-min); color: var(--text-dim); flex: 0 0 auto; }
-.ep-node-children { margin-left: 20px; border-left: 1px solid var(--border); padding-left: 4px; }
-.ep-field { display: flex; flex-direction: column; gap: 5px; }
-.ep-field > span { font-size: 11.5px; font-weight: 700; color: var(--text-dim); }
-.ep-field > span small { font-weight: 500; color: var(--text-mute); }
+/* Рядки дерева (.ep-node-*) — у ExportTreeNode.svelte (локальні стилі). */
+.ep-field { display: flex; flex-direction: column; gap: 6px; }
+.ep-field > span { font-size: 11.5px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: .04em; }
+.ep-field > span small { font-weight: 500; color: var(--text-mute); text-transform: none; letter-spacing: 0; }
 .ep-field input, .ep-field textarea {
-  background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
-  padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12.5px;
-  transition: border-color .15s;
+  height: 38px; box-sizing: border-box;
+  background: var(--bg-input); border: 1px solid var(--border-hi); border-radius: var(--r-md);
+  padding: 0 12px; color: var(--text); font-family: inherit; font-size: 13px;
+  transition: border-color .15s, box-shadow .15s;
 }
-.ep-field input:focus, .ep-field textarea:focus { border-color: var(--violet); outline: none; }
+.ep-field textarea { height: auto; min-height: 64px; padding: 9px 12px; resize: vertical; line-height: 1.45; }
+.ep-field input:focus, .ep-field textarea:focus { border-color: rgba(var(--orange-rgb), .7); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .13); outline: none; }
 .ep-formats { display: flex; flex-direction: column; gap: 6px; }
 .ep-format-hint { font-size:var(--fs-min); color:var(--text-dim); margin-top:4px; line-height:1.45; }
-.ep-check {
-  display: flex; align-items: center; gap: 8px; cursor: pointer;
-  padding: 6px 8px; border: 1px solid var(--border); border-radius: var(--r-sm);
+/* Формат — картка зі справжньою іконкою сервісу й галочкою справа. */
+.ep-format {
+  position: relative; display: flex; align-items: center; gap: 11px; cursor: pointer;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg-input);
   transition: border-color .15s, background .15s;
 }
-.ep-check:hover { border-color: var(--violet); background: var(--bg-input); }
-.ep-check.on {
-  border-color: var(--violet);
-  background: color-mix(in srgb, var(--violet) 12%, transparent);
+.ep-format:hover { border-color: var(--border-hi); }
+.ep-format.on { border-color: rgba(var(--orange-rgb), .55); background: rgba(var(--orange-rgb), .08); }
+.ep-format-input { position: absolute; opacity: 0; inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.ep-format-ico { flex: none; width: 28px; height: 28px; border-radius: 8px; object-fit: contain; pointer-events: none; }
+.ep-format-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: var(--text); }
+.ep-format-tick {
+  flex: none; width: 20px; height: 20px; border-radius: 999px; display: grid; place-items: center;
+  border: 1.5px solid var(--border-hi); color: transparent; font-size: 12px;
+  transition: background .15s, border-color .15s, color .15s;
 }
-.ep-check input[type=checkbox] { accent-color: var(--violet); cursor: pointer; }.ep-format-chip { font-size: 12.5px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; }
-.chip-mrpack { color: var(--green); }
-.chip-zip { color: var(--orange); }
-.chip-cf { color: var(--red); }
-.chip-shaurmpack { color: var(--violet); }
+.ep-format.on .ep-format-tick { background: var(--orange); border-color: var(--orange); color: #fff; }
+.ep-format-input:focus-visible ~ .ep-format-tick { outline: 2px solid var(--orange); outline-offset: 2px; }
 .ep-outdir { display: flex; gap: 6px; }
-.ep-outdir input { flex: 1; }
+.ep-outdir input { flex: 1; min-width: 0; }
+.ep-outdir .btn { height: 38px; flex: none; }
 
 /* Прогрес експорту */
 .ep-stage { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
@@ -3778,7 +3776,7 @@ button.sw { appearance:none; -webkit-appearance:none; }
   border-radius: 99px; overflow: hidden;
 }
 .ep-fill {
-  height: 100%; background: linear-gradient(90deg, var(--violet), var(--blue));
+  height: 100%; background: linear-gradient(90deg, var(--orange), color-mix(in srgb, var(--orange) 55%, #fff));
   border-radius: 99px; transition: width .25s ease;
 }
 .ep-pct {
@@ -4702,15 +4700,7 @@ html.beshanga .launcher-window {
 
   /* ── Повзунок ширини сайдбара (Налаштування → Вигляд) ── */
   .sb-width-ctl { display: flex; align-items: center; gap: 10px; }
-  .sb-width-ctl input[type=range] {
-    -webkit-appearance: none; appearance: none; width: 170px; height: 6px; border-radius: 3px;
-    background: var(--bg-input-hi); outline: none; cursor: pointer;
-  }
-  .sb-width-ctl input[type=range]::-webkit-slider-thumb {
-    -webkit-appearance: none; appearance: none; width: 15px; height: 15px; border-radius: 50%;
-    background: var(--orange); border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: pointer;
-  }
-  .sb-width-ctl input[type=range]::-moz-range-thumb { width: 15px; height: 15px; border-radius: 50%; background: var(--orange); border: 2px solid #fff; cursor: pointer; }
+  .sb-width-ctl input[type=range] { width: 170px; }
   .sb-width-val { min-width: 44px; text-align: right; font-size: 11.5px; font-weight: 700; color: var(--text-mute); }
 
   /* ── Віджет-тост встановлення (помилки/завершення) ─────────────────────── */
@@ -5069,4 +5059,156 @@ html[data-theme="light"] .hl-f { color:#b91c1c; }
 }
 @media (max-width: 1180px) {
   .tabbar.tb-slide:has(> .tab-btn:nth-of-type(8)) > .tab-btn > i { display:none; }
+}
+
+/* Interactive feedback uses compositor-only scale; low-motion modes stay still. */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  html:not([data-animations="off"]):not([data-performance-mode="on"]):not([data-window-active="off"]) .btn:not(:disabled):hover { scale:1.025; }
+  html:not([data-animations="off"]):not([data-performance-mode="on"]):not([data-window-active="off"]) .btn:not(:disabled):active { scale:.96; }
+}
+html[data-performance-mode="on"] .btn { scale:1 !important; }
+
+/* ═══ Відгук на кліки та перемикання розділів ══════════════════════════
+   Хвиля від точки кліку (створює lib/pressFx.ts лише коли анімації
+   увімкнено; у режимі продуктивності елемента взагалі немає). Анімуються
+   тільки transform/opacity — композитор GPU, без перерахунку верстки. */
+.ui-ripple {
+  position:absolute; inset:0; z-index:0; pointer-events:none;
+  border-radius:inherit; overflow:hidden; contain:strict;
+}
+.ui-ripple > i {
+  position:absolute; border-radius:50%;
+  background:radial-gradient(circle, currentColor 0%, color-mix(in srgb, currentColor 40%, transparent) 45%, transparent 70%);
+  opacity:0; transform:scale(0); will-change:transform, opacity;
+}
+.btn-primary .ui-ripple > i { background:radial-gradient(circle, #fff 0%, rgba(255,255,255,.35) 45%, transparent 70%); }
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Ковзна пігулка вкладок — з легким пружним перескоком. */
+  html:not([data-animations="off"]):not([data-performance-mode="on"]) .tabbar.tb-slide::before {
+    transition:left .42s cubic-bezier(.34,1.32,.64,1), width .42s cubic-bezier(.34,1.32,.64,1);
+  }
+  /* Іконка щойно обраної вкладки «підстрибує». */
+  html:not([data-animations="off"]):not([data-performance-mode="on"]) .tab-btn.active > i:first-child {
+    animation:ui-tab-icon-pop .46s cubic-bezier(.34,1.56,.64,1);
+  }
+  /* Новий розділ: лише opacity — transform/filter на обгортці ламали
+     sticky-панелі та fixed-модалки (див. коментар до tab-panel-in вище). */
+  html:not([data-animations="off"]):not([data-performance-mode="on"]) .tab-panel-anim {
+    animation:ui-tab-panel-in .3s cubic-bezier(.16,1,.3,1) both;
+  }
+  /* Перемикачі: повзунок пружинить, а при вмиканні коротко «розтягується». */
+  html:not([data-animations="off"]):not([data-performance-mode="on"]) :is(.st-switch, .toggle)::after {
+    transition:transform .34s cubic-bezier(.34,1.56,.64,1), background .2s, width .2s;
+  }
+  html:not([data-animations="off"]):not([data-performance-mode="on"]) :is(.st-switch, .toggle):active::after { width:22px; }
+  html:not([data-animations="off"]):not([data-performance-mode="on"]) :is(.st-switch, .toggle).on:active::after { transform:translateX(14px); }
+}
+@keyframes ui-tab-icon-pop {
+  0%   { transform:scale(.6) rotate(-12deg); }
+  60%  { transform:scale(1.18) rotate(4deg); }
+  100% { transform:scale(1) rotate(0); }
+}
+@keyframes ui-tab-panel-in {
+  from { opacity:0; }
+  35%  { opacity:.75; }
+  to   { opacity:1; }
+}
+
+/* ═══ Єдиний повзунок лаунчера (усі input[type=range]) ═══════════════════
+   Тонка доріжка із заповненням акцентом (--range-fill ставить
+   lib/rangeFx.ts) і круглий «перлинний» бігунок, що пружно росте під
+   курсором і світиться при перетягуванні. Раніше кожен екран мав свій
+   варіант (accent-color, .snd-slider, .sb-width-ctl…) — тепер один. */
+input[type=range] {
+  -webkit-appearance:none; appearance:none;
+  height:22px; margin:0; padding:0; min-width:80px;
+  background:transparent; cursor:pointer; outline:none;
+  accent-color:var(--orange);
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height:6px; border-radius:999px;
+  background:linear-gradient(90deg,
+    var(--orange) 0, color-mix(in srgb, var(--orange) 80%, #fff) var(--range-fill, 0%),
+    var(--hover-strong) var(--range-fill, 0%), var(--hover-strong) 100%);
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--border) 70%, transparent);
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none;
+  width:18px; height:18px; margin-top:-6px; border-radius:50%;
+  background:radial-gradient(circle at 35% 30%, #fff 0 40%, #f2f2f2 100%);
+  border:4px solid var(--orange);
+  box-shadow:0 2px 8px rgba(0,0,0,.4), 0 0 0 0 rgba(var(--orange-rgb), .28);
+  transition:transform .22s cubic-bezier(.34,1.56,.64,1), box-shadow .2s;
+}
+input[type=range]:hover::-webkit-slider-thumb { transform:scale(1.12); }
+input[type=range]:active::-webkit-slider-thumb { transform:scale(1.22); box-shadow:0 2px 10px rgba(0,0,0,.45), 0 0 0 7px rgba(var(--orange-rgb), .2); }
+input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow:0 2px 8px rgba(0,0,0,.4), 0 0 0 4px rgba(var(--orange-rgb), .45); }
+input[type=range]::-moz-range-track { height:6px; border-radius:999px; background:var(--hover-strong); }
+input[type=range]::-moz-range-progress { height:6px; border-radius:999px; background:var(--orange); }
+input[type=range]::-moz-range-thumb {
+  width:10px; height:10px; border-radius:50%; background:#fff; border:4px solid var(--orange);
+  box-shadow:0 2px 8px rgba(0,0,0,.4); transition:transform .22s cubic-bezier(.34,1.56,.64,1);
+}
+input[type=range]:active::-moz-range-thumb { transform:scale(1.22); }
+input[type=range]:disabled { opacity:.45; cursor:default; }
+input[type=range]:disabled::-webkit-slider-thumb { transform:none; }
+
+/* ═══ Бібліотека збірок («Мої збірки»): вирівнювання й дрібна полірування ══
+   • таббар Shaurma/Кастомні — ковзний, як на інших сторінках;
+   • картки збірок і папок однакової висоти (без часу гри картка була
+     нижчою і рядок сітки «гуляв»), вміст по центру по вертикалі;
+   • іконка злегка «підстрибує» при наведенні, кольорова смужка збірки
+     зліва підказує її колір; час гри — акуратною міткою. */
+.lib-tabs.tabbar { margin-bottom:16px; }
+.tile-grid { gap:12px; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); }
+.tile-grid > .inst-tile { min-height:68px; align-items:center; align-content:center; box-sizing:border-box; }
+.inst-tile .it-ic { width:42px; height:42px; min-width:42px; border-radius:12px; transition:transform .3s cubic-bezier(.34,1.56,.64,1); }
+.inst-tile:not(.folder-tile) { grid-template-columns:42px 1fr auto; column-gap:12px; }
+.inst-tile:not(.folder-tile)::before {
+  content:''; position:absolute; left:-1px; top:14px; bottom:14px; width:3px; border-radius:0 3px 3px 0;
+  background:var(--pcol, var(--orange)); opacity:0; transform:scaleY(.4);
+  transition:opacity .2s, transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+.inst-tile:not(.folder-tile):hover::before, .inst-tile.running::before { opacity:1; transform:none; }
+.inst-tile:hover .it-ic { transform:scale(1.07) rotate(-3deg); }
+.inst-tile .it-name { font-size:13.5px; }
+.inst-tile .it-time {
+  align-self:flex-start; margin-top:2px; padding:2px 7px; border-radius:999px;
+  background:color-mix(in srgb, var(--pcol, var(--orange)) 10%, var(--hover));
+  color:var(--text-mute); font-variant-numeric:tabular-nums;
+}
+.inst-tile .it-time i { color:var(--pcol, var(--orange)); }
+.inst-tile .it-btn { width:34px; height:34px; min-width:34px; border-radius:10px; transition:background .15s, color .15s, transform .25s cubic-bezier(.34,1.56,.64,1); }
+.inst-tile:hover .it-btn.it-play { transform:scale(1.06); }
+.ft-stack { width:42px; height:42px; }
+@media (prefers-reduced-motion: reduce) {
+  .inst-tile:hover .it-ic, .inst-tile:hover .it-btn.it-play { transform:none; }
+}
+html[data-animations="off"] .inst-tile:hover .it-ic,
+html[data-performance-mode="on"] .inst-tile:hover .it-ic { transform:none; }
+
+/* Кнопка «Зупинити» під час встановлення: стадія — дрібним підписом з
+   обрізанням, щоб кнопка не роздувалась і не виштовхувала тулбар на
+   окремий рядок («Зупинити · Встановлення лоадера…»). */
+.launch-stop-btn { flex:0 1 auto; min-width:0; max-width:260px; white-space:nowrap; }
+.launch-stop-btn .lsb-stage {
+  min-width:0; overflow:hidden; text-overflow:ellipsis;
+  padding-left:8px; margin-left:2px; border-left:1px solid color-mix(in srgb, currentColor 30%, transparent);
+  font-size:11.5px; font-weight:500; opacity:.85;
+}
+
+/* Банер збірки: пресет-іконка в повноцінній рамці (як картинка), а не
+   крихітний гліф збоку, і опис збірки під назвою (раніше не показувався). */
+.inst-banner .ib-title .ib-ic.ib-ic-preset,
+.pack-hero-full .ib-title .ib-ic.ib-ic-preset {
+  color:var(--pcol, var(--orange));
+  background:color-mix(in srgb, var(--pcol, var(--orange)) 22%, rgba(0,0,0,.45));
+  border-color:color-mix(in srgb, var(--pcol, var(--orange)) 45%, rgba(255,255,255,.14));
+}
+.inst-banner .ib-desc,
+.pack-hero-full .ib-desc {
+  max-width:680px; font-size:12.5px; line-height:1.5; color:rgba(255,255,255,.82);
+  text-shadow:0 2px 10px rgba(0,0,0,.7);
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 }

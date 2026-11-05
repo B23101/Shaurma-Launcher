@@ -2,6 +2,7 @@
   // AboutSection.svelte — «Про лаунчер»: версія, оновлення, куди писати про помилки.
   import { t } from '../i18n.svelte'
   import { App } from '../wails'
+  import { toast } from '../toast.svelte'
   import SCard from './SCard.svelte'
   import appIcon from '../../assets/images/appicon.png'
   import type { Settings, SystemInfo, UpdateInfo } from '../types'
@@ -47,6 +48,11 @@
     <div class="st-row-ctl"><span class="st-row-hint" style="margin:0">{aboutSys.arch || 'x64'}</span></div></div>
   <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('st.about.channel')}</div></div>
     <div class="st-row-ctl"><span class="st-tag">{settings.updateChannel === 'beta' ? t('st.o.updateChannel.beta') : t('st.o.updateChannel.stable')}</span></div></div>
+  <div class="st-pad">
+    <button class="btn btn-ghost btn-sm" onclick={async () => { try { await App.OpenComponentsFolder() } catch (e) { toast(String(e), 'error') } }}>
+      <i class="ti ti-folder-open" aria-hidden="true"></i> {t('st.about.componentsFolder')}
+    </button>
+  </div>
 </SCard>
 
 <SCard id="x:updatesCheck" icon="ti-refresh" tone="blue" title={t('st.c.updatesCheck')}>

@@ -1744,6 +1744,15 @@ func (a *App) findModOnCurseForge(m *model.ModEntry, mcVersion, loader string) (
 // у модалці показує лише сумісні з нею білди мода, інші (для інших
 // луадерів/версій гри) все одно б не запустилися і лише плутали б.
 func (a *App) GetModVersions(packID, fileName, mcVersion, loader string) []model.ModVersionOption {
+	opts, _ := a.getModVersionsEx(packID, fileName, mcVersion, loader)
+	return opts
+}
+
+// getModVersionsEx — те саме, але додатково каже, чи список ГАРАНТОВАНО
+// відфільтровано під mcVersion/loader (strict). Фолбек CurseForge віддає
+// усі файли проєкту, коли під збірку нічого нема, — такі версії можна лише
+// показувати користувачу, але не ставити автоматично (доктор крашів).
+func (a *App) getModVersionsEx(packID, fileName, mcVersion, loader string) (opts []model.ModVersionOption, strict bool) {
 	mods := a.ScanModsFull(packID)
 	var mod *model.ModEntry
 	for i := range mods {
@@ -1753,14 +1762,14 @@ func (a *App) GetModVersions(packID, fileName, mcVersion, loader string) []model
 		}
 	}
 	if mod == nil {
-		return nil
+		return nil, false
 	}
 	loader = strings.ToLower(loader)
 	// Modrinth першим, CurseForge — fallback.
 	if projID, ok := a.findModOnModrinth(mod, mcVersion, loader); ok {
 		if opts, err := a.modrinth.AllVersionsFor(projID, mcVersion, loader); err == nil && len(opts) > 0 {
 			markCurrentModVersion(opts, mod)
-			return opts
+			return opts, true
 		}
 	}
 	// CurseForge: спочатку знаходимо САМ мод (проєкт), потім його версії.
@@ -1775,7 +1784,8 @@ func (a *App) GetModVersions(packID, fileName, mcVersion, loader string) []model
 	if hit := cfHit; hit != nil {
 		client := custompack.NewCurseForgeClient()
 		files, ferr := client.GetModFiles(hit.ID, mcVersion, loader)
-		if ferr != nil || len(files) == 0 {
+		cfStrict := ferr == nil && len(files) > 0
+		if !cfStrict {
 			files, ferr = client.GetModFiles(hit.ID, "", "")
 		}
 		if ferr == nil && len(files) > 0 {
@@ -1787,10 +1797,10 @@ func (a *App) GetModVersions(packID, fileName, mcVersion, loader string) []model
 				})
 			}
 			markCurrentModVersion(opts, mod)
-			return opts
+			return opts, cfStrict
 		}
 	}
-	return nil
+	return nil, false
 }
 
 // markCurrentModVersion позначає IsCurrent=true на опції(ях), що

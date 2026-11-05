@@ -786,10 +786,8 @@ func ImportArchive(ctx context.Context, store *Store, instanceDir, archivePath s
 			return Pack{}, fmt.Errorf("модпак використовує CurseForge (%d модів), але API-ключ CurseForge не налаштовано в цій збірці лаунчера — довантаження модів неможливе. Overrides вже розпаковано, теку можна доповнити модами вручну", len(cfFiles))
 		}
 		report(ImportProgress{
-			Stage:          StageDownloading,
-			CurrentFile:    "Резолв модів CurseForge…",
-			FilesTotal:     len(cfFiles),
-			FilesCompleted: 0,
+			Stage:       StageReadingManifest,
+			CurrentFile: fmt.Sprintf("Отримання даних про моди CurseForge (%d)…", len(cfFiles)),
 		})
 		// ПАРАЛЕЛЬНИЙ резолв: усі (projectID, fileID) → прямі URL одночасно
 		// (замість послідовного циклу, який на великих модпаках виглядав
@@ -934,11 +932,40 @@ func resolveCFFiles(ctx context.Context, cf *CurseForgeClient, cfFiles []cfManif
 	rctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	// Пакетний резолв: один POST /v1/mods/files на 200 модів замість
+	// окремого GET на кожен (ліміт cfRatePerSec робив резолв великих
+	// модпаків хвилинним). Збій пакетного запиту не фатальний — тоді
+	// працює старий шлях по одному моду.
+	ids := make([]int, 0, len(cfFiles))
+	for _, mf := range cfFiles {
+		ids = append(ids, mf.FileID)
+	}
+	prefetched, _ := cf.GetModFilesBatchCtx(rctx, ids, func(n int) {
+		if report != nil && rctx.Err() == nil {
+			report(ImportProgress{Stage: StageReadingManifest, CurrentFile: fmt.Sprintf("Отримання даних про моди CurseForge: %d/%d", n, len(cfFiles))})
+		}
+	})
+	if ctx.Err() != nil {
+		return nil, nil, ctx.Err()
+	}
+
 	sem := make(chan struct{}, maxConcurrent)
 	var wg sync.WaitGroup
 	for i, mf := range cfFiles {
 		if rctx.Err() != nil {
 			break // помилка вже сталася (cancel викликано) — не запускаємо нові запити
+		}
+		// Пакет уже дав готове посилання — без жодного мережевого запиту.
+		if pi := prefetched[mf.FileID]; pi != nil && pi.DownloadURL != "" && pi.FileName != "" {
+			tasks[i] = importTask{
+				relPath:  "mods/" + pi.FileName,
+				url:      pi.DownloadURL,
+				sha1:     pi.SHA1,
+				fileSize: pi.FileLength,
+			}
+			resolved[i] = true
+			atomic.AddInt32(&done, 1)
+			continue
 		}
 		wg.Add(1)
 		sem <- struct{}{}
@@ -946,7 +973,23 @@ func resolveCFFiles(ctx context.Context, cf *CurseForgeClient, cfFiles []cfManif
 			defer crashguard.Recover("imports.go:920")
 			defer wg.Done()
 			defer func() { <-sem }()
-			info, err := cf.GetModFileCtx(rctx, mf.ProjectID, mf.FileID)
+			var (
+				info *CFFileInfo
+				err  error
+			)
+			if pi := prefetched[mf.FileID]; pi != nil && pi.FileName != "" {
+				// Метадані вже є з пакета, бракує лише посилання —
+				// добираємо його окремим ендпоінтом (як GetModFileCtx).
+				cp := *pi
+				info = &cp
+				if u, uerr := cf.resolveDownloadURLCtx(rctx, mf.ProjectID, mf.FileID); uerr == nil && u != "" {
+					info.DownloadURL = u
+				} else {
+					info.Blocked = true
+				}
+			} else {
+				info, err = cf.GetModFileCtx(rctx, mf.ProjectID, mf.FileID)
+			}
 			if err != nil {
 				if rctx.Err() != nil {
 					return // скасовано через інший впалий мод — без подій прогресу
@@ -962,10 +1005,8 @@ func resolveCFFiles(ctx context.Context, cf *CurseForgeClient, cfFiles []cfManif
 				// опційний мод, що не резолвнувся — пропускаємо
 				if report != nil {
 					report(ImportProgress{
-						Stage:          StageDownloading,
-						CurrentFile:    fmt.Sprintf("Мод %d/%d (пропущено): проєкт %d, файл %d", idx+1, len(cfFiles), mf.ProjectID, mf.FileID),
-						FilesTotal:     len(cfFiles),
-						FilesCompleted: int(atomic.AddInt32(&done, 1)),
+						Stage:       StageReadingManifest,
+						CurrentFile: fmt.Sprintf("Мод %d/%d (пропущено): проєкт %d, файл %d", atomic.AddInt32(&done, 1), len(cfFiles), mf.ProjectID, mf.FileID),
 					})
 				}
 				return
@@ -999,10 +1040,8 @@ func resolveCFFiles(ctx context.Context, cf *CurseForgeClient, cfFiles []cfManif
 				blockedMu.Unlock()
 				if report != nil && rctx.Err() == nil {
 					report(ImportProgress{
-						Stage:          StageDownloading,
-						CurrentFile:    fmt.Sprintf("Мод %d/%d: %s (заблоковано автором)", idx+1, len(cfFiles), info.FileName),
-						FilesTotal:     len(cfFiles),
-						FilesCompleted: int(atomic.AddInt32(&done, 1)),
+						Stage:       StageReadingManifest,
+						CurrentFile: fmt.Sprintf("Мод %d/%d: %s (заблоковано автором)", atomic.AddInt32(&done, 1), len(cfFiles), info.FileName),
 					})
 				}
 				return
@@ -1016,10 +1055,8 @@ func resolveCFFiles(ctx context.Context, cf *CurseForgeClient, cfFiles []cfManif
 			resolved[idx] = true
 			if report != nil && rctx.Err() == nil {
 				report(ImportProgress{
-					Stage:          StageDownloading,
-					CurrentFile:    fmt.Sprintf("Мод %d/%d: %s", idx+1, len(cfFiles), info.FileName),
-					FilesTotal:     len(cfFiles),
-					FilesCompleted: int(atomic.AddInt32(&done, 1)),
+					Stage:       StageReadingManifest,
+					CurrentFile: fmt.Sprintf("Мод %d/%d: %s", atomic.AddInt32(&done, 1), len(cfFiles), info.FileName),
 				})
 			}
 		}(i, mf)
@@ -1441,10 +1478,8 @@ func UpdatePackFromSource(ctx context.Context, store *Store, instanceDir string,
 			return Pack{}, fmt.Errorf("модпак використовує CurseForge (%d модів), але API-ключ CurseForge не налаштовано в цій збірці лаунчера — оновлення неможливе", len(cfFiles))
 		}
 		report(ImportProgress{
-			Stage:          StageDownloading,
-			CurrentFile:    "Резолв модів CurseForge…",
-			FilesTotal:     len(cfFiles),
-			FilesCompleted: 0,
+			Stage:       StageReadingManifest,
+			CurrentFile: fmt.Sprintf("Отримання даних про моди CurseForge (%d)…", len(cfFiles)),
 		})
 		// Паралельний резолв (той самий фікс зависання, що й в ImportArchive).
 		resolved, blocked, err := resolveCFFiles(ctx, cf, cfFiles, maxConcurrent, report)
@@ -1798,7 +1833,18 @@ func downloadImportTasks(ctx context.Context, tasks []importTask, gameDir string
 				})
 			}
 
-			_, err := downloadOneFile(dctx, client, task, gameDir, onBytes)
+			// Скільки байт цього файла вже зараховано в загальний прогрес:
+			// повторна спроба з нуля (HTTP 200 після обриву) інакше
+			// рахувала б ті самі байти двічі, і смуга «перескакувала» 100 %.
+			var counted int64
+			countedBytes := func(delta int64) {
+				counted += delta
+				onBytes(delta)
+			}
+			_, err := downloadOneFile(dctx, client, task, gameDir, countedBytes)
+			if err == nil && task.fileSize > 0 && counted != task.fileSize {
+				atomic.AddInt64(&bytesDone, task.fileSize-counted)
+			}
 			if err != nil {
 				if dctx.Err() != nil {
 					return // скасовано користувачем АБО першою помилкою — без другого повідомлення

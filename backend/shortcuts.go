@@ -156,7 +156,7 @@ func (a *App) packIconPNG(packID string) ([]byte, bool) {
 			iconPath := a.packAssetURL(cp, cp.IconPath)
 			// packAssetURL додає "local-file://" префікс — прибираємо для os.ReadFile
 			if strings.HasPrefix(iconPath, "local-file://") {
-				iconPath = iconPath[len("local-file://"):]
+				iconPath = localFilePath(iconPath)
 			}
 			if b, err := os.ReadFile(iconPath); err == nil && len(b) > 0 {
 				return b, true

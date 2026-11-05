@@ -12,6 +12,10 @@ import (
 type Executor interface {
 	// DisableMods вимикає jar за іменами файлів; повертає вимкнені та пропущені.
 	DisableMods(files []string) (done, skipped []string)
+	// UpdateMods оновлює jar (імена файлів) до новішої версії, сумісної з
+	// Minecraft і лоадером збірки; повертає оновлені та тих, кого не вдалося
+	// оновити (кожен елемент — «файл: причина»).
+	UpdateMods(files []string) (updated, failed []string)
 	// InstallDependencies ставить залежності з каталогу.
 	InstallDependencies(ids []string) (installed, failed []string)
 	SetMemory(mb int) error
@@ -34,7 +38,7 @@ type Executor interface {
 }
 
 var fixActions = map[string]bool{
-	"disable_mods": true, "install_dependencies": true, "set_memory": true, "set_java": true,
+	"disable_mods": true, "update_mods": true, "install_dependencies": true, "set_memory": true, "set_java": true,
 	"install_java": true, "reset_jvm_arguments": true, "repair_version": true, "backup_configs": true,
 	"set_dedicated_gpu": true, "update_loader": true, "set_account": true, "login_microsoft": true,
 }
@@ -130,6 +134,28 @@ func applyOne(ex Executor, action string, params map[string]any) (res FixResult)
 		msg := fmt.Sprintf("Вимкнено модів: %d", len(done))
 		if len(skipped) > 0 {
 			msg += "; пропущено: " + strings.Join(head(skipped, 4), ", ")
+		}
+		return ok(msg)
+
+	case "update_mods":
+		var files []string
+		for _, name := range head(stringList(params["files"]), maxFilesPerFix) {
+			if name == "" || strings.ContainsAny(name, `/\`) || name == ".." {
+				continue
+			}
+			files = append(files, name)
+		}
+		updated, failed := ex.UpdateMods(files)
+		if len(updated) == 0 {
+			msg := "Не знайшлося новішої сумісної версії жодного мода"
+			if len(failed) > 0 {
+				msg += ": " + strings.Join(head(failed, 4), "; ")
+			}
+			return fail("%s. Спробуйте вимкнути мод або змінити його версію вручну на вкладці «Моди».", msg)
+		}
+		msg := fmt.Sprintf("Оновлено модів: %d (%s)", len(updated), strings.Join(head(updated, 4), ", "))
+		if len(failed) > 0 {
+			msg += "; не оновлено: " + strings.Join(head(failed, 4), "; ")
 		}
 		return ok(msg)
 

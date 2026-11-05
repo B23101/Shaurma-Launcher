@@ -550,9 +550,7 @@
 
   .snd-ctl { display: flex; align-items: center; gap: 10px; min-width: 260px; }
   .snd-pct { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--text-mute); min-width: 44px; text-align: right; }
-  .snd-slider { -webkit-appearance: none; appearance: none; flex: 1; height: 6px; border-radius: 3px; background: var(--hover-strong, rgba(255,255,255,.09)); outline: none; cursor: pointer; }
-  .snd-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--orange); border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); cursor: pointer; }
-  .snd-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: var(--orange); border: 2px solid #fff; cursor: pointer; }
+  .snd-slider { flex: 1; } /* вигляд — спільний input[type=range] зі style.css */
 
   .kb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; padding: 4px 20px 18px; }
   @media (max-width: 900px) { .kb-grid { grid-template-columns: 1fr; } }

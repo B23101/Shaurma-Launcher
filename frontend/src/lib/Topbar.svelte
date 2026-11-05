@@ -62,7 +62,7 @@
        onkeydown={(e: any) => (e.key === 'Enter' || e.key === ' ') && onsearch?.()}>
     <i class="ti ti-search"></i>
     <span>{t('topbar.search')}</span>
-    <kbd>Ctrl+K</kbd>
+    <kbd>Ctrl+F</kbd>
   </div>
   <TransferWidget onOpenMod={onopenmod} />
   <div class="ctrl-box">

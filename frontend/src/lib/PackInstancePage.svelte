@@ -207,12 +207,28 @@
   // Загальний вхід для «Оновити»: Шаурма → одразу DownloadPack;
   // Modrinth/CurseForge → діалог зі списком версій (isSourcePack
   // оголошено нижче, поруч із kind, від якого залежить).
-  function handleUpdate() {
+  async function protectWorlds(): Promise<boolean> {
+    const worlds = await App.ListInstanceWorlds(pack.id)
+    if (!worlds?.length) return true
+    const ok = await confirmDialog('Захист світів перед оновленням',
+      'Створимо копію одиночних світів перед зміною збірки. Якщо копіювання не вдасться, оновлення не почнеться. Відновлення доступне в розділі «Продуктивність».',
+      { confirmLabel: 'Зберегти світи й оновити', cancelLabel: 'Скасувати', danger: false })
+    if (!ok) return false
+    if (!isSourcePack) await App.CreatePackWorldSnapshot(pack.id)
+    return true
+  }
+
+  let preparingWorlds = $state(false)
+  async function handleUpdate() {
+    if (preparingWorlds) return
     if (isSourcePack) {
       openUpdateDialog()
       return
     }
-    onDownload(pack.id)
+    preparingWorlds = true
+    try { if (await protectWorlds()) onDownload(pack.id) }
+    catch (e) { toast(String(e), 'error') }
+    finally { preparingWorlds = false }
   }
 
   async function openUpdateDialog() {
@@ -247,6 +263,7 @@
     }
     updatingVersion = true
     try {
+      if (!await protectWorlds()) return
       await App.UpdatePackFromSource(pack.id, updateDialog.selectedId)
       toast(t('pack.updateDone', { name: pack.name }), 'success')
       updateDialog = null
@@ -510,6 +527,27 @@
   let accounts = $state<Account[]>([])
   let worlds = $state<string[]>([])
   let packServers = $state<InstanceServer[]>([])
+  let serversLoadedFor = $state('')
+  let serversRequest = 0
+  const serverCount = $derived(serversLoadedFor === pack?.id ? String(packServers.length) : '…')
+
+  async function refreshServers(id: string) {
+    const request = ++serversRequest
+    try {
+      const list = (await App.ListPackServers(id)) ?? []
+      if (pack?.id !== id || request !== serversRequest) return
+      packServers = list
+      serversLoadedFor = id
+    } catch {
+      // An unavailable list is not an empty list. Keep the last known count.
+    }
+  }
+
+  // The tab badge is visible immediately, independently of the selected section.
+  $effect(() => {
+    const id = pack?.id
+    if (id) void refreshServers(id)
+  })
   let gameTabLoaded = $state(false)
 
   // Світи і сервери з server.dat збірки перечитуються ПРИ КОЖНОМУ відкритті
@@ -517,8 +555,13 @@
   // сервер — список має бути актуальним (раніше вантажився лише раз і
   // «застигав»). Кнопка «Оновити» у розділі теж кличе цю функцію.
   async function refreshGameTab() {
-    try { worlds = (await App.ListInstanceWorlds(pack.id)) ?? [] } catch (e) { worlds = [] }
-    try { packServers = (await App.ListPackServers(pack.id)) ?? [] } catch (e) { packServers = [] }
+    const id = pack?.id
+    if (!id) return
+    void refreshServers(id)
+    try {
+      const list = (await App.ListInstanceWorlds(id)) ?? []
+      if (pack?.id === id) worlds = list
+    } catch { if (pack?.id === id) worlds = [] }
   }
 
   async function loadGameTabData() {
@@ -946,7 +989,7 @@
     // та лічильника серверів — читаємо їх, щоб пігулка змістилась одразу.
     const manage = canManage
     const mods = canMods
-    const scount = packServers.length
+    const scount = serverCount
     if (!tabbarEl) return
     const id = requestAnimationFrame(() => requestAnimationFrame(measureTabPill))
     window.addEventListener('resize', measureTabPill)
@@ -1076,14 +1119,11 @@
         <button
           class="btn btn-danger play-launch-btn launch-stop-btn"
           onclick={() => cancelGameInstall(pack.id)}
-          title={t('pack.stop')}
+          title={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
         >
           <i class="ti ti-square"></i>
-          {#if lstage && lstage !== 'checking'}
-            {t('pack.stop')} · {launchStageLabel(lstage)}
-          {:else}
-            {t('pack.stop')}
-          {/if}
+          <span>{t('pack.stop')}</span>
+          {#if lstage && lstage !== 'checking'}<span class="lsb-stage">{launchStageLabel(lstage)}</span>{/if}
         </button>
       {:else}
         <button class="btn btn-primary play-launch-btn" onclick={async () => { await flushConfig(); onLaunch(pack.id) }}>
@@ -1099,7 +1139,7 @@
          position:absolute у правому верхньому куті й лягали на кнопки тулбара. -->
     <div class="phf-bottom">
       <div class="ib-title">
-        {#if bannerIcon}<span class="ib-ic"><img src={bannerIcon} alt="" use:smartImage /></span>{:else}<i class="ti {pack.icon || 'ti-puzzle'}" style="color:{pack.color || 'var(--orange)'}"></i>{/if}
+        {#if bannerIcon}<span class="ib-ic"><img src={bannerIcon} alt="" use:smartImage /></span>{:else}<span class="ib-ic ib-ic-preset" style="--pcol:{pack.color || 'var(--orange)'}"><i class="ti {pack.icon || 'ti-puzzle'}"></i></span>{/if}
         <div class="ib-meta">
           <div class="ib-name">{pack.name}</div>
           <div class="ib-badges">
@@ -1108,6 +1148,7 @@
               {#each pack.tags as tag}<span class="ib-tag">{tag}</span>{/each}
             {/if}
           </div>
+          {#if pack.description}<div class="ib-desc" title={pack.description}>{pack.description}</div>{/if}
         </div>
       </div>
       <div class="phf-side">
@@ -1150,7 +1191,7 @@
 
 <div class="tabbar tb-slide tb-full" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
       <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
-        <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{packServers.length}</span>
+        <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{serverCount}</span>
       </button>
       {#if hasScreenshots}
         <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
@@ -1165,9 +1206,18 @@
           <i class="ti ti-files"></i> {t('pack.tab.files')}
         </button>
       {/if}
-      <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
-        <i class="ti ti-info-circle"></i> {t('pack.tab.basic')}
-      </button>
+      <!-- Ті самі умови, що й у звичайному режимі: в авто-збірках «Основного»
+           немає (раніше великий банер показував його все одно). -->
+      {#if !isAutoPack}
+        <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
+          <i class="ti ti-info-circle"></i> {t('pack.tab.basic')}
+        </button>
+      {/if}
+      {#if kind === 'shaurma'}
+        <button class="tab-btn" data-section="wiki" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'}>
+          <i class="ti ti-book-2"></i> {t('pack.tab.wiki')}
+        </button>
+      {/if}
       <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
         <i class="ti ti-cpu"></i> {t('pack.tab.perf')}
       </button>
@@ -1277,14 +1327,11 @@
       <button
         class="btn btn-danger play-launch-btn launch-stop-btn"
         onclick={() => cancelGameInstall(pack.id)}
-        title={t('pack.stop')}
+        title={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
       >
         <i class="ti ti-square"></i>
-        {#if lstage && lstage !== 'checking'}
-          {t('pack.stop')} · {launchStageLabel(lstage)}
-        {:else}
-          {t('pack.stop')}
-        {/if}
+        <span>{t('pack.stop')}</span>
+        {#if lstage && lstage !== 'checking'}<span class="lsb-stage">{launchStageLabel(lstage)}</span>{/if}
       </button>
     {:else}
       <button class="btn btn-primary play-launch-btn" onclick={() => onLaunch(pack.id)}>
@@ -1367,7 +1414,7 @@
   <div class="inst-banner" bind:this={bannerEl} style={bannerStyle(pack)}>
     <div class="ib-shine" aria-hidden="true"></div>
     <div class="ib-title">
-      {#if bannerIcon}<span class="ib-ic"><img src={bannerIcon} alt="" use:smartImage /></span>{:else}<i class="ti {pack.icon || 'ti-puzzle'}" style="color:{pack.color || 'var(--orange)'}"></i>{/if}
+      {#if bannerIcon}<span class="ib-ic"><img src={bannerIcon} alt="" use:smartImage /></span>{:else}<span class="ib-ic ib-ic-preset" style="--pcol:{pack.color || 'var(--orange)'}"><i class="ti {pack.icon || 'ti-puzzle'}"></i></span>{/if}
       <div class="ib-meta">
         <div class="ib-name">{pack.name}</div>
         <div class="ib-badges">
@@ -1376,6 +1423,7 @@
             {#each pack.tags as tag}<span class="ib-tag">{tag}</span>{/each}
           {/if}
         </div>
+        {#if pack.description}<div class="ib-desc" title={pack.description}>{pack.description}</div>{/if}
       </div>
     </div>
     {#if kind === 'shaurma'}
@@ -1492,7 +1540,7 @@
 {#if !bannerFull}
   <div class="tabbar tb-slide" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
     <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
-      <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{packServers.length}</span>
+      <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{serverCount}</span>
     </button>
     {#if hasScreenshots}
       <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>

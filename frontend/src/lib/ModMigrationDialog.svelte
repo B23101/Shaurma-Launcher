@@ -165,7 +165,7 @@
             ariaLabel={t('mods.migrateFrom')}
           />
         </div>
-        <div class="mig-arrow"><i class="ti ti-arrow-down"></i></div>
+        <div class="mig-arrow" aria-hidden="true"><i class="ti ti-arrow-right"></i></div>
         <div class="mig-sel">
           <label class="mig-sel-label">{t('mods.migrateTo')}</label>
           <PackChooser
@@ -198,10 +198,13 @@
       <!-- ═══ Звіт / живі рядки ═══ -->
       {#if flow.analyzing && flow.live.length === 0}
         <div class="mig-radar">
-          <div class="mig-radar-ring"></div>
-          <div class="mig-radar-ring r2"></div>
-          <div class="mig-radar-core"><i class="ti ti-radar"></i></div>
-          <div class="mig-radar-text">{t('mods.migrateAnalyzing', { done: flow.analyzeDone, total: flow.analyzeTotal })}</div>
+          <div class="mig-radar-stage" aria-hidden="true">
+            <div class="mig-radar-ring"></div>
+            <div class="mig-radar-ring r2"></div>
+            <div class="mig-radar-sweep"></div>
+            <div class="mig-radar-core"><i class="ti ti-radar"></i></div>
+          </div>
+          <div class="mig-radar-text" role="status">{t('mods.migrateAnalyzing', { done: flow.analyzeDone, total: flow.analyzeTotal })}</div>
         </div>
       {:else if flow.live.length > 0 || flow.report}
         <!-- Підсумок: чипи лічаться з flow.live і оновлюються в реальному
@@ -252,10 +255,11 @@
         {/if}
 
         <div class="mig-list">
-          {#each flow.liveUnique as it (it.sourceFileName)}
+          {#each flow.liveUnique as it, ri (it.sourceFileName)}
             {@const canSelect = !flow.analyzing && flow.report && flow.isTransferable(it)}
             <div
               class={'mig-row st-' + it.status}
+              style="--ri:{Math.min(ri, 12)}"
               class:selectable={canSelect}
               class:sel={canSelect && flow.selected.has(it.sourceFileName)}
               onclick={() => { if (canSelect) flow.toggle(it.sourceFileName) }}
@@ -345,7 +349,7 @@
   .mig-modal { max-width: 720px; width: 720px; }
 
   /* ── Селектори збірок ── */
-  .mig-selectors { display: flex; align-items: flex-end; gap: 12px; }
+  .mig-selectors { display: flex; align-items: flex-end; gap: 12px; padding: 14px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-lg); }
   .mig-sel { flex: 1; min-width: 0; }
   .mig-sel-label { display: block; font-size: 11px; font-weight: 700; color: var(--text-mute); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .4px; }
   /* Стрілка між селекторами: центрується ПО ВЕРТИКАЛІ відносно полів
@@ -353,8 +357,9 @@
      лейбла, інакше «стрибає»/виглядає криво. */
   .mig-arrow {
     color: var(--text-dim); font-size: 16px; flex-shrink: 0;
-    height: 0; display: flex; align-items: center; justify-content: center;
-    transform: translateY(-9px);
+    width: 30px; height: 30px; border-radius: 50%; margin-bottom: 8px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(var(--orange-rgb), .12); color: var(--orange);
   }
   /* Корінь SelectField (клас mig-pp на .sf) розтягується в flex-осередку;
      min-width:0 — щоб дропдаун НЕ випирав за рамки в парі двох селекторів. */
@@ -367,7 +372,7 @@
   .mig-live-remaining { font-size: 11px; color: var(--text-dim); }
   .mig-live-pct { margin-left: auto; font-size: 11px; font-weight: 800; color: var(--orange); }
   .mig-live-bar { height: 4px; border-radius: 2px; background: var(--bg-input-hi); overflow: hidden; }
-  .mig-live-bar div { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--orange), var(--violet)); transition: width .25s ease; }
+  .mig-live-bar div { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--orange), color-mix(in srgb, var(--orange) 55%, #fff)); transition: width .25s ease; }
 
   .md-close {
     display: flex; align-items: center; justify-content: center;
@@ -381,31 +386,38 @@
   .mig-analyze-row { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
   .mig-hint { font-size: 11px; color: var(--text-mute); line-height: 1.45; }
 
-  /* ── Радар аналізу ── */
-  .mig-radar { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 36px 0 30px; }
+  /* ── Радар аналізу ──
+     Кільця й ядро лежать в ОКРЕМІЙ квадратній «сцені»: раніше кільця були
+     absolute відносно всього блоку разом із підписом і центрувались нижче
+     за іконку (виглядало як зсунутий круг). */
+  .mig-radar { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 30px 0 26px; }
+  .mig-radar-stage { position: relative; width: 104px; height: 104px; display: grid; place-items: center; }
   .mig-radar-ring {
-    position: absolute; width: 74px; height: 74px; border-radius: 50%;
-    border: 2px solid rgba(255,138,0,.35); animation: mig-ping 1.6s cubic-bezier(0,0,.2,1) infinite;
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 2px solid rgba(var(--orange-rgb), .35); animation: mig-ping 1.8s cubic-bezier(0,0,.2,1) infinite;
   }
-  .mig-radar-ring.r2 { animation-delay: .8s; }
+  .mig-radar-ring.r2 { animation-delay: .9s; }
+  .mig-radar-sweep {
+    position: absolute; inset: 14px; border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0 70%, rgba(var(--orange-rgb), .45) 100%);
+    -webkit-mask: radial-gradient(circle, transparent 0 46%, #000 47%); mask: radial-gradient(circle, transparent 0 46%, #000 47%);
+    animation: mig-sweep 1.4s linear infinite;
+  }
   .mig-radar-core {
-    position: relative; width: 44px; height: 44px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(255,138,0,.28), rgba(255,138,0,.05));
-    border: 1px solid rgba(255,138,0,.4);
-    display: flex; align-items: center; justify-content: center; font-size: 20px; color: var(--orange);
-    box-shadow: 0 0 24px rgba(255,138,0,.35);
+    position: relative; width: 46px; height: 46px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--orange-rgb), .28), rgba(var(--orange-rgb), .05));
+    border: 1px solid rgba(var(--orange-rgb), .45);
+    display: grid; place-items: center; font-size: 21px; color: var(--orange);
+    box-shadow: 0 0 24px rgba(var(--orange-rgb), .35);
   }
-  /* Іконка в кружку радара стояла вище центру: гліфи tabler мають
-     вертикальні метрики, зміщені вгору відносно свого рядкового бокса, а
-     flex центрує саме бокс. display:block + line-height:1 прибирають зайву
-     висоту рядка, translateY(1px) доводить оптичний центр до центру кола. */
-  .mig-radar-core :global(.ti) { display: block; line-height: 1; transform: translateY(1px); }
-  .mig-radar-text { font-size: 12px; color: var(--text-mute); margin-top: 66px; }
-  @keyframes mig-ping { 0% { transform: scale(.4); opacity: 1; } 100% { transform: scale(1.5); opacity: 0; } }
+  .mig-radar-core :global(.ti) { display: block; line-height: 1; }
+  .mig-radar-text { font-size: 12.5px; font-weight: 600; color: var(--text-mute); font-variant-numeric: tabular-nums; }
+  @keyframes mig-ping { 0% { transform: scale(.45); opacity: 1; } 100% { transform: scale(1); opacity: 0; } }
+  @keyframes mig-sweep { to { transform: rotate(360deg); } }
 
   /* ── Підсумок ── */
   .mig-summary { display: flex; gap: 8px; flex-wrap: wrap; margin: 14px 0 10px; }
-  .mig-sum { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+  .mig-sum { display: inline-flex; align-items: center; gap: 6px; height: 26px; box-sizing: border-box; font-size: 11.5px; font-weight: 700; padding: 0 11px; border-radius: 999px; border: 1px solid color-mix(in srgb, currentColor 28%, transparent); font-variant-numeric: tabular-nums; }
   .mig-sum i { font-size: 13px; }
   .mig-sum.found { background: rgba(16,185,129,.12); color: var(--green); }
   .mig-sum.upd { background: rgba(255,138,0,.12); color: var(--orange); }
@@ -416,20 +428,24 @@
   .mig-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
   .mig-tools-hint { font-size: 11.5px; color: var(--text-mute); }
 
-  .mig-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+  /* Одна панель з рядками (як списки у «Контенті»), а не стос окремих карток. */
+  .mig-list {
+    display: flex; flex-direction: column; gap: 2px; max-height: 340px; overflow-y: auto; margin-top: 8px;
+    padding: 4px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-md);
+    scrollbar-gutter: stable;
+  }
   .mig-row {
     display: flex; align-items: center; gap: 12px; padding: 8px 12px;
-    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
-    animation: mig-row-in .25s ease both;
+    background: transparent; border: 1px solid transparent; border-radius: 10px;
+    transition: background .15s, border-color .15s;
+    animation: mig-row-in .32s cubic-bezier(.16,1,.3,1) both; animation-delay: calc(var(--ri, 0) * 22ms);
   }
   @keyframes mig-row-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-  .mig-row.st-found { border-color: rgba(16,185,129,.3); }
-  .mig-row.st-update { border-color: rgba(255,138,0,.35); }
   .mig-row.st-already { opacity: .7; }
   .mig-row.st-not-found { opacity: .6; }
   .mig-row.selectable { cursor: pointer; }
-  .mig-row.selectable:hover { background: var(--bg-input-hi); }
-  .mig-row.selectable.sel { border-color: rgba(157,124,255,.45); background: rgba(157,124,255,.08); }
+  .mig-row.selectable:hover { background: var(--hover); }
+  .mig-row.selectable.sel { border-color: rgba(var(--orange-rgb), .2); background: rgba(var(--orange-rgb), .07); }
 
   .mig-check {
     width: 20px; height: 20px; margin: 0; padding: 0; flex-shrink: 0;
@@ -437,17 +453,16 @@
     background: var(--bg-input);
     display: flex; align-items: center; justify-content: center;
     color: transparent; cursor: pointer; font-size: 13px; line-height: 1;
-    transition: border-color .15s, background .15s, color .12s, transform .12s;
+    transition: border-color .15s, background .15s, color .12s;
   }
-  .mig-check:hover:not(:disabled) { border-color: var(--violet); transform: scale(1.08); }
-  .mig-check.checked { background: var(--violet); border-color: var(--violet); color: #fff; }
-  .mig-check.checked:hover:not(:disabled) { background: color-mix(in srgb, var(--violet) 85%, #fff); }
+  .mig-check:hover:not(:disabled) { border-color: var(--orange); }
+  .mig-check.checked { background: var(--orange); border-color: var(--orange); color: #fff; box-shadow: 0 2px 8px rgba(var(--orange-rgb), .35); }
   .mig-check:disabled { opacity: .5; cursor: default; }
 
   .mig-ic {
     position: relative; width: 34px; height: 34px; min-width: 34px; border-radius: 9px;
     background: var(--bg-panel); border: 1px solid var(--border);
-    display: flex; align-items: center; justify-content: center; font-size: 15px; color: var(--violet-l); overflow: visible;
+    display: flex; align-items: center; justify-content: center; font-size: 15px; color: var(--text-dim); overflow: visible;
   }
   .mig-ic img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
 
@@ -475,6 +490,6 @@
   /* ── Прогрес міграції ── */
   .mig-progress { margin-top: 14px; }
   .mig-progress-bar { height: 6px; background: var(--bg-input); border-radius: 999px; overflow: hidden; }
-  .mig-progress-fill { height: 100%; background: linear-gradient(90deg, var(--orange), var(--yellow)); border-radius: 999px; transition: width .3s; }
+  .mig-progress-fill { height: 100%; background: linear-gradient(90deg, var(--orange), color-mix(in srgb, var(--orange) 55%, #fff)); border-radius: 999px; transition: width .3s; }
   .mig-progress-text { font-size: 11px; color: var(--text-mute); margin-top: 6px; font-family: var(--font-mono); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 </style>

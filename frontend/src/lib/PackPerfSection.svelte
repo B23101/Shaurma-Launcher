@@ -150,10 +150,6 @@
   }
 </script>
 
-{#if packId}
-  <PackResourceMetrics {packId} />
-{/if}
-
 <div class="card">
   <div class="card-head">
     <div class="ci green"><i class="ti ti-cpu"></i></div>
@@ -192,6 +188,10 @@
     </div>
   {/if}
 </div>
+
+{#if packId}
+  <PackResourceMetrics {packId} />
+{/if}
 
 <div class="card">
   <div class="card-head">

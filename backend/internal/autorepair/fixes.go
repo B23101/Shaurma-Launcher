@@ -34,6 +34,34 @@ func disableFix(files []string, label string) *Fix {
 	return &Fix{Action: "disable_mods", Label: label, Steps: disableSteps(files), Params: map[string]any{"files": files}}
 }
 
+func updateSteps(files []string, in Input) []string {
+	shown := strings.Join(head(files, 6), ", ")
+	if len(files) > 6 {
+		shown += fmt.Sprintf(" та ще %d", len(files)-6)
+	}
+	target := "поточної збірки"
+	if in.MinecraftVersion != "" {
+		target = "Minecraft " + in.MinecraftVersion
+		if in.Loader != "" {
+			target += " і " + in.Loader
+		}
+	}
+	return []string{
+		"Знайти на Modrinth/CurseForge новішу версію модів: " + shown,
+		"Береться лише версія, сумісна з " + target + "; стабільні релізи мають пріоритет над beta/alpha.",
+		"Старий файл зберігається в резервних копіях модів — відкотити можна на вкладці «Моди». Якщо сумісної новішої версії немає, мод лишається як є.",
+	}
+}
+
+// updateFix — оновити моди до новішої сумісної версії (замість вимкнення).
+func updateFix(in Input, files []string, label string) *Fix {
+	files = head(unique(files), maxFilesPerFix)
+	if len(files) == 0 {
+		return nil
+	}
+	return &Fix{Action: "update_mods", Label: label, Steps: updateSteps(files, in), Params: map[string]any{"files": files}}
+}
+
 func installSteps(ids []string) []string {
 	return []string{
 		"Знайти в каталозі Modrinth та встановити: " + strings.Join(head(ids, 8), ", "),

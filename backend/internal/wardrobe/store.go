@@ -31,7 +31,7 @@ import (
 // відкриє гардероб (запозичення старого інвентаря без втрати даних),
 // після чого зберігається вже у per-account форматі.
 type Store struct {
-	dir  string // теку, де лежать PNG-файли скінів/плащів (кеш)
+	dir  string // теку, де лежать PNG-файли скінів/плащів (постійні дані)
 	path string // файловий фолбек (st == nil): .../presets.json
 	st   *store.Store
 
@@ -55,7 +55,7 @@ func NewStore(skinsDir string) *Store {
 
 // NewStoreDB створює сховище з бекендом у SQLite (таблиця wardrobe_presets).
 // Блоб на акаунт зберігається в БД; PNG-файли скінів — як і раніше в
-// skinsDir (це кеш, а не «дані»).
+// skinsDir (постійні дані користувача).
 func NewStoreDB(st *store.Store, skinsDir string) *Store {
 	s := &Store{
 		dir:       skinsDir,

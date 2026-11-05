@@ -243,12 +243,12 @@
 
   /* Прогрес-бар: fill гарантовано не виходить за межі треку (fix бага "виходить за лінію"). */
   .mp-bar { position: relative; height: 5px; border-radius: 3px; background: var(--bg-input-hi); overflow: hidden; width: 100%; }
-  .mp-bar-fill { position: absolute; inset: 0 auto 0 0; height: 100%; max-width: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--orange), var(--violet)); transition: width .25s ease; }
+  .mp-bar-fill { position: absolute; inset: 0 auto 0 0; height: 100%; max-width: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--orange), color-mix(in srgb, var(--orange) 60%, #fff)); transition: width .25s ease; }
 
   /* ── Чипи-лічильники ── */
   .mp-summary { display: flex; gap: 6px; flex-wrap: wrap; }
-  .mp-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
-  .mp-chip i { font-size: 12px; }
+  .mp-chip { display: inline-flex; align-items: center; gap: 5px; height: 24px; box-sizing: border-box; font: 800 11.5px/1 var(--font-mono); padding: 0 10px; border-radius: 999px; white-space: nowrap; border: 1px solid currentColor; border-color: color-mix(in srgb, currentColor 28%, transparent); }
+  .mp-chip i { font-size: 13px; }
   .mp-chip.found { background: rgba(16,185,129,.12); color: var(--green); }
   .mp-chip.upd   { background: rgba(255,138,0,.12); color: var(--orange); }
   .mp-chip.alr   { background: rgba(99,102,241,.12); color: var(--violet-l); }
@@ -261,55 +261,47 @@
   }
 
   .mp-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .mp-tools-hint { font-size: 11.5px; color: var(--text-mute); }
+  .mp-tools-hint { font-size: 12px; font-weight: 600; color: var(--text-mute); }
 
-  /* ── Список модів: фіксована grid-сітка колонок для КОЖНОГО рядка,
-     незалежно від того, є чекбокс, версія чи бейдж джерела — нічого
-     не з'їжджає і не переповнюється. ── */
-  .mp-list { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; padding-right: 2px; }
-
+  /* ── Список модів: ОДНА панель з рядками всередині (як списки модів у
+     «Контенті»), а не стос окремих фіолетових карток. Акцент — помаранчевий,
+     як у решти лаунчера. Фіксована grid-сітка колонок для кожного рядка. ── */
+  .mp-list {
+    display: flex; flex-direction: column; gap: 2px; max-height: 300px; overflow-y: auto;
+    padding: 4px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-md);
+    scrollbar-gutter: stable;
+  }
   .mp-item {
-    display: grid;
-    grid-template-columns: 26px 1fr auto 20px;
-    align-items: center;
-    column-gap: 9px;
-    padding: 6px 9px;
-    background: var(--bg-input);
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    min-width: 0;
+    display: grid; grid-template-columns: 28px 1fr auto 22px; align-items: center; column-gap: 10px;
+    padding: 7px 10px; min-width: 0; min-height: 42px; box-sizing: border-box;
+    background: transparent; border: 1px solid transparent; border-radius: 10px;
     transition: background .15s, border-color .15s;
   }
-  .mp-item.selectable {
-    grid-template-columns: 18px 26px 1fr auto 20px;
-    cursor: pointer;
-  }
-  .mp-item.selectable:hover { background: var(--bg-input-hi); }
-  .mp-item.selectable.sel { border-color: rgba(157,124,255,.4); background: rgba(157,124,255,.08); }
+  .mp-item.selectable { grid-template-columns: 20px 28px 1fr auto 22px; cursor: pointer; }
+  .mp-item.selectable:hover { background: var(--hover); }
+  .mp-item.selectable.sel { background: rgba(var(--orange-rgb), .07); border-color: rgba(var(--orange-rgb), .18); }
+  .mp-item.selectable.sel:hover { background: rgba(var(--orange-rgb), .11); }
 
   .mp-check {
-    width: 18px; height: 18px; margin: 0; padding: 0;
-    border-radius: 6px; border: 1.5px solid var(--border-hi);
-    background: var(--bg-input);
+    width: 20px; height: 20px; margin: 0; padding: 0;
+    border-radius: 6px; border: 1.5px solid var(--border-hi); background: var(--bg-panel);
     display: flex; align-items: center; justify-content: center;
     color: transparent; cursor: pointer; font-size: 13px; line-height: 1;
-    transition: border-color .15s, background .15s, color .12s, transform .12s;
+    transition: border-color .15s, background .15s, color .12s, transform .15s cubic-bezier(.34,1.56,.64,1);
   }
-  .mp-check:hover:not(:disabled) { border-color: var(--violet); transform: scale(1.08); }
-  .mp-check.checked {
-    background: var(--violet); border-color: var(--violet); color: #fff;
-  }
-  .mp-check.checked:hover:not(:disabled) { background: color-mix(in srgb, var(--violet) 85%, #fff); }
+  .mp-check:hover:not(:disabled) { border-color: var(--orange); }
+  .mp-check.checked { background: var(--orange); border-color: var(--orange); color: #fff; box-shadow: 0 2px 8px rgba(var(--orange-rgb), .35); }
+  .mp-check:active:not(:disabled) { transform: scale(.85); }
   .mp-check:disabled { opacity: .5; cursor: default; }
 
   .mp-item-icon {
-    position: relative; width: 24px; height: 24px;
-    border-radius: 6px; background: var(--bg-panel);
+    position: relative; width: 28px; height: 28px;
+    border-radius: 8px; background: var(--bg-panel); border: 1px solid var(--border);
     display: flex; align-items: center; justify-content: center;
     font-size: 12px; color: var(--text-dim);
     overflow: visible;
   }
-  .mp-item-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+  .mp-item-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; }
 
   .mp-badge {
     position: absolute; right: -5px; bottom: -5px; width: 15px; height: 15px;
@@ -321,14 +313,14 @@
   .mp-badge img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
   .mp-item-name {
-    min-width: 0; font-size: 11.5px; font-weight: 600; color: var(--text);
+    min-width: 0; font-size: 12.5px; font-weight: 650; color: var(--text);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .mp-item-ver {
     font-size: var(--fs-min); color: var(--text-mute);
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 90px;
   }
-  .mp-item-status { display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .mp-item-status { display: flex; align-items: center; justify-content: center; font-size: 15px; }
   .mp-item-status.st-found     { color: var(--green); }
   .mp-item-status.st-update    { color: var(--orange); }
   .mp-item-status.st-already   { color: var(--violet-l); }
@@ -337,10 +329,10 @@
   .mp-more {
     display: flex; align-items: center; justify-content: center; gap: 6px;
     padding: 7px 8px; margin-top: 2px; border: none; background: transparent;
-    color: var(--violet); font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer;
+    color: var(--orange); font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer;
     border-radius: var(--r-sm);
   }
-  .mp-more:hover { background: var(--bg-input-hi); }
+  .mp-more:hover { background: var(--hover); }
 
   .mp-after-create {
     display: flex; align-items: center; gap: 8px; margin-top: 4px;

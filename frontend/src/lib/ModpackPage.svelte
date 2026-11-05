@@ -2896,6 +2896,13 @@
     text-shadow: 0 4px 20px rgba(0, 0, 0, .5);
   }
   .mp-banner-full .mp-stats { border-top: none; margin-top: 0; padding-top: 0; }
+  /* Банер — flex-колонка, і без цього діти розтягувались на всю ширину:
+     бейдж «МОДПАК» ставав довгою смугою, а статистика тулилась під іконкою.
+     Бейдж — компактна пігулка, статистика — під текстом, а не під іконкою. */
+  .mp-banner-full .mp-type-badge { align-self: flex-start; }
+  .mp-banner-full .mp-title { align-self: stretch; }
+  .mp-banner-full .mp-stats { align-self: stretch; margin-top: 14px; padding-left: calc(104px + 18px); flex-wrap: wrap; }
+  @media (max-width: 720px) { .mp-banner-full .mp-stats { padding-left: 0; } }
 
   /* ═════════════════════════════════════════════════════════════════════
      ВКЛАДКИ (Опис / Галерея / Відео / Зміни / Версії)

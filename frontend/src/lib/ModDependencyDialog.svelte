@@ -211,7 +211,10 @@
     let y = PAD + R
     let maxCols = 1
     for (const l of layers) maxCols = Math.max(maxCols, Math.min(COLS, l.length))
-    const W = maxCols * PITCH + PAD * 2
+    // Ширина сцени — не менша за видиму ширину полотна: раніше сцена була
+    // вузькою (за кількістю іконок), а полотно ширшим, і дерево «липло» до
+    // лівого краю, виглядаючи криво.
+    const W = Math.max(maxCols * PITCH + PAD * 2, canvasW)
     layers.forEach((l, li) => {
       if (li > 0) y += LAYER_GAP
       for (let i = 0; i < l.length; i += COLS) {
@@ -231,7 +234,7 @@
   // Криві-лінії: від верху залежного вузла до низу вузла-залежності.
   function pathOf(e: TEdge): string {
     const a = model.tn.get(e.from)!, b = model.tn.get(e.to)!
-    const x1 = a.x, y1 = a.y - R, x2 = b.x, y2 = b.y + R
+    const x1 = px(a), y1 = py(a) - R, x2 = px(b), y2 = py(b) + R
     const dy = Math.max(24, Math.abs(y1 - y2) * 0.5)
     return `M ${x1} ${y1} C ${x1} ${y1 - dy}, ${x2} ${y2 + dy}, ${x2} ${y2}`
   }
@@ -356,6 +359,49 @@
     pan = null
     panning = false
   }
+  // ── Перетягування окремого мода ───────────────────────────────────────
+  // Іконку можна взяти й переставити куди зручно: зсув зберігається поверх
+  // авто-розкладки, лінії тягнуться слідом. «Скинути розкладку» повертає все.
+  let canvasW = $state(0)
+  let offsets = $state<Record<string, { dx: number; dy: number }>>({})
+  let dragKey = $state('')
+  let drag: { id: number; key: string; x: number; y: number; dx: number; dy: number; moved: boolean; el: HTMLElement } | null = null
+  const px = (n: TNode) => n.x + (offsets[n.key]?.dx ?? 0)
+  const py = (n: TNode) => n.y + (offsets[n.key]?.dy ?? 0)
+  const hasOffsets = $derived(Object.keys(offsets).length > 0)
+  function nodeDragStart(n: TNode, ev: PointerEvent) {
+    if (ev.button !== 0) return
+    ev.stopPropagation() // не панорамувати полотно
+    const el = ev.currentTarget as HTMLElement
+    const o = offsets[n.key] ?? { dx: 0, dy: 0 }
+    drag = { id: ev.pointerId, key: n.key, x: ev.clientX, y: ev.clientY, dx: o.dx, dy: o.dy, moved: false, el }
+    window.addEventListener('pointermove', nodeDragMove)
+    window.addEventListener('pointerup', nodeDragEnd)
+    window.addEventListener('pointercancel', nodeDragEnd)
+  }
+  function nodeDragMove(ev: PointerEvent) {
+    if (!drag || ev.pointerId !== drag.id) return
+    const mx = ev.clientX - drag.x, my = ev.clientY - drag.y
+    if (!drag.moved && Math.hypot(mx, my) < 4) return
+    if (!drag.moved) { drag.moved = true; dragKey = drag.key; hoverKey = '' }
+    const n = model.tn.get(drag.key)
+    if (!n) return
+    // Не даємо винести іконку за межі сцени.
+    const nx = Math.max(R + 4, Math.min(model.W - R - 4, n.x + drag.dx + mx))
+    const ny = Math.max(R + 4, Math.min(model.H - R - 4, n.y + drag.dy + my))
+    offsets[drag.key] = { dx: nx - n.x, dy: ny - n.y }
+  }
+  function nodeDragEnd(ev: PointerEvent) {
+    if (!drag || ev.pointerId !== drag.id) return
+    if (drag.moved) swallowClick = true
+    drag = null
+    dragKey = ''
+    window.removeEventListener('pointermove', nodeDragMove)
+    window.removeEventListener('pointerup', nodeDragEnd)
+    window.removeEventListener('pointercancel', nodeDragEnd)
+  }
+  function resetLayout() { offsets = {} }
+
   function canvasClick(ev: MouseEvent) {
     if (!swallowClick) return
     swallowClick = false
@@ -442,6 +488,9 @@
             <label class="mg-tgl" title={t('modgraph.showOptionalHint')}>
               <input type="checkbox" bind:checked={showOptional} /> {t('modgraph.showOptional')}
             </label>
+            {#if hasOffsets}
+              <button class="btn btn-ghost btn-sm" onclick={resetLayout}><i class="ti ti-layout-distribute-horizontal"></i> {t('modgraph.resetLayout')}</button>
+            {/if}
             <div class="mg-search">
               <i class="ti ti-search"></i>
               <input placeholder={t('modgraph.search')} bind:value={query} />
@@ -453,7 +502,7 @@
           <div class="mg-empty mg-empty-sm"><i class="ti ti-unlink"></i> {t('modgraph.noLinks')}</div>
         {:else}
           <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div class="mg-canvas" class:panning bind:this={canvasEl}
+          <div class="mg-canvas" class:panning bind:this={canvasEl} bind:clientWidth={canvasW}
                onpointerdown={panStart} onpointermove={panMove} onpointerup={panEnd} onpointercancel={panEnd}
                onclickcapture={canvasClick}>
             <div class="mg-stage" style="width:{model.W}px;height:{model.H}px">
@@ -462,7 +511,7 @@
                   {#each model.edges as e, i (e.from + '>' + e.to)}
                     {@const a = model.tn.get(e.from)!}
                     {@const b = model.tn.get(e.to)!}
-                    <linearGradient id="mgg{i}" gradientUnits="userSpaceOnUse" x1={a.x} y1={a.y - R} x2={b.x} y2={b.y + R}>
+                    <linearGradient id="mgg{i}" gradientUnits="userSpaceOnUse" x1={px(a)} y1={py(a) - R} x2={px(b)} y2={py(b) + R}>
                       <stop offset="0" stop-color={a.color} />
                       <stop offset="1" stop-color={b.color} />
                     </linearGradient>
@@ -478,7 +527,9 @@
               {#each model.treeNodes as n (n.key)}
                 <button class="mg-node" class:off={!n.enabled && !n.ghost} class:ghost={n.ghost} class:bad={n.corrupted}
                         class:dim={dimmed(n)} class:hit={!!q && matches(n)} class:hot={hoverKey === n.key}
-                        style="left:{n.x - R}px;top:{n.y - R}px;--c:{n.color}"
+                        class:dragging={dragKey === n.key} class:moved={!!offsets[n.key]}
+                        style="left:{px(n) - R}px;top:{py(n) - R}px;--c:{n.color}"
+                        data-no-press onpointerdown={(ev) => nodeDragStart(n, ev)}
                         onmouseenter={(ev) => enter(n, ev)} onmouseleave={leave}
                         onfocus={(ev) => enter(n, ev)} onblur={leave}
                         onclick={() => openMod(n)} oncontextmenu={(ev) => { ev.preventDefault(); showImpact(n) }}
@@ -681,6 +732,9 @@
   .mg-canvas { cursor: grab; touch-action: none; }
   .mg-canvas.panning { cursor: grabbing; user-select: none; }
   .mg-canvas.panning .mg-node { cursor: grabbing; }
+  .mg-node { touch-action: none; }
+  .mg-node.dragging { cursor: grabbing; z-index: 8; transform: scale(1.18); transition: opacity .18s, filter .18s, box-shadow .18s;
+    box-shadow: 0 0 0 2px var(--c), 0 14px 30px rgba(0,0,0,.5); }
   .mg-stage { position: relative; margin: 0 auto; min-width: 100%; }
   .mg-edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
   .mg-edge { stroke-width: 2; stroke-linecap: round; opacity: .42; transition: opacity .18s, stroke-width .18s; }

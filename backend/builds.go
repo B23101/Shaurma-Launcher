@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -192,13 +193,13 @@ func (a *App) addOrphanedBuild(views *[]builds.View, packID, accID string) {
 	if icfg.IconPath != "" {
 		absPath := filepath.Join(instDir, icfg.IconPath)
 		if _, err := os.Stat(absPath); err == nil {
-			build.IconURL = "local-file://" + absPath
+			build.IconURL = localFileURL(absPath)
 		}
 	}
 	if icfg.BackgroundPath != "" {
 		absPath := filepath.Join(instDir, icfg.BackgroundPath)
 		if _, err := os.Stat(absPath); err == nil {
-			build.BackgroundURL = "local-file://" + absPath
+			build.BackgroundURL = localFileURL(absPath)
 		}
 	}
 
@@ -660,5 +661,25 @@ func (a *App) packAssetURL(cp custompack.Pack, relPath string) string {
 	if relPath == "" {
 		return ""
 	}
-	return "local-file://" + filepath.Join(a.packDir(cp.ID, string(builds.KindCustom)), relPath)
+	return localFileURL(filepath.Join(a.packDir(cp.ID, string(builds.KindCustom)), relPath))
+}
+
+// localFileURL — адреса локального асета з «версією» = час зміни файла.
+// Нова іконка зберігається під тим самим ім'ям (icon.png), тож без версії
+// фронтенд показував стару картинку з кешу (і навіть після перезапуску —
+// кеш іконок живе в localStorage). Тепер будь-яка зміна файла = нова адреса.
+func localFileURL(absPath string) string {
+	if fi, err := os.Stat(absPath); err == nil {
+		return fmt.Sprintf("local-file://%s?v=%d", absPath, fi.ModTime().UnixNano())
+	}
+	return "local-file://" + absPath
+}
+
+// localFilePath — шлях на диску з адреси local-file:// (без «?v=…»).
+func localFilePath(u string) string {
+	p := strings.TrimPrefix(u, "local-file://")
+	if i := strings.LastIndex(p, "?v="); i >= 0 {
+		p = p[:i]
+	}
+	return p
 }

@@ -100,18 +100,22 @@ export class GroupsStore {
     this.restoreActivity()
     // Звіряємо лише групи, яких ще не звіряли в цій сесії: живі group_message вже оновлюють activity.
     const ids = this.groups.map(g => g.id).filter(id => !this.#activityVerified.has(id))
+    // Результати застосовуємо разом (один перерахунок порядку замість стрибка на кожну відповідь).
+    const found: Record<string, number> = {}
     const worker = async () => {
       for (let id = ids.shift(); id; id = ids.shift()) {
         try {
           const r = await this.#op('history', { groupId: id, before: 0, limit: 1 })
-          if (this.group(id)) {
-            this.#bump(id, Math.max(0, ...(r?.history?.messages ?? []).map((m: GroupMessage) => m.ts)))
-            this.#activityVerified.add(id)
-          }
+          found[id] = Math.max(0, ...(r?.history?.messages ?? []).map((m: GroupMessage) => m.ts))
         } catch { /* Keep known activity while offline. */ }
       }
     }
-    await Promise.all([worker(), worker(), worker()])
+    await Promise.all(Array.from({ length: 6 }, worker))
+    for (const [id, ts] of Object.entries(found)) {
+      if (!this.group(id)) continue
+      this.#bump(id, ts)
+      this.#activityVerified.add(id)
+    }
   }
 
   async refresh() {
@@ -404,6 +408,7 @@ export class GroupsStore {
   async send(gid: string, body: string, replyToId = 0): Promise<boolean> {
     const text = body.trim()
     if (!text) return false
+    this.#bump(gid, Date.now()) // група піднімається нагору одразу, а не після відповіді сервера
     try {
       const r = await this.#op('send', { groupId: gid, body: text, replyToId: replyToId || undefined,
         clientMessageId: crypto.randomUUID().replace(/-/g, '') })

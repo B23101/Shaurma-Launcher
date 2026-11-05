@@ -112,7 +112,7 @@
       {:else if iconName}
         <i class="ti {iconName}" style="color:{color}"></i>
       {:else}
-        <i class="ti ti-photo-plus"></i><span>{t('createPack.icon').toUpperCase()}</span>
+        <i class="ti ti-photo-plus"></i><span>{t('createPack.icon.pick')}</span>
       {/if}
     </div>
     <div class="row-label">

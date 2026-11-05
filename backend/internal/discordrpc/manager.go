@@ -46,7 +46,18 @@ type activity struct {
 	Details string
 	State   string
 	StartTS int64
+	// WithSiteButton — додати кнопку-посилання на сайт лаунчера.
+	WithSiteButton bool
 }
+
+// Кнопка в картці активності, яку бачать ІНШІ люди в Discord (власну кнопку
+// Discord самому гравцю не показує). Discord відхиляє ВСЮ активність, якщо
+// кнопка невалідна: підпис 1–32 символи, посилання — https до 512 символів,
+// максимум дві кнопки. Тому значення сталі й перевіряються тестом.
+const (
+	siteButtonLabel = "Зіграй зі мною — безкоштовно!"
+	siteButtonURL   = "https://shaurma-launcher.org/"
+)
 
 func (a *activity) toPayload() map[string]any {
 	p := map[string]any{"type": 0}
@@ -58,6 +69,9 @@ func (a *activity) toPayload() map[string]any {
 	}
 	if a.StartTS > 0 {
 		p["timestamps"] = map[string]any{"start": a.StartTS}
+	}
+	if a.WithSiteButton {
+		p["buttons"] = []map[string]string{{"label": siteButtonLabel, "url": siteButtonURL}}
 	}
 	return p
 }
@@ -401,6 +415,8 @@ func (m *Manager) rebuild() {
 		Details: applyTpl(m.detailsTpl, repl),
 		State:   applyTpl(m.stateTpl, repl),
 		StartTS: start,
+
+		WithSiteButton: true,
 	}
 	m.pushLocked()
 }

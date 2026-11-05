@@ -38,6 +38,16 @@
   // тому список більше не «прогрівається» й не стрибає після відкриття.
   $effect(() => { void s.me; void gs.me; s.restoreActivity(); gs.restoreActivity() })
   $effect(() => { s.syncActivity([...s.st.friends, ...s.otherChats].map(f => f.accountId)) })
+  // Захист від «клікнув одне — відкрилось інше»: якщо між натисканням і відпусканням
+  // кнопки миші список переставився (прийшло повідомлення), клік на чужий рядок ігноруємо.
+  let pressedKey = ''
+  const rowKey = (e: Event) => (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-chat-key]')?.dataset.chatKey ?? ''
+  function rememberPress(e: PointerEvent) { pressedKey = rowKey(e) }
+  function guardClick(e: MouseEvent) {
+    const k = rowKey(e)
+    if (pressedKey && k && k !== pressedKey && e.detail > 0) { e.stopPropagation(); e.preventDefault() }
+    pressedKey = ''
+  }
   const compact = $derived(s.rail)
   const showControls = $derived(s.listTab === 'chats' && !compact && (s.st.friends.length > 0 || gs.groups.length > 0))
   // У стислому списку рядків запитів у друзі немає: вони з'являлись/зникали над чатами й зсували їх
@@ -121,7 +131,7 @@
     </div>
   {/if}
 
-  <div class="fl-scroll">
+  <div class="fl-scroll" onpointerdowncapture={rememberPress} onclickcapture={guardClick}>
     {#if showRequests && s.st.invites.length > 0}
       <section class="fl-sec">
         {#if !compact}<h3 class="fl-sh"><i class="ti ti-user-down"></i>{t('friends.incoming')}<span>{s.st.invites.length}</span></h3>{/if}
@@ -150,6 +160,7 @@
         <button class="btn btn-ghost btn-sm fl-new" onclick={onCreateGroup}><i class="ti ti-users-plus"></i>{t('groups.new')}</button>
       {/if}
       {#each chats as row (row.key)}
+        <div class="fl-row" data-chat-key={row.key}>
         {#if row.group}
           {@const gr = row.group}
           <button class="fl-group" class:active={gs.activeId === gr.id} class:compact onclick={() => gs.open(gr.id)} title={gr.title}>
@@ -160,6 +171,7 @@
         {:else if row.friend}
           <FriendRow f={row.friend} readonly={!s.isFriend(row.friend.accountId)} selected={activeId === row.friend.accountId} {compact} animate={false} />
         {/if}
+        </div>
       {:else}
         <EmptyState icon="ti-message-circle-2" title={s.search ? t('social.searchEmpty') : t('social.empty')} {compact} />
       {/each}
@@ -168,6 +180,7 @@
 </aside>
 
 <style>
+  .fl-row { display: contents; }
   .fl-new { width: 100%; justify-content: center; margin-bottom: 8px; }
   .fl-group { width: 100%; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
   .fl-group:hover { background: var(--hover); }

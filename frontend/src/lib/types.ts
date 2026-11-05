@@ -2262,6 +2262,12 @@ export interface HealthCheckItem {
   detail?: string
   fixable: boolean
   fixActionId?: string
+  // RAM-пункт: числа для повзунка у вікні діагностики (МБ).
+  allocatedMb?: number
+  availableMb?: number
+  recommendedMb?: number
+  totalMb?: number
+  suggestedMb?: number
 }
 
 export interface HealthCheckReport {

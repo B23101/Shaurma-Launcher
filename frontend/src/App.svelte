@@ -12,6 +12,10 @@
   import { pirateNicknameError } from './lib/validation'
   import { toBrowserServer, type BrowserServer } from './lib/servers/serverTargets'
   import { applyAccent, applyTheme, applyFont, applyAnimations, applyPerformanceMode, applyPlatform, loadConsoleFonts, consoleFontValues, fontFamilyFromPath, registerBundledFonts, BUNDLED_FONTS } from './lib/theme.svelte'
+  import { installPressFx } from './lib/pressFx'
+  import { slideTabs } from './lib/slideTabs'
+  import { installRangeFx } from './lib/rangeFx'
+  import { sharedPackPicker } from './lib/packPickerStore.svelte'
   import { App, on, Application, Window, type SignInResult, type DeviceChoice } from './lib/wails'
   import { flushAllPendingConfigs } from './lib/pendingConfigFlush'
   import { toast, confirmDialog } from './lib/toast.svelte'
@@ -393,7 +397,7 @@
   }
   // Авто-починка: звіт діагностики після краху/помилки запуску (подія repair:report)
   // відкриває діалог лагоджень поверх усього; модалку краху ховаємо, щоб не дублювати.
-  const AUTO_REPAIR_OFF = true // false — повернути вікно авто-починки
+  const AUTO_REPAIR_OFF = false // true — сховати вікно доктора крашів для всіх
   let repairDialog = $state<null | { packId: string; report: import('./lib/types').RepairReport }>(null)
   // Остання закрита користувачем пропозиція (щоб повторна подія не відкривала її знову).
   let repairDismissed = { sig: '', at: 0 }
@@ -1028,12 +1032,34 @@
     if (page === 'browser' && resetBrowser) { browserProject = null; browserAuthor = null; browserPackContext = null; browserServerContext = null }
   }
 
-  // ── Глобальний пошук (модалка Ctrl+K / клік по полю пошуку) ──────────
+  // ── Глобальний пошук (модалка Ctrl+F / клік по полю пошуку) ──────────
   // Шукає: назви збірок («Мої збірки»), контент у браузері (Modrinth) і
   // налаштування (за назвами полів). Клік по результату миттєво переводить
-  // на потрібний розділ. Хоткей Ctrl+K — глобальний (window keydown).
+  // на потрібний розділ. Хоткей Ctrl+F — глобальний (window keydown).
   let searchOpen = $state(false)
   let searchQuery = $state('')
+  // Фільтр розділу в пошуку (чипи «Усе / Збірки / Контент / …»).
+  let searchScope = $state<'all' | 'packs' | 'content' | 'settings' | 'wardrobe' | 'actions'>('all')
+  // Швидкі дії: перехід у розділи й часті команди — шукаються за назвою та синонімами.
+  const searchActions = $derived([
+    { id: 'page:instances', icon: 'ti-box', label: t('nav.instances'), keywords: 'packs збірки modpacks' },
+    { id: 'page:browser', icon: 'ti-world-search', label: t('nav.browser'), keywords: 'modrinth curseforge mods моди browser' },
+    { id: 'page:servers', icon: 'ti-server-2', label: t('nav.servers'), keywords: 'server сервер' },
+    { id: 'page:friends', icon: 'ti-users', label: t('nav.friends'), keywords: 'chat чат friends друзі' },
+    ...(wardrobeVisible ? [{ id: 'page:wardrobe', icon: 'ti-shirt', label: t('nav.wardrobe'), keywords: 'skin скін cape плащ' }] : []),
+    { id: 'page:analytics', icon: 'ti-chart-bar', label: t('nav.analytics'), keywords: 'stats статистика playtime час' },
+    { id: 'page:settings', icon: 'ti-settings', label: t('nav.settings'), keywords: 'settings options опції' },
+    { id: 'act:create', icon: 'ti-plus', label: t('instances.create'), keywords: 'new create нова створити' },
+    { id: 'act:import', icon: 'ti-download', label: t('createPack.tab.import'), keywords: 'import mrpack zip імпорт' },
+    { id: 'act:folder', icon: 'ti-folder-open', label: t('packs.openInstancesFolder'), keywords: 'folder тека папка explorer' },
+  ])
+  function searchRunAction(id: string) {
+    searchOpen = false
+    if (id.startsWith('page:')) navigate(id.slice(5), id === 'page:browser')
+    else if (id === 'act:create') openCreatePack()
+    else if (id === 'act:import') openImportPack()
+    else if (id === 'act:folder') App.OpenInstancesFolder().catch((e) => toast(t('error.withMessage', { message: e }), 'error'))
+  }
   let searchBrowserLoading = $state(false)
   // Результати: локальні (збірки/пресети гардероба/налаштування) — миттєво,
   // браузер — async.
@@ -1111,7 +1137,15 @@
     if (!searchOpen) return
     // Порядок — як у sidebar (orderedAllBuildViews): збірки з папок теж
     // шукаються і стоять на місці своєї папки, а не в кінці списку.
-    searchPacks = orderedAllBuildViews.filter(b => qNorm(b.build.name).includes(qNorm(searchQuery))).slice(0, 8)
+    // Кілька слів через пробіл шукаються в назві, лоадері, версії гри й назві папки
+    // («fabric 1.20» знайде всі Fabric-збірки на 1.20.x).
+    const tks = qNorm(searchQuery).split(/\s+/).filter(Boolean)
+    const folderName = new Map<string, string>()
+    for (const f of packFolders) for (const id of f.packIds) folderName.set(id, f.name)
+    searchPacks = orderedAllBuildViews.filter(b => {
+      const hay = `${b.build.name} ${b.build.loaderType ?? ''} ${b.build.mcVersion ?? ''} ${folderName.get(b.build.id) ?? ''}`.toLowerCase()
+      return tks.every(tk => hay.includes(tk))
+    }).slice(0, 8)
     // Міні-прев'ю для знайдених пресетів (голова + плащ), з кешем по id.
     for (const p of searchPresetResults) {
       if (searchPresetHeads[p.id] !== undefined) continue
@@ -1134,7 +1168,7 @@
     }) as SettingDef)
     // Браузер-пошук — лише якщо є запит ≥2 символи (інакше даремні мережеві хіти).
     const q = searchQuery.trim()
-    if (q.length < 2) { searchBrowser = []; searchBrowserLoading = false; return }
+    if (q.length < 2 || (searchScope !== 'all' && searchScope !== 'content')) { searchBrowser = []; searchBrowserLoading = false; return }
     searchBrowserLoading = true
     let cancelled = false
     const timer = setTimeout(async () => {
@@ -1152,7 +1186,7 @@
   })
 
   function openGlobalSearch() {
-    searchQuery = ''; searchBrowser = []; searchPacks = []; searchSettings = []; searchPresets = []; searchOpen = true
+    searchQuery = ''; searchScope = 'all'; searchBrowser = []; searchPacks = []; searchSettings = []; searchPresets = []; searchOpen = true
     // Пресети (для ліцензійного акаунта) перечитаємо при кожному відкритті —
     // користувач міг додати новий у гардеробі.
     searchPresetHeads = {}; searchPresetCapes = {}
@@ -1160,20 +1194,21 @@
   }
   function closeGlobalSearch() { searchOpen = false }
 
-  // Ctrl+K — відкрити глобальний пошук (з будь-якого місця лаунчера).
-  // Раніше хоткей був написаний на полі пошуку, але обробника не було.
+  // Ctrl+F opens search in every layout; Ctrl+K remains a compatible shortcut.
   $effect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K' || e.key === 'ы' || e.key === 'К')) {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey &&
+          (['KeyF', 'KeyK'].includes(e.code) || ['f', 'а', 'k', 'л'].includes(e.key.toLowerCase()))) {
         e.preventDefault()
-        if (searchOpen) closeGlobalSearch()
-        else openGlobalSearch()
+        e.stopImmediatePropagation()
+        if (!e.repeat && !searchOpen) openGlobalSearch()
       } else if (e.key === 'Escape' && searchOpen) {
         closeGlobalSearch()
       }
     }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    // Handle the global shortcut before inputs and section-specific handlers.
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
   })
 
   // Перехід з пошуку: збірка → її сторінка, контент → сторінка ПРОЄКТУ,
@@ -2346,6 +2381,8 @@
       .map(it => ({ kind: it.kind, id: it.id }))
     return { items, rowById, folderById }
   })
+  // Той самий список — для вікон вибору збірки поза цим деревом props (PackChooser).
+  $effect(() => { sharedPackPicker.value = packPicker })
 
   // Видимі збірки для поточної вкладки (shaurma/custom) у ручному порядку.
   const tabBuilds = $derived.by(() =>
@@ -5241,6 +5278,9 @@
   }
 
   onMount(async () => {
+    // Відгук на кожен клік (стиск + пружина + хвиля) — див. lib/pressFx.ts.
+    installPressFx()
+    installRangeFx()
     // Глобальний тихий журнал помилок: всі необроблені Promise-відхилення
     // та синхронні помилки пишуться у бекендовий кільцевий буфер
     // (launcher_errors.go). Юзер нічого не бачить — може лише Export.
@@ -5685,8 +5725,10 @@
       if (repairDialog) return
       const sig = e.packId + '|' + e.report.issues.map((i: any) => i.id).sort().join(',')
       if (repairDismissed.sig === sig && Date.now() - repairDismissed.at < 60_000) return
-      repairDialog = { packId: e.packId, report: e.report }
-      if (launchedPackId === e.packId) gameCrashed = false
+      // Звичайна копія звіту (не реактивний проксі події) і лише ОДНЕ вікно
+      // про краш: доктор замінює загальне «гра завершилась аварійно».
+      repairDialog = { packId: e.packId, report: JSON.parse(JSON.stringify(e.report)) }
+      gameCrashed = false
     })
     // game:started — БУДЬ-ЯКИЙ шлях запуску гри (кнопка «Грати», автозапуск,
     // LaunchInstanceOnServer з розділу «Сервери» чи віджета офіційного
@@ -6263,13 +6305,14 @@
           />
         {/if}
 
-        <div class="tabbar">
+        <!-- Той самий ковзний таббар, що на сторінках збірки й сервера. -->
+        <div class="tabbar tb-slide lib-tabs" role="tablist" use:slideTabs>
           {#if isShaurmaEdition && builds.length > 0}
-            <button class="tab-btn" class:active={instanceTab === 'shaurma'} onclick={() => instanceTab = 'shaurma'}>
+            <button class="tab-btn" role="tab" aria-selected={instanceTab === 'shaurma'} class:active={instanceTab === 'shaurma'} onclick={() => instanceTab = 'shaurma'}>
               <i class="ti ti-flame"></i> {t('shaurma')} <span class="num">{shaurmaBuildsCount}</span>
             </button>
           {/if}
-          <button class="tab-btn" class:active={instanceTab === 'custom'} onclick={() => instanceTab = 'custom'}>
+          <button class="tab-btn" role="tab" aria-selected={instanceTab === 'custom'} class:active={instanceTab === 'custom'} onclick={() => instanceTab = 'custom'}>
             <i class="ti ti-tools"></i> {t('custom')} <span class="num">{customBuildsCount}</span>
           </button>
         </div>
@@ -6596,8 +6639,8 @@
      Кнопка «Запустити все одно» доступна якщо немає незафіксованих errors. -->
 {#if healthModal}
   {@const _hpid = healthPackId}
-  <UiModal open={true} onclose={() => { healthModal = false }} icon="ti-stethoscope" color="var(--green)"
-           title={t('health.modalTitle')} subtitle={healthPackName} width="520px" maxHeight="90vh" shake>
+  <UiModal open={true} onclose={() => { healthModal = false }} icon="ti-stethoscope" color="var(--orange)"
+           title={t('health.modalTitle')} subtitle={healthPackName} width="540px" maxHeight="90vh">
     <PackHealthCheck
       packId={_hpid}
       modal={true}
@@ -6632,6 +6675,7 @@
     onclose={closeRepairDialog}
     onconsole={() => { const id = repairDialog!.packId; repairDialog = null; consoleSignal++; openPackPage(id) }}
     onlogin={() => { repairDialog = null; window.dispatchEvent(new CustomEvent('open-login-modal')) }}
+    onrelaunch={() => { const id = repairDialog!.packId; repairDialog = null; void launchWithHealthGuard(id) }}
   />
 {/if}
 
@@ -6766,10 +6810,14 @@
   </UiModal>
 {/if}
 
-<!-- ═══ ГЛОБАЛЬНИЙ ПОШУК (Ctrl+K) ═══ -->
+<!-- ═══ ГЛОБАЛЬНИЙ ПОШУК (Ctrl+F) ═══ -->
 <GlobalSearchModal
   open={searchOpen}
   bind:query={searchQuery}
+  bind:scope={searchScope}
+  actions={searchActions}
+  onaction={searchRunAction}
+  showWardrobe={wardrobeVisible}
   packs={searchPacks}
   packPicker={packPicker}
   presetResults={searchPresetResults}

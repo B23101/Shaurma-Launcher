@@ -1,21 +1,27 @@
 <script lang="ts">
   import Portal from './Portal.svelte'
-  // Глобальний пошук (Ctrl+K / клік по полю пошуку в topbar). Шукає: назви
-  // збірок, пресети гардероба, налаштування і контент браузера. Пошук
-  // (завантаження пресетів/браузера) виконує БАТЬКО через реактивний
-  // bind:query — компонент лише показує результати та віддає кліки.
+  // Глобальний пошук (Ctrl+K / Ctrl+F / клік по полю пошуку в topbar).
+  // Шукає: збірки (назва, лоадер, версія гри, папка), пресети гардероба,
+  // налаштування, контент браузера та «швидкі дії» (розділи лаунчера,
+  // створення/імпорт збірки…). Фільтр-чипи звужують пошук до одного
+  // розділу, ↑/↓ ходять по результатах, Enter відкриває вибраний, а
+  // порожній запит показує недавні пошуки й швидкий перехід.
+  // Мережевий пошук (браузер) і завантаження пресетів робить БАТЬКО через
+  // bind:query / bind:scope — компонент лише показує й віддає кліки.
+  import { tick } from 'svelte'
   import { t } from './i18n.svelte'
   import { packAsset } from './packAssets.svelte'
-  import PackPicker from './PackPicker.svelte'
   import type { PackRow, PackFolderRow, PackPickerItem } from './PackPicker.svelte'
   import type { BrowserEntry, BuildView, SettingDef, SkinPreset } from './types'
+
+  export type SearchScope = 'all' | 'packs' | 'content' | 'settings' | 'wardrobe' | 'actions'
+  export interface SearchAction { id: string; icon: string; label: string; meta?: string; keywords?: string }
 
   let {
     open = false,
     query = $bindable(''),
+    scope = $bindable<SearchScope>('all'),
     packs = [] as BuildView[],
-    // Дані списку збірок з ПАПКАМИ (PackPicker) — пошук показує папки
-    // розкривними, збірки всередині папок знаходяться і видно.
     packPicker = null,
     presetResults = [] as SkinPreset[],
     presetHeads = {} as Record<string, string>,
@@ -24,14 +30,18 @@
     browserLoading = false,
     settingsResults = [] as SettingDef[],
     grpTitleKeys = {} as Record<string, string>,
+    actions = [] as SearchAction[],
+    showWardrobe = true,
     onclose = null as null | (() => void),
     ongopack = null as null | ((id: string) => void),
     ongopreset = null as null | ((id: string) => void),
     ongosettings = null as null | ((sd: SettingDef) => void),
-    ongobrowser = null as null | ((be: BrowserEntry) => void)
+    ongobrowser = null as null | ((be: BrowserEntry) => void),
+    onaction = null as null | ((id: string) => void),
   }: {
     open?: boolean
     query?: string
+    scope?: SearchScope
     packs?: BuildView[]
     packPicker?: {
       items: PackPickerItem[]
@@ -45,13 +55,111 @@
     browserLoading?: boolean
     settingsResults?: SettingDef[]
     grpTitleKeys?: Record<string, string>
+    actions?: SearchAction[]
+    showWardrobe?: boolean
     onclose?: null | (() => void)
     ongopack?: null | ((id: string) => void)
     ongopreset?: null | ((id: string) => void)
     ongosettings?: null | ((sd: SettingDef) => void)
     ongobrowser?: null | ((be: BrowserEntry) => void)
+    onaction?: null | ((id: string) => void)
   } = $props()
+
+  const q = $derived(query.trim())
+  const tokens = $derived(q.toLowerCase().split(/\s+/).filter(Boolean))
+  const matchAll = (hay: string) => tokens.every((tk) => hay.includes(tk))
+
+  // Папка збірки — показуємо в підписі, щоб було видно, де вона лежить.
+  const folderOf = $derived.by(() => {
+    const m = new Map<string, string>()
+    for (const f of packPicker?.folderById.values() ?? []) for (const id of f.packIds) m.set(id, f.name)
+    return m
+  })
+
+  const actionHits = $derived(
+    !q ? actions : actions.filter((a) => matchAll(`${a.label} ${a.meta ?? ''} ${a.keywords ?? ''}`.toLowerCase())).slice(0, 6),
+  )
+
+  const show = (s: SearchScope) => scope === 'all' || scope === s
+  const counts = $derived({
+    packs: packs.length,
+    content: browser.length,
+    settings: settingsResults.length,
+    wardrobe: presetResults.length,
+    actions: actionHits.length,
+  })
+  const chips = $derived([
+    { id: 'all' as const, icon: 'ti-sparkles', label: t('globalSearch.scope.all'), n: -1 },
+    { id: 'packs' as const, icon: 'ti-box', label: t('globalSearch.packs'), n: counts.packs },
+    { id: 'content' as const, icon: 'ti-world', label: t('globalSearch.scope.content'), n: counts.content },
+    { id: 'settings' as const, icon: 'ti-settings', label: t('globalSearch.settings'), n: counts.settings },
+    ...(showWardrobe ? [{ id: 'wardrobe' as const, icon: 'ti-shirt', label: t('globalSearch.wardrobe'), n: counts.wardrobe }] : []),
+    { id: 'actions' as const, icon: 'ti-bolt', label: t('globalSearch.scope.actions'), n: counts.actions },
+  ])
+
+  const nothing = $derived(
+    !!q && !browserLoading &&
+    (!show('packs') || packs.length === 0) && (!show('wardrobe') || presetResults.length === 0) &&
+    (!show('settings') || settingsResults.length === 0) && (!show('content') || browser.length === 0) &&
+    (!show('actions') || actionHits.length === 0),
+  )
+
+  // ── Недавні запити ────────────────────────────────────────────────────
+  const RECENT_KEY = 'gs.recent'
+  const readRecent = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); return Array.isArray(v) ? v.filter((x) => typeof x === 'string').slice(0, 6) : [] } catch { return [] } }
+  let recent = $state<string[]>([])
+  $effect(() => { if (open) recent = readRecent() })
+  function remember() {
+    if (q.length < 2) return
+    const next = [q, ...readRecent().filter((r) => r.toLowerCase() !== q.toLowerCase())].slice(0, 6)
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(next)) } catch { /* не критично */ }
+  }
+  function clearRecent() { recent = []; try { localStorage.removeItem(RECENT_KEY) } catch { /* ignore */ } }
+  const go = <A extends unknown[]>(fn: null | ((...a: A) => void), ...a: A) => () => { remember(); fn?.(...a) }
+
+  // ── Підсвітка збігу в назві ───────────────────────────────────────────
+  function parts(text: string): { s: string; hit: boolean }[] {
+    if (!tokens.length || !text) return [{ s: text, hit: false }]
+    const low = text.toLowerCase()
+    const marks = new Array(text.length).fill(false)
+    for (const tk of tokens) { let i = low.indexOf(tk); while (i >= 0) { for (let j = i; j < i + tk.length; j++) marks[j] = true; i = low.indexOf(tk, i + tk.length) } }
+    const out: { s: string; hit: boolean }[] = []
+    for (let i = 0; i < text.length; i++) {
+      const last = out[out.length - 1]
+      if (last && last.hit === marks[i]) last.s += text[i]
+      else out.push({ s: text[i], hit: marks[i] })
+    }
+    return out
+  }
+
+  // ── Клавіатура: ↑/↓ по результатах, Enter — відкрити ──────────────────
+  let resultsEl = $state<HTMLElement>()
+  let active = $state(0)
+  const navItems = () => [...(resultsEl?.querySelectorAll<HTMLElement>('[data-gs-nav]') ?? [])]
+  $effect(() => { void q; void scope; active = 0 })
+  $effect(() => {
+    void active; void q; void scope; void packs; void browser; void settingsResults; void presetResults
+    void tick().then(() => {
+      const items = navItems()
+      items.forEach((el, i) => el.classList.toggle('kb', i === active))
+      items[active]?.scrollIntoView({ block: 'nearest' })
+    })
+  })
+  function onKey(e: KeyboardEvent) {
+    if (e.key === 'Escape') { onclose?.(); return }
+    const items = navItems()
+    if (e.key === 'ArrowDown') { e.preventDefault(); if (items.length) active = (active + 1) % items.length }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); if (items.length) active = (active - 1 + items.length) % items.length }
+    else if (e.key === 'Enter') { e.preventDefault(); items[Math.min(active, items.length - 1)]?.click() }
+    else if (e.key === 'Tab' && !e.shiftKey && chips.length) {
+      e.preventDefault()
+      const i = chips.findIndex((c) => c.id === scope)
+      scope = chips[(i + 1) % chips.length].id
+    }
+  }
 </script>
+
+{#snippet hl(text: string)}{#each parts(text) as p}{#if p.hit}<mark>{p.s}</mark>{:else}{p.s}{/if}{/each}{/snippet}
 
 {#if open}
   <Portal>
@@ -59,93 +167,149 @@
     <div class="global-search" onclick={(e: any) => e.stopPropagation()} role="dialog" aria-label={t('topbar.search')}>
       <div class="gs-input-row">
         <i class="ti ti-search"></i>
-        <input autofocus placeholder={t('globalSearch.placeholder')} bind:value={query}
-               onkeydown={(e: any) => { if (e.key === 'Escape') onclose?.() }} />
+        <input autofocus placeholder={t('globalSearch.placeholder')} bind:value={query} onkeydown={onKey}
+               role="combobox" aria-expanded="true" aria-controls="gs-results" aria-autocomplete="list" />
+        {#if query}
+          <button class="gs-close" title={t('cancel')} aria-label={t('cancel')} onclick={() => (query = '')}><i class="ti ti-backspace"></i></button>
+        {/if}
         <kbd>Esc</kbd>
         <button class="gs-close" title={t('win.close')} aria-label={t('win.close')} onclick={onclose}>
           <i class="ti ti-x"></i>
         </button>
       </div>
-      <div class="gs-results">
-      {#if query.trim().length === 0}
-        <div class="gs-empty"><i class="ti ti-bulb"></i> {t('globalSearch.hint')}</div>
-      {:else}
-        {#if packs.length > 0}
+
+      <div class="gs-chips" role="tablist" aria-label={t('globalSearch.scope.label')}>
+        {#each chips as c (c.id)}
+          <button class="gs-chip" role="tab" aria-selected={scope === c.id} class:on={scope === c.id} onclick={() => (scope = c.id)}>
+            <i class="ti {c.icon}"></i>{c.label}{#if q && c.n > 0}<b>{c.n}</b>{/if}
+          </button>
+        {/each}
+      </div>
+
+      <div class="gs-results" id="gs-results" bind:this={resultsEl}>
+      {#if !q}
+        {#if recent.length > 0}
           <div class="gs-group">
-            <div class="gs-group-title"><i class="ti ti-box"></i> {t('globalSearch.packs')}<span class="gs-count">{packs.length}</span></div>
-            {#if packPicker && packPicker.items.length > 0}
-              <PackPicker
-                items={packPicker.items}
-                rowById={packPicker.rowById}
-                folderById={packPicker.folderById}
-                query={query}
-                onselect={(id) => ongopack?.(id)}
-                selectable={!!ongopack}
-                class="gs-pp"
-              />
-            {:else}
-              {#each packs as bv}
-                {@const sic = packAsset(bv.build.iconUrl)}
-                <div class="gs-item" onclick={() => ongopack?.(bv.build.id)}>
-                  <div class="gs-ic" class:has-icon={!!sic} style="--pcol:{bv.build.color || 'var(--orange)'}">
-                    {#if sic}<img src={sic} alt="" loading="eager"/>{:else}<i class="ti {bv.build.icon || 'ti-puzzle'}"></i>{/if}
-                  </div>
-                  <div class="gs-name">{bv.build.name}</div>
-                  <div class="gs-meta">{bv.build.mcVersion}{bv.build.loaderType ? ' · ' + bv.build.loaderType : ''}</div>
-                </div>
+            <div class="gs-group-title"><i class="ti ti-history"></i> {t('globalSearch.recent')}
+              <button class="gs-link" onclick={clearRecent}>{t('globalSearch.clearRecent')}</button>
+            </div>
+            <div class="gs-recent">
+              {#each recent as r (r)}
+                <button class="gs-recent-chip" data-gs-nav onclick={() => (query = r)}><i class="ti ti-search"></i>{r}</button>
               {/each}
-            {/if}
+            </div>
           </div>
         {/if}
-        {#if presetResults.length > 0}
+        <div class="gs-group">
+          <div class="gs-group-title"><i class="ti ti-bolt"></i> {t('globalSearch.quick')}</div>
+          <div class="gs-quick">
+            {#each actions as a (a.id)}
+              <button class="gs-quick-item" data-gs-nav onclick={() => onaction?.(a.id)}>
+                <span class="gs-ic sm"><i class="ti {a.icon}"></i></span><span>{a.label}</span>
+              </button>
+            {/each}
+          </div>
+        </div>
+        <div class="gs-tips">
+          <span><kbd>↑</kbd><kbd>↓</kbd> {t('globalSearch.tip.move')}</span>
+          <span><kbd>Enter</kbd> {t('globalSearch.tip.open')}</span>
+          <span><kbd>Tab</kbd> {t('globalSearch.tip.scope')}</span>
+        </div>
+      {:else}
+        {#if show('actions') && actionHits.length > 0}
+          <div class="gs-group">
+            <div class="gs-group-title"><i class="ti ti-bolt"></i> {t('globalSearch.scope.actions')}<span class="gs-count">{actionHits.length}</span></div>
+            {#each actionHits as a (a.id)}
+              <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(onaction, a.id)}>
+                <div class="gs-ic"><i class="ti {a.icon}"></i></div>
+                <div class="gs-name">{@render hl(a.label)}</div>
+                {#if a.meta}<div class="gs-meta">{a.meta}</div>{/if}
+                <i class="ti ti-corner-down-left gs-enter"></i>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if show('packs') && packs.length > 0}
+          <div class="gs-group">
+            <div class="gs-group-title"><i class="ti ti-box"></i> {t('globalSearch.packs')}<span class="gs-count">{packs.length}</span></div>
+            {#each packs as bv (bv.build.id)}
+              {@const sic = packAsset(bv.build.iconUrl)}
+              {@const folder = folderOf.get(bv.build.id)}
+              <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongopack, bv.build.id)}>
+                <div class="gs-ic" class:has-icon={!!sic} style="--pcol:{bv.build.color || 'var(--orange)'}">
+                  {#if sic}<img src={sic} alt="" loading="eager"/>{:else}<i class="ti {bv.build.icon || 'ti-puzzle'}"></i>{/if}
+                </div>
+                <div class="gs-text">
+                  <div class="gs-name">{@render hl(bv.build.name)}</div>
+                  <div class="gs-sub">{@render hl(`${bv.build.loaderType || 'vanilla'} · ${bv.build.mcVersion}`)}{#if folder} · <i class="ti ti-folder"></i> {folder}{/if}</div>
+                </div>
+                <i class="ti ti-corner-down-left gs-enter"></i>
+              </div>
+            {/each}
+          </div>
+        {/if}
+        {#if show('wardrobe') && presetResults.length > 0}
           <div class="gs-group">
             <div class="gs-group-title"><i class="ti ti-shirt"></i> {t('globalSearch.wardrobe')}<span class="gs-count">{presetResults.length}</span></div>
-            {#each presetResults as p}
-              <div class="gs-item" onclick={() => ongopreset?.(p.id)}>
+            {#each presetResults as p (p.id)}
+              <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongopreset, p.id)}>
                 <div class="gs-wardrobe">
                   {#if presetHeads[p.id]}<span class="gs-head" style="background-image:url('{presetHeads[p.id]}')"></span>{/if}
                   {#if presetCapes[p.id]}<span class="gs-cape" style="background-image:url('{presetCapes[p.id]}')"></span>{/if}
                 </div>
-                <div class="gs-name">{p.name}</div>
-                <div class="gs-meta">{p.slimArms ? t('wardrobe.slim') : t('wardrobe.classic')}{p.capePath ? ' · ' + t('wardrobe.withCape') : ''}</div>
+                <div class="gs-text">
+                  <div class="gs-name">{@render hl(p.name)}</div>
+                  <div class="gs-sub">{p.slimArms ? t('wardrobe.slim') : t('wardrobe.classic')}{p.capePath ? ' · ' + t('wardrobe.withCape') : ''}</div>
+                </div>
+                <i class="ti ti-corner-down-left gs-enter"></i>
               </div>
             {/each}
           </div>
         {/if}
-        {#if settingsResults.length > 0}
+        {#if show('settings') && settingsResults.length > 0}
           <div class="gs-group">
             <div class="gs-group-title"><i class="ti ti-settings"></i> {t('globalSearch.settings')}<span class="gs-count">{settingsResults.length}</span></div>
-            {#each settingsResults as sd}
-              <div class="gs-item" onclick={() => ongosettings?.(sd)}>
-                <div class="gs-ic" style="--pcol:var(--orange)"><i class="ti ti-adjustments"></i></div>
-                <div class="gs-name">{t(sd.label)}</div>
-                <div class="gs-meta">{t(grpTitleKeys[sd.group] ?? 'settings.tab.general')}</div>
+            {#each settingsResults as sd (sd.key)}
+              <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongosettings, sd)}>
+                <div class="gs-ic"><i class="ti ti-adjustments"></i></div>
+                <div class="gs-text">
+                  <div class="gs-name">{@render hl(t(sd.label))}</div>
+                  <div class="gs-sub">{t('nav.settings')} › {t(grpTitleKeys[sd.group] ?? 'settings.tab.general')}</div>
+                </div>
+                <i class="ti ti-corner-down-left gs-enter"></i>
               </div>
             {/each}
           </div>
         {/if}
-        {#if query.trim().length >= 2}
+        {#if show('content') && q.length >= 2}
           <div class="gs-group">
             <div class="gs-group-title"><i class="ti ti-world"></i> {t('globalSearch.browser')}
               {#if browserLoading}<span class="gs-spinner"></span>{/if}
               {#if browser.length > 0}<span class="gs-count">{browser.length}</span>{/if}
             </div>
-            {#if browser.length === 0 && !browserLoading}
+            {#if browserLoading && browser.length === 0}
+              {#each [0, 1, 2] as i (i)}<div class="gs-item gs-skel" aria-hidden="true"><div class="gs-ic"></div><div class="gs-text"><span></span><span></span></div></div>{/each}
+            {:else if browser.length === 0}
               <div class="gs-empty small">{t('globalSearch.browserEmpty')}</div>
             {/if}
-            {#each browser as be}
-              <div class="gs-item" onclick={() => ongobrowser?.(be)}>
-                <div class="gs-ic" class:has-icon={!!be.iconUrl} style="--pcol:var(--orange)">
+            {#each browser as be (be.source + be.id)}
+              <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongobrowser, be)}>
+                <div class="gs-ic" class:has-icon={!!be.iconUrl}>
                   {#if be.iconUrl}<img src={be.iconUrl} alt="" loading="lazy"/>{:else}<i class="ti ti-package"></i>{/if}
                 </div>
-                <div class="gs-name">{be.name}</div>
-                <div class="gs-meta">{be.type}{be.mcVersion ? ' · ' + be.mcVersion : ''}</div>
+                <div class="gs-text">
+                  <div class="gs-name">{@render hl(be.name)}</div>
+                  <div class="gs-sub">{be.type}{be.mcVersion ? ' · ' + be.mcVersion : ''}{be.source ? ' · ' + be.source : ''}</div>
+                </div>
+                <i class="ti ti-corner-down-left gs-enter"></i>
               </div>
             {/each}
           </div>
         {/if}
-        {#if packs.length === 0 && presetResults.length === 0 && settingsResults.length === 0 && browser.length === 0 && !browserLoading}
-          <div class="gs-empty"><i class="ti ti-mood-empty"></i> {t('globalSearch.noResults')}</div>
+        {#if nothing}
+          <div class="gs-empty"><i class="ti ti-mood-empty"></i> {t('globalSearch.noResults')}
+            {#if scope !== 'all'}<button class="btn btn-ghost btn-sm" onclick={() => (scope = 'all')}>{t('globalSearch.searchEverywhere')}</button>{/if}
+          </div>
         {/if}
       {/if}
       </div>
@@ -155,29 +319,30 @@
 {/if}
 
 <style>
-  /* Глобальний пошук (Ctrl+K): стилі перенесені сюди з App.svelte разом
-     з розміткою. .search-overlay піднятий над звичайними модалками. */
+  /* Глобальний пошук: над звичайними модалками. */
   .search-overlay { z-index:1000001; }
   .global-search {
-    width:min(640px,94vw); max-height:74vh;
+    width:min(680px,94vw); max-height:76vh; margin-top:-6vh;
     display:flex; flex-direction:column; overflow:hidden;
     background:var(--bg-panel); border:1px solid var(--border-hi);
     border-radius:var(--r-lg); box-shadow:0 24px 60px rgba(0,0,0,.45);
+    animation:gs-in .26s cubic-bezier(.16,1,.3,1) both;
   }
+  @keyframes gs-in { from { opacity:0; transform:translateY(-10px) scale(.985); } to { opacity:1; transform:none; } }
   .gs-input-row {
     display:flex; align-items:center; gap:10px;
-    padding:14px 18px; border-bottom:1px solid var(--border); flex:0 0 auto;
+    padding:14px 18px 10px; flex:0 0 auto;
   }
-  .gs-input-row .ti-search { font-size:19px; color:var(--text-dim); flex:none; }
+  .gs-input-row .ti-search { font-size:19px; color:var(--orange); flex:none; }
   .gs-input-row input {
-    flex:1; border:none; background:transparent; font-size:15px;
+    flex:1; min-width:0; border:none; background:transparent; font-size:15.5px; font-weight:500;
     color:var(--text); outline:none; padding:0;
   }
   .gs-input-row input::placeholder { color:var(--text-mute); }
-  .gs-input-row kbd {
-    flex:none; padding:3px 9px; font-size:11px; font-family:var(--font-mono);
+  kbd {
+    flex:none; display:inline-grid; place-items:center; min-width:20px; padding:2px 7px; font-size:11px; font-family:var(--font-mono);
     color:var(--text-dim); background:var(--bg-input);
-    border:1px solid var(--border); border-radius:var(--r-sm);
+    border:1px solid var(--border); border-bottom-width:2px; border-radius:6px;
   }
   .gs-close {
     flex:none; width:30px; height:30px; border:none; border-radius:var(--r-sm);
@@ -186,42 +351,87 @@
     transition:background .15s ease, color .15s ease;
   }
   .gs-close:hover { background:var(--bg-input-hi); color:var(--text); }
-  /* Контейнер результатів: flex-розтяжка + власний скрол у межах панелі
-     (без min-height:0 контент випирає за max-height панелі і обрізається
-     overflow:hidden — пошук виглядав «порожнім»). */
-  .gs-results { overflow-y:auto; flex:1 1 auto; min-height:0; padding:6px 0 10px; }
+
+  /* Фільтр-чипи розділів */
+  .gs-chips { display:flex; gap:6px; padding:0 18px 12px; border-bottom:1px solid var(--border); overflow-x:auto; scrollbar-width:none; flex:0 0 auto; }
+  .gs-chips::-webkit-scrollbar { display:none; }
+  .gs-chip {
+    flex:none; display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 11px; border-radius:999px;
+    border:1px solid var(--border); background:var(--bg-input); color:var(--text-mute);
+    font:700 11.5px/1 var(--font-ui); cursor:pointer; transition:color .15s, border-color .15s, background .15s;
+  }
+  .gs-chip i { font-size:13px; }
+  .gs-chip b { min-width:16px; padding:2px 5px; border-radius:999px; background:var(--hover-strong); color:var(--text); font:800 10px/1 var(--font-mono); text-align:center; }
+  .gs-chip:hover { color:var(--text); border-color:var(--border-hi); }
+  .gs-chip.on { color:var(--orange); border-color:rgba(var(--orange-rgb), .5); background:rgba(var(--orange-rgb), .12); }
+  .gs-chip.on b { background:rgba(var(--orange-rgb), .22); color:var(--orange); }
+
+  .gs-results { overflow-y:auto; flex:1 1 auto; min-height:0; padding:6px 8px 10px; }
   .gs-group { padding:2px 0; }
   .gs-group-title {
-    display:flex; align-items:center; gap:8px; padding:10px 18px 5px;
-    font-size:12px; font-weight:700; text-transform:uppercase;
-    letter-spacing:.05em; color:var(--text-dim);
+    display:flex; align-items:center; gap:8px; padding:10px 10px 5px;
+    font-size:11px; font-weight:800; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--text-dim);
   }
   .gs-group-title .ti { font-size:14px; }
+  .gs-count { padding:2px 6px; border-radius:999px; background:var(--hover); font:800 10px/1 var(--font-mono); color:var(--text-mute); }
+  .gs-link { margin-left:auto; border:0; background:none; color:var(--text-mute); font:600 11px var(--font-ui); text-transform:none; letter-spacing:0; cursor:pointer; }
+  .gs-link:hover { color:var(--orange); }
+
   .gs-item {
-    display:flex; align-items:center; gap:12px; padding:8px 18px;
+    position:relative; display:flex; align-items:center; gap:12px; padding:8px 10px; border-radius:11px;
     cursor:pointer; transition:background .12s ease;
   }
-  .gs-item:hover, .gs-item:focus-visible { background:var(--hover); outline:none; }
+  .gs-item:hover { background:var(--hover); }
+  .gs-item:global(.kb) { background:rgba(var(--orange-rgb), .1); box-shadow:inset 0 0 0 1px rgba(var(--orange-rgb), .3); }
+  .gs-enter { margin-left:auto; color:var(--orange); font-size:15px; opacity:0; transform:translateX(-4px); transition:opacity .15s, transform .15s; }
+  .gs-item:global(.kb) .gs-enter { opacity:1; transform:none; }
   .gs-ic {
-    width:34px; height:34px; border-radius:var(--r-md); flex:none; overflow:hidden;
+    width:36px; height:36px; border-radius:10px; flex:none; overflow:hidden;
     display:flex; align-items:center; justify-content:center; font-size:18px;
     color:var(--pcol,var(--orange)); background:color-mix(in srgb, var(--pcol,var(--orange)) 16%, var(--bg-input-hi));
   }
+  .gs-ic.sm { width:28px; height:28px; border-radius:8px; font-size:15px; }
   .gs-ic.has-icon { background:transparent; }
   .gs-ic img { width:100%; height:100%; object-fit:cover; }
-  .gs-name { flex:1 1 auto; min-width:0; font-size:14px; color:var(--text);
-    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gs-text { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:2px; }
+  .gs-name { min-width:0; font-size:13.5px; font-weight:650; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gs-sub { min-width:0; font-size:11.5px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .gs-sub i { font-size:12px; }
   .gs-meta { flex:none; font-size:12px; color:var(--text-dim); white-space:nowrap; }
+  mark { background:rgba(var(--orange-rgb), .22); color:var(--text); border-radius:3px; padding:0 1px; }
+
+  /* Порожній запит: недавні + швидкий перехід */
+  .gs-recent { display:flex; flex-wrap:wrap; gap:6px; padding:2px 10px 6px; }
+  .gs-recent-chip { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 11px; border-radius:999px; border:1px solid var(--border); background:var(--bg-input); color:var(--text); font:600 12px var(--font-ui); cursor:pointer; }
+  .gs-recent-chip i { font-size:13px; color:var(--text-dim); }
+  .gs-recent-chip:hover, .gs-recent-chip:global(.kb) { border-color:rgba(var(--orange-rgb), .5); color:var(--orange); }
+  .gs-quick { display:grid; grid-template-columns:repeat(auto-fill, minmax(190px, 1fr)); gap:4px; padding:2px 2px 6px; }
+  .gs-quick-item { display:flex; align-items:center; gap:10px; padding:7px 8px; border:1px solid transparent; border-radius:11px; background:transparent; color:var(--text); font:600 12.5px var(--font-ui); text-align:left; cursor:pointer; }
+  .gs-quick-item:hover { background:var(--hover); }
+  .gs-quick-item:global(.kb) { background:rgba(var(--orange-rgb), .1); border-color:rgba(var(--orange-rgb), .3); }
+  .gs-tips { display:flex; flex-wrap:wrap; gap:14px; padding:12px 10px 4px; margin-top:4px; border-top:1px solid var(--border); font-size:11.5px; color:var(--text-dim); }
+  .gs-tips span { display:inline-flex; align-items:center; gap:5px; }
+
   .gs-empty {
     padding:28px 18px; text-align:center; color:var(--text-dim);
-    font-size:13px; display:flex; flex-direction:column; align-items:center; gap:8px;
+    font-size:13px; display:flex; flex-direction:column; align-items:center; gap:10px;
   }
   .gs-empty .ti { font-size:26px; color:var(--text-mute); }
-  .gs-empty.small { padding:14px 18px; font-size:12px; }
+  .gs-empty.small { padding:10px 10px; font-size:12px; }
   .gs-spinner {
-    width:13px; height:13px; margin-left:auto; border-radius:50%; flex:none;
+    width:13px; height:13px; border-radius:50%; flex:none;
     border:2px solid var(--border-hi); border-top-color:var(--orange);
     animation:gs-spin .7s linear infinite;
   }
   @keyframes gs-spin { to { transform:rotate(360deg); } }
+  /* Скелетон, поки йде мережевий пошук */
+  .gs-skel { cursor:default; }
+  .gs-skel .gs-ic { background:var(--hover-strong); }
+  .gs-skel .gs-text span { display:block; height:9px; border-radius:5px; background:var(--hover-strong); animation:gs-pulse 1.1s ease-in-out infinite alternate; }
+  .gs-skel .gs-text span:first-child { width:46%; }
+  .gs-skel .gs-text span:last-child { width:28%; opacity:.7; }
+  @keyframes gs-pulse { from { opacity:.45; } to { opacity:1; } }
+
+  /* .gs-wardrobe/.gs-head/.gs-cape — глобальні, у style.css */
 </style>

@@ -421,16 +421,6 @@
     else if (e.key === 'Escape') { query = ''; searchEl?.blur() }
   }
 
-  // Ctrl+K — до пошуку параметрів (Ctrl+F лишається пошуком у консолі).
-  $effect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k' && view === 'main') {
-        e.preventDefault(); searchEl?.focus(); searchEl?.select()
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  })
 </script>
 
 {#if loading}
@@ -488,7 +478,6 @@
           {#if query}
             <button class="st-search-clear" onmousedown={(e) => e.preventDefault()} onclick={() => (query = '')} aria-label={t('servers.lib.clear')}><i class="ti ti-x"></i></button>
           {:else}
-            <kbd class="sv-kbd">Ctrl K</kbd>
           {/if}
           {#if query.trim() && searchFocused}
             <div class="st-search-menu" role="listbox">
@@ -606,12 +595,7 @@
 
   /* Пошук параметра — компактне поле в рядку дій банера. */
   .sv-search.st-search { flex: 0 1 260px; min-width: 170px; max-width: 260px; margin: 0; }
-  .sv-search.st-search input { height: 32px; padding-right: 58px; }
-  .sv-kbd {
-    position: absolute; right: 9px; top: 50%; transform: translateY(-50%); pointer-events: none;
-    padding: 3px 6px; border-radius: 6px; border: 1px solid var(--border); background: var(--hover);
-    font: 600 var(--fs-min)/1 var(--font-mono); color: var(--text-dim);
-  }
+  .sv-search.st-search input { height: 32px; padding-right: 12px; }
   /* Вкладки — акцент кольором сервера. */
   .sv-tabs { --tb-acc: var(--pcol); flex-shrink: 0; margin-bottom: 14px; }
   .sv-tab-out { font-size: 12px !important; opacity: .55; margin-left: -3px; }

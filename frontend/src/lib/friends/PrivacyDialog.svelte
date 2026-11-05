@@ -7,6 +7,7 @@
   import { useGroupsStore } from '../groups/GroupsStore.svelte'
   import UiModal from '../UiModal.svelte'
   import SelectField from '../SelectField.svelte'
+  import '../settings/settings.css'
   import type { SocialShowTo, SocialFriendRequests, SocialWhoCanMessage } from '../types'
 
   let { open = false, onclose }: { open?: boolean; onclose: () => void } = $props()
@@ -38,60 +39,75 @@
     <div class="pv-warn"><i class="ti ti-shield-exclamation"></i>{t('social.priv.notLoaded')}</div>
   {/if}
 
-  <h4 class="pv-h"><i class="ti ti-eye"></i>{t('ff.priv.who')}</h4>
-  <div class="pv-card">
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('social.priv.status')}</div><div class="pv-d">{t('social.priv.statusHint')}</div></div>
-      <SelectField value={s.st.privacy.showStatusTo === 'everyone' ? 'friends' : s.st.privacy.showStatusTo} options={showOptions} ariaLabel={t('social.priv.status')} minWidth="124px"
-                   onchange={(v: string) => s.savePrivacy({ showStatusTo: v as SocialShowTo })} />
+  <section class="st-card pv-card">
+    <div class="st-card-head">
+      <div class="st-card-ic"><i class="ti ti-eye" aria-hidden="true"></i></div>
+      <div class="st-card-tx"><h3>{t('ff.priv.who')}</h3></div>
     </div>
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('social.priv.server')}</div><div class="pv-d">{t('social.priv.serverHint')}</div></div>
-      <SelectField value={s.st.privacy.showServerTo === 'everyone' ? 'friends' : s.st.privacy.showServerTo} options={showOptions} ariaLabel={t('social.priv.server')} minWidth="124px"
-                   onchange={(v: string) => s.savePrivacy({ showServerTo: v as SocialShowTo })} />
+    <div class="st-card-body">
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('social.priv.status')}</div><div class="st-row-hint">{t('social.priv.statusHint')}</div></div>
+        <SelectField value={s.st.privacy.showStatusTo === 'everyone' ? 'friends' : s.st.privacy.showStatusTo} options={showOptions} ariaLabel={t('social.priv.status')} minWidth="124px"
+                     onchange={(v: string) => s.savePrivacy({ showStatusTo: v as SocialShowTo })} />
+      </div>
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('social.priv.server')}</div><div class="st-row-hint">{t('social.priv.serverHint')}</div></div>
+        <SelectField value={s.st.privacy.showServerTo === 'everyone' ? 'friends' : s.st.privacy.showServerTo} options={showOptions} ariaLabel={t('social.priv.server')} minWidth="124px"
+                     onchange={(v: string) => s.savePrivacy({ showServerTo: v as SocialShowTo })} />
+      </div>
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('social.priv.whoMsg')}</div><div class="st-row-hint">{t('social.priv.whoMsgHint')}</div></div>
+        <SelectField value={s.st.privacy.whoCanMessage ?? 'friends'} options={whoOptions} ariaLabel={t('social.priv.whoMsg')} minWidth="124px"
+                     onchange={(v: string) => s.savePrivacy({ whoCanMessage: v as SocialWhoCanMessage })} />
+      </div>
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('groups.priv.whoAdd')}</div><div class="st-row-hint">{t('groups.priv.whoAddHint')}</div></div>
+        <SelectField value={gs.whoCanAdd} options={whoOptions} ariaLabel={t('groups.priv.whoAdd')} minWidth="124px"
+                     onchange={(v: string) => gs.setWhoCanAdd(v as 'friends' | 'everyone' | 'nobody')} />
+      </div>
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('social.priv.requests')}</div><div class="st-row-hint">{t('social.priv.requestsHint')}</div></div>
+        <SelectField value={s.st.privacy.friendRequests} options={requestOptions} ariaLabel={t('social.priv.requests')} minWidth="124px"
+                     onchange={(v: string) => s.savePrivacy({ friendRequests: v as SocialFriendRequests })} />
+      </div>
     </div>
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('social.priv.whoMsg')}</div><div class="pv-d">{t('social.priv.whoMsgHint')}</div></div>
-      <SelectField value={s.st.privacy.whoCanMessage ?? 'friends'} options={whoOptions} ariaLabel={t('social.priv.whoMsg')} minWidth="124px"
-                   onchange={(v: string) => s.savePrivacy({ whoCanMessage: v as SocialWhoCanMessage })} />
-    </div>
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('groups.priv.whoAdd')}</div><div class="pv-d">{t('groups.priv.whoAddHint')}</div></div>
-      <SelectField value={gs.whoCanAdd} options={whoOptions} ariaLabel={t('groups.priv.whoAdd')} minWidth="124px"
-                   onchange={(v: string) => gs.setWhoCanAdd(v as 'friends' | 'everyone' | 'nobody')} />
-    </div>
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('social.priv.requests')}</div><div class="pv-d">{t('social.priv.requestsHint')}</div></div>
-      <SelectField value={s.st.privacy.friendRequests} options={requestOptions} ariaLabel={t('social.priv.requests')} minWidth="124px"
-                   onchange={(v: string) => s.savePrivacy({ friendRequests: v as SocialFriendRequests })} />
-    </div>
-  </div>
+  </section>
 
-  <h4 class="pv-h"><i class="ti ti-bell"></i>{t('ff.priv.notifs')}</h4>
-  <div class="pv-card">
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('ff.priv.muteAll')}</div><div class="pv-d">{t('ff.priv.muteAllHint')}</div></div>
-      <button class="pv-sw" class:on={!s.muteAll} role="switch" aria-checked={!s.muteAll} aria-label={t('ff.priv.muteAll')} disabled={s.muteAllBusy} onclick={() => s.toggleMuteAll()}><i></i></button>
+  <section class="st-card pv-card">
+    <div class="st-card-head">
+      <div class="st-card-ic violet"><i class="ti ti-bell" aria-hidden="true"></i></div>
+      <div class="st-card-tx"><h3>{t('ff.priv.notifs')}</h3></div>
     </div>
-    <div class="pv-row">
-      <div class="pv-tx"><div class="pv-t">{t('ff.priv.sound')}</div><div class="pv-d">{t('ff.priv.soundHint')}</div></div>
-      <button class="pv-sw" class:on={!s.muteSound} role="switch" aria-checked={!s.muteSound} aria-label={t('ff.priv.sound')} onclick={() => s.toggleMuteSound()}><i></i></button>
+    <div class="st-card-body">
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('ff.priv.muteAll')}</div><div class="st-row-hint">{t('ff.priv.muteAllHint')}</div></div>
+        <button class="st-switch" class:on={!s.muteAll} role="switch" aria-checked={!s.muteAll} aria-label={t('ff.priv.muteAll')} disabled={s.muteAllBusy} onclick={() => s.toggleMuteAll()}></button>
+      </div>
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('ff.priv.sound')}</div><div class="st-row-hint">{t('ff.priv.soundHint')}</div></div>
+        <button class="st-switch" class:on={!s.muteSound} role="switch" aria-checked={!s.muteSound} aria-label={t('ff.priv.sound')} onclick={() => s.toggleMuteSound()}></button>
+      </div>
     </div>
-  </div>
+  </section>
 
-  <h4 class="pv-h"><i class="ti ti-ban"></i>{t('social.block.list')}</h4>
-  <div class="pv-card">
-    {#if s.blocked.length === 0}
-      <div class="pv-empty">{t('social.block.empty')}</div>
-    {:else}
-      {#each s.blocked as b (b.accountId)}
-        <div class="pv-row">
-          <div class="pv-tx"><div class="pv-t pv-nick">{clean(b.nickname)}</div></div>
-          <button class="pv-btn" onclick={() => s.unblock(b)}>{t('social.block.unblock')}</button>
-        </div>
-      {/each}
-    {/if}
-  </div>
+  <section class="st-card pv-card">
+    <div class="st-card-head">
+      <div class="st-card-ic red"><i class="ti ti-ban" aria-hidden="true"></i></div>
+      <div class="st-card-tx"><h3>{t('social.block.list')}</h3></div>
+    </div>
+    <div class="st-card-body">
+      {#if s.blocked.length === 0}
+        <div class="st-row st-row-hint pv-empty">{t('social.block.empty')}</div>
+      {:else}
+        {#each s.blocked as b (b.accountId)}
+          <div class="st-row">
+            <div class="st-row-text"><div class="st-row-name">{clean(b.nickname)}</div></div>
+            <button class="btn btn-ghost btn-sm" onclick={() => s.unblock(b)}>{t('social.block.unblock')}</button>
+          </div>
+        {/each}
+      {/if}
+    </div>
+  </section>
 
   {#snippet footer()}
     <button class="btn btn-primary btn-sm" onclick={onclose}>{t('ff.done')}</button>
@@ -99,31 +115,14 @@
 </UiModal>
 
 <style>
-  .pv-warn { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; padding: 10px 12px; border-radius: 11px; font: 400 12px/1.5 var(--font-ui); color: var(--text);
-    border: 1px solid color-mix(in srgb, var(--ff-warn) 40%, transparent); background: color-mix(in srgb, var(--ff-warn) 9%, transparent); }
-  .pv-warn i { color: var(--ff-warn); font-size: 16px; flex: 0 0 auto; }
-  .pv-h { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; font: 750 11.5px/1 var(--font-ui); letter-spacing: .3px; color: var(--text-mute); }
-  .pv-h:first-child { margin-top: 0; }
-  .pv-h i { color: var(--orange); font-size: 14px; }
-  .pv-card { border-radius: 13px; background: var(--bg-input); border: 1px solid var(--border); }
-  .pv-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 14px; }
-  .pv-row + .pv-row { border-top: 1px solid var(--border); }
-  .pv-tx { flex: 1; min-width: 0; }
-  .pv-t { font: 650 12.5px/1.3 var(--font-ui); color: var(--text); }
-  .pv-d { margin-top: 3px; font: 400 11px/1.45 var(--font-ui); color: var(--text-dim); }
-  .pv-nick { display: flex; align-items: baseline; gap: 6px; }
-  .pv-btn { flex: 0 0 auto; height: 32px; padding: 0 14px; border-radius: 10px; cursor: pointer; font: 700 12px/1 var(--font-ui); color: var(--text); background: var(--bg-panel); border: 1px solid var(--border-hi); transition: border-color .14s, color .14s, transform .12s; }
-  .pv-btn:hover { border-color: var(--orange); color: var(--orange); }
-  .pv-btn:active { transform: scale(.95); }
-  .pv-empty { padding: 14px; font: 400 12px/1.4 var(--font-ui); color: var(--text-dim); }
-
-  /* Перемикач: рухається лише transform. */
-  .pv-sw { position: relative; flex: 0 0 auto; width: 40px; height: 23px; padding: 0; border-radius: 12px; border: 1px solid var(--border-hi); background: var(--bg-input-hi, var(--hover-strong)); cursor: pointer; transition: background-color .18s, border-color .18s; }
-  .pv-sw i { position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: var(--text-mute); transition: transform .2s var(--ff-spring), background-color .18s; }
-  .pv-sw.on { background: color-mix(in srgb, var(--orange) 85%, transparent); border-color: var(--orange); }
-  .pv-sw.on i { transform: translateX(17px); background: #fff; }
-  .pv-sw:disabled { opacity: .5; cursor: default; }
-  .pv-sw:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 70%, transparent); outline-offset: 2px; }
-  @media (max-width: 520px) { .pv-row { flex-wrap: wrap; } }
-  @media (prefers-reduced-motion: reduce) { .pv-sw, .pv-sw i { transition: none; } }
+  /* Рядки, картки й перемикачі — спільні з налаштуваннями лаунчера
+     (settings.css: .st-card/.st-row/.st-switch). Тут лише відступи модалки. */
+  .pv-warn { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 14px; padding: 10px 12px; border-radius: var(--r-md); font-size: 12px; line-height: 1.5; color: var(--text);
+    border: 1px solid rgba(245, 158, 11, .4); background: rgba(245, 158, 11, .09); }
+  .pv-warn i { color: var(--yellow); font-size: 16px; flex: 0 0 auto; }
+  .pv-card { margin-bottom: 12px; }
+  .pv-card:last-child { margin-bottom: 0; }
+  .pv-card .st-row { padding: 12px 18px; min-height: 54px; }
+  .pv-empty { color: var(--text-dim); min-height: 0; }
+  @media (max-width: 520px) { .pv-card .st-row { flex-wrap: wrap; } }
 </style>

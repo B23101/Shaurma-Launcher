@@ -15,6 +15,7 @@
   import UiModal from './UiModal.svelte'
   import PackPicker from './PackPicker.svelte'
   import SelectField from './SelectField.svelte'
+  import { tip } from './friends/tooltip'
   import type { PackRow, PackFolderRow, PackPickerItem } from './PackPicker.svelte'
 
   let { packId, packName = '', disabled = false, allBuilds, packPicker = null, onServersChanged = () => {}, activeAccountId = '', stickyTop = 0, onPlay } = $props<{
@@ -46,10 +47,14 @@
 
   let servers = $state<InstanceServer[]>([])
   let loading = $state(true)
+  let loadError = $state('')
   let query = $state('')
   let pings = $state<Record<string, ServerPing | null>>({})
   let pingingAll = $state(false)
   let selected = $state<Set<string>>(new Set())
+
+  const onlineCount = $derived(servers.filter(s => pings[s.address]?.online).length)
+  const checkedCount = $derived(servers.filter(s => pings[s.address] != null).length)
 
   function dedupeServers(list: InstanceServer[]): InstanceServer[] {
     const seen = new Set<string>()
@@ -64,10 +69,11 @@
 
   async function load() {
     loading = true
+    loadError = ''
     try {
       servers = dedupeServers((await App.ListPackServers(packId)) ?? [])
-    } catch {
-      servers = []
+    } catch (e) {
+      loadError = String(e)
     }
     selected = new Set([...selected].filter(a => servers.some(s => s.address === a)))
     loading = false
@@ -356,23 +362,28 @@
   }
 </script>
 
-<!-- Sticky-панель інструментів — ТОЙ САМИЙ патерн, що .mods-toolbar у
-     менеджері модів: рядок пошуку + фільтр-чіпи + select сортування
-     зверху, окремий рядок дій (ping/copy/add) знизу. Раніше тут був
-     власний стиль із двома довільними .toolbar-рядами. -->
-<div class="mods-toolbar" style={`--mt-top:${stickyTop}px`}>
+<section class="server-section" aria-label={t('pack.tab.servers')}>
+<!-- Sticky-панель інструментів — той самий однорядковий патерн, що
+     .mods-toolbar у вкладці «Контент»: пошук + фільтр стану + сортування
+     зліва, рідкісні дії іконками та головна кнопка справа. Окрему велику
+     картку-заголовок прибрано: кількість серверів уже видно на вкладці. -->
+<div class="mods-toolbar server-toolbar" style={`--mt-top:${stickyTop}px`}>
   <div class="mt-group mt-group-main">
     <div class="mt-search">
       <i class="ti ti-search"></i>
-      <input bind:value={query} placeholder={t('pack.servers.search')} />
+      <input bind:value={query} aria-label={t('pack.servers.search')} placeholder={t('pack.servers.search')} />
     </div>
-    <div class="pss-chips">
-      <button class="pss-chip" class:active={statusFilter === 'all'} onclick={() => statusFilter = 'all'}><i class="ti ti-server-2"></i> {t('pack.servers.filterAll')}</button>
-      <button class="pss-chip" class:active={statusFilter === 'online'} onclick={() => statusFilter = 'online'}><span class="dot on"></span> {t('pack.servers.filterOnline')}</button>
-      <button class="pss-chip" class:active={statusFilter === 'offline'} onclick={() => statusFilter = 'offline'}><span class="dot off"></span> {t('pack.servers.filterOffline')}</button>
-    </div>
-    <div class="mt-spacer"></div>
-    <span class="pss-count">{filtered.length} / {servers.length}</span>
+    <SelectField
+      value={statusFilter}
+      options={[
+        { value: 'all',     label: `${t('pack.servers.filterAll')} · ${servers.length}` },
+        { value: 'online',  label: checkedCount ? `${t('pack.servers.filterOnline')} · ${onlineCount}` : t('pack.servers.filterOnline') },
+        { value: 'offline', label: checkedCount ? `${t('pack.servers.filterOffline')} · ${checkedCount - onlineCount}` : t('pack.servers.filterOffline') },
+      ]}
+      onchange={(v: string) => statusFilter = v as 'all' | 'online' | 'offline'}
+      minWidth="130px"
+      ariaLabel={t('pack.servers.filterAll')}
+    />
     <SelectField
       value={sortBy}
       options={[
@@ -382,33 +393,40 @@
         { value: 'players', label: t('pack.servers.sortPlayers') },
       ]}
       onchange={(v: string) => sortBy = v as 'order' | 'name' | 'status' | 'players'}
-      minWidth="150px"
+      minWidth="130px"
       ariaLabel={t('pack.servers.sortOrder')}
     />
   </div>
   <div class="mt-group mt-group-actions">
-    <button class="btn btn-ghost btn-sm" onclick={pingAll} disabled={pingingAll || !servers.length}>
-      <i class="ti {pingingAll ? 'ti-loader spin' : 'ti-refresh'}"></i> {pingingAll ? t('pack.servers.pinging') : t('pack.servers.pingAll')}
-    </button>
-    <button class="btn btn-ghost btn-sm" onclick={openBatchCopy} disabled={!servers.length} title={t('pack.servers.copyTo')}>
-      <i class="ti ti-copy"></i> {t('pack.servers.copyTo')}
-      {#if selected.size}<span class="srv-sel-count">{selected.size}</span>{/if}
-    </button>
+    <div class="tool-cluster" role="toolbar" aria-label={t('pack.tab.servers')}>
+      <button onclick={pingAll} disabled={pingingAll || !servers.length} use:tip={pingingAll ? t('pack.servers.pinging') : t('pack.servers.pingAll')} aria-label={t('pack.servers.pingAll')}>
+        <i class="ti {pingingAll ? 'ti-loader spin' : 'ti-refresh'}"></i>
+      </button>
+      <button class="tc-copy" onclick={openBatchCopy} disabled={!servers.length} use:tip={t('pack.servers.copyTo')} aria-label={t('pack.servers.copyTo')}>
+        <i class="ti ti-copy"></i>
+        {#if selected.size}<span class="srv-sel-count">{selected.size}</span>{/if}
+      </button>
+    </div>
     <button class="btn btn-primary btn-sm" onclick={openAddModal}><i class="ti ti-plus"></i> {t('pack.servers.add')}</button>
   </div>
 </div>
 
+<div class="server-list" aria-busy={loading}>
 {#if loading}
-  <div class="srv-empty"><i class="ti ti-loader spin"></i></div>
+  <div class="srv-empty" role="status"><i class="ti ti-loader spin"></i><div>{t('loading')}</div></div>
+{:else if loadError}
+  <div class="srv-empty" role="alert"><i class="ti ti-alert-circle"></i><div>{loadError}</div><button class="btn btn-secondary" onclick={load}>{t('pack.servers.retry')}</button></div>
 {:else if !servers.length}
   <div class="srv-empty">
     <i class="ti ti-server-2"></i>
     <div>{t('pack.servers.empty')}</div>
+    <button class="btn btn-primary" onclick={openAddModal}><i class="ti ti-plus"></i>{t('pack.servers.add')}</button>
   </div>
 {:else if !filtered.length}
   <div class="srv-empty">
     <i class="ti ti-search-off"></i>
     <div>{t('pack.servers.noResultsFor', { query })}</div>
+    <button class="btn btn-secondary" onclick={() => { query = ''; statusFilter = 'all' }}>{t('pack.servers.clearFilters')}</button>
   </div>
 {:else}
   {#each filtered as s, i (s.address)}
@@ -416,7 +434,8 @@
     {@const isDragging = dragAddress === s.address}
     {@const isDropTarget = dragOverAddress === s.address && dragAddress !== s.address}
     <div
-      class="srv-card rise-in"
+      class="srv-card"
+      class:online={pr?.online === true}
       class:dragging={isDragging}
       class:drop-before={isDropTarget && dragOverPos === 'before'}
       class:drop-after={isDropTarget && dragOverPos === 'after'}
@@ -440,7 +459,7 @@
         class="srv-check"
         class:checked={selected.has(s.address)}
         onclick={(e: any) => { e.stopPropagation(); toggleSelected(s.address) }}
-        title={t('pack.servers.selectForCopy')}
+        aria-label={t('pack.servers.selectForCopy') + ': ' + (s.name || s.address)} title={t('pack.servers.selectForCopy')}
       >
         <i class="ti ti-check"></i>
       </button>
@@ -459,7 +478,7 @@
       <!-- Основна інфа -->
       <div class="srv-info">
         <div class="srv-name">
-          <span class="srv-name-text">{s.name || s.address}</span>
+          <span class="srv-name-text" title={s.name || s.address}>{s.name || s.address}</span>
           {#if s.official}<span class="chip on">{t('pack.servers.official')}</span>{/if}
           <!-- Тимчасовий сервер (P2P-кімната): лаунчер прибере його сам,
                щойно доступу не стане — про це треба чесно сказати тут. -->
@@ -470,7 +489,7 @@
           {/if}
           {#if s.pinned}<span class="chip pin"><i class="ti ti-pin"></i></span>{/if}
         </div>
-        <div class="srv-addr">{s.address}</div>
+        <div class="srv-addr" title={s.address}>{s.address}</div>
         {#if pr?.online && pr.motd}
           <div class="srv-motd" title={stripMotdCodes(pr.motd)}>{#each parseMotdSegments(pr.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
         {/if}
@@ -482,7 +501,7 @@
           <i class="ti ti-loader spin srv-ping-spin"></i>
         {:else if pr?.online}
           <div class="srv-ping-on">
-            <span class="dot on"></span>
+            <span class="dot on"></span><span class="srv-status-label">{t('pack.servers.filterOnline')}</span>
             <span class="srv-ping-count">{pr.players ?? 0}<span class="srv-ping-max">/{pr.maxPlayers ?? 0}</span></span>
           </div>
         {:else if pr}
@@ -493,18 +512,18 @@
       <!-- Action-кнопки: завжди видимі справа -->
       <div class="srv-actions">
         <button class="srv-action-btn primary" onclick={() => playOn(s)} disabled={disabled} title={t('pack.servers.join')}>
-          <i class="ti ti-player-play"></i>
+          <i class="ti ti-player-play" aria-hidden="true"></i><span>{t('pack.servers.join')}</span>
         </button>
-        <button class="srv-action-btn" onclick={() => openEditModal(s)} title={t('pack.servers.edit')}>
+        <button class="srv-action-btn" onclick={() => openEditModal(s)} aria-label={t('pack.servers.edit')} title={t('pack.servers.edit')}>
           <i class="ti ti-pencil"></i>
         </button>
-        <button class="srv-action-btn" onclick={() => openCopyModal([s])} title={t('pack.servers.copyTo')}>
+        <button class="srv-action-btn" onclick={() => openCopyModal([s])} aria-label={t('pack.servers.copyTo')} title={t('pack.servers.copyTo')}>
           <i class="ti ti-copy"></i>
         </button>
-        <button class="srv-action-btn" class:pin-on={s.pinned} onclick={() => togglePin(s)} title={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')}>
+        <button class="srv-action-btn" class:pin-on={s.pinned} onclick={() => togglePin(s)} aria-label={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')} title={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')}>
           <i class="ti ti-pin"></i>
         </button>
-        <button class="srv-action-btn danger" onclick={() => removeServer(s)} title={t('pack.servers.remove')}>
+        <button class="srv-action-btn danger" onclick={() => removeServer(s)} aria-label={t('pack.servers.remove')} title={t('pack.servers.remove')}>
           <i class="ti ti-trash"></i>
         </button>
       </div>
@@ -514,6 +533,9 @@
     </div>
   {/each}
 {/if}
+
+</div>
+</section>
 
 <!-- Додати/редагувати сервер -->
 {#if editorOpen}
@@ -624,11 +646,10 @@
   </UiModal>
 {/if}
 
-<style>
-  /* ── Тулбар: рівно як .mods-toolbar у менеджері модів (дві групи в
+<style>  /* ── Тулбар: рівно як .mods-toolbar у менеджері модів (дві групи в
      стовпець: пошук+фільтр+сортування, потім рядок дій праворуч). ── */
   .mods-toolbar {
-    display: flex; flex-direction: column; gap: 8px;
+    display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px;
     position: sticky; top: var(--mt-top, 0px); z-index: 18;
     margin: -4px -4px 8px; padding: 8px 4px 10px;
     background: linear-gradient(180deg,
@@ -637,18 +658,22 @@
     backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
     border-radius: 0 0 var(--r-lg) var(--r-lg);
   }
-  .mt-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .mt-group-main { width: 100%; min-width: 0; }
-  .mt-group-actions { width: 100%; justify-content: flex-end; }
-  .mt-group-actions .btn { height: 36px; }
+  .mt-group { display: flex; align-items: center; gap: 8px; }
+  .mt-group-main { flex: 1 1 360px; min-width: 0; }
+  .mt-group-actions { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
+  .mt-group-actions .btn { height: 36px; white-space: nowrap; }
   .mt-search {
     display: flex; align-items: center; gap: 8px;
-    background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--r-sm);
-    padding: 0 11px; height: 32px; flex: 1 1 220px; min-width: 150px;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
+    padding: 0 12px; height: 36px; flex: 1 1 200px; min-width: 140px;
+    transition: border-color .15s, box-shadow .15s;
   }
-  .mt-search i { color: var(--text-dim); font-size: 14px; }
-  .mt-search input { flex: 1; background: none; border: none; outline: none; color: var(--text); font-size: 12.5px; }
-  .mt-spacer { flex: 1; }
+  .mt-search:focus-within { border-color: rgba(var(--orange-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
+  .mt-search i { color: var(--text-dim); font-size: 15px; }
+  .mt-search:focus-within i { color: var(--orange); }
+  .mt-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 13px; }
+  .tool-cluster > .tc-copy { position: relative; }
+  .tc-copy .srv-sel-count { position: absolute; top: -5px; right: -5px; padding: 0 5px; }
 
   /* ── Напрямок вставки: лінія В ЗАЗОРІ між картками (зверху для before,
      знизу для after) кольором --drop-c — раніше тут була лише підсвітка
@@ -684,8 +709,8 @@
   .srv-card {
     position: relative;
     display: flex; align-items: center; gap: 12px;
-    padding: 11px 14px 11px 18px;
-    border-radius: var(--r-md);
+    padding: 9px 14px; margin-bottom: 6px;
+    border-radius: 12px;
     background: linear-gradient(
       135deg,
       color-mix(in srgb, var(--bg-card) 95%, transparent),
@@ -701,16 +726,16 @@
       opacity .15s,
       margin .14s ease;
     cursor: grab;
-    animation: srv-rise .22s cubic-bezier(.34,1.4,.64,1) both;
+    animation: srv-rise .3s cubic-bezier(.2,0,0,1) backwards;
   }
   @keyframes srv-rise {
     from { opacity: 0; transform: translateY(6px) scale(.99); }
     to   { opacity: 1; transform: translateY(0) scale(1); }
   }
   .srv-card:hover {
-    transform: translateY(-2px);
+    transform: translateY(-1px);
     border-color: var(--border-hi);
-    box-shadow: 0 8px 28px rgba(0,0,0,.25);
+    box-shadow: 0 6px 20px rgba(0,0,0,.22);
   }
   .srv-card:hover .srv-card-accent { opacity: 1; }
   .srv-card.dragging {
@@ -731,9 +756,9 @@
   /* Лівий акцент-бар (як glow у wr2-card) */
   .srv-card-accent {
     position: absolute;
-    left: 0; top: 12%; bottom: 12%;
+    left: 4px; top: 10px; bottom: 10px;
     width: 3px;
-    border-radius: 0 3px 3px 0;
+    border-radius: 999px;
     background: var(--orange);
     opacity: 0;
     transition: opacity .2s;
@@ -741,7 +766,7 @@
   }
 
   .srv-fav {
-    width: 38px; height: 38px; min-width: 38px; border-radius: 10px;
+    width: 40px; height: 40px; min-width: 40px; border-radius: 10px;
     background: var(--bg-input-hi); display: flex; align-items: center; justify-content: center;
     font-size: 16px; overflow: hidden; color: var(--text-mute);
     border: 1px solid var(--border); flex-shrink: 0;
@@ -754,9 +779,9 @@
   .srv-fav img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
 
   .srv-info { flex: 1; min-width: 0; }
-  .srv-name { display: flex; align-items: center; gap: 7px; margin-bottom: 2px; }
-  .srv-name-text { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .srv-addr { font-size: var(--fs-min); color: var(--text-mute); font-family: 'JetBrains Mono', monospace; }
+  .srv-name { display: flex; align-items: center; gap: 7px; margin-bottom: 1px; }
+  .srv-name-text { font-size: 13.5px; font-weight: 750; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srv-addr { font-size: 12px; color: var(--text-mute); font-family: var(--font-mono); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .srv-motd {
     margin-top: 3px; font-size: var(--fs-min); color: var(--text-mute); line-height: 1.3;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px;
@@ -798,14 +823,14 @@
   }
 
   .srv-action-btn {
-    width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--border);
+    width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--border);
     background: var(--bg-input); color: var(--text-mute); cursor: pointer;
     display: flex; align-items: center; justify-content: center; font-size: 13px;
     transition: background .12s, color .12s, border-color .12s, transform .12s;
     flex-shrink: 0;
   }
   .srv-action-btn:hover { background: var(--bg-input-hi); color: var(--text); border-color: var(--border-hi); transform: scale(1.08); }
-  .srv-action-btn.primary { background: var(--orange); color: #fff; border-color: transparent; }
+  .srv-action-btn.primary { width:auto; padding:0 12px; gap:7px; font:700 12px var(--font-ui); background: var(--orange); color: #fff; border-color: transparent; }
   .srv-action-btn.primary:hover { background: color-mix(in srgb, var(--orange) 85%, #fff); box-shadow: 0 4px 14px rgba(var(--orange-rgb),.45); }
   .srv-action-btn.primary:disabled { opacity: .5; cursor: not-allowed; transform: none; }
   .srv-action-btn.danger:hover { background: rgba(239,68,68,.15); color: var(--red); border-color: rgba(239,68,68,.4); }
@@ -824,25 +849,6 @@
   .chip.pin { padding: 2px 6px; font-size: var(--fs-min); color: var(--orange); background: rgba(var(--orange-rgb),.12); border-color: rgba(var(--orange-rgb),.3); }
   .chip.temp { display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px; font-size: var(--fs-min); color: #60a5fa; background: rgba(59, 130, 246, .13); border-color: rgba(59, 130, 246, .35); }
 
-  .pss-chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-  .pss-chip {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 11px; border-radius: 999px;
-    background: var(--bg-input); border: 1px solid var(--border);
-    color: var(--text-mute); font: 700 11px/1 var(--font-ui); cursor: pointer;
-    transition: color .15s, border-color .15s, background .15s;
-  }
-  .pss-chip:hover { color: var(--text); border-color: var(--border-hi); }
-  .pss-chip.active {
-    color: var(--orange); border-color: rgba(var(--orange-rgb), .5);
-    background: rgba(var(--orange-rgb), .12);
-  }
-  .pss-chip .dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
-  .pss-count {
-    font: 800 11px/1 var(--font-mono); color: var(--text-dim);
-    background: var(--bg-input); border: 1px solid var(--border);
-    border-radius: 999px; padding: 4px 9px; margin-right: 2px;
-  }
 
   .srv-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 50px 20px; color: var(--text-mute); font-size: 12.5px; text-align: center; }
   .srv-empty i { font-size: 28px; opacity: .5; }
@@ -916,4 +922,43 @@
   .cp-sub { font-size: var(--fs-min); color: var(--text-mute); font-family: var(--font-mono); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .cp-check { font-size: 16px; color: var(--text-dim); opacity: 0; flex-shrink: 0; transition: opacity .15s, color .15s; }
   .cp-item.sel .cp-check { opacity: 1; color: var(--orange); }
+
+  .server-section { container-type:inline-size; min-width:0; }
+  .server-toolbar { margin-bottom:12px; }
+  .server-list { min-width:0; }
+  .srv-card.online { border-color:color-mix(in srgb,var(--green) 22%,var(--border)); }
+  .srv-card.online .srv-card-accent { background:var(--green); opacity:.75; box-shadow:none; }
+  .srv-ping { padding:5px 9px; border-radius:8px; background:var(--bg-input); }
+  .srv-status-label { font-size:11px; color:var(--green); }
+  .srv-name { flex-wrap:wrap; }
+  .srv-actions { flex-wrap:wrap; }
+  .srv-empty { border:1px dashed var(--border-hi); border-radius:16px; background:var(--bg-card); }
+  .srv-action-btn:focus-visible, .srv-check:focus-visible { outline:2px solid var(--orange); outline-offset:3px; }
+  @container (max-width:820px) {
+    .srv-card { flex-wrap:wrap; }
+    .srv-info { flex-basis:calc(100% - 120px); }
+    .srv-actions { margin-left:auto; }
+    .srv-grip { display:none; }
+      }
+  @container (max-width:440px) {
+    .srv-card { padding:9px 10px; gap:8px; }
+    .srv-actions { width:100%; justify-content:flex-end; }
+    .srv-action-btn.primary { margin-right:auto; }
+    .srv-status-label { display:none; }
+    }
+  @media (prefers-reduced-motion:reduce) {
+    .srv-card { animation:none !important; transition:none; }
+    .srv-card:hover, .srv-action-btn:hover, .srv-check:hover { transform:none; }
+  }
+  @media (prefers-reduced-motion:no-preference) {
+    .srv-action-btn:not(:disabled):active { transform:scale(.96); }
+  }
+  :global(html[data-animations="off"]) .srv-card,
+  :global(html[data-performance-mode="on"]) .srv-card { animation:none; }
+  :global(html[data-animations="off"]) .srv-card:hover,
+  :global(html[data-performance-mode="on"]) .srv-card:hover,
+  :global(html[data-animations="off"]) .srv-action-btn,
+  :global(html[data-performance-mode="on"]) .srv-action-btn { transform:none !important; }
+
+
 </style>

@@ -46,7 +46,7 @@ func NewService(skinsDir string, refresh TokenRefresher) *Service {
 
 // NewServiceDB створює сервіс гардеробу, чиї пресети зберігаються в SQLite
 // (таблиця wardrobe_presets) замість presets.json; PNG-файли скінів/плащів
-// лишаються в skinsDir (це кеш текстур).
+// лишаються в skinsDir (постійні дані користувача).
 func NewServiceDB(st *store.Store, skinsDir string, refresh TokenRefresher) *Service {
 	return &Service{
 		store:    NewStoreDB(st, skinsDir),

@@ -184,6 +184,7 @@ export const App = {
   GetFontsDir: (): Promise<string> => call('FontsDir'),
   // Відкрити теку шрифтів у Провіднику.
   OpenFontsFolder: (): Promise<void> => call('OpenFontsFolder'),
+  OpenComponentsFolder: (): Promise<void> => call('OpenComponentsFolder'),
   OpenCacheFolder: (): Promise<void> => call('OpenCacheFolder'),
   OpenLogsFolder: (): Promise<void> => call('OpenLogsFolder'),
   // ── Імпорт спільнотної мови (JSON) ──
@@ -644,6 +645,11 @@ export const App = {
   OpenPackFolder: (id: string): Promise<void> => call('OpenPackFolder', id),
   // Список тек одиночних світів (saves/) збірки — для вибору світу в
   // автоприєднанні на сторінці збірки, вкладка «Гра».
+  ApplyPerformancePreset: (id: string, preset: string): Promise<void> => call('ApplyPerformancePreset', id, preset),
+  GetPerformancePreset: (id: string): Promise<boolean> => call('GetPerformancePreset', id),
+  CreatePackWorldSnapshot: (id: string): Promise<string> => call('CreatePackWorldSnapshot', id),
+  ListPackWorldSnapshots: (id: string): Promise<string[]> => call('ListPackWorldSnapshots', id),
+  RestorePackWorldSnapshot: (id: string, snapshot: string): Promise<string[]> => call('RestorePackWorldSnapshot', id, snapshot),
   ListInstanceWorlds: (id: string): Promise<string[]> => call('ListInstanceWorlds', id),
   RemoveAccount: (id: string): Promise<void> => call('RemoveAccount', id),
   // Перейменування офлайн (Шаурма) акаунта: новий нік = новий ID/UUID.

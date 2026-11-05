@@ -1,8 +1,10 @@
 package discordrpc
 
 import (
+	"strings"
 	"testing"
 	"time"
+	"unicode/utf16"
 )
 
 func TestApplyTpl(t *testing.T) {
@@ -82,5 +84,27 @@ func TestRebuildDisabledClears(t *testing.T) {
 	m.SetConfig(false, "", "")
 	if m.lastActivity != nil {
 		t.Fatalf("вимкнено: очікувалось очищення активності, отримано %+v", m.lastActivity)
+	}
+}
+
+// Discord відхиляє всю активність через невалідну кнопку — тож перевіряємо
+// ліміти тут, а не дізнаємось про них зі зламаного статусу в гравців.
+func TestSiteButtonWithinDiscordLimits(t *testing.T) {
+	if n := len([]rune(siteButtonLabel)); n < 1 || n > 32 {
+		t.Fatalf("button label length %d, Discord allows 1..32", n)
+	}
+	if n := len(utf16.Encode([]rune(siteButtonLabel))); n > 32 {
+		t.Fatalf("button label is %d UTF-16 units, Discord allows 32", n)
+	}
+	if !strings.HasPrefix(siteButtonURL, "https://") || len(siteButtonURL) > 512 {
+		t.Fatalf("bad button url %q", siteButtonURL)
+	}
+	p := (&activity{Details: "d", WithSiteButton: true}).toPayload()
+	b, ok := p["buttons"].([]map[string]string)
+	if !ok || len(b) != 1 || b[0]["url"] != siteButtonURL || b[0]["label"] != siteButtonLabel {
+		t.Fatalf("buttons = %#v", p["buttons"])
+	}
+	if _, has := (&activity{Details: "d"}).toPayload()["buttons"]; has {
+		t.Fatal("button must be opt-in")
 	}
 }
