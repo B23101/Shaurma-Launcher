@@ -516,6 +516,9 @@ type Snapshot struct {
 	Invites []Invite
 	Unread  []UnreadChat
 	Privacy Privacy
+	// Activity — accountId співрозмовника → час (мс) останнього повідомлення з ним. nil — сервер цього не
+	// віддає (старий): порядок чатів тоді з'ясовується запитами історії.
+	Activity map[string]int64
 }
 
 // UnreadChat — лічильник непрочитаного в діалозі (chatId).
@@ -552,6 +555,10 @@ type snapshotWire struct {
 		LastID int64  `json:"lastId"`
 		LastTS int64  `json:"lastTs"`
 	} `json:"unread"`
+	Activity []struct {
+		ChatID string `json:"chatId"`
+		TS     int64  `json:"ts"`
+	} `json:"activity"`
 	Privacy struct {
 		ShowStatusTo   string `json:"showStatusTo"`
 		ShowServerTo   string `json:"showServerTo"`
@@ -622,6 +629,15 @@ func (p *PresenceClient) handleSnapshot(data []byte) {
 			continue
 		}
 		snap.Unread = append(snap.Unread, UnreadChat{ChatID: u.ChatID, Count: u.Count, LastID: u.LastID, LastTS: u.LastTS})
+	}
+	if w.Activity != nil {
+		snap.Activity = make(map[string]int64, len(w.Activity))
+		for _, a := range w.Activity {
+			if _, err := splitChatID(a.ChatID); err != nil || a.TS < 0 || a.TS > now+60_000 || len(snap.Activity) >= MaxFriends {
+				continue
+			}
+			snap.Activity[a.ChatID] = a.TS
+		}
 	}
 	snap.Privacy = NormalizePrivacy(Privacy{ShowStatusTo: w.Privacy.ShowStatusTo, ShowServerTo: w.Privacy.ShowServerTo, FriendRequest: w.Privacy.FriendRequests, WhoCanMessage: w.Privacy.WhoCanMessage})
 

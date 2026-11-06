@@ -19,6 +19,7 @@
   import type { Group } from '../groups/groupTypes'
   import { useGroupsStore } from '../groups/GroupsStore.svelte'
   import { toMs } from './activityCache'
+  import { onMount } from 'svelte'
 
   let { activeId = '', onAdd, onCreateGroup }: { activeId?: string; onAdd: () => void; onCreateGroup: () => void } = $props()
   const s = useFriendsStore()
@@ -38,6 +39,18 @@
   // тому список більше не «прогрівається» й не стрибає після відкриття.
   $effect(() => { void s.me; void gs.me; s.restoreActivity(); gs.restoreActivity() })
   $effect(() => { s.syncActivity([...s.st.friends, ...s.otherChats].map(f => f.accountId)) })
+  // Поки порядок чатів невідомий (перший запуск без кешу), замість списку в «неправильному» порядку, який потім
+  // стрибне, показуємо заготовки. Із кешем (звичайний запуск) цього стану немає зовсім. Запасний таймер — щоб
+  // список не лишився прихованим, якщо сервер недоступний.
+  let waited = $state(false)
+  onMount(() => { const id = setTimeout(() => (waited = true), 2500); return () => clearTimeout(id) })
+  const orderReady = $derived(waited || (s.activityReady && (gs.loaded ? gs.activityReady || gs.groups.length === 0 : false)))
+
+  // Історію групи вантажимо наперед (наведення з невеликою затримкою або натискання), тож до кліку вона вже тут.
+  let hoverT: ReturnType<typeof setTimeout> | undefined
+  const hoverGroup = (id: string) => { clearTimeout(hoverT); hoverT = setTimeout(() => gs.prefetch(id), 120) }
+  const leaveGroup = () => clearTimeout(hoverT)
+
   // Захист від «клікнув одне — відкрилось інше»: якщо між натисканням і відпусканням
   // кнопки миші список переставився (прийшло повідомлення), клік на чужий рядок ігноруємо.
   let pressedKey = ''
@@ -159,11 +172,15 @@
       {#if !compact && gs.enabled}
         <button class="btn btn-ghost btn-sm fl-new" onclick={onCreateGroup}><i class="ti ti-users-plus"></i>{t('groups.new')}</button>
       {/if}
+      {#if !orderReady}
+        {#each [0, 1, 2, 3, 4, 5] as i (i)}<div class="fl-skel" class:compact style="--i:{i}" aria-hidden="true"></div>{/each}
+      {:else}
       {#each chats as row (row.key)}
         <div class="fl-row" data-chat-key={row.key}>
         {#if row.group}
           {@const gr = row.group}
-          <button class="fl-group" class:active={gs.activeId === gr.id} class:compact onclick={() => gs.open(gr.id)} title={gr.title}>
+          <button class="fl-group" class:active={gs.activeId === gr.id} class:compact onclick={() => gs.open(gr.id)} title={gr.title}
+                  onpointerenter={() => hoverGroup(gr.id)} onpointerleave={leaveGroup} onfocus={() => hoverGroup(gr.id)} onpointerdown={() => gs.prefetch(gr.id)}>
             <GroupAvatar title={gr.title} icon={gr.settings.icon} color={gr.settings.color} />
             {#if !compact}<span><b>{gr.title}{#if s.isMuted(gr.id)} <i class="ti ti-bell-off" aria-label={t('groups.mute')}></i>{/if}</b><small>{t('groups.members', { n: gr.members.length })}</small></span>{/if}
             {#if gs.unread[gr.id]}<span class="ff-badge">{gs.unread[gr.id]}</span>{/if}
@@ -175,12 +192,17 @@
       {:else}
         <EmptyState icon="ti-message-circle-2" title={s.search ? t('social.searchEmpty') : t('social.empty')} {compact} />
       {/each}
+      {/if}
     {/if}
   </div>
 </aside>
 
 <style>
   .fl-row { display: contents; }
+  .fl-skel { height: 58px; margin-bottom: 6px; border-radius: 12px; background: var(--bg-card); opacity: .6; animation: fl-skel 1.2s ease-in-out infinite; animation-delay: calc(var(--i) * 90ms); }
+  .fl-skel.compact { width: 44px; height: 44px; margin: 0 auto 8px; border-radius: 50%; }
+  @keyframes fl-skel { 50% { opacity: .25; } }
+  @media (prefers-reduced-motion: reduce) { .fl-skel { animation: none; } }
   .fl-new { width: 100%; justify-content: center; margin-bottom: 8px; }
   .fl-group { width: 100%; min-height: 58px; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
   .fl-group:hover { background: var(--hover); }

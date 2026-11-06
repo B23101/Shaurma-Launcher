@@ -32,6 +32,8 @@ export interface Group {
   members: GroupMember[]
   unread?: number
   lastId?: number
+  /** Час (мс) останнього повідомлення — від сервера, для порядку списку чатів без запитів історії. */
+  lastTs?: number
 }
 
 export interface GroupReaction { by: string; emoji: string }

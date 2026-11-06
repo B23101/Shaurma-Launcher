@@ -20,6 +20,9 @@ type State struct {
 	// Unread — непрочитані повідомлення за accountId співрозмовника (лише > 0).
 	// Джерело правди — VPS; тут дзеркало для бейджів у UI.
 	Unread map[string]int `json:"unread"`
+	// Activity — час (мс) останнього повідомлення за accountId співрозмовника, як його знає сервер: порядок
+	// списку чатів готовий одразу, без запитів історії кожного чату. Відсутні ключі — сервер не знає.
+	Activity map[string]int64 `json:"activity,omitempty"`
 	// MeStatus — МІЙ статус присутності для віджета акаунта: "online" |
 	// "away" | "in_game" | "offline". UI малює підпис статусу САМЕ з нього
 	// (разом із Conn), а не з припущення «я завжди в мережі»: раніше віджет
@@ -537,6 +540,16 @@ func (s *Service) onSnapshot(sn Snapshot) {
 		}
 	}
 	s.st.Unread = unread
+	var activity map[string]int64 // нова мапа на кожен знімок: стару ніхто не змінює, тож ділити її між копіями безпечно
+	if sn.Activity != nil {
+		activity = make(map[string]int64, len(sn.Activity))
+		for chat, ts := range sn.Activity {
+			if peer := OtherPartyInChat(chat, s.st.Me); peer != "" {
+				activity[peer] = ts
+			}
+		}
+	}
+	s.st.Activity = activity
 	newInvites := len(sn.Invites) > s.lastInviteCount
 	s.lastInviteCount = len(sn.Invites)
 	pc, policy := s.pc, s.st.Privacy

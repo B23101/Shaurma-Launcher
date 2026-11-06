@@ -98,10 +98,13 @@ export class FriendsStore {
   peerProfiles = $state<Record<string, SocialPeerProfile>>({})
   /** accountId співрозмовника → час (мс) останнього повідомлення. Живе в кеші по акаунту (activityCache). */
   activity = $state<Record<string, number>>({})
+  /** Порядок чатів достовірний (кеш або перша звірка) — до цього список не показуємо, щоб він не «стрибав» на очах. */
+  activityReady = $state(false)
   #activityPending = new Set<string>()
   /** Чати, активність яких уже звірена з сервером у ЦІЙ сесії (кеш показуємо одразу, звіряємо тихо). */
   #activityVerified = new Set<string>()
   #activityFor = ''
+  #activityReadyTimer: ReturnType<typeof setTimeout> | undefined
   typingNow = $state<Record<string, boolean>>({})
 
   myHandle = $state('')
@@ -129,7 +132,12 @@ export class FriendsStore {
       if (!me || this.#activityFor === me) return
       this.#activityFor = me
       this.#activityVerified.clear()
-      mergeActivity(this.activity, readActivity(this.#actKey()))
+      this.activityReady = false
+      clearTimeout(this.#activityReadyTimer)
+      const had = mergeActivity(this.activity, readActivity(this.#actKey()))
+      // Є збережений порядок — показуємо одразу; ні — чекаємо першу звірку (але не довше 2.5 с).
+      if (had) this.activityReady = true
+      else this.#activityReadyTimer = setTimeout(() => { this.activityReady = true }, 2500)
     })
   }
   #bump(id: string, ts: number) {
@@ -147,7 +155,10 @@ export class FriendsStore {
     this.restoreActivity()
     const me = this.me
     const pending = ids.filter(id => !this.#activityVerified.has(id) && !this.#activityPending.has(id))
-    if (!pending.length) return
+    if (!pending.length) {
+      if (!this.#activityPending.size && !this.loading) this.activityReady = true
+      return
+    }
     pending.forEach(id => this.#activityPending.add(id))
     // Відповіді збираємо й застосовуємо ОДНИМ махом: раніше кожна приходила окремо, і список
     // «перешиковувався» десятки разів поспіль — рядок втікав з-під курсора і клік влучав в інший чат.
@@ -164,7 +175,19 @@ export class FriendsStore {
     void Promise.all(Array.from({ length: 6 }, worker)).then(() => {
       if (this.me !== me) return
       for (const [id, ts] of Object.entries(found)) { this.#bump(id, ts); this.#activityVerified.add(id) }
+      clearTimeout(this.#activityReadyTimer)
+      this.activityReady = true
     })
+  }
+  /** Сервер сам віддає час останнього повідомлення кожного діалогу: беремо його одразу, без запитів історії. */
+  #applyServerActivity(st: SocialState) {
+    if (!st.loggedIn || !st.me) return
+    this.restoreActivity()
+    for (const [id, ts] of Object.entries(st.activity ?? {})) { this.#bump(id, ts); this.#activityVerified.add(id) }
+    if (st.friends.length > 0 && st.friends.every(f => this.#activityVerified.has(f.accountId))) {
+      clearTimeout(this.#activityReadyTimer)
+      this.activityReady = true
+    }
   }
   #recordActivity(e: { chatId?: string; from?: string; ts?: number }) {
     const parts = e.chatId?.split('_')
@@ -253,8 +276,10 @@ export class FriendsStore {
     const tick = setInterval(() => { this.nowTick = Date.now() }, 30_000)
 
     const offs = [
-      on('friends:update', (s: SocialState) => { this.st = normalize(s); this.loading = false; this.#markReady() }),
-      on('friends:conn', (c: SocialConn) => { this.st.conn = c; if (c === 'online') { this.#activityVerified.clear(); this.syncActivity([...this.st.friends, ...this.otherChats].map(f => f.accountId)) } }),
+      on('friends:update', (s: SocialState) => { this.st = normalize(s); this.#applyServerActivity(this.st); this.loading = false; this.#markReady() }),
+      // Після підключення сервер одразу шле знімок із часом активності; історію питаємо лише для діалогів, яких він не знає
+      // (це робить syncActivity у списку чатів після friends:update).
+      on('friends:conn', (c: SocialConn) => { this.st.conn = c; if (c === 'online') this.#activityVerified.clear() }),
       on('chat:keys', (k: ChatKeyStatus) => { if (k) this.keys = k }),
       on('friends:presence', (e: SocialPresenceEvent) => {
         const f = this.st.friends.find((x) => x.accountId === e?.accountId)
@@ -274,6 +299,7 @@ export class FriendsStore {
     return () => {
       clearInterval(tick)
       clearTimeout(this.#readyTimer)
+      clearTimeout(this.#activityReadyTimer)
       offs.forEach((off) => off())
       Object.values(this.#typingTimers).forEach(clearTimeout)
       App.SetSocialView(false, '').catch(() => {})
@@ -290,6 +316,7 @@ export class FriendsStore {
   async load(force = false) {
     try {
       this.st = normalize(force ? await App.RefreshFriends() : await App.GetFriendsState())
+      this.#applyServerActivity(this.st)
     } catch (e) {
       toast(this.errText(e), 'error')
     } finally {

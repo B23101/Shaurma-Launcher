@@ -13,6 +13,8 @@ export interface ChatSendState { status: string; id?: number; ts?: number; code?
 export interface ChatApi {
   /** Курсор історії: 'ts' — час повідомлення (особисті), 'id' — номер повідомлення (групи). */
   cursor: 'ts' | 'id'
+  /** Скільки повідомлень брати за один запит історії (за замовчуванням 50). */
+  pageSize?: number
   /** Скільки непрочитаних було на момент відкриття (для роздільника «Нові»). */
   unread(peer: string): Promise<number>
   history(peer: string, before: number, limit: number): Promise<SocialChatPage>

@@ -22,6 +22,10 @@ const CTX = Symbol('groups-store')
 const TYPING_MS = 4000
 /** Скільки повідомлень тримаємо в пам'яті на групу (старі підвантажуються знову). */
 const KEEP_MSGS = 400
+/** Перша сторінка історії групи — як у Telegram: лише найновіше, старіше підвантажується при прокрутці вгору. */
+export const GROUP_PAGE = 30
+/** Скільки живе заздалегідь завантажена (prefetch) сторінка, яку так і не відкрили. */
+const PREFETCH_TTL = 20_000
 
 type Fields = Record<string, unknown>
 
@@ -31,6 +35,8 @@ export class GroupsStore {
   loaded = $state(false)
   groups = $state<Group[]>([])
   activity = $state<Record<string, number>>({})
+  /** Порядок груп достовірний (кеш або звірка з сервером) — до цього список не показуємо, щоб він не «стрибав». */
+  activityReady = $state(false)
   invites = $state<GroupInvite[]>([])
   whoCanAdd = $state<GroupPolicy>('friends')
   activeId = $state('')
@@ -67,7 +73,7 @@ export class GroupsStore {
       on('group:event', (e: { type?: string; data?: any }) => this.#handle(e?.type ?? '', e?.data)),
       // Після (пере)підключення сервер сам шле знімок, але повторимо запит: пуші йдуть лише на
       // цей вузол, тож історію відкритої групи теж підтягуємо знову.
-      on('friends:conn', (c: string) => { if (c === 'online') { this.#activityVerified.clear(); void this.refresh() } }),
+      on('friends:conn', (c: string) => { if (c === 'online') { this.#activityVerified.clear(); this.#first.clear(); void this.refresh() } }),
     ]
     void this.refresh()
     return () => {
@@ -79,14 +85,27 @@ export class GroupsStore {
   // Порядок чатів: останній відомий час активності зберігається локально (як у FriendsStore), тож
   // список груп одразу впорядкований, а мережа лише уточнює.
   #actKey = () => `sg.activity.${this.me}`
+  #lastKey = () => `sg.lastid.${this.me}`
   #activityFor = ''
   #activityVerified = new Set<string>()
+  /** Останній відомий id повідомлення кожної групи (з кешу/подій): якщо знімок сервера показує те саме — історію не питаємо. */
+  #knownLast: Record<string, number> = {}
+  #readyTimer: ReturnType<typeof setTimeout> | undefined
   restoreActivity() {
     untrack(() => {
       if (!this.me || this.#activityFor === this.me) return
       this.#activityFor = this.me
       this.#activityVerified.clear()
-      mergeActivity(this.activity, readActivity(this.#actKey()))
+      this.activityReady = false
+      clearTimeout(this.#readyTimer)
+      const had = mergeActivity(this.activity, readActivity(this.#actKey()))
+      try {
+        const v = JSON.parse(localStorage.getItem(this.#lastKey()) ?? '{}')
+        this.#knownLast = v && typeof v === 'object' ? v : {}
+      } catch { this.#knownLast = {} }
+      // Є збережений порядок — показуємо одразу; ні — чекаємо першу звірку (але не довше 2.5 с).
+      if (had) this.activityReady = true
+      else this.#readyTimer = setTimeout(() => { this.activityReady = true }, 2500)
     })
   }
   #bump(id: string, ts: number) {
@@ -95,11 +114,31 @@ export class GroupsStore {
     this.activity[id] = ms
     if (this.me) saveActivity(this.#actKey(), () => ({ ...this.activity }))
   }
+  #rememberLast(id: string, last: number) {
+    if (!id || !last || last <= (this.#knownLast[id] ?? 0)) return
+    this.#knownLast[id] = last
+    if (this.me) saveActivity(this.#lastKey(), () => ({ ...this.#knownLast }), 1500)
+  }
 
   async refreshActivity() {
     this.restoreActivity()
-    // Звіряємо лише групи, яких ще не звіряли в цій сесії: живі group_message вже оновлюють activity.
-    const ids = this.groups.map(g => g.id).filter(id => !this.#activityVerified.has(id))
+    // Новий сервер віддає час останнього повідомлення прямо в знімку (lastTs): тоді історію не питаємо взагалі.
+    for (const g of this.groups) {
+      if (!g.lastTs) continue
+      this.#bump(g.id, g.lastTs)
+      this.#rememberLast(g.id, g.lastId ?? 0)
+      this.#activityVerified.add(g.id)
+    }
+    // Старий сервер: у знімку лише id останнього повідомлення — історію питаємо ЛИШЕ для тих груп, де він
+    // відрізняється від відомого (або час ще невідомий). Порожні групи (lastId=0) не питаємо взагалі.
+    const todo = this.groups.filter(g => {
+      if (this.#activityVerified.has(g.id)) return false
+      const last = g.lastId ?? 0
+      if (!last) return false
+      return this.#knownLast[g.id] !== last || !this.activity[g.id]
+    })
+    const ids = todo.map(g => g.id)
+    for (const g of this.groups) if (!ids.includes(g.id)) this.#activityVerified.add(g.id)
     // Результати застосовуємо разом (один перерахунок порядку замість стрибка на кожну відповідь).
     const found: Record<string, number> = {}
     const worker = async () => {
@@ -112,15 +151,18 @@ export class GroupsStore {
     }
     await Promise.all(Array.from({ length: 6 }, worker))
     for (const [id, ts] of Object.entries(found)) {
-      if (!this.group(id)) continue
+      const g = this.group(id)
+      if (!g) continue
       this.#bump(id, ts)
+      this.#rememberLast(id, g.lastId ?? 0)
       this.#activityVerified.add(id)
     }
+    clearTimeout(this.#readyTimer)
+    this.activityReady = true
   }
 
   async refresh() {
     try { await App.GroupRequest('list') } catch { /* офлайн — знімок прийде після підключення */ }
-    if (this.activeId) void this.loadHistory(this.activeId, true)
   }
 
   // ── Допоміжне ──────────────────────────────────────────────────────────
@@ -171,6 +213,9 @@ export class GroupsStore {
 
   #handle(type: string, d: any) {
     if (!d || typeof d !== 'object') return
+    // Заздалегідь завантажена сторінка застаріла, щойно в групі щось змінилось.
+    if (type === 'groups_snapshot') this.#first.clear()
+    else { const gid = d.message?.groupId ?? d.groupId ?? d.group?.id; if (gid) this.#first.delete(String(gid)) }
     this.#apply(type, d)
     for (const fn of this.#listeners) { try { fn(type, d) } catch { /* слухач не ламає стор */ } }
   }
@@ -247,6 +292,8 @@ export class GroupsStore {
 
   #addMsg(m: GroupMessage) {
     this.#bump(m.groupId, m.ts)
+    this.#rememberLast(m.groupId, m.id)
+    this.#first.delete(m.groupId)
     const list = this.msgs[m.groupId] ?? []
     if (list.some((x) => x.id === m.id)) return
     const next = [...list, m].sort((a, b) => a.id - b.id)
@@ -297,9 +344,32 @@ export class GroupsStore {
     this.activeId = id
     this.openedUnread[id] = this.unread[id] ?? 0
     this.unread[id] = 0
-    await this.loadHistory(id, true)
+    // Запит стартує ще до монтування чату; сам чат забере цей самий результат (takeFirstPage) — без другого запиту.
+    void this.firstPage(id).catch(() => {})
   }
   close() { this.activeId = '' }
+
+  // ── Перша сторінка: один запит на двох (prefetch при наведенні + чат) ───
+  #first = new Map<string, { at: number; limit: number; p: Promise<any> }>()
+  firstPage(gid: string, limit = GROUP_PAGE): Promise<any> {
+    const hit = this.#first.get(gid)
+    if (hit && hit.limit === limit && Date.now() - hit.at < PREFETCH_TTL) return hit.p
+    const entry = { at: Date.now(), limit, p: this.#op('history', { groupId: gid, before: 0, limit }) }
+    this.#first.set(gid, entry)
+    entry.p.catch(() => { if (this.#first.get(gid) === entry) this.#first.delete(gid) })
+    return entry.p
+  }
+  /** Чат забирає сторінку (одноразово): повторне відкриття завжди бере свіжі дані. */
+  takeFirstPage(gid: string, limit = GROUP_PAGE): Promise<any> {
+    const p = this.firstPage(gid, limit)
+    this.#first.delete(gid)
+    return p
+  }
+  /** Користувач навів на групу / натиснув — вантажимо історію наперед, щоб до кліка вона вже була. */
+  prefetch(gid: string) {
+    if (!gid || gid === this.activeId || !this.group(gid)) return
+    void this.firstPage(gid).catch(() => {})
+  }
 
   /** fresh=true — найновіша сторінка (замінює локальну); інакше — старіші за найстаріше відоме. */
   async loadHistory(gid: string, fresh = false) {

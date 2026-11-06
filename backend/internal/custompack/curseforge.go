@@ -288,6 +288,19 @@ func cfClassID(projectType string) int {
 // CFSortField — поле сортування /mods/search (ті самі значення, що в
 // офіційному клієнті CurseForge): 1=популярні, 2=завантаження,
 // 3=оновлено, 4=створено.
+// cfSearchSortField — поле сортування для /mods/search з урахуванням тексту
+// запиту. З searchFilter сортування за популярністю (2) ставить у голову
+// видачі найпопулярніші проєкти, що лише ЧАСТКОВО збігаються з ключовим
+// словом, і запит здається проігнорованим. Для «Рекомендованих» та «За
+// релевантністю» з текстом просимо Featured (1) — порядок за збігом, як у
+// пошуку CurseForge. Без тексту й для явних сортувань — як і раніше.
+func cfSearchSortField(query, sort string) int {
+	if strings.TrimSpace(query) != "" && (sort == "" || sort == "featured" || sort == "relevance") {
+		return 1
+	}
+	return cfSortField(sort)
+}
+
 func cfSortField(sort string) int {
 	switch sort {
 	case "downloads":
@@ -393,7 +406,7 @@ func (c *CurseForgeClient) SearchProjectsPage(query, projectType, gameVersion, l
 		return []CFProjectSummary{}, cfSearchMaxIndex, nil
 	}
 	u := fmt.Sprintf("%s/mods/search?searchFilter=%s&gameId=432&classId=%d&sortField=%d&sortOrder=desc&pageSize=%d&index=%d",
-		curseForgeAPIBase, url.QueryEscape(query), cfClassID(projectType), cfSortField(sort), limit, offset)
+		curseForgeAPIBase, url.QueryEscape(query), cfClassID(projectType), cfSearchSortField(query, sort), limit, offset)
 	if gameVersion != "" {
 		u += "&gameVersion=" + url.QueryEscape(gameVersion)
 	}

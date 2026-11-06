@@ -181,6 +181,7 @@
   "browser.cfSearching": "CurseForge is still searching…",
   "browser.choosePack": "Choose a pack",
   "browser.clearContext": "Clear context",
+  "browser.chips.remove": "Remove filter",
   "browser.clearSearch": "Clear search",
   "browser.compatChecking": "Checking compatible packs…",
   "browser.contentType": "Content type",

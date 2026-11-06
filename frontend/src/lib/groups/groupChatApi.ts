@@ -6,7 +6,7 @@ import { App } from '../wails'
 import { toast } from '../toast.svelte'
 import type { ChatApi, ChatSendState } from '../friends/chatApi'
 import type { SocialChatMessage, SocialChatPage } from '../types'
-import type { GroupsStore } from './GroupsStore.svelte'
+import { GROUP_PAGE, type GroupsStore } from './GroupsStore.svelte'
 import type { GroupMessage } from './groupTypes'
 
 export function toChatMessage(m: GroupMessage): SocialChatMessage {
@@ -41,7 +41,9 @@ export function groupChatApi(store: GroupsStore, gid: string): ChatApi {
   const emit = (ev: string, d: any) => local.get(ev)?.forEach((cb) => { try { cb(d) } catch { /* слухач чату */ } })
 
   async function page(fields: Record<string, unknown>): Promise<SocialChatPage> {
-    const r = await App.GroupRequest('history', { groupId: gid, ...fields })
+    return toPage(await App.GroupRequest('history', { groupId: gid, ...fields }))
+  }
+  function toPage(r: any): SocialChatPage {
     const h = r?.history ?? {}
     return {
       messages: (Array.isArray(h.messages) ? h.messages : []).map(toChatMessage),
@@ -94,8 +96,10 @@ export function groupChatApi(store: GroupsStore, gid: string): ChatApi {
 
   return {
     cursor: 'id',
+    pageSize: GROUP_PAGE,
     unread: async () => store.openedUnread[gid] ?? 0,
-    history: (_p, before, limit) => page({ before, limit }),
+    // Найновіша сторінка вже могла завантажитись при наведенні/кліку на групу — забираємо її без нового запиту.
+    history: async (_p, before, limit) => (before === 0 ? toPage(await store.takeFirstPage(gid, limit)) : page({ before, limit })),
     historyAfter: (_p, after, limit) => page({ after: Math.max(0, after), limit }),
     markRead: (_p, upTo) => store.markRead(gid, upTo),
     send: async (_p, text, replyTo) => dispatch(text, replyTo, newClientId()),

@@ -677,7 +677,7 @@ import { windowActive } from '../windowActive.svelte'
       if (openAtUnread) {
         try { unread = await api.unread(peer.accountId) } catch {}
       }
-      const page = await api.history(peer.accountId, 0, 50)
+      const page = await api.history(peer.accountId, 0, api.pageSize ?? 50)
       // Курсори «прочитано» з найновішої сторінки: інакше після перезаходу в чат
       // галочки «переглянуто» не з'являлись би до живої події chat:read від друга.
       for (const r of page?.reads ?? []) {
@@ -714,7 +714,7 @@ import { windowActive } from '../windowActive.svelte'
     loadingMore = true
     try {
       // before — ЧАС (мс) найстарішого показаного повідомлення, а не id.
-      const page = await api.history(peer.accountId, before, 50)
+      const page = await api.history(peer.accountId, before, api.pageSize ?? 50)
       const mapped = (page?.messages ?? []).map(toMsg)
       const seen = new Set(messages.map(m => m.key))
       const prevH = scroller?.scrollHeight ?? 0

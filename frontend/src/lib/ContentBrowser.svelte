@@ -869,6 +869,12 @@
   // з'являється (як у ModpackPage: mp-topbar.collapsed).
   let cbScrolled = $state(false)
 
+  // Реальна ширина області браузера (а не вікна): сайдбар лаунчера може бути
+  // 220–400px, тож брейкпоінти за шириною вікна спрацьовували не там, де
+  // треба. bind:clientWidth на .cb-wrap; 1200 — до першого виміру, щоб
+  // розкладка не «блимала» вузьким виглядом при монтуванні.
+  let cbW = $state(1200)
+
   // Список версій Minecraft для фільтра. Джерело — теги Modrinth
   // /tag/game_version (лише версії, для яких є контент), fallback — повний
   // Mojang-маніфест. Кожен елемент несе versionType (release/snapshot/...)
@@ -981,9 +987,6 @@
       ? { id: serverContext.id, name: serverContext.name, mcVersion: serverContext.mcVersion, loader: serverContext.loader, isServer: true }
       : packFilterId ? (packs.find((p: { id: string }) => p.id === packFilterId) ?? null) : null
   )
-  // Мета активної вкладки (іконка/назва/колір) — для компактної плашки
-  // у sticky-панелі інструментів при прокрутці вниз.
-  const activeTypeMeta = $derived(contentTypes.find(c => c.id === activeType))
 
   // Фільтрований packPicker: для модів виключаємо ванільні збірки (vanilla/datapack/порожній
   // лоадер) — вони фізично не можуть запускати моди без мод-лоадера. Для
@@ -1277,7 +1280,15 @@
   let searchSeq = 0
   // Тип контенту останнього запущеного пошуку (не $state — лише для порівняння).
   let lastSearchType = ''
-  async function doSearch(page: number = 1) {
+  // Текст (trim) останнього запущеного пошуку і останнього, записаного в
+  // історію (не $state — лише для порівняння).
+  let lastSearchedQuery = ''
+  let lastRecordedKey = ''
+  // opts.record === false — пошук «на льоту» під час введення: проміжні
+  // запити («sod», «sodi»…) не повинні потрапляти в історію. Такий запит
+  // записується пізніше (commitSearchToHistory), коли людина закінчила
+  // вводити — пішла з поля або відкрила проєкт.
+  async function doSearch(page: number = 1, opts: { record?: boolean } = {}) {
     const seq = ++searchSeq
     currentPage = page
     offset = (page - 1) * PAGE_SIZE
@@ -1289,10 +1300,11 @@
     const typeChanged = lastSearchType !== '' && lastSearchType !== activeType
     lastSearchType = activeType
     const q = query.trim()
+    lastSearchedQuery = q
     // Записуємо в історію лише СПРАВЖНІЙ новий пошук (сторінка 1, є
     // текст запиту) — не пагінацію (goToPage передає конкретний номер
     // сторінки, тут завжди був би page>1) і не «Рекомендовані» без тексту.
-    const isFreshQuerySearch = page === 1 && q !== ''
+    const isFreshQuerySearch = page === 1 && q !== '' && opts.record !== false
 
     const wantModrinth = sourceFilter === '' || sourceFilter === 'all' || sourceFilter === 'modrinth'
     const wantCurseForge = sourceFilter === '' || sourceFilter === 'all' || sourceFilter === 'curseforge'
@@ -1403,23 +1415,57 @@
     if (isFreshQuerySearch) {
       Promise.allSettled([modrinthPromise, curseforgePromise]).then(() => {
         if (seq !== searchSeq) return
-        const total = modrinthCount + curseforgeCount
-        if (total > 0) {
-          App.AddSearchHistory(q, activeType, total).catch((e: any) => console.error(e))
-          // Оновлюємо локальний список одразу, без повторного запиту —
-          // той самий дедуп за (query, projectType), що на бекенді
-          // (store.AddSearchHistory), щоб список у випадаючому меню не
-          // розходився з тим, що щойно записано.
-          const qLower = q.toLowerCase()
-          searchHistory = [
-            { query: q, projectType: activeType, resultCount: total, searchedAt: new Date().toISOString() },
-            ...searchHistory.filter(h => !(h.query.toLowerCase() === qLower && h.projectType === activeType)),
-          ]
-          searchHistoryLoaded = true
-        }
+        pushSearchHistory(q, modrinthCount + curseforgeCount)
       })
     }
   }
+
+  // Запис запиту в історію («останні, що дали результат»).
+  function pushSearchHistory(q: string, total: number) {
+    if (!q || total <= 0) return
+    lastRecordedKey = activeType + '|' + q.toLowerCase()
+    App.AddSearchHistory(q, activeType, total).catch((e: any) => console.error(e))
+    // Оновлюємо локальний список одразу, без повторного запиту —
+    // той самий дедуп за (query, projectType), що на бекенді
+    // (store.AddSearchHistory), щоб список у випадаючому меню не
+    // розходився з тим, що щойно записано.
+    const qLower = q.toLowerCase()
+    searchHistory = [
+      { query: q, projectType: activeType, resultCount: total, searchedAt: new Date().toISOString() },
+      ...searchHistory.filter(h => !(h.query.toLowerCase() === qLower && h.projectType === activeType)),
+    ]
+    searchHistoryLoaded = true
+  }
+
+  // Запит, що йшов «на льоту», потрапляє в історію, коли людина закінчила
+  // вводити: пішла з поля пошуку або відкрила проєкт. Лише якщо на екрані
+  // саме його видача і він ще не записаний.
+  function commitSearchToHistory() {
+    const q = query.trim()
+    if (!q || q !== lastSearchedQuery) return
+    if (lastRecordedKey === activeType + '|' + q.toLowerCase()) return
+    if (searchingModrinth || searchingCurseForge) return
+    pushSearchHistory(q, (results.modrinth?.length ?? 0) + (results.curseforge?.length ?? 0))
+  }
+
+  // ── Пошук під час введення (як у Modrinth) ─────────────────────────────
+  // Видача оновлюється сама, коли людина зробила паузу в наборі; Enter і
+  // кнопка «Пошук» запускають пошук одразу. Затримка захищає ліміти API
+  // (CurseForge ~4 запити/с), а застарілі відповіді відкидає searchSeq.
+  const LIVE_SEARCH_DELAY_MS = 450
+  let liveSearchTimer: ReturnType<typeof setTimeout> | null = null
+  function cancelLiveSearch() {
+    if (liveSearchTimer) { clearTimeout(liveSearchTimer); liveSearchTimer = null }
+  }
+  function onQueryInput() {
+    cancelLiveSearch()
+    liveSearchTimer = setTimeout(() => {
+      liveSearchTimer = null
+      if (query.trim() === lastSearchedQuery) return
+      doSearch(1, { record: false })
+    }, LIVE_SEARCH_DELAY_MS)
+  }
+  $effect(() => () => cancelLiveSearch())
 
   // Перехід між сторінками (кнопки зверху і знизу списку) замість
   // «Показати ще» — кожна сторінка замінює попередню видачу, а не
@@ -1446,12 +1492,33 @@
     void viewMode; void activeType; void contentTypes.length
     tick().then(measureTabInd)
   })
+  // Підгонка табів під РЕАЛЬНУ ширину (шрифт у різних системах різний, тож
+  // пороги за пікселями не надійні): рівень 0 — повний вигляд; 1 — тісні
+  // відступи без іконок; 2 — неактивні таби лише іконками (підпис у title).
+  // Піднімаємо рівень, поки вміст не влізе, — скролу й обрізання не буде.
+  let tabLevel = $state(0)
+  let fitRun = 0
+  async function fitTabs() {
+    const run = ++fitRun
+    tabLevel = 0
+    await tick()
+    while (tabsEl && run === fitRun && tabLevel < 2 && tabsEl.scrollWidth > tabsEl.clientWidth + 1) {
+      tabLevel++
+      await tick()
+    }
+    if (run === fitRun) measureTabInd()
+  }
   $effect(() => {
     if (!tabsEl) return
-    const ro = new ResizeObserver(() => measureTabInd())
+    let lastW = -1
+    const ro = new ResizeObserver(() => {
+      if (tabsEl && tabsEl.clientWidth !== lastW) { lastW = tabsEl.clientWidth; fitTabs() } else measureTabInd()
+    })
     ro.observe(tabsEl)
+    document.fonts?.ready.then(() => fitTabs())
     return () => ro.disconnect()
   })
+  $effect(() => { void contentTypes.length; void viewMode; tick().then(fitTabs) })
 
   // Перемикання типу контенту (таби зверху і чіпи в сайдбарі — одна логіка).
   function selectContentType(id: string) {
@@ -1505,6 +1572,62 @@
       opts.splice(1, 0, { value: selectedGameVersion, label: selectedGameVersion })
     }
     return opts
+  })
+
+  // ── Активні фільтри (чіпи під рядком керування, як у Modrinth) ──────────
+  // Видно, що саме застосовано, навіть коли панель фільтрів закрита (у
+  // вузькому вікні вона висувна), і кожен фільтр знімається одним кліком.
+  type FilterChip = { key: string; label: string; icon?: string; img?: string; onRemove: () => void }
+  const activeFilterChips = $derived.by((): FilterChip[] => {
+    const chips: FilterChip[] = []
+    if (sourceFilter === 'modrinth' || sourceFilter === 'curseforge') {
+      chips.push({
+        key: 'source',
+        label: sourceFilter === 'curseforge' ? 'CurseForge' : 'Modrinth',
+        img: sourceFilter === 'curseforge' ? curseforgeIcon : modrinthIcon,
+        onRemove: () => pickSource('all'),
+      })
+    }
+    // Ті самі умови показу, що в секціях сайдбара: збірка/сервер задає
+    // версію і лоадер сама — тоді ці чіпи не потрібні.
+    if (selectedGameVersion && (!activePack || activeType === 'modpack')) {
+      chips.push({ key: 'version', label: selectedGameVersion, icon: 'ti-cube', onRemove: () => pickGameVersion('') })
+    }
+    if (selectedLoader && !activePack && !packContext) {
+      const l = loaders.find(x => x.id === selectedLoader)
+      chips.push({
+        key: 'loader', label: l?.label ?? capitalizeLoader(selectedLoader),
+        img: l?.icon ?? undefined, icon: 'ti-apps',
+        onRemove: () => pickLoader(selectedLoader),
+      })
+    }
+    if (sourceFilter !== 'curseforge' && !serverTargetMods) {
+      if (envClient) chips.push({ key: 'env-client', label: t('browser.environment.client'), icon: 'ti-device-desktop', onRemove: () => toggleEnv('client') })
+      if (envServer) chips.push({ key: 'env-server', label: t('browser.environment.server'), icon: 'ti-server', onRemove: () => toggleEnv('server') })
+      if (openSourceOnly) chips.push({ key: 'open-source', label: t('browser.license.openSource'), icon: 'ti-code', onRemove: toggleOpenSource })
+    }
+    for (const c of selectedCategories) {
+      chips.push({ key: 'cat:' + c.source + ':' + c.name, label: tagLabel(c.name), onRemove: () => { toggleCategory(c); doSearch(1) } })
+    }
+    return chips
+  })
+  // Скидає лише фільтри (текст запиту й вибрана збірка лишаються).
+  function clearFilterChips() {
+    selectedGameVersion = ''
+    selectedLoader = ''
+    selectedCategories = []
+    envClient = false
+    envServer = false
+    openSourceOnly = false
+    sourceFilter = 'all'
+    doSearch(1)
+  }
+  // Esc закриває висувну панель фільтрів.
+  $effect(() => {
+    if (!filtersOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') filtersOpen = false }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   })
 
   function resetFilters() {
@@ -1983,6 +2106,11 @@
     return uniq
   })
 
+  // Скільки всього знайдено (для підпису «Показано N з M» у рядку керування).
+  const resultsTotal = $derived(
+    ((sourceFilter !== 'curseforge' ? results.totalHits : 0) + (sourceFilter !== 'modrinth' ? (results.cfTotalHits ?? 0) : 0)) || mergedResults.length
+  )
+
   function toggleCategory(cat: BrowserCategory) {
     const idx = selectedCategories.findIndex(c => c.source === cat.source && c.name === cat.name)
     if (idx !== -1) {
@@ -2045,7 +2173,7 @@
   })
 
   async function doSearchWithEnter(e: any) {
-    if (e.key === 'Enter') doSearch()
+    if (e.key === 'Enter') { cancelLiveSearch(); doSearch() }
   }
 
   // Відкрити сторінку проєкту — для ВСІХ типів контенту (клік по картці
@@ -2061,6 +2189,7 @@
   // під яку збірку підбирати версію, і не могла показати «вже
   // встановлено», навіть коли фільтр збірки був явно обраний.
   function openEntry(entry: BrowserEntry) {
+    commitSearchToHistory()
     const ctx = serverContext
       ? { id: serverContext.id, name: serverContext.name, mcVersion: serverContext.mcVersion, loader: serverContext.loader, isServer: true }
       : packContext ?? (activePack
@@ -2135,10 +2264,10 @@
     {/if}
     <div class="cb-card-body">
       <div class="cb-card-name">
-        {#if mode === 'detailed'}
-          <img class="cb-src-logo" src={srcIcon} alt={srcName} title={srcName} loading="lazy" />
-        {/if}
         <span class="cb-card-title">{item.name}</span>
+        {#if mode === 'detailed' && item.author}
+          <span class="cb-card-by"><i class="ti ti-user"></i> {item.author}</span>
+        {/if}
         {#if mode !== 'detailed' && state === 'update'}
           <i class="ti ti-circle-check-filled cb-card-installed" title={t('browser.installed.short')}></i>
         {/if}
@@ -2148,23 +2277,17 @@
           <span class="cb-card-dl"><i class="ti ti-download"></i> {formatDownloads(item.downloads)}</span>
         {/if}
       </div>
-      {#if mode === 'detailed'}
-        <div class="cb-card-tags">
-          <span class="cb-card-type">{item.type}</span>
-          <span class="cb-card-src {item.source === 'curseforge' ? 'cf' : 'mr'}">
-            <img src={srcIcon} alt="" loading="lazy" />
-            {srcName}
-          </span>
-          {#if opts?.versionBadge}
-            <span class="chip"><i class="ti ti-tag"></i> {opts.versionBadge}</span>
-          {/if}
-        </div>
-      {/if}
       <!-- Теги (категорії) на картці не показуємо: вони розтягували картку на
            кілька рядків, а вибираються у фільтрах збоку. -->
       <div class="cb-card-desc">{item.description}</div>
       {#if mode === 'detailed'}
         <div class="cb-card-meta">
+          <span class="cb-card-src {item.source === 'curseforge' ? 'cf' : 'mr'}" title={srcName}>
+            <img src={srcIcon} alt="" loading="lazy" />
+            {srcName}
+          </span>
+          {#if viewMode === 'saved'}<span class="cb-card-type">{item.type}</span>{/if}
+          {#if opts?.versionBadge}<span class="chip"><i class="ti ti-tag"></i> {opts.versionBadge}</span>{/if}
           {#if item.loader}<span class="chip chip-l"><i class="ti ti-brand-git"></i> {item.loader}</span>{/if}
           {#if item.mcVersion}<span class="chip"><i class="ti ti-cube"></i> {item.mcVersion}</span>{/if}
           {#if activePack && installedMapLoading}
@@ -2248,7 +2371,8 @@
 {/snippet}
 
 
-<div class="cb-wrap" data-view={displayMode}>
+<div class="cb-wrap" data-view={displayMode} bind:clientWidth={cbW}
+     class:cb-lt900={cbW < 900} class:cb-lt800={cbW < 800} class:cb-lt720={cbW < 720} class:cb-lt620={cbW < 620}>
   <!-- Контекст збірки (кнопка «Шукати моди» в менеджері модів) -->
   {#if packContext}
     <div class="cb-context-bar">
@@ -2270,7 +2394,7 @@
   {/if}
 
   <!-- Таби типів контенту (як NavTabs у Modrinth discover) -->
-  <div class="cb-tabs" class:has-ind={ind.w > 0} bind:this={tabsEl}>
+  <div class="cb-tabs" class:has-ind={ind.w > 0} class:lvl1={tabLevel === 1} class:lvl2={tabLevel === 2} bind:this={tabsEl}>
     <span class="cb-tab-ind" class:anim={ind.anim} class:saved={ind.saved} aria-hidden="true"
           style="transform:translateX({ind.x}px);width:{ind.w}px;--ind-c:{ind.c || 'var(--orange)'};opacity:{ind.w > 0 ? 1 : 0}"></span>
     <!-- «Збережено» — окремий розділ (закладки + колекції), не тип
@@ -2295,6 +2419,7 @@
           class="cb-tab"
           class:active={viewMode === 'search' && activeType === ct.id}
           style="--tb-c:{ct.color}"
+          title={ct.label}
           onclick={() => selectContentType(ct.id)}
         >
           <i class="ti {ct.icon}"></i>
@@ -2420,35 +2545,25 @@
   {:else}
 
   <div class="cb-layout" class:filters-open={filtersOpen} in:fly={{ y: 12, duration: 260, easing: cubicOut }}>
-    <!-- Ліва колонка: результати -->
-    <div class="cb-main">
-      <!-- Рядок пошуку + сорт (як у layout.vue Modrinth: StyledInput + Combobox) -->
-      <div class="cb-toolbar">
-        <!-- Компактна плашка активної вкладки (іконка + назва): у верху
-             сторінки прихована (іконки/назви й так видно в табах),
-             з'являється лише коли результати проскролені вниз. -->
-        <div class="cb-toolbar-type {cbScrolled ? 'show' : ''}" style="--tb-c:{activeTypeMeta?.color || 'var(--orange)'}">
-          <i class="ti {activeTypeMeta?.icon || 'ti-cube'}"></i>
-          <span>{activeTypeMeta?.label ?? ''}</span>
-        </div>
+    <!-- Шапка (поза скролом): рядок пошуку, рядок керування, активні фільтри.
+         Як у Modrinth — кожне в окремому рядку, нічого не липне поверх списку,
+         а висувна панель фільтрів відкривається ПІД шапкою й її не накриває. -->
+    <div class="cb-head">
+      <div class="cb-search-row">
         <div class="cb-search">
           <i class="ti ti-search"></i>
           <input
             placeholder={t('browser.searchPlaceholderType', { type: contentTypes.find(c => c.id === activeType)?.label ?? '' })}
             bind:value={query}
+            oninput={onQueryInput}
             onkeydown={doSearchWithEnter}
             onfocus={openSearchHistoryDropdown}
-            onblur={() => setTimeout(() => { showSearchHistory = false }, 160)}
+            onblur={() => { commitSearchToHistory(); setTimeout(() => { showSearchHistory = false }, 160) }}
           />
           {#if query}
-            <button class="cb-search-clear" title={t('browser.clearSearch')} onclick={() => { query = ''; doSearch(1) }}><i class="ti ti-x"></i></button>
+            <button class="cb-search-clear" title={t('browser.clearSearch')} onclick={() => { cancelLiveSearch(); query = ''; doSearch(1) }}><i class="ti ti-x"></i></button>
           {/if}
           {#if showSearchHistory && !query && searchHistoryForType.length > 0}
-            <!-- Історія пошуку («останні запити, що дали результат»):
-                 показується лише коли поле порожнє й у фокусі — той
-                 самий UX, що адресний рядок браузера. onmousedown
-                 preventDefault на рядках — інакше клік спершу викликав
-                 би onblur (закриття списку), а не сам клік по рядку. -->
             <div class="cb-search-history">
               <div class="cb-search-history-head">
                 <span>{t('browser.history.title')}</span>
@@ -2475,10 +2590,13 @@
             </div>
           {/if}
         </div>
-        <button class="btn btn-primary" onclick={() => doSearch(1)}>
+        <button class="btn btn-primary cb-search-btn" onclick={() => { cancelLiveSearch(); doSearch(1) }}>
           {#if searching || searchingModrinth || searchingCurseForge}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-search"></i>{/if}
-          {t('search')}
+          <span>{t('search')}</span>
         </button>
+      </div>
+
+      <div class="cb-controls">
         <div class="cb-sort">
           <i class="ti ti-arrows-sort"></i>
           <SelectField
@@ -2502,8 +2620,28 @@
                 aria-expanded={filtersOpen} aria-label={t('browser.filters')} title={t('browser.filters')}
                 onclick={() => (filtersOpen = !filtersOpen)}>
           <i class="ti ti-filter"></i><span>{t('browser.filters')}</span>
+          {#if activeFilterChips.length > 0}<b class="cb-filters-badge">{activeFilterChips.length}</b>{/if}
         </button>
+        <div class="cb-controls-end">
+          {#if mergedResults.length > 0}
+            <span class="cb-count">{t('browser.resultsCount', { count: mergedResults.length, total: resultsTotal })}</span>
+          {/if}
+          {@render pagerTop()}
+        </div>
       </div>
+
+      {#if activeFilterChips.length > 0}
+        <div class="cb-chips">
+          {#each activeFilterChips as ch (ch.key)}
+            <span class="cb-chip">
+              {#if ch.img}<img src={ch.img} alt="" />{:else if ch.icon}<i class="ti {ch.icon}"></i>{/if}
+              <span class="cb-chip-label">{ch.label}</span>
+              <button type="button" class="cb-chip-x" title={t('browser.chips.remove')} aria-label={t('browser.chips.remove')} onclick={ch.onRemove}><i class="ti ti-x"></i></button>
+            </span>
+          {/each}
+          <button type="button" class="cb-chips-clear" onclick={clearFilterChips}><i class="ti ti-refresh"></i> {t('browser.reset')}</button>
+        </div>
+      {/if}
 
       {#if activePack && activeType !== 'modpack'}
         <div class="cb-active-pack">
@@ -2519,7 +2657,10 @@
           </button>
         </div>
       {/if}
+    </div>
 
+    <!-- Результати (скролиться лише цей блок) -->
+    <div class="cb-main">
       <!-- Результати: ОДИН спільний грід для Modrinth+CurseForge (кожна
            картка несе власний бейдж джерела — крапка + MR/CF), як просив
            ужиток: «контентфорж і модрінг мають бути в одному списку з
@@ -2573,10 +2714,6 @@
 
         {#if mergedResults.length > 0}
           <div class="cb-section">
-            <div class="cb-section-head">
-              <span class="cb-count">{t('browser.resultsCount', { count: mergedResults.length, total: ((sourceFilter !== 'curseforge' ? results.totalHits : 0) + (sourceFilter !== 'modrinth' ? (results.cfTotalHits ?? 0) : 0)) || mergedResults.length })}</span>
-              {@render pager()}
-            </div>
             {#if results.smartSearchTerms?.length}
               <!-- Розумний пошук («меблі» → furniture/decoration): гравець
                    бачить, ЧОМУ видача не збігається дослівно з тим, що він
@@ -2617,7 +2754,9 @@
     {/if}
     <aside class="cb-sidebar">
       <div class="cbs-panel">
-        <div class="cbs-title"><i class="ti ti-filter"></i> {t('browser.filters')}</div>
+        <div class="cbs-title"><i class="ti ti-filter"></i> {t('browser.filters')}
+          <button type="button" class="cbs-close" aria-label={t('close')} title={t('close')} onclick={() => (filtersOpen = false)}><i class="ti ti-x"></i></button>
+        </div>
 
         <!-- Джерело: сегментований перемикач -->
         <section class="cbs-sec" class:collapsed={isCollapsed('source')}>
@@ -2831,6 +2970,16 @@
 
 <!-- Панель сторінок — рендериться зверху (у заголовку секції результатів)
      і знизу списку через той самий снипет, замість «Показати ще». -->
+{#snippet pagerTop()}
+  {#if totalPages > 1}
+    <div class="cb-pager cb-pager-top">
+      <button class="cb-pg-btn" title={t('browser.page.prev')} aria-label={t('browser.page.prev')} onclick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1 || searching}><i class="ti ti-chevron-left"></i></button>
+      <span class="cb-pager-count">{currentPage} / {totalPages}</span>
+      <button class="cb-pg-btn" title={t('browser.page.next')} aria-label={t('browser.page.next')} onclick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages || searching}><i class="ti ti-chevron-right"></i></button>
+    </div>
+  {/if}
+{/snippet}
+
 {#snippet pager()}
   {#if totalPages > 1}
     <div class="cb-pager">
@@ -3380,7 +3529,7 @@
     --cb-ease-spring: cubic-bezier(.34, 1.56, .64, 1);
     --cb-accent: var(--tb-c, var(--orange));
 
-    display: flex; flex-direction: column; gap: 14px;
+    display: flex; flex-direction: column; gap: 10px;
     flex: 1; min-height: 0;
     position: relative; overflow: hidden;
     animation: cb-page-in .35s var(--cb-ease) both;
@@ -3459,70 +3608,52 @@
   .cb-tab-ind.saved { background: rgba(245, 197, 66, .14); border-color: rgba(245, 197, 66, .4); }
   .cb-tabs.has-ind .cb-tab.active,
   .cb-tabs.has-ind .cb-tab-saved.active { background: transparent; border-color: transparent; box-shadow: none; }
+  .cb-tabs.lvl1 .cb-tab { padding: 0 9px; gap: 5px; }
+  .cb-tabs.lvl1 .cb-tab:not(.cb-tab-saved) i { display: none; }
+  .cb-tabs.lvl2 .cb-tab { padding: 0 9px; gap: 5px; }
+  .cb-tabs.lvl2 .cb-tab:not(.active):not(.cb-tab-saved) span { display: none; }
+  .cb-tabs.lvl2 .cb-tab:not(.active):not(.cb-tab-saved) { padding: 0 11px; }
   .cb-tabs-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--border-hi); }
 
-  /* ── Лейаут: результати + сайдбар з окремим скролом ── */
+  /* ── Лейаут: шапка + результати (ліворуч) і фільтри (праворуч) ──
+     Шапка — окремий рядок сітки поза скролом, список скролиться лише в
+     .cb-main. У вузькій області сайдбар займає ту саму клітинку, що й
+     .cb-main (рядок 2), тож панель фільтрів лягає ПІД шапку й нічого в
+     ній не накриває. */
   .cb-layout {
     flex: 1; min-height: 0;
-    display: grid; grid-template-columns: 1fr 288px;
-    /* minmax(0,1fr) — інакше grid-рядок auto росте на весь контент
-       сайдбара і власний скрол .cb-sidebar не спрацьовує. */
-    grid-template-rows: minmax(0, 1fr);
-    gap: var(--cb-gap);
+    display: grid; grid-template-columns: minmax(0, 1fr) 288px;
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: var(--cb-gap);
   }
+  .cb-head { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; min-width: 0; position: relative; z-index: 25; }
   .cb-main {
+    grid-column: 1; grid-row: 2;
     min-height: 0; overflow-y: auto; overflow-x: hidden;
     padding-right: 8px;
-    scroll-behavior: smooth;
   }
   .cb-main::-webkit-scrollbar { width: 6px; }
   .cb-main::-webkit-scrollbar-thumb { background: var(--hover-strong); border-radius: 3px; }
   .cb-main::-webkit-scrollbar-thumb:hover { background: var(--border-hi); }
   .cb-main::-webkit-scrollbar-track { background: transparent; }
 
-  /* ── Панель інструментів: sticky, той самий скляний topbar, що на сторінці проєкту ── */
-  .cb-toolbar {
-    position: sticky; top: 0; z-index: 20;
-    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-    padding: 6px 8px; margin-bottom: 8px;
-    min-height: 52px;
-    background: color-mix(in srgb, var(--bg-panel) 85%, transparent);
-    backdrop-filter: blur(16px) saturate(1.2);
-    -webkit-backdrop-filter: blur(16px) saturate(1.2);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    transition: box-shadow .2s ease, border-color .2s ease;
-  }
-  /* Компактна плашка активного типу в toolbar — з'являється лише коли
-     сторінка проскролена (іконку/назву й так видно в табах вище). */
-  .cb-toolbar-type {
-    --tb-c: var(--orange);
-    display: none; align-items: center; gap: 7px;
-    height: 28px; padding: 0 12px;
-    border-radius: 999px;
-    background: rgba(var(--tacc-rgb, var(--orange-rgb)), .16);
-    border: 1px solid rgba(var(--tacc-rgb, var(--orange-rgb)), .4);
-    color: var(--tb-c);
-    font: 750 11px/1 var(--font-ui); letter-spacing: .02em;
-    flex-shrink: 0;
-  }
-  .cb-toolbar-type.show { display: inline-flex; }
-  .cb-toolbar-type i { font-size: 13px; }
+  /* ── Рядок пошуку ── */
+  .cb-search-row { display: flex; gap: 8px; align-items: center; }
   .cb-search {
-    flex: 1 1 220px; min-width: 220px;
+    flex: 1 1 auto; min-width: 0;
     display: flex; align-items: center; gap: 8px;
-    height: 38px;
+    height: 44px;
     background: var(--bg-input);
     border: 1px solid var(--border-hi);
-    border-radius: 10px;
-    padding: 0 12px;
+    border-radius: 12px;
+    padding: 0 14px;
     position: relative;
     transition: border-color .18s ease, box-shadow .18s ease;
   }
-  .cb-search > i { color: var(--text-mute); font-size: 16px; }
+  .cb-search > i { color: var(--text-mute); font-size: 17px; }
   .cb-search input {
     flex: 1; min-width: 0; background: transparent; border: none; outline: none;
-    color: var(--text); font: 500 13px/1.3 var(--font-ui);
+    color: var(--text); font: 500 14px/1.3 var(--font-ui);
   }
   .cb-search input::placeholder { color: var(--text-dim); }
   .cb-search:focus-within {
@@ -3530,6 +3661,7 @@
     box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .14);
   }
   .cb-search:focus-within > i { color: var(--orange); }
+  .cb-search-btn { height: 44px; flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; }
   .cb-search-clear {
     width: 22px; height: 22px; flex-shrink: 0;
     border: none; border-radius: 50%; cursor: pointer;
@@ -3539,6 +3671,47 @@
     transition: background-color .15s ease, color .15s ease;
   }
   .cb-search-clear:hover { background: var(--orange); color: #fff; }
+
+  /* ── Рядок керування: сортування, вигляд, фільтри ... кількість, сторінки ── */
+  .cb-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+  .cb-controls-end { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  .cb-pager-top { gap: 6px; }
+  .cb-pg-btn {
+    width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 9px; border: 1px solid var(--border-hi); background: var(--hover);
+    color: var(--text); cursor: pointer; font-size: 15px; padding: 0;
+    transition: background-color .15s ease, opacity .15s ease;
+  }
+  .cb-pg-btn:hover:not(:disabled) { background: var(--hover-strong); }
+  .cb-pg-btn:disabled { opacity: .4; cursor: default; }
+  .cb-filters-badge {
+    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--orange); color: #fff; font: 700 11px/1 var(--font-ui);
+  }
+
+  /* ── Активні фільтри (чіпи) ── */
+  .cb-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; max-height: 68px; overflow-y: auto; }
+  .cb-chip {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px;
+    padding: 0 4px 0 10px; border-radius: 999px;
+    background: rgba(var(--orange-rgb), .13); border: 1px solid rgba(var(--orange-rgb), .4);
+    color: var(--text); font: 600 12px/1 var(--font-ui);
+  }
+  .cb-chip > i { font-size: 13px; color: var(--orange); }
+  .cb-chip > img { width: 14px; height: 14px; object-fit: contain; }
+  .cb-chip-label { white-space: nowrap; }
+  .cb-chip-x {
+    width: 20px; height: 20px; border: none; border-radius: 50%; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; color: var(--text-mute); font-size: 12px; padding: 0;
+  }
+  .cb-chip-x:hover { background: var(--orange); color: #fff; }
+  .cb-chips-clear {
+    display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 8px;
+    background: none; border: none; cursor: pointer; color: var(--text-mute); font: 600 12px/1 var(--font-ui);
+  }
+  .cb-chips-clear:hover { color: var(--orange); }
 
   /* ── Історія пошукових запитів ── */
   .cb-search-history {
@@ -3617,8 +3790,8 @@
   .cb-grid.cb-refreshing { opacity: .55; transition: opacity .15s ease; pointer-events: none; }
   .cb-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fill, minmax(min(480px, 100%), 1fr));
+    gap: 10px;
   }
 
   .cb-card {
@@ -3652,6 +3825,21 @@
     background: color-mix(in srgb, var(--cb-accent) 14%, var(--bg-input));
   }
   .cb-card-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .cb-card-by {
+    display: inline-flex; align-items: center; gap: 4px; flex: 0 1 auto; min-width: 0;
+    font: 500 11.5px/1 var(--font-ui); color: var(--text-dim);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .cb-wrap[data-view='detailed'] .cb-card-title { flex: 0 1 auto; }
+  .cb-wrap[data-view='detailed'] .cb-card-ic { width: 56px; height: 56px; min-width: 56px; }
+  .cb-wrap[data-view='detailed'] .cb-card-side {
+    display: grid; grid-template-columns: auto 1fr; align-items: center; row-gap: 8px; column-gap: 8px; min-width: 140px;
+  }
+  .cb-wrap[data-view='detailed'] .cb-downloads { grid-column: 1; grid-row: 1; align-self: center; }
+  .cb-wrap[data-view='detailed'] .cb-card-actions { grid-column: 2; grid-row: 1; width: auto; justify-self: end; }
+  .cb-wrap[data-view='detailed'] .cb-progress-mini { grid-column: 1 / -1; width: 100%; }
+  .cb-wrap[data-view='detailed'] .cb-install-btn { grid-column: 1 / -1; }
+  .cb-card-meta .cb-card-src { padding: 3px 8px; }
   .cb-card-name { display: flex; align-items: center; gap: 7px; min-width: 0; }
   .cb-card-title {
     flex: 1; min-width: 0;
@@ -3782,7 +3970,7 @@
 
   /* ── Пагінатор ── */
   .cb-pager { display: flex; align-items: center; gap: 12px; }
-  .cb-pager:last-of-type { justify-content: center; padding: 18px 0 6px; }
+  .cb-main > .cb-pager { justify-content: center; padding: 18px 0 6px; }
   .cb-pager-count {
     font: 700 11px/1 var(--font-mono); color: var(--text-dim); white-space: nowrap;
     padding: 4px 12px; border-radius: 999px;
@@ -3791,6 +3979,7 @@
 
   /* ── Правий сайдбар: фільтри ── */
   .cb-sidebar {
+    grid-column: 2; grid-row: 1 / span 2;
     min-height: 0; overflow-y: auto;
     overscroll-behavior: contain;
     padding: 0 4px 16px 0;
@@ -4287,62 +4476,51 @@
   /* Кнопка фільтрів видима лише у вузькому режимі. */
   .cb-filters-toggle { display: none; }
   .cb-sidebar-backdrop { display: none; }
+  .cbs-close { display: none; }
 
-  @media (max-width: 1100px) {
-    /* ВУЗЬКЕ ВІКНО. Раніше сітка ставала 1 колонкою, а сайдбар падав у
-       неявний рядок висотою 300px і стискав список до смужки, а sticky-
-       toolbar накладався на картки. Тепер: список займає ВСЮ висоту, а
-       фільтри — висувна панель поверх (відкривається кнопкою в toolbar). */
-    .cb-layout { grid-template-columns: minmax(0, 1fr); position: relative; }
-    .cb-main { padding-right: 4px; }
-
-    .cb-filters-toggle {
-      display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
-      height: 38px; padding: 0 12px;
-      background: var(--bg-input); border: 1px solid var(--border-hi); border-radius: 10px;
-      color: var(--text-mute); cursor: pointer;
-      font: 650 12.5px/1 var(--font-ui);
-      transition: color .15s ease, border-color .15s ease, background-color .15s ease;
-    }
-    .cb-filters-toggle i { font-size: 15px; }
-    .cb-filters-toggle:hover { color: var(--text); background: var(--hover); }
-    .cb-filters-toggle.on {
-      color: var(--orange); border-color: rgba(var(--orange-rgb), .55);
-      background: rgba(var(--orange-rgb), .12);
-    }
-
-    .cb-sidebar {
-      display: none;
-      position: absolute; top: 0; right: 0; bottom: 0; z-index: 30;
-      width: min(340px, 100%);
-      max-height: none;
-      padding: 0 4px 0 0;
-      box-shadow: var(--cb-shadow-strong);
-      border-radius: var(--cb-radius-lg);
-      background: var(--bg-window);
-    }
-    .cb-layout.filters-open .cb-sidebar { display: block; animation: cb-pop .18s var(--cb-ease) both; }
-    .cb-sidebar-backdrop {
-      display: block; position: absolute; inset: 0; z-index: 29;
-      border: none; padding: 0; cursor: default;
-      background: rgba(0, 0, 0, .35);
-    }
-
-    /* Toolbar: пошук не розпирає рядок, елементи переносяться акуратно. */
-    .cb-toolbar { row-gap: 6px; }
-    .cb-search { flex: 1 1 160px; min-width: 0; }
+  /* Область вужча за 900px (за реальною шириною .cb-wrap, див. cbW):
+     фільтри — висувна панель у клітинці результатів, ПІД шапкою. */
+  .cb-lt900 .cb-layout { grid-template-columns: minmax(0, 1fr); position: relative; }
+  .cb-lt900 .cb-main { padding-right: 4px; }
+  .cb-lt900 .cb-filters-toggle {
+    display: inline-flex; align-items: center; gap: 7px; flex-shrink: 0;
+    height: 38px; padding: 0 12px;
+    background: var(--bg-input); border: 1px solid var(--border-hi); border-radius: 10px;
+    color: var(--text-mute); cursor: pointer;
+    font: 650 12.5px/1 var(--font-ui);
+    transition: color .15s ease, border-color .15s ease, background-color .15s ease;
   }
-  @media (max-width: 640px) {
-    .cb-grid,
-    .cb-wrap[data-view='grid'] .cb-grid { grid-template-columns: minmax(0, 1fr); }
-    .cb-card { flex-wrap: wrap; }
-    .cb-card-side { min-width: 100%; flex-direction: row; align-items: center; justify-content: space-between; }
-    .cb-card-actions { width: auto; }
-    .cb-install-btn { width: auto; min-width: 140px; }
-    /* Дуже вузько: кнопка фільтрів лишається іконкою без підпису. */
-    .cb-filters-toggle span { display: none; }
-    .cb-filters-toggle { padding: 0 11px; }
+  .cb-lt900 .cb-filters-toggle i { font-size: 15px; }
+  .cb-lt900 .cb-filters-toggle:hover { color: var(--text); background: var(--hover); }
+  .cb-lt900 .cb-filters-toggle.on { color: var(--orange); border-color: rgba(var(--orange-rgb), .55); background: rgba(var(--orange-rgb), .12); }
+  .cb-lt900 .cb-sidebar {
+    display: none;
+    grid-column: 1; grid-row: 2; justify-self: end; z-index: 30;
+    width: min(340px, 100%); height: 100%;
+    padding: 0 4px 0 0;
+    box-shadow: var(--cb-shadow-strong);
+    border-radius: var(--cb-radius-lg);
+    background: var(--bg-window);
   }
+  .cb-lt900 .cb-layout.filters-open .cb-sidebar { display: block; animation: cb-pop .18s var(--cb-ease) both; }
+  .cb-lt900 .cb-sidebar-backdrop {
+    display: block; grid-column: 1; grid-row: 2; z-index: 29;
+    border: none; padding: 0; cursor: default; background: rgba(0, 0, 0, .35);
+  }
+  .cb-lt900 .cbs-close {
+    display: inline-flex; margin-left: auto; width: 26px; height: 26px; border: none; border-radius: 50%;
+    align-items: center; justify-content: center; background: var(--hover); color: var(--text-mute); cursor: pointer; padding: 0;
+  }
+  .cb-lt900 .cbs-close:hover { background: var(--orange); color: #fff; }
+  .cb-lt900 .cb-sidebar { overflow-y: auto; }
+
+  /* Дуже вузька область: колонка дій картки переходить під опис. */
+  .cb-lt620 .cb-card { flex-wrap: wrap; }
+  .cb-wrap.cb-lt620[data-view='detailed'] .cb-card-side { grid-template-columns: auto 1fr auto; }
+  .cb-wrap.cb-lt620[data-view='detailed'] .cb-card-side { min-width: 100%; }
+  .cb-lt620 .cb-install-btn { width: auto; min-width: 140px; }
+  .cb-lt620 .cb-filters-toggle span { display: none; }
+  .cb-lt800 .cb-count { display: none; }
 
   @media (prefers-reduced-motion: reduce) {
     .cb-wrap, .cb-card, .cb-search-history { animation: none !important; transition: none !important; }
