@@ -279,9 +279,7 @@ func (c *LobbyClient) doJSONH(ctx context.Context, method, path string, hdr map[
 
 	if resp.StatusCode >= 300 {
 		// Worker віддає ДВА поля: error — машинний код (напр.
-		// p2p_not_configured), errorMessage — людське пояснення. Раніше
-		// читався лише error, і користувач бачив невиразне «HTTP 500»
-		// замість причини («на сервері немає Headscale»).
+		// p2p_not_configured), errorMessage — людське пояснення.
 		var apiErr struct {
 			Error        string `json:"error"`
 			ErrorMessage string `json:"errorMessage"`

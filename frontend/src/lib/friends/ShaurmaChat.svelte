@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // ── Чат з другом (Shaurma) ──────────────────────────────────────────
   // Один діалог. Текст шифрується/розшифровується ЛИШЕ в backend/internal/social —
   // сюди plaintext приходить уже готовим, ciphertext/nonce ми не тримаємо.
@@ -37,6 +39,7 @@
   import { toast } from '../toast.svelte'
 import { windowActive } from '../windowActive.svelte'
   import { t } from '../i18n.svelte'
+  import { lastSeenText } from './lastSeen'
   import { tip } from './tooltip'
   import { parseModMessage, loadHidden, saveHidden } from './modShare'
   import { confirmDialog } from '../toast.svelte'
@@ -51,6 +54,7 @@ import { windowActive } from '../windowActive.svelte'
   import { privateChatApi, type ChatApi, type GroupChatInfo } from './chatApi'
   import { useFriendsStore } from './FriendsStore.svelte'
   import GroupAvatar from '../groups/GroupAvatar.svelte'
+  import GroupLinkCard from './GroupLinkCard.svelte'
   import GroupOfferCard from '../groups/GroupOfferCard.svelte'
   import { parseOffer } from '../groups/groupTypes'
   import type {
@@ -156,8 +160,6 @@ import { windowActive } from '../windowActive.svelte'
   let editing = $state<Msg | null>(null)   // своє повідомлення, яке зараз змінюємо
   let editBusy = $state(false)
   // Повний набір реакцій для пікера («+» у панелі при наведенні та пункт «Реакція» в меню).
-  // Раніше тут були ті самі емодзі, що й у панелі, — кнопка «+» відкривала дублікат. Тепер
-  // пікер розширює вибір (перші шість — улюблені, далі решта).
   const ALL_REACT = [
     '👍', '❤️', '😂', '😮', '😢', '🔥', '👎', '😡',
     '🎉', '👏', '🙏', '🤝', '😍', '🤔', '💀', '👀',
@@ -187,6 +189,8 @@ import { windowActive } from '../windowActive.svelte'
   // «Cannot read properties of null (reading 'm')» (напр. при видаленні повідомлення,
   // бо act() спершу ставить menu = null). Шаблон тому читає menuView, який не обнуляється.
   let menuView = $state<{ x: number; y: number; m: Msg } | null>(null)
+  // Хто переглянув своє повідомлення (для рядка «N переглядів» у меню, як у Telegram).
+  let menuReaders = $state<string[] | null>(null)
   let menuEl: HTMLDivElement | undefined = $state()
   let dragStart = ''
   let dragging = false
@@ -232,6 +236,12 @@ import { windowActive } from '../windowActive.svelte'
   const clean = (s?: string) => (s ?? '').replace(HIDDEN_CH, '').trim()
   const initial = (s?: string) => clean(s).charAt(0).toUpperCase()
   // Хто написав: «Ви», учасник групи або співрозмовник.
+  // Профіль відправника за кліком на аватарку/нік (і в групах, і в особистих чатах; себе пропускаємо).
+  const canOpenProfile = (id: string) => !!id && id !== me && !!friendsStore
+  function openSenderProfile(id: string) {
+    if (!canOpenProfile(id)) return
+    friendsStore!.openProfileById(id, group ? group.nameOf(id) : (peer?.nickname ?? ''), group ? '' : (peer?.handle ?? ''))
+  }
   const who = (id: string) => (id === me ? t('social.chat.you') : group ? clean(group.nameOf(id)) : clean(peer?.nickname))
   // Курсор історії: час (особисті) або номер повідомлення (групи) — див. ChatApi.cursor.
   const cursorOf = (m?: Msg) => (!m ? 0 : api.cursor === 'id' ? m.id : m.ts)
@@ -298,6 +308,11 @@ import { windowActive } from '../windowActive.svelte'
     if (selecting) return
     menuView = { x: Math.min(e.clientX, window.innerWidth - 220), y: Math.min(e.clientY, window.innerHeight - 40), m }
     menu = menuView
+    menuReaders = null
+    if (group && isOwn(m) && m.id > 0 && !m.failed) {
+      const key = m.key
+      group.readers(m.id).then((ids) => { if (menuView?.m.key === key) menuReaders = ids }).catch(() => {})
+    }
   }
   const act = (fn: () => void) => { menu = null; fn() }
   // Після відкриття міряємо меню й не даємо йому вилізти за межі вікна.
@@ -475,7 +490,8 @@ import { windowActive } from '../windowActive.svelte'
   const peerStatusText = $derived(
     peerStatus === 'in_game' ? (clean(peer?.presence?.packName) || t('social.playing')) :
     peerStatus === 'away' ? t('social.status.away') :
-    peerStatus === 'online' ? t('social.status.online') : t('social.status.offline'))
+    peerStatus === 'online' ? t('social.status.online') :
+    (lastSeenText(peer?.presence?.lastSeenAt) || t('social.status.offline')))
 
   // ── Рядки стрічки: роздільники днів + групування за відправником ─────────
   const visible = $derived(messages.filter(m => !(m.id > 0 && hidden.has(m.id))))
@@ -584,10 +600,31 @@ import { windowActive } from '../windowActive.svelte'
     if (el.scrollTop < 240 && hasMore && !loadingMore) loadHistory(cursorOf(messages[0]), true)
     if (near && hasNewer && !loadingNewer) loadNewer()
   }
+  // Новий рядок «виїжджає» (slide ~280мс), тому scrollHeight росте кілька кадрів. Нативний
+  // smooth-скрол запам'ятовує КІНЦЕВУ позицію на старті → стрічка відстає й смикається.
+  // Тому поки йде анімація, щоразу притискаємо низ до актуальної висоти.
+  let followRaf = 0
+  function followBottom(ms = 360) {
+    if (followRaf) cancelAnimationFrame(followRaf)
+    const t0 = performance.now()
+    let last = -1
+    const step = () => {
+      const el = scroller
+      if (!el) { followRaf = 0; return }
+      // Користувач сам прокрутив вгору — не перехоплюємо скрол.
+      if (last >= 0 && el.scrollTop < last - 4) { followRaf = 0; return }
+      el.scrollTop = el.scrollHeight
+      last = el.scrollTop
+      followRaf = performance.now() - t0 < ms ? requestAnimationFrame(step) : 0
+    }
+    followRaf = requestAnimationFrame(step)
+  }
   async function scrollToBottom(force = false, smooth = false) {
     if (!force && !stickBottom) return
     await tick()
-    if (scroller) scroller.scrollTo({ top: scroller.scrollHeight, behavior: smooth ? 'smooth' : 'auto' })
+    if (!scroller) return
+    if (smooth && !reduceMotion()) followBottom()
+    else scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'auto' })
   }
   function elByKey(key: string): HTMLElement | null {
     return scroller?.querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`) ?? null
@@ -681,7 +718,9 @@ import { windowActive } from '../windowActive.svelte'
       // Курсори «прочитано» з найновішої сторінки: інакше після перезаходу в чат
       // галочки «переглянуто» не з'являлись би до живої події chat:read від друга.
       for (const r of page?.reads ?? []) {
-        if (r?.by === peer.accountId && r.upTo > 0) peerReadUpTo = Math.max(peerReadUpTo, r.upTo)
+        // Особистий чат: курсор співрозмовника. Група (як у Telegram): достатньо, щоб прочитала ХОЧА Б ОДНА інша людина.
+        const counts = group ? (r?.by && r.by !== me && group.memberIds.includes(r.by)) : r?.by === peer.accountId
+        if (counts && r.upTo > 0) peerReadUpTo = Math.max(peerReadUpTo, r.upTo)
       }
       messages = (page?.messages ?? []).map(toMsg)
       pinned = (page?.pinned ?? []).map(toMsg)
@@ -896,7 +935,6 @@ import { windowActive } from '../windowActive.svelte'
       api.on('chat:typing', (e: SocialTypingEvent) => {
         if (!e || e.chatId !== chatId || e.accountId !== peer?.accountId) return
         peerTyping = true
-        if (stickBottom) scrollToBottom(false, true)
         if (typingTimer) clearTimeout(typingTimer)
         typingTimer = setTimeout(() => { peerTyping = false }, 4000)
       }),
@@ -973,6 +1011,7 @@ import { windowActive } from '../windowActive.svelte'
       if (flashTimer) clearTimeout(flashTimer)
       offs.forEach(off => off())
       if (pinRaf) cancelAnimationFrame(pinRaf)
+      if (followRaf) cancelAnimationFrame(followRaf)
       if (typingTimer) clearTimeout(typingTimer)
       if (copiedTimer) clearTimeout(copiedTimer)
       if (spamTimer) clearInterval(spamTimer)
@@ -1298,12 +1337,16 @@ import { windowActive } from '../windowActive.svelte'
   // ── Тимчасові запрошення: живий стан карток (опитування видимих P2P-адрес кожні 10 с) ──
   const P2P_SUFFIX = '.play.shaurma-launcher.org'
   let joiningGroup = $state(false)
+  const GROUP_LINK_RE = /^https:\/\/shaurma-launcher\.org\/group\/join#([a-f0-9]{64})$/
+  const groupLinkToken = (text?: string) => GROUP_LINK_RE.exec((text ?? '').trim())?.[1] ?? ''
+  // Токени посилань, за якими ми щойно вступили: картка одразу показує «Ви вже в групі».
+  let joinedLinks = $state<Set<string>>(new Set())
   async function joinGroupLink(text: string) {
     const token = /^https:\/\/shaurma-launcher\.org\/group\/join#([a-f0-9]{64})$/.exec(text.trim())?.[1]
     if (!token || joiningGroup) return
     if (!await confirmDialog(t('groups.link.join'), t('groups.link.confirm'), { confirmLabel: t('groups.link.join'), cancelLabel: t('cancel') })) return
     joiningGroup = true
-    try { await App.GroupRequest('link_join', { token }); await App.GroupRequest('list'); toast(t('groups.link.joined'), 'success') }
+    try { await App.GroupRequest('link_join', { token }); await App.GroupRequest('list'); joinedLinks = new Set([...joinedLinks, token]); toast(t('groups.link.joined'), 'success') }
     catch { toast(t('groups.link.failed'), 'error') }
     finally { joiningGroup = false }
   }
@@ -1314,15 +1357,42 @@ import { windowActive } from '../windowActive.svelte'
   }
   let readersOpen = $state(false)
   let readersBusy = $state(false)
-  let readersNames = $state<string[]>([])
+  let readersIds = $state<string[]>([])
   let readersError = $state('')
   async function showReaders(id: number) {
     if (!group || readersBusy) return
-    readersOpen = true; readersBusy = true; readersNames = []; readersError = ''
-    try { readersNames = await group.readers(id) }
+    readersOpen = true; readersBusy = true; readersIds = []; readersError = ''
+    try {
+      const ids = await group.readers(id)
+      const g = group
+      readersIds = [...ids].sort((a, b) => g.nameOf(a).localeCompare(g.nameOf(b)))
+    }
     catch { readersError = t('groups.err.unknown') }
     finally { readersBusy = false }
   }
+  // «1 перегляд / 2 перегляди / 5 переглядів» за правилами множини поточної мови.
+  function viewsText(n: number): string {
+    let cat = 'many'
+    try { cat = new Intl.PluralRules(document.documentElement.lang || 'uk').select(n) } catch { /* без Intl */ }
+    return t('groups.readers.count.' + (cat === 'one' || cat === 'few' ? cat : 'many'), { n })
+  }
+  // Групові галочки: живих подій «прочитано» для груп немає, тож поки є своє непрочитане
+  // повідомлення — раз на 15 с тихо підтягуємо курсори.
+  async function refreshGroupReads() {
+    if (!group) return
+    try {
+      const cur = await group.readCursors()
+      for (const r of cur) if (r.upTo > peerReadUpTo) peerReadUpTo = r.upTo
+    } catch { /* офлайн — спробуємо пізніше */ }
+  }
+  $effect(() => {
+    if (!group) return
+    const iv = setInterval(() => {
+      if (!windowActive.active) return
+      if (messages.some(m => m.from === me && m.id > 0 && m.id > peerReadUpTo)) void refreshGroupReads()
+    }, 15000)
+    return () => clearInterval(iv)
+  })
   let showTempInvite = $state(false)
 
   // ── Мут діалогу ──
@@ -1449,11 +1519,6 @@ import { windowActive } from '../windowActive.svelte'
   }
 
   // ── «Грати» прямо з картки запрошення ────────────────────────────────────
-  // Раніше картка пропонувала лише «Приєднатися» зі збіркою хоста — а якщо
-  // запрошення без збірки (спільна P2P-кімната), гравець мав сам копіювати
-  // адресу і лізти в «Пряме підключення» в грі. Тепер тут вибір збірки:
-  // гра запускається з ПРЯМИМ підключенням до цієї адреси, або її можна
-  // тимчасово доклеїти у список серверів обраної збірки.
   let playAddr = $state('')
   async function openPlayPicker(inv: Invite, ti?: TempInviteState) {
     const addr = clean(inv.serverAddr)
@@ -1526,9 +1591,16 @@ import { windowActive } from '../windowActive.svelte'
   const connBanner = $derived(conn !== 'online')
 </script>
 
-{#snippet avatar(cls: string, from = '')}
+{#snippet avatar(cls: string, from = '', link = false)}
   {@const h = group ? (from ? group.headOf(from) : '') : head}
-  <div class="sc-av {cls}">
+  {@const clickable = link && canOpenProfile(from)}
+  <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+  <div class="sc-av {cls}" class:link={clickable}
+       role={clickable ? 'button' : undefined} tabindex={clickable ? 0 : undefined}
+       aria-label={clickable ? t('ff.profile.open') : undefined}
+       onclick={clickable ? (e) => { e.stopPropagation(); openSenderProfile(from) } : undefined}
+       onmousedown={clickable ? (e) => e.stopPropagation() : undefined}
+       onkeydown={clickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openSenderProfile(from) } } : undefined}>
     {#if h}<img src={h} alt="" />{:else if group && !from}<i class="ti ti-users-group"></i>{:else}<span>{initial(group ? group.nameOf(from) : peer?.nickname)}</span>{/if}
   </div>
 {/snippet}
@@ -1663,7 +1735,7 @@ import { windowActive } from '../windowActive.svelte'
   {/if}
 
   <!-- Стрічка повідомлень -->
-  <div class="sc-msgs" class:selecting bind:this={scroller} onscroll={onScroll}
+  <div class="sc-msgs" role="presentation" class:selecting bind:this={scroller} onscroll={onScroll}
        onwheel={userTookOver} ontouchstart={userTookOver} onpointerdown={userTookOver} onkeydown={userTookOver}>
    <div class="sc-inner" bind:this={inner}>
     {#if loading}
@@ -1695,7 +1767,7 @@ import { windowActive } from '../windowActive.svelte'
       {#each rows as row, idx (row.key)}
        <div class="sc-it" class:intro data-key={row.key}
             style={intro ? `--d:${Math.max(0, 10 - (rows.length - idx)) * 32}ms` : undefined}
-            in:rowIn={{ on: row.kind === 'msg' && !!row.m.fresh }}
+            in:rowIn={{ on: row.kind === 'msg' && !!row.m.fresh && row.m.from !== me }}
             out:rowOut={{ dir: row.kind === 'msg' && row.m.from === me ? 1 : -1 }}>
         {#if row.kind === 'day'}
           <div class="sc-day"><span>{dayLabel(row.ts)}</span></div>
@@ -1707,13 +1779,13 @@ import { windowActive } from '../windowActive.svelte'
           {@const tone = c.e === 'failed' ? 'bad' : c.e === 'declined' || c.r === 'cancelled_receiver' ? 'warn' : 'mute'}
           {@const dir = shareOut[c.sid] ? 'out' : shareIn[c.sid] ? 'in' : null}
           <button class="sc-evt {tone}" disabled={!dir} onclick={() => dir && openTransfer(dir, c.sid)}
-                  title={fullTime(row.m.ts)} oncontextmenu={(e) => openMenu(e, row.m)}>
+                  use:launcherTip={fullTime(row.m.ts)} oncontextmenu={(e) => openMenu(e, row.m)}>
             <span class="sc-evt-ic"><i class="ti {c.e === 'failed' ? 'ti-alert-triangle' : c.e === 'declined' ? 'ti-circle-x' : c.r === 'timeout' ? 'ti-clock-x' : c.r === 'sender_offline' ? 'ti-plug-connected-x' : 'ti-player-stop'}"></i></span>
             <span class="sc-evt-t">{ctlText(c, own, peer?.nickname ?? '')}</span>
             <span class="sc-evt-tm">{timeOf(row.m.ts)}</span>
           </button>
         {:else if row.kind === 'sys'}
-          <div class="sc-evt mute sc-sys" title={fullTime(row.m.ts)}>
+          <div class="sc-evt mute sc-sys" use:launcherTip={fullTime(row.m.ts)}>
             <span class="sc-evt-ic"><i class="ti ti-info-circle"></i></span>
             <span class="sc-evt-t">{group?.sysText(row.m.text ?? '') ?? ''}</span>
             <span class="sc-evt-tm">{timeOf(row.m.ts)}</span>
@@ -1728,11 +1800,15 @@ import { windowActive } from '../windowActive.svelte'
           <div class="sc-row" class:selecting class:picked={selected.has(m.key)} onclickcapture={(e) => onRowClickCapture(e, m.key)} oncontextmenu={(e) => openMenu(e, m)} onmousedown={(e) => onDragDown(e, m.key)} class:own class:fresh={m.fresh} class:flash={flashKey === m.key} class:gstart={row.groupStart} class:gend={row.groupEnd}>
             {#if selecting}<span class="sc-chk" class:on={selected.has(m.key)} aria-hidden="true"><i class="ti ti-check"></i></span>{/if}
             {#if !own}
-              <div class="sc-avcol">{#if row.groupEnd}{@render avatar('sm', m.from)}{/if}</div>
+              <div class="sc-avcol">{#if row.groupEnd}{@render avatar('sm', m.from, true)}{/if}</div>
             {/if}
-            <div class="sc-colmsg" class:invite-col={m.bodyType === 'server_invite'}>
-              {#if group && !own && row.groupStart}<div class="sc-from">{who(m.from)}</div>{/if}
-              <div class="sc-bwrap" class:invite-bwrap={m.bodyType === 'server_invite'}>
+            <div class="sc-colmsg" class:invite-col={m.bodyType === 'server_invite' || !!groupLinkToken(m.text)}>
+              {#if group && !own && row.groupStart}
+                <button type="button" class="sc-from" disabled={!canOpenProfile(m.from)}
+                        onmousedown={(e) => e.stopPropagation()}
+                        onclick={(e) => { e.stopPropagation(); openSenderProfile(m.from) }}>{who(m.from)}</button>
+              {/if}
+              <div class="sc-bwrap" class:invite-bwrap={m.bodyType === 'server_invite' || !!groupLinkToken(m.text)}>
                 {#if m.bodyType === 'server_invite' && m.invite}
                   {@const inv = m.invite}
                   {@const ti = tempOf(inv)}
@@ -1778,7 +1854,7 @@ import { windowActive } from '../windowActive.svelte'
                     </div>
                   </div>
                 {:else}
-                  <div class="sc-bub" class:sending={st === 'sending'} class:failed={st === 'failed'} class:modmsg={!!mod}>
+                  <div class="sc-bub" class:sending={st === 'sending'} class:failed={st === 'failed'} class:modmsg={!!mod} class:sc-invite={!!groupLinkToken(m.text) && !m.decryptFailed}>
                     {#if m.replyToId}
                       {@const rp = replyPreview(m)}
                       <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
@@ -1792,8 +1868,9 @@ import { windowActive } from '../windowActive.svelte'
                     {/if}
                     {#if m.decryptFailed}
                       <div class="sc-txt sc-bad"><i class="ti ti-lock-off"></i> {t('social.chat.decryptFailed')}</div>
-                    {:else if /^https:\/\/shaurma-launcher\.org\/group\/join#[a-f0-9]{64}$/.test((m.text ?? '').trim())}
-                      <button class="btn btn-secondary" disabled={joiningGroup} onclick={() => joinGroupLink(m.text ?? '')}><i class="ti ti-users-plus"></i>{t('groups.link.join')}</button>
+                    {:else if groupLinkToken(m.text)}
+                      <GroupLinkCard token={groupLinkToken(m.text)} {own} joining={joiningGroup} joined={joinedLinks.has(groupLinkToken(m.text))}
+                                     onJoin={() => joinGroupLink(m.text ?? '')} />
                     {:else if /^shaurma-server:v1:[a-z0-9.-]+(?::[0-9]+)?$/.test(m.text ?? '')}
                       {@const serverAddress = (m.text ?? '').slice('shaurma-server:v1:'.length)}
                       <InviteCard title={t('social.chat.invite.title')} addr={serverAddress} kind="Сервер" {own}
@@ -1882,12 +1959,16 @@ import { windowActive } from '../windowActive.svelte'
        </div>
       {/each}
 
-      {#if typingNow}
-        <div class="sc-row typ-row" in:fly={{ y: 8, duration: 200, easing: cubicOut }} out:fade={{ duration: 120 }}>
-          <div class="sc-avcol">{@render avatar('sm', group?.typing.length ? '' : peer?.accountId ?? '')}</div>
-          <div class="sc-bub sc-typ"><span class="dots big"><i></i><i></i><i></i></span></div>
-        </div>
-      {/if}
+      <!-- Слот під «друкує…» має СТАЛУ висоту: поява/зникнення крапок лише fade+transform,
+           без зміни висоти стрічки — інакше чат підстрибує щоразу, коли співрозмовник друкує. -->
+      <div class="sc-typslot" aria-hidden={!typingNow}>
+        {#if typingNow}
+          <div class="sc-row typ-row" in:fly={{ y: 8, duration: 200, easing: cubicOut }} out:fade={{ duration: 120 }}>
+            <div class="sc-avcol">{@render avatar('sm', group?.typing.length ? '' : peer?.accountId ?? '')}</div>
+            <div class="sc-bub sc-typ"><span class="dots big"><i></i><i></i><i></i></span></div>
+          </div>
+        {/if}
+      </div>
       {#if loadingNewer}
         <div class="sc-more-new"><i class="ti ti-loader-2 spin"></i> {t('social.chat.loadingNewer')}</div>
       {/if}
@@ -1934,6 +2015,16 @@ import { windowActive } from '../windowActive.svelte'
         </button>
       {/if}
       <button role="menuitem" onclick={() => act(() => startSelect(m))}><i class="ti ti-checkbox"></i> {t('social.chat.select')}</button>
+      {#if group && own && menuReaders && menuReaders.length > 0}
+        <hr />
+        <button role="menuitem" class="sc-rd" onclick={() => act(() => showReaders(m.id))}>
+          <i class="ti ti-checks"></i>
+          <span class="sc-rd-t">{viewsText(menuReaders.length)}</span>
+          <span class="sc-rd-stack" aria-hidden="true">
+            {#each menuReaders.slice(0, 3) as rid (rid)}{@render avatar('xs', rid)}{/each}
+          </span>
+        </button>
+      {/if}
       {#if m.failed || m.id > 0}
         <hr />
         {#if m.failed}
@@ -2020,16 +2111,34 @@ import { windowActive } from '../windowActive.svelte'
       <i class="ti ti-send"></i>
     </button>
   </div>
-  {#if peerStatus === 'offline'}
-    <div class="sc-offline" transition:fade={{ duration: 160 }}><i class="ti ti-moon"></i> {t('social.chat.offline')}</div>
-  {/if}
   {/if}
 </div>
 
-{#if readersOpen}
-  <UiModal open={true} title={t('groups.readers.title')} icon="ti-eye" onclose={() => readersOpen = false}>
-    {#if readersBusy}<p>…</p>{:else if readersError}<p role="alert">{readersError}</p>{:else}
-      {#each readersNames as name}<p>{name}</p>{:else}<p>{t('groups.readers.empty')}</p>{/each}
+{#if readersOpen && group}
+  <UiModal open={true} title={t('groups.readers.title')} subtitle={readersIds.length ? viewsText(readersIds.length) : ''}
+           icon="ti-checks" width="min(380px, 94vw)" bodyClass="no-pad" onclose={() => readersOpen = false}>
+    {#if readersBusy}
+      <div class="rd-list" aria-busy="true">
+        {#each [0, 1, 2] as i (i)}
+          <div class="rd-row rd-skel"><span class="rd-sk-av"></span><span class="rd-sk-line"></span></div>
+        {/each}
+      </div>
+    {:else if readersError}
+      <div class="rd-empty" role="alert"><i class="ti ti-alert-triangle"></i><span>{readersError}</span></div>
+    {:else if readersIds.length}
+      <ul class="rd-list">
+        {#each readersIds as rid (rid)}
+          <li class="rd-row">
+            {@render avatar('md', rid)}
+            <span class="rd-main">
+              <span class="rd-name">{group.nameOf(rid)}</span>
+              <span class="rd-sub"><i class="ti ti-checks"></i>{t('groups.readers.seen')}</span>
+            </span>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <div class="rd-empty"><i class="ti ti-eye-off"></i><span>{t('groups.readers.empty')}</span></div>
     {/if}
   </UiModal>
 {/if}
@@ -2046,8 +2155,13 @@ import { windowActive } from '../windowActive.svelte'
   .sc-back:hover { background: var(--hover-strong); color: var(--text); } .sc-back:active { transform: scale(.92); }
   .sc-av { position: relative; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px; background: var(--bg-input); display: flex; align-items: center; justify-content: center; font: 800 13px/1 var(--font-ui); color: var(--text-mute); }
   .sc-av img { width: 100%; height: 100%; border-radius: 9px; image-rendering: pixelated; }
+  .sc-av.link { cursor: pointer; transition: transform .14s, box-shadow .14s; }
+  .sc-av.link:hover { transform: scale(1.06); box-shadow: 0 0 0 2px color-mix(in srgb, var(--orange) 55%, transparent); }
+  .sc-av.link:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
   .sc-av.lg { width: 38px; height: 38px; border-radius: 11px; } .sc-av.lg img { border-radius: 11px; }
   .sc-av.sm { width: 26px; height: 26px; border-radius: 8px; } .sc-av.sm img { border-radius: 8px; }
+  .sc-av.xs { width: 20px; height: 20px; border-radius: 6px; font-size: 10px; } .sc-av.xs img { border-radius: 6px; }
+  .sc-av.md { width: 40px; height: 40px; border-radius: 12px; } .sc-av.md img { border-radius: 12px; }
   .sc-st { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg-panel); background: var(--text-dim); transition: background .25s; }
   .sc-st.online { background: #22c55e; } .sc-st.in_game { background: var(--orange); animation: sc-pulse 2s ease-in-out infinite; } .sc-st.away { background: #eab308; }
   @keyframes sc-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(var(--orange-rgb), .55); } 50% { box-shadow: 0 0 0 5px rgba(var(--orange-rgb), 0); } }
@@ -2222,7 +2336,10 @@ import { windowActive } from '../windowActive.svelte'
   .sc-colmsg { display: flex; flex-direction: column; min-width: 0; max-width: min(74%, 520px); }
   .sc-row.own .sc-colmsg { align-items: flex-end; }
   /* Груповий чат: ім'я відправника над першою бульбашкою серії, аватар групи в шапці, системні події. */
-  .sc-from { margin: 0 0 3px 4px; font: 700 11.5px/1.2 var(--font-ui); color: var(--orange); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+  .sc-from:disabled { cursor: default; }
+  .sc-from:not(:disabled):hover { text-decoration: underline; }
+  .sc-from:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; border-radius: 4px; }
+  .sc-from { display: block; padding: 0; border: 0; background: none; text-align: left; cursor: pointer; margin: 0 0 3px 12px; font: 700 11.5px/1.2 var(--font-ui); color: var(--orange); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
   .sc-gav { flex: 0 0 auto; display: flex; }
   .sc-gav.clk { cursor: pointer; }
   .sc-sys { cursor: default; }
@@ -2280,6 +2397,8 @@ import { windowActive } from '../windowActive.svelte'
   .dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
   .dots.big i { width: 6px; height: 6px; background: var(--text-dim); }
   @keyframes dot-b { 0%,60%,100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
+  .sc-typslot { height: 40px; flex: none; display: flex; align-items: flex-end; overflow: hidden; }
+  .sc-typslot .sc-row { margin-top: 0; }
   .sc-typ { padding: 11px 13px; border-bottom-left-radius: 5px; }
 
   /* ── Панель дій над повідомленням (копіювати / видалити) ── */
@@ -2344,6 +2463,28 @@ import { windowActive } from '../windowActive.svelte'
   .sc-menu button.danger, .sc-menu button.danger i { color: var(--red); }
   .sc-menu button.danger:hover { background: rgba(239,68,68,.12); }
   .sc-menu hr { border: 0; height: 1px; margin: 4px 2px; background: var(--border); }
+  /* «N переглядів» + стопка аватарок (як у Telegram) */
+  .sc-menu button.sc-rd { gap: 10px; }
+  .sc-rd-t { flex: 1; white-space: nowrap; }
+  .sc-rd-stack { display: inline-flex; align-items: center; flex: none; padding-left: 6px; }
+  .sc-rd-stack :global(.sc-av) { margin-left: -7px; box-shadow: 0 0 0 2px var(--bg-panel); }
+  .sc-menu button.sc-rd:hover .sc-rd-stack :global(.sc-av) { box-shadow: 0 0 0 2px var(--hover-strong); }
+
+  /* Модалка «Переглянули» */
+  .rd-list { list-style: none; margin: 0; padding: 8px; display: flex; flex-direction: column; gap: 2px; max-height: min(56vh, 420px); overflow-y: auto; }
+  .rd-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border-radius: 12px; transition: background .12s; }
+  .rd-row:hover { background: var(--hover-strong); }
+  .rd-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .rd-name { font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rd-sub { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; color: var(--text-mute); }
+  .rd-sub i { font-size: 14px; color: var(--green); }
+  .rd-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 34px 24px 38px; text-align: center; font-size: 13px; color: var(--text-mute); }
+  .rd-empty i { font-size: 30px; color: var(--text-dim); }
+  .rd-skel { pointer-events: none; }
+  .rd-sk-av { width: 40px; height: 40px; border-radius: 12px; background: var(--bg-input-hi); animation: rd-pulse 1.2s ease-in-out infinite; }
+  .rd-sk-line { width: 120px; height: 12px; border-radius: 6px; background: var(--bg-input-hi); animation: rd-pulse 1.2s ease-in-out infinite .15s; }
+  @keyframes rd-pulse { 50% { opacity: .45; } }
+  @media (prefers-reduced-motion: reduce) { .rd-sk-av, .rd-sk-line { animation: none; } }
   .sc-msgs.selecting { user-select: none; }
   .sc-menu { transform-origin: top left; }
   .sc-it.intro { animation: sc-rise .45s cubic-bezier(.2,.9,.3,1) both; animation-delay: var(--d, 0ms); }
@@ -2363,8 +2504,6 @@ import { windowActive } from '../windowActive.svelte'
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .sc-spam { display: flex; align-items: center; gap: 7px; flex-shrink: 0; margin: 0 14px 6px; padding: 6px 11px; border-radius: 9px; border: 1px solid rgba(234,179,8,.35); background: rgba(234,179,8,.09); font: 600 11.5px/1.3 var(--font-ui); color: var(--text); }
   .sc-spam i { color: #eab308; font-size: 14px; }
-  .sc-offline { display: flex; align-items: center; gap: 6px; flex-shrink: 0; padding: 0 16px 10px; font: 500 11px/1.4 var(--font-ui); color: var(--text-dim); }
-  .sc-offline i { color: #eab308; }
 
   @media (prefers-reduced-motion: reduce) {
     .sc-row.fresh .sc-bub, .sc-row.flash .sc-bub, .sc-bub.failed, .sc-st.in_game, .sc-empty-ic, .tk, .sc-it.intro, .sc-day, .sc-newdiv, .sk-row, .sk-av, .sk-bub, .sc-chk, .sc-send.fly i { animation: none !important; }

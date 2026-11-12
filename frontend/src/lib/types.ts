@@ -63,10 +63,17 @@ export interface Settings {
   sidebarWidth: number
   sidebarScale: number
   sidebarOnlyPinned: boolean
+  // Стиснений sidebar (лише іконки) — зберігається у settings.json, не в localStorage.
+  sidebarCollapsed?: boolean
+  // Де ховати кнопку «Створити» / перемикач типів у sidebar: '' | 'collapsed' | 'expanded' | 'all'.
+  sidebarHideCreate?: string
+  sidebarHideSwitch?: string
   // Кастомна тема: колір фону, карток, тексту.
   themeCustomBg: string
   themeCustomCard: string
   themeCustomText: string
+  // Розширена власна тема (JSON: sidebar/panel/input/border/muted/radius/depth). '' = усе «авто».
+  themeCustomExtra?: string
   autoUpdate: boolean
   updateChannel: string
   // Час останньої успішної перевірки оновлень (RFC3339; '' = ще не було).
@@ -176,8 +183,6 @@ export interface Settings {
 
   // Сповіщення про онлайн друзів Xbox (перемикач у шухляді «Друзі»).
   xboxOnlineNotify?: boolean
-
-  // Авто-відправка звітів про помилки (перемикач у «Загальні»).
 
   // Вимикачі систем, які можна прибрати повністю (перемикачі у «Загальні»):
   // disableSkins — лаунчер не підключає java-агент authlib-injector і не
@@ -699,6 +704,18 @@ export interface PendingShortcutLaunch {
   packId: string
   accountId?: string
   autoJoinServer?: string
+  // window — окреме вікно запуску ярлика (головний екран не відкривається);
+  // plain — головний екран уже був відкритий, запуск як після кнопки «Грати».
+  mode?: 'window' | 'plain'
+}
+
+// ShortcutWindowInfo — що показує вікно запуску ярлика (shortcut.html).
+export interface ShortcutWindowInfo {
+  packId: string
+  name: string
+  iconUrl: string
+  presetIcon: string
+  color: string
 }
 
 // BrowserCategory — тег-категорія у фільтрі браузера (джерело + назва +
@@ -1740,6 +1757,9 @@ export interface InstanceConfig {
   // Чи повертати попередній скін/плащ після зупинки збірки.
   // null = увімкнено (дефолт), false = лишити як змінився.
   skinRestoreOnExit: boolean | null
+  // Скін-система збірки: '' = як у глобальних налаштуваннях, 'shaurma' = завжди
+  // скіни Shaurma, 'mojang' = стандартні скіни Mojang (без authlib-injector).
+  skinSystemOverride?: '' | 'shaurma' | 'mojang'
   // pinnedServerIps — адреси серверів (зі servers.dat), закріплених у
   // розділі "Сервери" (UI-стан лаунчера, гра про це не знає).
   pinnedServerIps?: string[]
@@ -3084,6 +3104,41 @@ export interface SocialFriendProfile {
   gameSeconds?: number
   buildsCount?: number
   friendsCount?: number
+  /** false — профіль не-друга: лише нік, @handle і спільні зв'язки. */
+  isFriend?: boolean
+  /** Спільні друзі/групи: кількість — завжди, імена й назви — якщо власник дозволив. */
+  mutualCount?: number
+  mutualFriends?: { accountId: string; nickname: string }[]
+  mutualGroupsCount?: number
+  mutualGroups?: { id: string; title: string }[]
+  /** Рішення сервера за приватністю власника профілю (для не-друга). */
+  canMessage?: boolean
+  canRequest?: boolean
+  requestPending?: boolean
+  /** Статус не-друга; є лише якщо власник показує його всім. */
+  presence?: { status: 'online' | 'away' | 'in_game' | 'offline'; packName?: string; packColor?: string; dropInOpen?: boolean }
+}
+/** Коментар у профілі (до 40 символів; ліміти тримає сервер). */
+export interface SocialProfileComment {
+  id: number
+  authorId: string
+  nickname: string
+  handle?: string
+  text: string
+  createdAt: number
+  /** Кількість реакцій за емодзі. */
+  reactions?: Record<string, number>
+  /** Моя реакція (порожньо — немає). */
+  mine?: string
+  /** Автор або власник профілю. */
+  canDelete: boolean
+}
+export interface SocialProfileComments {
+  comments: SocialProfileComment[]
+  /** Скільки коментарів я вже залишив у цьому профілі. */
+  myCount: number
+  /** Чи можу написати ще один (не власник і ліміт не вичерпано). */
+  canPost: boolean
 }
 // Кому я показую свій профіль (біо, колір, статистику). Діє на сервері.
 export type SocialProfileVisibility = 'everyone' | 'friends' | 'nobody'

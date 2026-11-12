@@ -404,16 +404,15 @@ func (inst *Installer) installForge(mcVersion, loaderVersion string, neoforge bo
 	fullVer := mcVersion + "-" + loaderVersion
 
 	// Список КАНДИДАТІВ installer URL, пробуємо по черзі (перший успішний).
-	// БАГ (виправлено): Forge для старих версій Minecraft (1.8.9, 1.7.10)
-	// публікує maven-артефакти під «подвійним» ім'ям версії з суфіксом MC:
+	// Forge для старих версій Minecraft (1.8.9, 1.7.10) публікує maven-артефакти під
+	// «подвійним» ім'ям версії з суфіксом MC:
 	//   net/minecraftforge/forge/1.8.9-11.15.1.2318-1.8.9/
-	//       forge-1.8.9-11.15.1.2318-1.8.9-installer.jar  (існує — 200)
-	// а НЕ під звичайним
+	//       forge-1.8.9-11.15.1.2318-1.8.9-installer.jar  (200)
+	// а не під звичайним
 	//   net/minecraftforge/forge/1.8.9-11.15.1.2318/
-	//       forge-1.8.9-11.15.1.2318-installer.jar        (404!)
-	// Тому пробуємо обидва формати — так само, як Prism Launcher будує URL
-	// з повного maven-імені версії зі своєї мети (meta.prismlauncher.org
-	// для 1.8.9 віддає саме 1.8.9-11.15.1.2318-1.8.9).
+	//       forge-1.8.9-11.15.1.2318-installer.jar        (404)
+	// Тому пробуємо обидва формати — як Prism Launcher, що будує URL з повного
+	// maven-імені версії зі своєї мети (meta.prismlauncher.org).
 	var installerURLs []string
 	if neoforge {
 		if neoforgeUsesForgeArtifact(mcVersion, loaderVersion) {
@@ -421,10 +420,7 @@ func (inst *Installer) installForge(mcVersion, loaderVersion string, neoforge bo
 			// mc-префіксом версії, тому шлях ідентичний Forge, але в репо
 			// neoforged:
 			//   net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar
-			// БАГ (виправлено): раніше завжди будувався шлях сучасного
-			// артефакту neoforge (net/neoforged/neoforge/47.1.106/
-			// neoforge-47.1.106-installer.jar), якого для 1.20.1 не існує —
-			// звідси і був "download neoforge installer: HTTP 404".
+			// Для 1.20.2+ артефакт — net/neoforged/neoforge/<ver>/neoforge-<ver>-installer.jar.
 			installerURLs = append(installerURLs,
 				neoMavenForge+fullVer+"/forge-"+fullVer+"-installer.jar")
 		} else {
@@ -466,22 +462,12 @@ func (inst *Installer) installForge(mcVersion, loaderVersion string, neoforge bo
 // а замість librariesDir().resolve(mcVersion) — спільну libraries/).
 //
 // Повертає (profileID, true), якщо версійний профіль на диску вже є і
-// (де застосовно) клієнтський jar лоадера в libraries теж на місці —
-// тобто runForgeProcessors точно відпрацював раніше і install можна
-// пропустити цілком.
+// (де застосовно) клієнтський jar лоадера в libraries теж на місці.
 func (inst *Installer) checkForgeInstalled(mcVersion, loaderVersion string, neoforge bool) (string, bool) {
-	// Профіль на диску зберігається під ID інсталера (versions/<id>/, де id —
-	// з version.json інсталера), а НЕ у форматі "mcVersion-loaderVersion":
-	//   Forge           -> "<mc>-forge-<loaderVersion>" (напр. 1.20.1-forge-47.4.10)
-	//   NeoForge 1.20.2+ -> "neoforge-<loaderVersion>"  (напр. neoforge-21.1.233)
-	//   NeoForge 1.20.1  -> "<mc>-forge-<loaderVersion>" (напр. 1.20.1-forge-47.1.106)
-	// БАГ (виправлено): раніше тут підставлявся LoaderVersionID(...) =
-	// "mc-loaderVersion" (1.20.1-47.4.10 / 1.21.1-21.1.233), якого на диску
-	// ніколи не було — перевірка завжди провалювалась, і Forge/NeoForge
-	// перезапускали ВЕСЬ install-шлях (розпаковка installer.jar, перевірка
-	// всіх бібліотек/асетів і важкі processors) при КОЖНОМУ запуску гри.
-	// Шукаємо реальний профіль серед versions/, щоб не покладатись на
-	// точний mcVersion з даних збірки.
+	// Профіль на диску зберігається під ID інсталера (versions/<id>/, де id — з
+	// version.json інсталера), а НЕ у форматі "mcVersion-loaderVersion": Шукаємо
+	// реальний профіль серед versions/, щоб не покладатись на точний mcVersion з даних
+	// збірки.
 	entries, err := os.ReadDir(filepath.Join(inst.baseDir, "versions"))
 	if err != nil {
 		return "", false
@@ -519,11 +505,6 @@ func (inst *Installer) checkForgeInstalled(mcVersion, loaderVersion string, neof
 		} else if isOldForgeProfileID(name, mcVersion, loaderVersion) {
 			// СТАРІ Forge (1.8.9/1.7.10): ID іншого формату — mc і версія
 			// вклеєні БЕЗ дефіса після "forge":
-			//   "1.8.9-forge1.8.9-11.15.1.2318-1.8.9" (з mc-суфіксом maven)
-			//   "1.8.9-forge1.8.9-11.15.0.1669"        (без суфікса)
-			// Раніше тут шукали лише "-forge-<ver>", тож старий профіль
-			// ніколи не знаходився і install перезапускався при КОЖНОМУ
-			// запуску гри.
 			profileID = name
 			break
 		}
@@ -578,15 +559,12 @@ func (inst *Installer) checkForgeInstalled(mcVersion, loaderVersion string, neof
 		realMcVersion = mcVersion
 	}
 
-	// Шлях client.jar у спільній libraries/ залежить від лоадера:
-	//   Forge           -> net/minecraftforge/forge/<mc>-<lv>/forge-<mc>-<lv>-client.jar
-	//   NeoForge 1.20.2+ -> net/neoforged/neoforge/<lv>/neoforge-<lv>-client.jar
-	//   NeoForge 1.20.1  -> net/neoforged/forge/<mc>-<lv>/forge-<mc>-<lv>-client.jar
-	// (у NeoForge 1.20.2+ maven-тека — це сам loaderVersion БЕЗ mc-префікса;
-	// у 1.20.1 — mc-префіксована тека артефакту "forge", куди processors
-	// інсталера пишуть PATCHED client jar. БАГ: раніше для neoforge завжди
-	// будувався шлях сучасного артефакту, тож для 1.20.1 навіть знайдений
-	// профіль не проходив перевірку client.jar.)
+	// Шлях client.jar у спільній libraries/ залежить від лоадера: Forge ->
+	// net/minecraftforge/forge/<mc>-<lv>/forge-<mc>-<lv>-client.jar NeoForge 1.20.2+ ->
+	// net/neoforged/neoforge/<lv>/neoforge-<lv>-client.jar NeoForge 1.20.1 ->
+	// net/neoforged/forge/<mc>-<lv>/forge-<mc>-<lv>-client.jar (у NeoForge 1.20.2+
+	// maven-тека — це сам loaderVersion БЕЗ mc-префікса; у 1.20.1 — mc-префіксована тека
+	// артефакту "forge", куди processors інсталера пишуть PATCHED client jar. БАГ.
 	var clientJar string
 	if neoforge {
 		if neoforgeUsesForgeArtifact(realMcVersion, loaderVersion) {
@@ -610,10 +588,7 @@ func (inst *Installer) checkForgeInstalled(mcVersion, loaderVersion string, neof
 		// його в downloads.artifact.path при встановленні). Шукаємо цей шлях
 		// серед бібліотек профілю — так install вважається завершеним тоді,
 		// коли jar лоадера реально на місці (як Prism перевіряє наявність
-		// патченого jar), незалежно від формату (client/universal/без
-		// classifier). Раніше fallback покривав лише старий формат через
-		// хевристику oldForgeUniversalJar і для 1.12.2 перевстановлював
-		// лоадер при КОЖНОМУ запуску гри.
+		// патченого jar), незалежно від формату (client/universal/без classifier).
 		for i := range vj.Libraries {
 			lib := &vj.Libraries[i]
 			if !isForgeArtifactName(lib.Name) {
@@ -1054,12 +1029,7 @@ type forgeProcessor struct {
 // іноді кладе у "maven/" артефакти з іншим розширенням (напр. деякі старіші
 // NeoForge/Forge fat-installer збірки бандлять .zip чи .txt поруч із .jar,
 // коли відповідний maven-координат заданий з "@ext", як
-// "net.neoforged:neoform:...@zip" -- див. gradlePath()). Раніше фільтр
-// "!strings.HasSuffix(name, ".jar")" тихо пропускав будь-який такий файл:
-// install.jar МІГ містити потрібний артефакт всередині, а ми його просто не
-// копіювали на диск, і processor згодом падав з "Input does not exist",
-// хоча насправді дані для нього фізично лежали в installer.jar поруч з
-// іншими maven/-артефактами.
+// "net.neoforged:neoform:...@zip" -- див. gradlePath()).
 func (inst *Installer) extractBundledJars(zr *zip.ReadCloser, versionID string) error {
 	for _, f := range zr.File {
 		name := f.Name
@@ -1119,12 +1089,7 @@ func (inst *Installer) extractBundledJars(zr *zip.ReadCloser, versionID string) 
 // КРИТИЧНО: MINECRAFT_VERSION/MINECRAFT_JAR мають вказувати на РЕАЛЬНУ
 // версію ванілли, від якої вважає Forge (напр. "1.20.1-20230612.114412"
 // -- версія з MCP-таймстемпом, profile.Minecraft), а НЕ на голий
-// mcVersion ("1.20.1"). Раніше тут підставлявся mcVersion — тому шлях у
-// {MINECRAFT_JAR} і всі похідні від нього токени вказували на
-// versions/1.20.1/1.20.1.jar, якого processor ніколи не чіпав, а
-// реальний патчений jar лишався ненайденим (саме ця розбіжність і
-// спричиняла крах ModLauncher/FML: srg/extra/client-jar просто не
-// існували за очікуваним шляхом).
+// mcVersion ("1.20.1").
 func (inst *Installer) runForgeProcessors(zr *zip.ReadCloser, installerPath string, profile *installProfile, profileJSON []byte, versionID, mcVersion string) error {
 	if len(profile.Processors) == 0 {
 		return nil
@@ -1170,15 +1135,10 @@ func (inst *Installer) runForgeProcessors(zr *zip.ReadCloser, installerPath stri
 	// vanilla client jar якраз і качається під mcVersion; MCP-jar-и
 	// (srg/extra/client) processors ГЕНЕРУЮТЬ ЛОКАЛЬНО з нього.
 	//
-	// Попередня версія цього коду плутала їх: якщо тут підставити
-	// profile.Minecraft напряму в EnsureVersion/шлях клієнтського jar-а,
-	// або (як робилось РАНІШЕ) навпаки — підставити голий mcVersion туди,
-	// де processors очікують МСP-рядок токена MINECRAFT_VERSION — обидва
-	// варіанти ламають шлях, за яким processor шукає вхідний client jar
-	// або куди пише вихідний srg/extra/client jar. Симптом точно такий,
-	// як у зафіксованому крашлозі: "Invalid paths argument, contained no
-	// existing paths: ...-srg.jar, ...-extra.jar, ...-client.jar" — три
-	// файли, шлях до яких побудований з неправильного значення токена.
+	// Симптом точно такий, як у зафіксованому крашлозі: "Invalid paths
+	// argument, contained no existing paths: ...-srg.jar, ...-extra.jar,
+	// ...-client.jar" — три файли, шлях до яких побудований з
+	// неправильного значення токена.
 	mcpVersion := strings.TrimSpace(profile.Minecraft)
 	if mcpVersion == "" {
 		mcpVersion = mcVersion
@@ -1518,8 +1478,7 @@ func extractArgValue(args []string, flag string) string {
 func (inst *Installer) processorOutputsValid(outputs map[string]string, vars map[string]string) (bool, string) {
 	if len(outputs) == 0 {
 		// Немає оголошених outputs -- перевіряти нічого, тож "всі outputs
-		// валідні" тривіально. Раніше тут поверталось (false, "") -- і
-		// кожен processor без outputs (напр. перші кроки installertools:
+		// валідні" тривіально.
 		// EXTRACT_FILES/BUNDLER_EXTRACT/MCP_DATA/DOWNLOAD_MOJMAPS/
 		// MERGE_MAPPING) після успішного запуску падав із хибною помилкою
 		// "очікуваний файл не з'явився:" (порожній шлях), блокуючи все
@@ -1609,26 +1568,16 @@ func (inst *Installer) resolveProcValue(literal string, vars map[string]string, 
 		pathInZip := strings.TrimPrefix(literal, "/")
 		for _, f := range zr.File {
 			if f.Name == pathInZip {
-				// ВАЖЛИВО: temp-шлях МАЄ бути унікальним для КОЖНОЇ
-				// версії Forge/NeoForge, яку встановлюємо, а не спільним
-				// "shaurma-forge/data/client.lzma" для всіх запусків
-				// підряд. Усередині install_profile.json будь-якого
-				// Forge/NeoForge installer.jar внутрішній шлях до binpatch
-				// файлу (data/client.lzma) ЗАВЖДИ однаковий незалежно від
-				// версії — це просто конвенція формату installer.jar. Якщо
-				// раніше в цій самій temp-теці вже лежав client.lzma ВІД
-				// ІНШОЇ версії Forge (напр. установка 1.16.5 після
-				// 1.21.1-neoforge) — os.Stat бачив "файл є" і повертав
-				// ЧУЖИЙ, застарілий набір binpatch-ів, тому clean vanilla
-				// jar правильної (поточної) версії порівнювався проти
-				// checksum-ів, зашитих під зовсім ІНШУ версію Minecraft.
-				// Це і давало стабільний, однаковий на вигляд checksum
-				// mismatch (той самий клас, той самий очікуваний checksum)
-				// на будь-якій версії, встановленій НЕ першою в цій
-				// temp-теці. Ключуємо підтеку за MCP/loader-версією
-				// (vars["MINECRAFT_VERSION"] — унікальна для кожного
-				// install_profile.json), щоб різні версії ніколи не
-				// ділили один і той самий кеш.
+				// ВАЖЛИВО: temp-шлях МАЄ бути унікальним для КОЖНОЇ версії
+				// Forge/NeoForge, яку встановлюємо, а не спільним
+				// "shaurma-forge/data/client.lzma" для всіх запусків підряд.
+				// Усередині install_profile.json будь-якого Forge/NeoForge
+				// installer.jar внутрішній шлях до binpatch файлу
+				// (data/client.lzma) ЗАВЖДИ однаковий незалежно від версії —
+				// це просто конвенція формату installer.jar. Ключуємо підтеку
+				// за MCP/loader-версією (vars["MINECRAFT_VERSION"] — унікальна
+				// для кожного install_profile.json), щоб різні версії ніколи
+				// не ділили один і той самий кеш.
 				cacheKey := vars["MINECRAFT_VERSION"]
 				if cacheKey == "" {
 					cacheKey = "unknown"
@@ -1781,12 +1730,7 @@ func mainClassFromJar(jarPath string) string {
 
 // runJavaProcessor запускає Java-процес (processor) з classpath та args.
 //
-// Forge/NeoForge processors — довготривалий зовнішній Java-patcher. Раніше тут
-// був блокуючий cmd.CombinedOutput(), який НЕ перевіряв прапорець скасування і
-// ніколи не вбивав процес — кнопка «Зупинити» під час experiments процесорів
-// не діяла (inst.cancelRequested просто ставився, але Java-NGCдобігав сам).
-// Тепер: перевіряємо прапорець ДО запуску і паралельно слідкуємо за ним під
-// час роботи (і за таймаутом) — при скасуванні вбиваємо дочірній Java.
+// Forge/NeoForge processors — довготривалий зовнішній Java-patcher.
 func runJavaProcessor(inst *Installer, procJar, mainClass string, cp, args []string, timeoutSec int) error {
 	javaBin := "java"
 	// Передаємо виконуваний файл Java, який використовує лаунчер для гри.

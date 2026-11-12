@@ -1,6 +1,6 @@
 package main
 
-// Друзі Shaurma (ФАЗА 1 SOCIAL_MASTERPLAN.md, без чату) — тонка обгортка над
+// Друзі Shaurma — тонка обгортка над
 // internal/social. Уся логіка, санітизація й тести — там; тут лише:
 //   - звʼязок із коміркою акаунта Шаурми активного акаунта лаунчера (social_identity_shaurma.go);
 //   - життєвий цикл (старт при вході, стоп при виході);
@@ -80,6 +80,7 @@ func (a *App) socialService() *social.Service {
 			// Службові повідомлення передач збірок (відмова/скасування) — share_shaurma.go.
 			a.shareOnSocial(event, payload)
 			a.notifyFromSocial(event, payload)
+			a.taskbarBadgeOnSocial(event, payload)
 		},
 		// Віддалене керування серверами друзів: усі кадри rs_* йдуть у remote_control_shaurma.go.
 		Remote: a.remoteHooks(),
@@ -139,6 +140,7 @@ func (a *App) stopSocial() {
 	if svc != nil {
 		svc.Stop()
 	}
+	a.taskbarBadgeUpdate(nil) // вихід з акаунта — бейдж на панелі завдань прибираємо
 	a.remoteOnIdentityChanged()
 }
 
@@ -452,7 +454,7 @@ func (a *App) notifyFromSocial(event string, payload any) {
 		// Мути чатів (chatmute_shaurma.go): DND (глушить усі чати), загальний
 		// мут чатів або мут саме цього діалогу. Сповіщення не показується,
 		// але ПОВІДОМЛЕННЯ не втрачається — воно досі лежить у чаті (бейдж
-		// непрочитаного в списку діалогів оновлюється, як і раніше).
+		// непрочитаного в списку діалогів оновлюється).
 		if a.IsChatMuted(ev.From) {
 			return
 		}

@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Картка сервера в бібліотеці ───────────────────────────────────────
-  // Редизайн: раніше це був компактний .inst-tile (іконка + назва + ▶),
-  // який виглядав «сухо» й нічого не казав про стан сервера. Тепер картка:
+  // Картка:
   //   • шапка — іконка з живою крапкою, назва, ядро · версія, пігулка статусу;
   //   • чіпи — порт, Java, RAM, що є на сервері (моди/плагіни);
   //   • ТІЛО ЗАЛЕЖИТЬ ВІД СТАНУ:
@@ -93,7 +94,7 @@
       {#if running}<span class="sc-live"></span>{/if}
     </div>
     <div class="sc-id">
-      <div class="sc-name" title={srv.name}>{srv.name}</div>
+      <div class="sc-name" use:launcherTip={srv.name}>{srv.name}</div>
       <div class="sc-sub">{#if remote}{remote.nick}{#if coreLabel(srv)} · {coreLabel(srv)}{/if}{:else}{isVelocity ? t('servers.common.velocityProxy') : coreLabel(srv)}{srv.mcVersion && !isVelocity ? ' · ' + srv.mcVersion : ''}{/if}</div>
     </div>
     {#if remote && !remote.online}

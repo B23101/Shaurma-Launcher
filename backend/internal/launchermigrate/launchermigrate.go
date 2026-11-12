@@ -56,10 +56,8 @@ type Pack struct {
 	// <instance>/icon.png). Порожній рядок = іконки немає (тоді UI/бекенд
 	// призначає пресет через ШІ).
 	IconPath string `json:"iconPath,omitempty"`
-	// AlreadyImported — чи збірка вже перенесена у цей лаунчер раніше
-	// (у store є збірка з MigratedFrom.Kind == Kind && MigratedFrom.ID == ID).
-	// Заповнює App (launchermigrate не знає про store); фронтенд показує
-	// бейдж «Вже завантажено» і дозволяє пере-імпорт (дублікат отримає «(2)»).
+	// Заповнює App (launchermigrate не знає про store); фронтенд показує бейдж
+	// «Вже завантажено» і дозволяє пере-імпорт (дублікат отримає «(2)»).
 	AlreadyImported bool `json:"alreadyImported,omitempty"`
 	// GameDir — АБСОЛЮТНИЙ шлях до теки гри (Prism: <instance>/.minecraft
 	// або <instance>/minecraft; Modrinth: сам інстанс <config>/profiles/<path>).

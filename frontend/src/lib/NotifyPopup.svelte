@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Віджет сповіщень у трей ──────────────────────────────────────────────
   //
   // Живе в ОКРЕМОМУ вікні (frontend/notify.html), яке створює
@@ -428,7 +430,7 @@
         <button
           class="np-x"
           aria-label={t('social.notify.dismiss')}
-          title={t('social.notify.dismiss')}
+          use:launcherTip={t('social.notify.dismiss')}
           onclick={(e) => { e.stopPropagation(); dismiss(c.key) }}
         >
           <i class="ti ti-x"></i>

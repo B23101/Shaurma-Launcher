@@ -1,12 +1,12 @@
 package main
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/crashguard"
 	"sort"
 	"strings"
 	"sync"
@@ -64,9 +64,6 @@ func (a *App) GetMigrationPacks(excludePackID string) []model.MigrationPack {
 			}
 		}
 	}
-	// Кастомні збірки: іконка/колір зі збереженого Pack (ті самі, що на
-	// картці збірки в sidebar) — раніше тут був порожній рядок, тож
-	// селектор міграції показував кастомні збірки БЕЗ іконки і кольору.
 	// Icon — пресет-іконка (Tabler), IconPath (PNG) має пріоритет у UI.
 	if a.customPacks != nil {
 		for _, cp := range a.customPacks.List() {
@@ -79,8 +76,7 @@ func (a *App) GetMigrationPacks(excludePackID string) []model.MigrationPack {
 	}
 	// Порядок — ТАКИЙ САМИЙ, як у sidebar: закріплені перші (packLayout.pinned
 	// у їхньому порядку), далі незакріплені у збереженому порядку (packLayout.
-	// order), нові — в кінці (як прийшли). Раніше тут було сортування за
-	// назвою, і список міграції не збігався з порядком збірок у лаунчері.
+	// order), нові — в кінці (як прийшли).
 	order := a.packLayoutOrder()
 	pinned := a.packLayoutPinned()
 	byID := map[string]model.MigrationPack{}
@@ -289,12 +285,9 @@ func (a *App) analyzeModMigration(sourcePackID, targetPackID, targetMCVersion, t
 	// Якщо loader і MC-версія збірки-джерела збігаються з цільовими,
 	// мережевий резолв (Modrinth batch + CurseForge fallback) не дає
 	// нічого нового: jar вже доведено робочий саме під цю пару
-	// loader+версія в джерелі, і саме туди ж і переноситься. Раніше
-	// такі моди, якщо їх не було на Modrinth/CurseForge (приватні,
-	// unlisted, самописні), падали в "not-found" і взагалі не
-	// потрапляли в переліст, хоча насправді jar можна просто
-	// скопіювати як є. Перевірку already/update (по sha1/modId з тим,
-	// що вже стоїть у цілі) лишаємо — вона не залежить від мережі.
+	// loader+версія в джерелі, і саме туди ж і переноситься. Перевірку
+	// already/update (по sha1/modId з тим, що вже стоїть у цілі) лишаємо
+	// — вона не залежить від мережі.
 	if srcPack, ok := a.migrationPackByID(sourcePackID); ok &&
 		srcPack.Loader != "" && targetLoader != "" &&
 		strings.EqualFold(srcPack.Loader, targetLoader) &&
@@ -696,6 +689,13 @@ func (a *App) MigrateMods(targetPackID string, items []model.MigrationItem) mode
 // перейти на сторінку щойно створеної збірки одразу і показати живий
 // прогрес міграції замість тихого блокуючого виклику.
 func (a *App) StartModMigration(targetPackID string, items []model.MigrationItem) string {
+	// Одна проста подія старту (без покрокового прогресу): UI показує
+	// «моди копіюються» і знімає банер по mods:migrate-done.
+	a.emit("mods:migrate-progress", map[string]any{
+		"packId":  targetPackID,
+		"current": 0,
+		"total":   len(items),
+	})
 	go func() {
 		defer crashguard.Recover("mods_migration.go:646")
 		res := a.migrateModsInternal(targetPackID, items)
@@ -757,22 +757,7 @@ func (a *App) migrateModsInternal(targetPackID string, items []model.MigrationIt
 	}
 
 	res.Skipped = len(items) - len(todo)
-	for i, it := range todo {
-		// Подія "старту" файлу: current=i (ще НЕ i+1) — показує, який файл
-		// зараз качається, але НЕ рахує його завершеним. Раніше тут стояло
-		// i+1, тож на останньому елементі progress=total одразу, а прогрес-бар
-		// стрибав на 100% ще до того, як файл реально докачався/встановився —
-		// виглядало як «зависання на 100%», хоча процес просто ще працював.
-		a.emit("mods:migrate-progress", map[string]any{
-			"packId":     targetPackID,
-			"current":    i,
-			"total":      len(todo),
-			"fileName":   it.ResolvedFilename,
-			"name":       firstNonEmpty(it.ResolvedName, it.SourceName),
-			"iconUrl":    it.IconURL,
-			"status":     it.Status,
-			"sourceName": it.SourceName,
-		})
+	for _, it := range todo {
 		installErr := a.installMigratedMod(targetDir, backupsDir, stamp, it)
 		if installErr != nil {
 			res.Failed = append(res.Failed, fmt.Sprintf("%s: %v", it.SourceName, installErr))
@@ -789,19 +774,6 @@ func (a *App) migrateModsInternal(targetPackID string, items []model.MigrationIt
 			}
 			res.Migrated = append(res.Migrated, it.SourceName)
 		}
-		// Подія "завершення" файлу: current=i+1 — прогрес і 100% з'являються
-		// лише ПІСЛЯ того, як файл реально встановлено (або провалився), а не
-		// перед цим. На останньому елементі total тепер досягається саме тут.
-		a.emit("mods:migrate-progress", map[string]any{
-			"packId":     targetPackID,
-			"current":    i + 1,
-			"total":      len(todo),
-			"fileName":   it.ResolvedFilename,
-			"name":       firstNonEmpty(it.ResolvedName, it.SourceName),
-			"iconUrl":    it.IconURL,
-			"status":     it.Status,
-			"sourceName": it.SourceName,
-		})
 	}
 	a.invalidateModUpdateCache(targetPackID)
 	if res.Migrated == nil {
@@ -824,11 +796,8 @@ func (a *App) installMigratedMod(targetDir, backupsDir, stamp string, it model.M
 	}
 
 	// Прибираємо старі версії цього мода: за modId з jar-метаданих (надійний
-	// ключ з диска — той самий мод іншої версії міг мати інше ім'я файлу),
-	// а якщо modId порожній — за projectID (менш надійно, але хоч щось).
-	// Раніше матчили лише по ProjectID, який з'являється тільки після
-	// мережевого резолву — на свіжому скані цілі він порожній, і старі
-	// версії мода з іншими іменами лишалися б → дублікати.
+	// ключ з диска — той самий мод іншої версії міг мати інше ім'я файлу), а
+	// якщо modId порожній — за projectID (менш надійно, але хоч щось).
 	a.removeModFilesForMigration(targetDir, it.SourceModID, it.ProjectID)
 	if it.ResolvedFilename != "" {
 		_ = os.Remove(filepath.Join(targetDir, it.ResolvedFilename))

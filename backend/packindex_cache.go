@@ -162,7 +162,7 @@ func (a *App) startPackIndexRefreshLocked(key string) {
 		close(done)
 
 		if err != nil {
-			// Без кешу UI мусить знати, чому каталог порожній (як і раніше).
+			// Без кешу UI мусить знати, чому каталог порожній.
 			log.Printf("GetBuilds: GetPackIndex error: %v", err)
 			a.emit("packs:index-error", err.Error())
 			return

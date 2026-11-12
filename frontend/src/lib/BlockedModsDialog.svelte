@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // Діалог заблокованих модів (імпорт CurseForge zip, як у Prism):
   // автор(-и) модів заборонили завантаження зі сторонніх джерел — CurseForge
@@ -72,14 +74,14 @@
                 <input type="checkbox" checked={checked.has(m.fileName)} onchange={() => toggle(m.fileName)} />
                 <i class="ti ti-check"></i>
               </label>
-              <span class="bm-file" title={m.fileName}>
+              <span class="bm-file" use:launcherTip={m.fileName}>
                 <i class="ti ti-file"></i>
                 <span>{m.fileName}</span>
               </span>
               {#if m.required}
                 <span class="bm-badge req">{t('import.blocked.required')}</span>
               {/if}
-              <button class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl)} title={m.websiteUrl}>
+              <button class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl)} use:launcherTip={m.websiteUrl}>
                 <i class="ti ti-external-link"></i>
               </button>
             </div>

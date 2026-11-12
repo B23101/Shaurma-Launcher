@@ -22,6 +22,7 @@
 
 import ukDict from './langs/uk.json'
 import enDict from './langs/en.json'
+import { tp } from './settings/nav'
 
 export type Lang = string
 
@@ -162,7 +163,7 @@ export const P2P_REJECT_KEYS = [
 /** Переклади повідомлень про відмову поточною мовою (для бекенду). */
 export function p2pRejectTexts(): Record<string, string> {
   const out: Record<string, string> = {}
-  for (const k of P2P_REJECT_KEYS) out[k] = t('p2p.rej.' + k)
+  for (const k of P2P_REJECT_KEYS) out[k] = tp('p2p.rej.' + k)
   return out
 }
 

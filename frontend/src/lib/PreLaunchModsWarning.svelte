@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // Передзапускове попередження про моди (дублікати/відсутні залежності),
   // як у Prism. Показується перед «Грати», коли pre-launch перевірка знайшла
@@ -44,7 +46,7 @@
                 {@const keep = g.mods.find(m => m.enabled) ?? g.mods[0]}
                 <div class="pl-group" style="animation-delay:{Math.min(gi,6)*40}ms">
                   <div class="pl-group-head">
-                    <span class="pl-group-name" title={g.mods[0].name}>{g.mods[0].name}</span>
+                    <span class="pl-group-name" use:launcherTip={g.mods[0].name}>{g.mods[0].name}</span>
                     <span class="pl-group-count">{g.mods.length}×</span>
                   </div>
                   <div class="pl-files">
@@ -87,7 +89,7 @@
       <button class="btn btn-ghost" onclick={() => onproceed?.()}><i class="ti ti-player-play"></i> {t('mods.preLaunch.anyway')}</button>
       <div class="mt-spacer"></div>
       {#if dupCount > 0}
-        <button class="btn btn-danger" onclick={() => ondeletedup?.()} title={t('mods.preLaunch.deleteDupsHint')}>
+        <button class="btn btn-danger" onclick={() => ondeletedup?.()} use:launcherTip={t('mods.preLaunch.deleteDupsHint')}>
           <i class="ti ti-trash"></i> {t('mods.preLaunch.deleteDups', { n: dupCount })}
         </button>
       {/if}

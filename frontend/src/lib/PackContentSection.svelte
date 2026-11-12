@@ -1,23 +1,27 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Розділ «Контент» на сторінці збірки ─────────────────────────────────
   // Під-вкладки: Моди / Ресурспаки / Датапаки / Шейдери
   // Ресурспаки/датапаки/шейдери: картки як у менеджері модів, drag&drop,
   // вибір файлів, мульти-вибір, копіювання в інші збірки (з перевіркою
   // сумісності через Modrinth), перехід на сторінку проєкту.
   import { t } from './i18n.svelte'
+  import EmptyState from './EmptyState.svelte'
   import { App } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import UiModal from './UiModal.svelte'
   import PackPicker from './PackPicker.svelte'
   import PackModsSection from './PackModsSection.svelte'
   import SelectField from './SelectField.svelte'
-  import { slideTabs } from './slideTabs'
+  import { slideTabs, smoothTabsWheel } from './slideTabs'
   import { tip } from './friends/tooltip'
   import modrinthIcon from '../assets/images/Modrinth_icon.png'
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
   import { getPackUI, setPackUI, readContentScroll, restoreContentScroll } from './uiState'
   import type { PackPickerItem, PackRow, PackFolderRow } from './PackPicker.svelte'
   import type { ContentFileEntry, ModVersionOption, BuildView } from './types'
+  import SearchField from './SearchField.svelte'
 
   let {
     packId,
@@ -517,7 +521,7 @@
   <!-- ── Під-вкладки ── -->
   <!-- Той самий ковзний таббар, що й вкладки збірки; акцент — колір
        активного типу вмісту. -->
-  <div class="tabbar tb-slide ct-subtabs" role="tablist" use:slideTabs style="--tb-acc:{activeTab.color}">
+  <div class="tabbar tb-slide ct-subtabs" role="tablist" use:slideTabs use:smoothTabsWheel style="--tb-acc:{activeTab.color}">
     {#each subTabs.filter(s => !s.mods || canMods) as st (st.id)}
       <button
         class="tab-btn ct-subtab"
@@ -557,10 +561,7 @@
 	         різному, а кнопок бракувало. -->
 	    <div class="ct-toolbar" style={`--mt-top:${stickyTop}px`}>
 	      <div class="ct-toolbar-main">
-	        <div class="ct-search">
-	          <i class="ti ti-search"></i>
-	          <input value={search} placeholder={t('content.search')} oninput={(e: any) => search = e.target.value} />
-	        </div>
+	        <SearchField bind:value={search} placeholder={t('content.search')} />
 	        <SelectField
 	          value={filter}
 	          options={[
@@ -581,16 +582,16 @@
 	          <button onclick={openFolder} use:tip={t('content.openFolder')} aria-label={t('content.openFolder')}><i class="ti ti-folder-open"></i></button>
 	        </div>
 	        {#if onSearchContent}
-	          <button class="btn btn-ghost btn-sm" onclick={() => onSearchContent(activeTab.projectType)} title={t('content.addFromBrowser')}>
+	          <button class="btn btn-ghost btn-sm" onclick={() => onSearchContent(activeTab.projectType)} use:launcherTip={t('content.addFromBrowser')}>
 	            <i class="ti ti-world-search"></i> {t('content.addFromBrowser')}
 	          </button>
 	        {/if}
-	        <button class="btn btn-ghost btn-sm" onclick={pickAndImportFiles} disabled={importing} title={t('content.addFile')}>
+	        <button class="btn btn-ghost btn-sm" onclick={pickAndImportFiles} disabled={importing} use:launcherTip={t('content.addFile')}>
 	          {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-file-plus"></i>{/if} {t('content.addFile')}
 	        </button>
 	        <button class="btn btn-primary btn-sm" onclick={updateAllNow}
 	                disabled={updatingAll || updatableCount === 0 || scanning}
-	                title={updatableCount > 0 ? t('content.updateAll') : t('content.updateAllNone')}>
+	                use:launcherTip={updatableCount > 0 ? t('content.updateAll') : t('content.updateAllNone')}>
 	          {#if updatingAll}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-refresh"></i>{/if} {t('content.updateAll')}
 	          {#if updatableCount > 0}<span class="upd-badge">{updatableCount}</span>{/if}
 	        </button>
@@ -629,20 +630,12 @@
         </div>
 
       {:else if err}
-        <div class="ct-empty-folder">
-          <div class="ct-ef-ic" style="--ct-c:var(--red)"><i class="ti ti-alert-triangle"></i></div>
-          <div class="ct-ef-title" style="color:var(--red)">{err}</div>
-        </div>
+        <EmptyState icon="ti-alert-triangle" color="var(--red)" title={err} />
 
       {:else if entries.length === 0}
         <!-- Порожня тека — стиль як у менеджері модів -->
-        <div class="ct-empty-folder">
-          <div class="ct-ef-ic">
-            <i class="ti {activeTab.icon}"></i>
-          </div>
-          <div class="ct-ef-title">{t('content.emptyFolderTitle')}</div>
-          <div class="ct-ef-sub">{t('content.emptyFolderHint')}</div>
-          <div class="ct-ef-actions">
+        <EmptyState icon={activeTab.icon} color={activeTab.color} title={t('content.emptyFolderTitle')} hint={t('content.emptyFolderHint')}>
+          {#snippet actions()}
             <button class="btn btn-primary" onclick={pickAndImportFiles} disabled={importing}>
               {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-file-plus"></i>{/if}
               {t('content.addFile')}
@@ -655,17 +648,13 @@
                 <i class="ti ti-world-search"></i> {t('content.addFromBrowser')}
               </button>
             {/if}
-          </div>
-          <div class="ct-ef-drop"><i class="ti ti-download"></i> {t('content.emptyDropHint')}</div>
-        </div>
+          {/snippet}
+          {#snippet footnote()}<i class="ti ti-download"></i> {t('content.emptyDropHint')}{/snippet}
+        </EmptyState>
 
       {:else if visibleEntries.length === 0}
         <!-- Є файли але фільтр/пошук нічого не показує -->
-        <div class="ct-empty-folder">
-          <div class="ct-ef-ic"><i class="ti ti-search-off"></i></div>
-          <div class="ct-ef-title">{t('content.empty')}</div>
-          <div class="ct-ef-sub">{t('content.emptyHint', { dir: activeTab.contentDir })}</div>
-        </div>
+        <EmptyState icon="ti-search-off" color={activeTab.color} title={t('content.empty')} hint={t('content.emptyHint', { dir: activeTab.contentDir })} />
 
       {:else}
         <!-- Список карток ресурсів — точно як у менеджері модів -->
@@ -697,7 +686,7 @@
                 <button
                   type="button"
                   class="ct-ic clickable"
-                  title={t('content.openPage')}
+                  use:launcherTip={t('content.openPage')}
                   onclick={(ev: MouseEvent) => { ev.stopPropagation(); openProjectPage(e) }}
                 >
                   {#if e.isDir}
@@ -709,9 +698,9 @@
                   {/if}
                   <!-- Значок джерела (Modrinth/CurseForge) -->
                   {#if e.source === 'modrinth'}
-                    <span class="ct-src" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                    <span class="ct-src" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                   {:else if e.source === 'curseforge'}
-                    <span class="ct-src" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                    <span class="ct-src" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                   {/if}
                 </button>
               {:else}
@@ -724,9 +713,9 @@
                     <i class="ti {activeTab.icon}"></i>
                   {/if}
                   {#if e.source === 'modrinth'}
-                    <span class="ct-src" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                    <span class="ct-src" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                   {:else if e.source === 'curseforge'}
-                    <span class="ct-src" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                    <span class="ct-src" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                   {/if}
                 </div>
               {/if}
@@ -738,14 +727,14 @@
                     <button
                       type="button"
                       class="ct-name-btn"
-                      title={t('content.openPage')}
+                      use:launcherTip={t('content.openPage')}
                       onclick={(ev: MouseEvent) => { ev.stopPropagation(); openProjectPage(e) }}
                     >{e.name}</button>
                   {:else}
                     <span>{e.name}</span>
                   {/if}
                   {#if e.hasUpdate}
-                    <span class="badge upd" title={t('content.hasUpdate', { ver: e.latestVersion ?? '' })}>
+                    <span class="badge upd" use:launcherTip={t('content.hasUpdate', { ver: e.latestVersion ?? '' })}>
                       <i class="ti ti-arrow-up"></i>{e.version ? e.version + ' → ' : ''}{e.latestVersion}
                     </span>
                   {/if}
@@ -764,25 +753,25 @@
 	                  <!-- Оновити до останньої версії — лише коли є оновлення
 	                       (як кнопка оновлення у менеджері модів) -->
 	                  {#if e.hasUpdate}
-	                    <button class="icon-btn upd" onclick={() => updateOne(e)} title={t('content.updateOne')} disabled={updatingAll}>
+	                    <button class="icon-btn upd" onclick={() => updateOne(e)} use:launcherTip={t('content.updateOne')} disabled={updatingAll}>
 	                      <i class="ti ti-arrow-up"></i>
 	                    </button>
 	                  {/if}
 	                  <!-- Зміна версії — іконка міграції ресурса (ti-replace) -->
-	                  <button class="icon-btn" onclick={() => openVersions(e)} title={t('content.changeVersion')}>
+	                  <button class="icon-btn" onclick={() => openVersions(e)} use:launcherTip={t('content.changeVersion')}>
 	                    <i class="ti ti-replace"></i>
 	                  </button>
                   <!-- Скопіювати посилання -->
-                  <button class="icon-btn" onclick={() => copyLink(e)} title={t('content.copyLink')}>
+                  <button class="icon-btn" onclick={() => copyLink(e)} use:launcherTip={t('content.copyLink')}>
                     <i class="ti ti-link"></i>
                   </button>
                 {/if}
                 <!-- Копіювати в іншу збірку -->
-                <button class="icon-btn" onclick={() => openCopy(e)} title={t('content.copyToPack')}>
+                <button class="icon-btn" onclick={() => openCopy(e)} use:launcherTip={t('content.copyToPack')}>
                   <i class="ti ti-copy"></i>
                 </button>
                 <!-- Видалити -->
-                <button class="icon-btn del" onclick={() => deleteEntry(e)} title={t('content.delete')}>
+                <button class="icon-btn del" onclick={() => deleteEntry(e)} use:launcherTip={t('content.delete')}>
                   <i class="ti ti-trash"></i>
                 </button>
                 <!-- Перемикач увімкнення -->
@@ -790,7 +779,7 @@
                   class="ct-toggle"
                   class:on={e.enabled}
                   onclick={() => toggleEntry(e)}
-                  title={e.enabled ? t('content.disable') : t('content.enable')}
+                  use:launcherTip={e.enabled ? t('content.disable') : t('content.enable')}
                   aria-label={e.enabled ? t('content.disable') : t('content.enable')}
                 >
                   <span class="ct-knob"></span>
@@ -820,13 +809,13 @@
         <button class="btn btn-ghost btn-sm" onclick={() => bulkToggle(false)} disabled={bulkWorking}>
           <i class="ti ti-power-off"></i> {t('content.bulkDisable')}
         </button>
-        <button class="btn btn-ghost btn-sm" onclick={selectAllVisible} disabled={bulkWorking} title={t('content.selectAll')}>
+        <button class="btn btn-ghost btn-sm" onclick={selectAllVisible} disabled={bulkWorking} use:launcherTip={t('content.selectAll')}>
           <i class="ti ti-square-check"></i> {t('content.selectAll')}
         </button>
         <button class="btn btn-ghost btn-sm ct-bulk-del" onclick={bulkDelete} disabled={bulkWorking}>
           <i class="ti ti-trash"></i> {t('content.bulkDelete')}
         </button>
-        <button class="ct-bulk-clear" onclick={clearSelection} title={t('content.clearSelection')}>
+        <button class="ct-bulk-clear" onclick={clearSelection} use:launcherTip={t('content.clearSelection')}>
           <i class="ti ti-x"></i>
         </button>
       </div>
@@ -1008,16 +997,6 @@
 	    min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px;
 	    background: rgba(255,255,255,.22); font-size: var(--fs-min); font-weight: 800; margin-left: 2px;
 	  }
-	  .ct-search {
-	    display: flex; align-items: center; gap: 8px;
-	    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
-	    padding: 0 12px; height: 36px; flex: 1 1 200px; min-width: 140px;
-	    transition: border-color .15s, box-shadow .15s;
-	  }
-	  .ct-search:focus-within { border-color: rgba(var(--orange-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
-	  .ct-search i { color: var(--text-dim, #777); font-size: 15px; }
-	  .ct-search:focus-within i { color: var(--orange); }
-	  .ct-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text, #eee); font-size: 13px; }
 	  .ct-addbtn { white-space: nowrap; }
 
 
@@ -1040,30 +1019,6 @@
   .ct-scanning {
     padding: 28px; text-align: center; color: var(--text-mute);
     font-size: 12px; display: flex; align-items: center; justify-content: center; gap: 8px;
-  }
-
-  /* ── Порожня тека — стиль як mods-empty-folder ── */
-  .ct-empty-folder {
-    display: flex; flex-direction: column; align-items: center; text-align: center;
-    gap: 8px; padding: 44px 24px; margin: 4px 0;
-    background: color-mix(in srgb, var(--bg-card) 55%, transparent);
-    border: 1px dashed var(--border-hi); border-radius: var(--r-lg);
-    animation: rise-in .3s ease both;
-  }
-  .ct-ef-ic {
-    width: 62px; height: 62px; border-radius: 17px; margin-bottom: 4px;
-    display: flex; align-items: center; justify-content: center; font-size: 27px;
-    background: linear-gradient(135deg, color-mix(in srgb, var(--ct-c) 20%, transparent), color-mix(in srgb, var(--ct-c) 4%, transparent));
-    border: 1px solid color-mix(in srgb, var(--ct-c) 35%, transparent);
-    box-shadow: 0 10px 26px rgba(0,0,0,.3);
-    color: var(--ct-c);
-  }
-  .ct-ef-title { font-size: 15px; font-weight: 700; color: var(--text); }
-  .ct-ef-sub { font-size: 12.5px; color: var(--text-mute); max-width: 400px; line-height: 1.5; }
-  .ct-ef-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; justify-content: center; }
-  .ct-ef-drop {
-    display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
-    font-size: 11.5px; color: var(--text-dim);
   }
 
   /* ── Список ── */

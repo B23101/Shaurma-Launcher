@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // «Придумайте нік» — крок ПІСЛЯ входу через Google / Microsoft (особу підтверджено, акаунта Шаурми
   // ще нема). Нік унікальний у Шаурмі й не може збігатися з іменем гравця Mojang: за ним у грі
   // підвантажується скін. Живу перевірку робить сервер (CheckShaurmaNick); 🎲 підбирає вільний
@@ -10,6 +12,7 @@
   import { App } from './wails'
   import { pirateNicknameError, sanitizeNick } from './validation'
   import { generateNick } from './nickgen'
+  import Callout from './Callout.svelte'
 
   let {
     open = false,
@@ -83,17 +86,14 @@
 <UiModal {open} dismissible={false} icon="ti-user-edit" title={t('nick.title')}>
   <div style="display:flex;flex-direction:column;gap:12px">
     {#if provider === 'microsoft' && noLicense}
-      <div class="nc-note warn">
-        <i class="ti ti-alert-circle"></i>
-        <span>{noLicense === 'no_xbox' ? t('nick.noXbox') : t('nick.noLicense')}</span>
-      </div>
+      <Callout icon="ti-alert-circle" tone="warn">{noLicense === 'no_xbox' ? t('nick.noXbox') : t('nick.noLicense')}</Callout>
     {:else}
-      <div class="nc-note"><i class="ti ti-info-circle"></i><span>{t('nick.intro')}</span></div>
+      <Callout>{t('nick.intro')}</Callout>
       {#if provider === 'google'}
         <!-- Акаунт Шаурми шукається за парою «провайдер + особа»: акаунт, створений через
              Microsoft або інший Google, за цим входом НЕ знаходиться. Кажемо про це одразу,
              щоб людина не створювала дубль замість входу в наявний. -->
-        <div class="nc-note warn"><i class="ti ti-alert-circle"></i><span>{t('nick.googleNew')}</span></div>
+        <Callout icon="ti-alert-circle" tone="warn">{t('nick.googleNew')}</Callout>
       {/if}
     {/if}
     <div class="wiz-field-row">
@@ -101,7 +101,7 @@
              placeholder={t('nickname')} value={nick}
              oninput={(e: any) => onInput(e.target.value)}
              onkeydown={(e: any) => e.key === 'Enter' && submit()} />
-      <button class="btn btn-ghost" title={t('nick.random')} disabled={rolling || busy} onclick={roll}>
+      <button class="btn btn-ghost" use:launcherTip={t('nick.random')} disabled={rolling || busy} onclick={roll}>
         <i class="ti ti-dice-5 {rolling ? 'nc-spin' : ''}"></i>
       </button>
     </div>
@@ -123,10 +123,6 @@
 </UiModal>
 
 <style>
-  .nc-note { display:flex; gap:8px; align-items:flex-start; font-size:12.5px; line-height:1.5; color:var(--text-mute);
-    background:rgba(var(--orange-rgb),.07); border:1px solid rgba(var(--orange-rgb),.2); border-radius:10px; padding:10px 14px; }
-  .nc-note.warn { background:rgba(255,170,0,.08); border-color:rgba(255,170,0,.3); }
-  .nc-note i { color:var(--orange); font-size:16px; flex-shrink:0; margin-top:1px; }
   .nc-status { min-height:18px; font-size:12px; display:flex; gap:6px; align-items:center; color:var(--text-mute); }
   .nc-status.ok { color:#2ecc71; }
   .nc-status.bad { color:#ff6b6b; }

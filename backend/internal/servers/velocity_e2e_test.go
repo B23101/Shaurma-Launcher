@@ -15,12 +15,9 @@ import (
 // код, що й GUI: InstallCore (fill.papermc.io v3) → Manager.Start →
 // дочекатись running (детект "Done") → SendCommand → graceful Stop.
 //
-// Раніше Velocity качався з api.papermc.io/v2 (закритий, 410 Gone) — тест
-// ловив би цей регрес одразу.
-//
 // Запуск:
 //
-//	go test -tags integration ./internal/servers/ -run TestVelocityE2ERoundtrip -v -count=1 -timeout 300s
+// go test -tags integration ./internal/servers/ -run TestVelocityE2ERoundtrip -v -count=1 -timeout 300s
 func TestVelocityE2ERoundtrip(t *testing.T) {
 	javaPath, err := FindJavaPath(0)
 	if err != nil {

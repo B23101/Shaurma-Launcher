@@ -86,10 +86,8 @@ func TestLoaderVersionID(t *testing.T) {
 // TestGradlePathHasExtension -- регресійний маркер (замінює попередню
 // протилежну поведінку): gradlePath() ТЕПЕР самостійно повертає повний
 // шлях, включно з розширенням файлу (типово ".jar", якщо у maven-координаті
-// немає "@ext"). Раніше функція навмисно повертала шлях БЕЗ розширення, а
-// кожен викликач сам дописував ".jar" -- саме це й спричиняло баг з "@zip"
-// (див. TestGradlePathExtensionOverride): "@zip" псував version ще ДО
-// того, як викликач додавав свій хардкоджений ".jar" зверху.
+// немає "@ext"). "@zip" псував version ще ДО того, як викликач додавав свій
+// хардкоджений ".jar" зверху.
 func TestGradlePathHasExtension(t *testing.T) {
 	got := gradlePath("net.minecraftforge:installertools:1.4.1")
 	if !strings.HasSuffix(got, ".jar") {
@@ -97,14 +95,7 @@ func TestGradlePathHasExtension(t *testing.T) {
 	}
 }
 
-// TestExtractBundledJarsNonJarExtension -- регресійний тест: раніше
-// extractBundledJars фільтрував "maven/.../*" за суфіксом ".jar", тож будь-
-// який бандлений артефакт з ІНШИМ розширенням (напр. ".zip" -- саме так
-// виглядає "net.neoforged:neoform:...@zip", коли він трапляється бандленим
-// прямо в installer.jar, а не лише завантажується окремо через
-// install_profile.json.libraries) тихо ІГНОРУВАВСЯ: файл ніколи не
-// потрапляв на диск, і processor, якому він потрібен як вхід, згодом падав
-// з "Input does not exist" -- хоча дані фізично лежали в installer.jar.
+// TestExtractBundledJarsNonJarExtension -- регресійний тест.
 func TestExtractBundledJarsNonJarExtension(t *testing.T) {
 	tmpDir := t.TempDir()
 	inst := NewInstaller(tmpDir)
@@ -178,10 +169,7 @@ func TestResolveForgeLibraryPathURLModern(t *testing.T) {
 
 // TestResolveForgeLibraryPathURLLegacyWithRepo -- старіша форма
 // install_profile.json (лише "name" + "url" репозиторію, БЕЗ секції
-// "downloads" узагалі -- напр. старі Forge-профілі 1.7.10-1.12). Раніше
-// такі бібліотеки мовчки пропускались (перевірка була лише на
-// Downloads.Artifact.URL == ""), тепер шлях і кінцевий URL будуються через
-// gradlePath(name) + заданий repo URL.
+// "downloads" узагалі -- напр. старі Forge-профілі 1.7.10-1.12).
 func TestResolveForgeLibraryPathURLLegacyWithRepo(t *testing.T) {
 	lib := forgeLibrary{Name: "com.typesafe:config:1.2.1"}
 	lib.URL = "http://files.minecraftforge.net/maven/"

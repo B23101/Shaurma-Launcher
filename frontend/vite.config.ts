@@ -40,7 +40,10 @@ export default defineConfig({
         console: resolve(__dirname, 'console.html'),
         // Віджет сповіщень у трей: окремий frameless-шелл (notify_window.go),
         // тому і своя точка входу — так само, як у консолі гри.
-        notify: resolve(__dirname, 'notify.html')
+        notify: resolve(__dirname, 'notify.html'),
+        // Вікно запуску гри з ярлика збірки (shortcut_window.go): мала
+        // картка з прогресом замість повного головного вікна.
+        shortcut: resolve(__dirname, 'shortcut.html')
       },
       // /wails/runtime.js роздає assetserver додатка Wails v3 — це не
       // модуль, який треба бандлити. Лишаємо імпорт як є, щоб браузер

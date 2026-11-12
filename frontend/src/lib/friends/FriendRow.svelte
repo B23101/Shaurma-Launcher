@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // ── Картка друга ────────────────────────────────────────────────────────
   // Фіксована висота 64px → список не стрибає, а браузер пропускає paint рядків
   // поза екраном (content-visibility). Дії при наведенні лежать ПОВЕРХ картки
@@ -70,13 +72,13 @@
     </div>
 
     <div class="fr-tail">
-      {#if muted}<i class="ti ti-bell-off fr-muted" title={t('social.profile.muted')}></i>{/if}
+      {#if muted}<i class="ti ti-bell-off fr-muted" use:launcherTip={t('social.profile.muted')}></i>{/if}
       {#if unread > 0}<span class="ff-badge fr-unread">{unread > 99 ? '99+' : unread}</span>{/if}
     </div>
 
     {#if canInvite}
       <div class="fr-act">
-        <button class="fr-act-b" data-testid="friend-temp-invite-btn" title={t('social.chat.inviteTip')} aria-label={t('social.chat.inviteTip')}
+        <button class="fr-act-b" data-testid="friend-temp-invite-btn" use:launcherTip={t('social.chat.inviteTip')} aria-label={t('social.chat.inviteTip')}
                 onclick={(e) => { e.stopPropagation(); s.tempInviteFor = f.accountId }}>
           <i class="ti ti-plus"></i><span>{t('social.chat.inviteBtn')}</span>
         </button>

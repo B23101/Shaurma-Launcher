@@ -45,8 +45,7 @@ func TestDownloadOneFileSkipsCompleted(t *testing.T) {
 // TestResolveBlockedModsManualAndSkip перевіряє, що рішення «скачати вручну»
 // (manual — нове, як у Prism) і «пропустити» (skip) на рівні конвеєра
 // поводяться однаково: задачі НЕзмінні, помилки немає — імпорт продовжується
-// з рештою модів (раніше після вибору у діалозі конвеєр міг «зависнути» на
-// очікуванні, бо рішення не доходило до виконання).
+// з рештою модів.
 func TestResolveBlockedModsManualAndSkip(t *testing.T) {
 	blocked := []BlockedCFMod{{
 		ProjectID: 1, FileID: 2, FileName: "blocked.jar",

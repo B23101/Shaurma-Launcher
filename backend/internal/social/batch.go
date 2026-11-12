@@ -15,7 +15,7 @@ var batchOffUntil atomic.Int64
 
 // RefreshBundle — друзі + вхідні запити (+ приватність) ОДНИМ HTTP-запитом /friends/batch.
 // Кожна частина розбирається тим самим кодом, що й окремий запит (ті самі перевірки).
-// Старий вузол без /friends/batch → прозоро по одному запиту, як раніше.
+// Старий вузол без /friends/batch → прозоро по одному запиту.
 func (c *Client) RefreshBundle(withPrivacy bool) (friends []Friend, invites []Invite, priv Privacy, ferr, ierr, perr error) {
 	paths := []string{"/friends/list", "/friends/invites"}
 	if withPrivacy {

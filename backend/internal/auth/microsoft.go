@@ -26,9 +26,6 @@ import (
 //     callback-запиту — копіювати його вручну не треба.
 //  2. Якщо порт зайнятий іншою програмою — помилка (device code тут не
 //     потрібен, порт майже завжди вільний на робочій станції).
-//
-// login.live.com/consumers НЕ перевіряє redirect_uri для localhost —
-// реєстрація в Azure не потрібна, client ID беремо зі старого лаунчера.
 const (
 	msClientID = "90bdddf4-ae0e-456b-ac6f-64b366a0b596"
 	msAuthURL  = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize"

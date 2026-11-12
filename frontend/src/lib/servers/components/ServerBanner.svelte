@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Герой сторінки сервера ─────────────────────────────────────────────
   // Той самий вигляд, що й на сторінці збірки: рядок дій (.pack-toolbar —
   // «Назад» зліва, кнопки й Старт/Стоп справа) і банер-картка .inst-banner
@@ -78,17 +80,17 @@
 
 {#if !hideToolbar}
 <div class="pack-toolbar svb-toolbar">
-  <button class="btn btn-ghost btn-sm" onclick={onBack} title={t('servers.banner.back')}><i class="ti ti-arrow-left"></i> {t('servers.toolbar.back')}</button>
+  <button class="btn btn-ghost btn-sm" onclick={onBack} use:launcherTip={t('servers.banner.back')}><i class="ti ti-arrow-left"></i> {t('servers.toolbar.back')}</button>
   {@render toolbarExtra?.()}
   <div class="pt-spacer"></div>
   {#if velocityProxyRunning && !isVelocity}
-    <span class="svb-proxy" title={t('servers.toolbar.proxyHint', { port: srv.port ?? 25565 })}><i class="ti ti-router"></i> Velocity</span>
+    <span class="svb-proxy" use:launcherTip={t('servers.toolbar.proxyHint', { port: srv.port ?? 25565 })}><i class="ti ti-router"></i> Velocity</span>
   {/if}
   {#if !remoteOwner}
-    <button class="btn btn-ghost btn-sm" onclick={onOpenFolder} title={t('servers.toolbar.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
-    <button class="btn btn-ghost btn-sm" onclick={onOpenConsole} title={t('servers.toolbar.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
+    <button class="btn btn-ghost btn-sm" onclick={onOpenFolder} use:launcherTip={t('servers.toolbar.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
+    <button class="btn btn-ghost btn-sm" onclick={onOpenConsole} use:launcherTip={t('servers.toolbar.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
     {#if onShare}
-      <button class="btn btn-ghost btn-sm" onclick={onShare} title="Поділитися з друзями"><i class="ti ti-share-3"></i> Поділитися</button>
+      <button class="btn btn-ghost btn-sm" onclick={onShare} use:launcherTip={"Поділитися з друзями"}><i class="ti ti-share-3"></i> Поділитися</button>
     {/if}
   {/if}
   <ServerActionsBar {displayStatus} {actionBusy} {onStart} {onStop} {onKill} {canStart} {canStop} canKill={!remoteOwner} />
@@ -112,7 +114,7 @@
       {#if isRunning}<span class="svb-dot"></span>{/if}
     </span>
     <div class="ib-meta">
-      <div class="ib-name" title={srv.name}>{srv.name}</div>
+      <div class="ib-name" use:launcherTip={srv.name}>{srv.name}</div>
       <div class="ib-badges">
         {#if isVelocity}
           <span class="badge-mc"><i class="ti ti-router"></i> {t('servers.banner.proxy')}{#if srv.loaderVer} · {srv.loaderVer}{/if}</span>

@@ -129,9 +129,9 @@ func (a *App) SetModExpiry(packID, fileName, expiresAtRFC3339, action string, in
 
 // propagateTempModToDeps позначає тимчасовими залежності мода fileName —
 // РЕКУРСИВНО (залежність може мати власні залежності), але лише ті, що
-// ще не мають ІНШОЇ (раніше поставленої вручну) тимчасової мітки —
-// ручний вибір гравця для конкретної залежності ніколи не
-// перезаписується автоматичним поширенням від іншого мода.
+// ще не мають ІНШОЇ тимчасової мітки — ручний вибір гравця для
+// конкретної залежності ніколи не перезаписується автоматичним
+// поширенням від іншого мода.
 func (a *App) propagateTempModToDeps(packID, fileName string, expiresAt time.Time, action string) {
 	all, err := a.modMgr.ScanModsFull(a.instanceModsDir(packID))
 	if err != nil {

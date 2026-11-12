@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // Крок «Акаунт» майстра.
   //   • вибір: ліцензія → Microsoft, без ліцензії → Google (радимо), або просто нік;
   //   • новий акаунт Шаурми → нік прямо тут (без окремого вікна);
@@ -277,7 +279,7 @@
         {:else if nickSt === 'ok'}<i class="ti ti-circle-check-filled" style="color:var(--green)"></i>
         {:else if nickSt === 'bad'}<i class="ti ti-alert-circle-filled" style="color:var(--red)"></i>{/if}
       </span>
-      <button class="dice" onclick={rollNick} title={t('wz.nick.roll')} aria-label={t('wz.nick.roll')}><i class="ti ti-dice-5"></i></button>
+      <button class="dice" onclick={rollNick} use:launcherTip={t('wz.nick.roll')} aria-label={t('wz.nick.roll')}><i class="ti ti-dice-5"></i></button>
     </div>
     <div class="nick-msg">{#if nickMsg}<span class="err">{nickMsg}</span>{:else}{t('wz.nick.rules')}{/if}</div>
     <div class="row-btns">
@@ -395,16 +397,16 @@
         <div class="skin" in:fly={{ x: -14, duration: 260 }}>
           <div class="skin-grid">
             {#each SKINS as s, i}
-              <button class="skin-it" class:sel={skinSel === s.id} style="--i:{i}" onclick={() => pickSkin(s.id)} title={s.id} aria-label={s.id}>
+              <button class="skin-it" class:sel={skinSel === s.id} style="--i:{i}" onclick={() => pickSkin(s.id)} use:launcherTip={s.id} aria-label={s.id}>
                 <PlayerHead skin={s.id} size={38} radius={8} />
               </button>
             {/each}
             {#if custom}
-              <button class="skin-it" class:sel={skinSel === 'custom'} onclick={() => (skinSel = 'custom')} title={customName} aria-label={customName}>
+              <button class="skin-it" class:sel={skinSel === 'custom'} onclick={() => (skinSel = 'custom')} use:launcherTip={customName} aria-label={customName}>
                 <span class="cust-face" style="background-image:url({custom})"></span>
               </button>
             {/if}
-            <button class="skin-it up" onclick={() => fileEl?.click()} title={t('wz.skin.upload')} aria-label={t('wz.skin.upload')}><i class="ti ti-upload"></i></button>
+            <button class="skin-it up" onclick={() => fileEl?.click()} use:launcherTip={t('wz.skin.upload')} aria-label={t('wz.skin.upload')}><i class="ti ti-upload"></i></button>
             <input type="file" accept="image/png" hidden bind:this={fileEl} onchange={onFile} />
           </div>
           <div class="nick-row">

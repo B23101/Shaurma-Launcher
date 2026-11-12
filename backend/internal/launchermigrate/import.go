@@ -187,12 +187,6 @@ func fallbackStyle(name string) (string, string) {
 //
 // ВАЖЛИВО (фікс «іконки, якої не існує»): будь-яке значення НЕ зі списку
 // відомих пресетів (presetIconKeys) повертається ПОРОЖНІМ, а не «як є».
-// Раніше ШІ міг вигадати іконку (напр. "ti-phoenix" чи "ti-magic-wand",
-// яких немає в Tabler), і normalizePresetIcon пропускала її як валідну
-// (бо з префіксом "ti-") — фронтенд рендерив <i class="ti ti-phoenix">,
-// якої не існує в шрифті, і картка збірки лишалась БЕЗ іконки. Тепер
-// невалідний ключ → "", а фронтенд показує дефолтну іконку (ti-puzzle),
-// яка гарантовано існує.
 func normalizePresetIcon(icon string) string {
 	key := strings.TrimPrefix(icon, "ti-")
 	for _, p := range presetIconKeys {

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Тулбар сторінки сервера (НАД банером) ──────────────────────────────
   //
   // Навіщо: у збірок керування зроблено саме так — кнопка запуску, «папка»,
@@ -68,11 +70,11 @@
 </script>
 
 <div class="stb">
-  <button class="btn btn-ghost btn-sm stb-back" onclick={onBack} title={t('servers.toolbar.back')}>
+  <button class="btn btn-ghost btn-sm stb-back" onclick={onBack} use:launcherTip={t('servers.toolbar.back')}>
     <i class="ti ti-arrow-left"></i> <span class="stb-back-t">{t('servers.toolbar.back')}</span>
   </button>
 
-  <div class="stb-id" title={srv.name}>
+  <div class="stb-id" use:launcherTip={srv.name}>
     <span class="stb-id-ic" style="--pcol:{vis.color}">
       {#if vis.src}
         <img src={vis.src} alt="" />
@@ -109,14 +111,14 @@
 
   <div class="stb-actions">
     {#if velocityProxyRunning && !isVelocity}
-      <span class="stb-proxy" title={t('servers.toolbar.proxyHint', { port: srv.port ?? 25565 })}>
+      <span class="stb-proxy" use:launcherTip={t('servers.toolbar.proxyHint', { port: srv.port ?? 25565 })}>
         <i class="ti ti-router"></i> Velocity
       </span>
     {/if}
-    <button class="btn btn-ghost btn-sm" onclick={onOpenFolder} title={t('servers.toolbar.openFolder')} aria-label={t('servers.toolbar.openFolder')}>
+    <button class="btn btn-ghost btn-sm" onclick={onOpenFolder} use:launcherTip={t('servers.toolbar.openFolder')} aria-label={t('servers.toolbar.openFolder')}>
       <i class="ti ti-folder"></i>
     </button>
-    <button class="btn btn-ghost btn-sm" onclick={onOpenConsole} title={t('servers.toolbar.openConsole')} aria-label={t('servers.toolbar.openConsole')}>
+    <button class="btn btn-ghost btn-sm" onclick={onOpenConsole} use:launcherTip={t('servers.toolbar.openConsole')} aria-label={t('servers.toolbar.openConsole')}>
       <i class="ti ti-terminal-2"></i>
     </button>
     <ServerActionsBar {displayStatus} {actionBusy} {onStart} {onStop} {onKill} />

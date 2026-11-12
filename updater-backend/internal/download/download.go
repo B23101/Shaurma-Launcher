@@ -83,13 +83,11 @@ type DownloadedComponent struct {
 // тож фронтенд малює ОДИН спільний прогрес-бар, а не поточний файл.
 //
 // SHA256 і розмір звіряються ЖОРСТКО (див. verifyIntegrity); історично було м'яко: кожен файл
-// перевіряється на збіг з хешем маніфесту, але розбіжність лише пишеться
-// в update-sha-warnings.log і НЕ зупиняє оновлення. Рішення «що качати»
-// приймається ЗА ВЕРСІЄЮ в core.Run (нова версія = качаємо всі
-// компоненти), а не за збігом хешів — застарілий чи неузгоджений файл на
-// CDN не має зупиняти оновлення (раніше жорстка sha-перевірка на
-// півшляху ламала качку і лаунчер лишався без стилів). М'яка перевірка
-// дає діагностику «CDN віддав інший файл» без ризику для оновлення.
+// перевіряється на збіг з хешем маніфесту, але розбіжність лише пишеться в
+// update-sha-warnings.log і НЕ зупиняє оновлення. Рішення «що качати» приймається ЗА ВЕРСІЄЮ
+// в core.Run (нова версія = качаємо всі компоненти), а не за збігом хешів — застарілий чи
+// неузгоджений файл на CDN не має зупиняти оновлення. М'яка перевірка дає діагностику «CDN
+// віддав інший файл» без ризику для оновлення.
 func Download(ctx context.Context, baseURL, token, tmpDir string, components []manifest.Component, lang string, onProgress ProgressFunc) ([]DownloadedComponent, error) {
 	return DownloadWith(ctx, baseURL, token, tmpDir, components, lang, onProgress, nil)
 }
@@ -370,7 +368,6 @@ func downloadOne(ctx context.Context, client *http.Client, baseURL, token string
 		return err
 	}
 
-	// ЖОРСТКА перевірка цілісності (раніше була «м'якою» — лише лог).
 	// Файл, що не збігся з маніфестом, НІКОЛИ не потрапляє до встановлення.
 	if err := verifyIntegrity(c, bytesDone, hex.EncodeToString(h.Sum(nil))); err != nil {
 		logSHAWarning(err.Error())

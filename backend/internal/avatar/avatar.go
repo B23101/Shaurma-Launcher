@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"image"
 	"image/color"
-	"image/draw"
 	"image/png"
 	"io"
 	"net/http"
@@ -44,7 +43,7 @@ type Service struct {
 	// Shaurma (worker/skin.js: GET /api/skin/by-nick/{нік}) замість
 	// справжнього Mojang API. У base-редакції лишається nil — поведінка
 	// Head() для неліцензійних акаунтів НЕ змінюється (Mojang lookup за
-	// ніком, як і раніше).
+	// ніком).
 	//
 	// Повертає (png, true, nil) якщо на сервері Shaurma є скін для цього
 	// ніка; (nil, false, nil) якщо акаунт не зареєстрований на сервері
@@ -60,9 +59,14 @@ type nameEntry struct {
 	at   time.Time
 }
 
+// renderVersion збільшуємо, коли змінюється рендер голови: кеш зі старою версією ігнорується
+// і голова перемальовується (інакше незмінений скін віддавав би стару картинку вічно).
+const renderVersion = 2
+
 type metaInfo struct {
 	TextureURL string    `json:"textureUrl"`
 	FetchedAt  time.Time `json:"fetchedAt"`
+	Render     int       `json:"render"`
 }
 
 func NewService(cacheDir string) *Service {
@@ -335,10 +339,14 @@ func (s *Service) readMeta(path string) (*metaInfo, error) {
 	if err := json.Unmarshal(data, &m); err != nil {
 		return nil, err
 	}
+	if m.Render != renderVersion {
+		return nil, errors.New("avatar: stale render version")
+	}
 	return &m, nil
 }
 
 func (s *Service) writeMeta(path string, m metaInfo) {
+	m.Render = renderVersion
 	data, _ := json.Marshal(m)
 	os.WriteFile(path, data, 0o644)
 }
@@ -428,12 +436,34 @@ func (s *Service) renderHeadFromBytes(skinData []byte) ([]byte, error) {
 
 	b := skin.Bounds()
 	// Обличчя (8,8) та накладка капелюха (40,8) в 64x64 (і 64x32) скіні.
-	face := crop(skin, b.Min.X+8, b.Min.Y+8, 8, 8)
-	hat := crop(skin, b.Min.X+40, b.Min.Y+8, 8, 8)
+	if b.Dx() < 64 || b.Dy() < 32 {
+		return nil, errors.New("skin: unexpected size")
+	}
+	useHat := hatLayerUsed(skin)
 
 	out := image.NewRGBA(image.Rect(0, 0, 64, 64))
-	scale(face, out, false)
-	scale(hat, out, true)
+	for y := 0; y < 8; y++ {
+		for x := 0; x < 8; x++ {
+			f := nrgbaAt(skin, b.Min.X+8+x, b.Min.Y+8+y)
+			r, g, bl := int(f.R), int(f.G), int(f.B)
+			if useHat {
+				// Другий шар змішуємо за його АЛЬФОЮ (а не «є піксель / нема»): напівпрозорі пікселі
+				// (скло, окуляри.
+				if h := nrgbaAt(skin, b.Min.X+40+x, b.Min.Y+8+y); h.A > 0 {
+					a := int(h.A)
+					r = (int(h.R)*a + r*(255-a) + 127) / 255
+					g = (int(h.G)*a + g*(255-a) + 127) / 255
+					bl = (int(h.B)*a + bl*(255-a) + 127) / 255
+				}
+			}
+			c := color.RGBA{R: uint8(r), G: uint8(g), B: uint8(bl), A: 255}
+			for dy := 0; dy < 8; dy++ {
+				for dx := 0; dx < 8; dx++ {
+					out.SetRGBA(x*8+dx, y*8+dy, c)
+				}
+			}
+		}
+	}
 
 	var buf bytes.Buffer
 	if err := png.Encode(&buf, out); err != nil {
@@ -442,27 +472,27 @@ func (s *Service) renderHeadFromBytes(skinData []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func crop(img image.Image, x, y, w, h int) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, w, h))
-	draw.Draw(dst, dst.Bounds(), img, image.Point{x, y}, draw.Src)
-	return dst
+// nrgbaAt — піксель у НЕпремультиплікованому вигляді (image.At віддає premultiplied для
+// напівпрозорих, і тоді RGB «темніє» разом з альфою).
+func nrgbaAt(img image.Image, x, y int) color.NRGBA {
+	return color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
 }
 
-// scale копіює 8x8 регіон у 64x64 (nearest neighbor). overlay=true —
-// прозорі пікселі джерела не копіюються (капелюх поверх обличчя).
-func scale(src *image.RGBA, dst *image.RGBA, overlay bool) {
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 8; x++ {
-			c := src.RGBAAt(x, y)
-			if overlay && c.A == 0 {
-				continue
-			}
-			c = color.RGBA{R: c.R, G: c.G, B: c.B, A: 255}
-			for dy := 0; dy < 8; dy++ {
-				for dx := 0; dx < 8; dx++ {
-					dst.SetRGBA(x*8+dx, y*8+dy, c)
-				}
+// hatLayerUsed повторює поведінку гри для другого шару голови.
+// Старі скіни 64x32 не мають окремого шару капелюха: якщо в області (32,0)-(64,32) немає
+// жодного прозорого пікселя, Minecraft вважає її «непрозорою заливкою» і не малює взагалі
+// (doNotchTransparencyHack). Для 64x64 шар використовується як є.
+func hatLayerUsed(skin image.Image) bool {
+	b := skin.Bounds()
+	if b.Dy() != 32 {
+		return true
+	}
+	for y := 0; y < 32; y++ {
+		for x := 32; x < 64; x++ {
+			if nrgbaAt(skin, b.Min.X+x, b.Min.Y+y).A < 128 {
+				return true
 			}
 		}
 	}
+	return false
 }

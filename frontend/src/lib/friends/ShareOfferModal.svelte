@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // «Друг хоче надіслати вам збірку/сервер» — з'являється, щойно картка передачі приходить у
   // чат (shareStore → shareUi.offers). Нічого не качається без явного «Прийняти»; «Пізніше»
   // лише ховає вікно — картка лишається в чаті з тими самими кнопками.
@@ -66,7 +68,7 @@
     <div class="of-card">
       <div class="of-ic"><i class="ti {isServer ? 'ti-server-2' : 'ti-package'}"></i></div>
       <div class="of-main">
-        <div class="of-name" title={offer.card.n}>{offer.card.n}</div>
+        <div class="of-name" use:launcherTip={offer.card.n}>{offer.card.n}</div>
         <div class="of-meta">
           {#if offer.card.m?.mc}<span><i class="ti ti-brand-minecraft"></i> {offer.card.m.mc}</span>{/if}
           {#if offer.card.m?.loader && offer.card.m.loader !== 'vanilla'}<span>{offer.card.m.loader}</span>{/if}

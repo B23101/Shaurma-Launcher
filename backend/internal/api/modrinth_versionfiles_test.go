@@ -8,13 +8,8 @@ import (
 	"testing"
 )
 
-// TestVersionFilesResponseIsObjectNotArray фіксує формат відповіді
-// POST /version_files: Modrinth повертає ОБ'ЄКТ {hash: version}, а не
-// масив версій. Раніше GetVersionsByHashes(512) парсили це як []mrVersion,
-// json.Unmarshal мовчки провалювався на об'єкті, і виклик трактувався як
-// "мережа недоступна" — усі моди йшли в overrides/bundled без резолву,
-// а modrinth.index.json завжди отримував порожній "files": []. Цей тест
-// ловить регрес, якщо хтось знову поміняє тип назад на масив.
+// TestVersionFilesResponseIsObjectNotArray фіксує формат відповіді POST
+// /version_files: Modrinth повертає ОБ'ЄКТ {hash: version}, а не масив версій.
 // TestLatestVersionsByHashesFilteredSendsVersionTypes фіксує логіку каналу
 // релізів як у Modrinth App: для release-only має йти version_types=["release"].
 func TestLatestVersionsByHashesFilteredSendsVersionTypes(t *testing.T) {

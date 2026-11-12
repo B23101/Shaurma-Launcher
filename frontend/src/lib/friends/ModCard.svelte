@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // Картка мода в чаті (див. modShare.ts). Дані тягнемо з браузера лаунчера
   // (GetBrowserProjectDetail) — у повідомленні лише посилання. Поки вантажиться
   // — «скелетон» з блиском; не вдалось — компактна картка з посиланням.
@@ -127,7 +129,7 @@
         {:else}<i class="ti ti-puzzle"></i>{/if}
       </div>
       <div class="mc-titles">
-        <div class="mc-name" title={detail.name}>{detail.name}</div>
+        <div class="mc-name" use:launcherTip={detail.name}>{detail.name}</div>
         {#if detail.author}
           <div class="mc-by">
             {#if detail.authorAvatar && !avaBad}

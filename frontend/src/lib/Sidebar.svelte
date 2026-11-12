@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import javaLogo from '../assets/images/java.svg'
   // Sidebar.svelte — ліва навігаційна колонка лаунчера (лого, розділи,
   // список збірок з перемикачем Shaurma/Кастомні, папки, футер акаунтів).
@@ -82,7 +84,7 @@
   let {
     instanceTab = $bindable('shaurma'),
     // Розгорнуті папки: КІЛЬКА одночасно (масив ID). Стан зберігається в
-    // App.svelte (localStorage) і відновлюється після перезапуску.
+    // App.svelte (бекенд, settings.json) і відновлюється після перезапуску.
     openFolderIds = $bindable<string[]>([]),
     accDropdownOpen = $bindable(false),
     sidebarCollapsed,
@@ -101,6 +103,8 @@
     tabPinned,
     tabUnpinned,
     sidebarOnlyPinned,
+    sidebarHideCreate = '',
+    sidebarHideSwitch = '',
     folderViews,
     layoutItems,
     launchProgress,
@@ -177,6 +181,8 @@
     tabPinned: BuildView[]
     tabUnpinned: BuildView[]
     sidebarOnlyPinned: boolean
+    sidebarHideCreate?: string
+    sidebarHideSwitch?: string
     folderViews: { folder: PackFolder; packs: BuildView[] }[]
     // ЄДИНИЙ впорядкований список кастомного таба: збірки І папки в одному
     // порядку (папку можна поставити між двома збірками). Папки рендеряться
@@ -285,6 +291,12 @@
   const SOFT: MyStatus[] = ['online', 'in_game', 'away']
   let myStatus = $state<MyStatus>('offline')
   let profileOpen = $state(false)
+  let profileTab = $state<'profile' | 'privacy' | 'look'>('profile')
+  $effect(() => {
+    const h = (e: Event) => { profileTab = (e as CustomEvent).detail?.tab ?? 'profile'; profileOpen = true }
+    window.addEventListener('open-account-modal', h)
+    return () => window.removeEventListener('open-account-modal', h)
+  })
   let settleTimer: ReturnType<typeof setTimeout> | undefined
   $effect(() => {
     const next = rawStatus
@@ -444,9 +456,16 @@
 
   function closeEmptyMenu() { emptyMenu = null }
 
+  // Чи сховано елемент sidebar (кнопка «Створити», перемикач типів) у поточному
+  // режимі: '' — показувати, 'collapsed' — ховати у стисненому, 'expanded' — у
+  // повному, 'all' — скрізь. Налаштування: Вигляд → Бічна панель.
+  function sbHidden(mode: string, collapsed: boolean): boolean {
+    return mode === 'all' || (mode === 'collapsed' && collapsed) || (mode === 'expanded' && !collapsed)
+  }
+
   // Розгорнути/згорнути папку в sidebar. Кілька папок можуть бути
   // розгорнуті одночасно (не акордеон): просто додаємо/прибираємо ID з
-  // масиву. Стан зберігається у App.svelte через localStorage.
+  // масиву. Стан зберігається у App.svelte через бекенд (settings.json).
   function toggleFolder(id: string) {
     openFolderIds = openFolderIds.includes(id)
       ? openFolderIds.filter((x) => x !== id)
@@ -461,13 +480,13 @@
 <aside class="sidebar" class:collapsed={sidebarCollapsed}
        class:narrow={sidebarWidth > 0 && sidebarWidth < 260}
        style="--sb-w:{sidebarWidth}px;--sb-scale:{sidebarScale}">
-  <button class="sidebar-collapse-btn" onclick={toggleSidebar} title={t('sidebar.toggle')}>
+  <button class="sidebar-collapse-btn" onclick={toggleSidebar} use:launcherTip={t('sidebar.toggle')}>
     <i class="ti ti-chevron-left"></i>
   </button>
   <!-- Ресайз-хендл: тягни правий край, щоб розширити/звузити sidebar.
-       Зберігається в localStorage. Стиснутий sidebar не ресайзиться. -->
+       Ширина зберігається у settings.json. Стиснутий sidebar не ресайзиться. -->
   {#if !sidebarCollapsed}
-    <div class="sb-resize" class:dragging={sbResizing} onmousedown={startSidebarResize} title={t('sidebar.resize')}></div>
+    <div class="sb-resize" class:dragging={sbResizing} onmousedown={startSidebarResize} use:launcherTip={t('sidebar.resize')}></div>
   {/if}
     <div class="logo-area">
       <div class="logo-icon-box logo-icon-img sb-puff-host" class:beshanga-logo={beshangaOn} bind:this={logoBoxEl} onclick={logoParty}>
@@ -498,7 +517,7 @@
                  клік по голові = клік по пункту (відкрити сторінку друзів). -->
             <span class="nav-aside">
               {#if heads.length > 0}
-                <span class="nav-heads" title={`${t('social.me.friendsOnline')}: ${onlineFriends.length}`} aria-hidden="true">
+                <span class="nav-heads" use:launcherTip={`${t('social.me.friendsOnline')}: ${onlineFriends.length}`} aria-hidden="true">
                   {#each heads as f (f.accountId)}
                     <FriendAvatar nickname={f.nickname} color={f.color} status={f.presence?.status} ring="status" size={22} />
                   {/each}
@@ -507,7 +526,7 @@
               {/if}
               {#if friendsBadge > 0}
                 {#key friendsBadge}
-                  <span class="nav-badge" title={t('friends.badgeHint')}>{friendsBadge > 9 ? '9+' : friendsBadge}</span>
+                  <span class="nav-badge" use:launcherTip={t('friends.badgeHint')}>{friendsBadge > 9 ? '9+' : friendsBadge}</span>
                 {/key}
               {/if}
             </span>
@@ -517,7 +536,7 @@
                  клік по іконці = клік по пункту. У згорнутому sidebar замість
                  них — зелена крапка біля іконки розділу. -->
             <span class="nav-aside">
-              <span class="nav-heads nav-srvs" title={srvTitle} aria-hidden="true">
+              <span class="nav-heads nav-srvs" use:launcherTip={srvTitle} aria-hidden="true">
                 {#each srvHeads as sv (sv.id)}
                   {@const ic = serverIcon(sv)}
                   <span class="nav-srv" style="--pcol:{ic.color}">
@@ -527,7 +546,7 @@
                 {#if srvExtra > 0}<span class="nav-heads-more">+{srvExtra}</span>{/if}
               </span>
             </span>
-            <i class="nav-live-dot" title={srvTitle}></i>
+            <i class="nav-live-dot" use:launcherTip={srvTitle}></i>
           {/if}
         </div>
       {/each}
@@ -535,11 +554,13 @@
 
   <!-- Кнопка «Створити збірку» у sidebar — завжди видима (і в base, і в
        стисненому вигляді): плюс, що відкриває майстер збірки. -->
-  <button class="sb-create" onclick={openCreatePack} title={t('instances.create')}>
-    <i class="ti ti-plus"></i> <span>{t('instances.create')}</span>
-  </button>
+  {#if !sbHidden(sidebarHideCreate, sidebarCollapsed)}
+    <button class="sb-create" onclick={openCreatePack} use:launcherTip={t('instances.create')}>
+      <i class="ti ti-plus"></i> <span>{t('instances.create')}</span>
+    </button>
+  {/if}
 
-  {#if isShaurmaEdition && builds.length > 0}
+  {#if isShaurmaEdition && builds.length > 0 && !sbHidden(sidebarHideSwitch, sidebarCollapsed)}
     <div class="pack-switch">
       <button class:active={instanceTab === 'shaurma'} onclick={() => instanceTab = 'shaurma'}>
         <i class="ti ti-flame"></i> <span>{t('shaurma')}</span>
@@ -561,7 +582,7 @@
         {@const prog = bv.progress}
         {@const pcol = pk.color || 'var(--orange)'}
         {@const othersRunning = otherRunningAccounts(bv)}
-        {@const icon = packAsset(pk.iconUrl)}
+        {@const icon = packAsset(pk.iconUrl, 128)}
         {@const iconSrc = packIconSrc(icon)}
         {@const lp = launchProgress[pk.id]}
         {@const sti = lp && !lp.done ? launchStageIcon(lp.stage) : null}
@@ -571,7 +592,7 @@
         {@const mig = migrateByPack[pk.id]}
         {@const isDragSrc = dragSrcId === pk.id}
         {@const isDropTarget = dropTargetId === pk.id}
-        <div class="sb-pack" class:active={currentPage === 'instances' && openPackId === pk.id} class:just-deactivated={deactivatedPackId === pk.id} class:sb-pinned={isPinned(pk.id)} class:running={status === 'running'} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={(e: any) => { if (suppressPackClick) return; if (e.button === 0) openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor}" title={sidebarCollapsed ? pk.name : undefined} in:fly={{ y: 6, duration: 260, easing: cubicOut, delay: Math.min(i, 8) * 28 }} animate:flip={{ duration: 220 }}>                <div class="sp-ic" class:has-icon={!!icon} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
+        <div class="sb-pack" class:active={currentPage === 'instances' && openPackId === pk.id} class:just-deactivated={deactivatedPackId === pk.id} class:sb-pinned={isPinned(pk.id)} class:running={status === 'running'} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={(e: any) => { if (suppressPackClick) return; if (e.button === 0) openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor}" use:launcherTip={sidebarCollapsed ? pk.name : undefined} in:fly={{ y: 4, duration: 140, easing: cubicOut, delay: Math.min(i, 5) * 12 }} animate:flip={{ duration: 160 }}>                <div class="sp-ic" class:has-icon={!!icon} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
             {#if iconSrc}
               <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, 'sidebar', currentPage === 'instances' && openPackId === pk.id)} alt="" />
             {:else}
@@ -582,7 +603,7 @@
             <div class="sp-name">
               <span class="sp-name-txt">{pk.name}</span>
               {#if autoPackIds.has(pk.id)}
-                <span class="sp-auto-badge" title={t('sidebar.autoBadgeHint')}>{t('sidebar.autoBadge')}</span>
+                <span class="sp-auto-badge" use:launcherTip={t('sidebar.autoBadgeHint')}>{t('sidebar.autoBadge')}</span>
               {/if}
             </div>
             <div class="sp-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
@@ -590,9 +611,9 @@
                 <i class="ti ti-loader spin"></i>
                 <span>{launchStageLabel(lp.stage)}</span>
               {:else if mig && !lp}
-                <span class="mig-chip" title={mig.currentFile}>
+                <span class="mig-chip" use:launcherTip={mig.currentFile}>
                   <i class="ti ti-arrows-right-left spin-slow"></i>
-                  <span>{t('mods.migratingTitle')} {mig.done}/{mig.total}</span>
+                  <span>{t('mods.migratingTitle')}</span>
                 </span>
               {:else if status === 'downloading' || status === 'updating'}
                 <i class="ti {prog?.mode === 'paused' ? 'ti-player-pause' : 'ti-download'}"></i>
@@ -600,9 +621,9 @@
               {:else if othersRunning.length}
                 <!-- Голови акаунтів, у яких ця збірка ЗАРАЗ запущена (крім
                      поточного) — замість «версія · лоадер» у sidebar. -->
-                <span class="sp-heads" title={othersRunning.map(o => o.username).join(', ')}>
+                <span class="sp-heads" use:launcherTip={othersRunning.map(o => o.username).join(', ')}>
                   {#each othersRunning as o (o.id)}
-                    <img src={headFor(o.uuid)} alt="" title={o.username} />
+                    <img src={headFor(o.uuid)} alt="" use:launcherTip={o.username} />
                   {/each}
                 </span>
               {:else}
@@ -621,7 +642,7 @@
                  збірки, крутіння оновлення чи лупа — клік м'яко зупиняє
                  качку компонентів гри (раніше зупинити було неможливо
                  до кінця завантаження). -->
-            <button class="sp-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
+            <button class="sp-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} use:launcherTip={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
               {#if lp?.stage === 'java'}
               <img src={javaLogo} alt="" />
             {:else if limg}
@@ -635,15 +656,15 @@
                  manifest_fetched/extracting/finalizing) — той самий
                  принцип, що для sti вище, окрім паузи (там лишається
                  кнопка «продовжити»). -->
-            <div class="sp-st {dsti.cls}" title={downloadStageLabel(prog?.stage)}>
+            <div class="sp-st {dsti.cls}" use:launcherTip={downloadStageLabel(prog?.stage)}>
               <i class="ti {dsti.icon}"></i>
             </div>
           {:else if mig && !lp}
-            <button class="sp-btn sp-mig" disabled title={t('mods.migratingTitle')}>
+            <button class="sp-btn sp-mig" disabled use:launcherTip={t('mods.migratingTitle')}>
               <i class="ti ti-arrows-right-left"></i>
             </button>
           {:else}
-            <button class="sp-btn sp-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} title={spBtnTitle(bv)}>
+            <button class="sp-btn sp-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} use:launcherTip={spBtnTitle(bv)}>
               {#if status === 'running'}<i class="ti ti-player-stop"></i>
               {:else if status === 'ready'}<i class="ti ti-player-play"></i>
               {:else if status === 'needs-update'}<i class="ti ti-refresh"></i>
@@ -676,12 +697,12 @@
             {@const isFolderOpen = openFolderIds.includes(folder.id)}
             {@const fIsDropTarget = dragFolderTarget === folder.id}
             {@const fIcons = fv.packs.slice(0, 3).map((p: BuildView) => {
-              const fic = packAsset(p.build.iconUrl)
+              const fic = packAsset(p.build.iconUrl, 128)
               return { src: packIconSrc(fic), paused: shouldPauseIcon(fic, 'sidebar', false), pcol: p.build.color || fpcol, preset: p.build.icon || 'ti-puzzle' }
             })}
             {@const fEmpty = fv.packs.length === 0}
             <div class="sb-folder" class:open={isFolderOpen} class:folder-drop={fIsDropTarget} style="--pcol:{fpcol}" data-folder-drop={folder.id}>
-              <div class="sf-row" class:drag-src={dragFolderId === folder.id} class:drop-before={dropTargetId === folder.id && dropPos === 'before'} class:drop-after={dropTargetId === folder.id && dropPos === 'after'} data-folder-id={folder.id} onclick={() => { if (suppressPackClick) return; toggleFolder(folder.id) }} onpointerdown={(e) => folderPointerDown(e, folder.id)} onpointermove={folderPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openFolderCtxMenu(e, folder.id)} title={folder.name}>
+              <div class="sf-row" class:drag-src={dragFolderId === folder.id} class:drop-before={dropTargetId === folder.id && dropPos === 'before'} class:drop-after={dropTargetId === folder.id && dropPos === 'after'} data-folder-id={folder.id} onclick={() => { if (suppressPackClick) return; toggleFolder(folder.id) }} onpointerdown={(e) => folderPointerDown(e, folder.id)} onpointermove={folderPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openFolderCtxMenu(e, folder.id)}>
                 <div class="sf-stack">
                   {#if fEmpty}
                     <!-- Порожня папка: іконка папки замість стеку збірок -->
@@ -710,14 +731,14 @@
                     {@const status = bv.status}
                     {@const prog = bv.progress}
                     {@const pcol = pk.color || 'var(--orange)'}
-                    {@const icon = packAsset(pk.iconUrl)}
+                    {@const icon = packAsset(pk.iconUrl, 128)}
                     {@const iconSrc = packIconSrc(icon)}
                     {@const lp = launchProgress[pk.id]}
                     {@const glow = glowClass(bv, lp)}
                     {@const mig = migrateByPack[pk.id]}
                     {@const isDragSrc = dragSrcId === pk.id}
                     {@const isDropTarget = dropTargetId === pk.id}
-                    <div class="sb-pack" class:active={currentPage === 'instances' && openPackId === pk.id} class:running={status === 'running'} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, true)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={(e: any) => { if (suppressPackClick) return; if (e.button === 0) openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor}" title={sidebarCollapsed ? pk.name : undefined} in:fly={{ y: 5, duration: 220, easing: cubicOut, delay: Math.min(fi, 6) * 24 }} animate:flip={{ duration: 220 }}>
+                    <div class="sb-pack" class:active={currentPage === 'instances' && openPackId === pk.id} class:running={status === 'running'} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, true)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={(e: any) => { if (suppressPackClick) return; if (e.button === 0) openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor}" use:launcherTip={sidebarCollapsed ? pk.name : undefined} in:fly={{ y: 4, duration: 140, easing: cubicOut, delay: Math.min(fi, 5) * 12 }} animate:flip={{ duration: 160 }}>
                       <div class="sp-ic" class:has-icon={!!iconSrc} style="--pcol:{pcol}">
                         {#if iconSrc}
                           <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, 'sidebar', currentPage === 'instances' && openPackId === pk.id)} alt="" />
@@ -729,7 +750,7 @@
                         <div class="sp-name">
               <span class="sp-name-txt">{pk.name}</span>
               {#if autoPackIds.has(pk.id)}
-                <span class="sp-auto-badge" title={t('sidebar.autoBadgeHint')}>{t('sidebar.autoBadge')}</span>
+                <span class="sp-auto-badge" use:launcherTip={t('sidebar.autoBadgeHint')}>{t('sidebar.autoBadge')}</span>
               {/if}
             </div>
                         <div class="sp-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
@@ -753,7 +774,7 @@
         {@const prog = bv.progress}
         {@const pcol = pk.color || 'var(--orange)'}
         {@const othersRunning = otherRunningAccounts(bv)}
-        {@const icon = packAsset(pk.iconUrl)}
+        {@const icon = packAsset(pk.iconUrl, 128)}
         {@const iconSrc = packIconSrc(icon)}
         {@const lp = launchProgress[pk.id]}
         {@const sti = lp && !lp.done ? launchStageIcon(lp.stage) : null}
@@ -763,7 +784,7 @@
         {@const mig = migrateByPack[pk.id]}
         {@const isDragSrc = dragSrcId === pk.id}
         {@const isDropTarget = dropTargetId === pk.id}
-        <div class="sb-pack" class:active={currentPage === 'instances' && openPackId === pk.id} class:just-deactivated={deactivatedPackId === pk.id} class:sb-pinned={isPinned(pk.id)} class:running={status === 'running'} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={(e: any) => { if (suppressPackClick) return; if (e.button === 0) openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor}" title={sidebarCollapsed ? pk.name : undefined} in:fly={{ y: 6, duration: 260, easing: cubicOut, delay: Math.min(i, 8) * 28 }}>                <div class="sp-ic" class:has-icon={!!icon} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
+        <div class="sb-pack" class:active={currentPage === 'instances' && openPackId === pk.id} class:just-deactivated={deactivatedPackId === pk.id} class:sb-pinned={isPinned(pk.id)} class:running={status === 'running'} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={(e: any) => { if (suppressPackClick) return; if (e.button === 0) openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor}" use:launcherTip={sidebarCollapsed ? pk.name : undefined} in:fly={{ y: 4, duration: 140, easing: cubicOut, delay: Math.min(i, 5) * 12 }}>                <div class="sp-ic" class:has-icon={!!icon} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
             {#if iconSrc}
               <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, 'sidebar', currentPage === 'instances' && openPackId === pk.id)} alt="" />
             {:else}
@@ -774,7 +795,7 @@
             <div class="sp-name">
               <span class="sp-name-txt">{pk.name}</span>
               {#if autoPackIds.has(pk.id)}
-                <span class="sp-auto-badge" title={t('sidebar.autoBadgeHint')}>{t('sidebar.autoBadge')}</span>
+                <span class="sp-auto-badge" use:launcherTip={t('sidebar.autoBadgeHint')}>{t('sidebar.autoBadge')}</span>
               {/if}
             </div>
             <div class="sp-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
@@ -782,9 +803,9 @@
                 <i class="ti ti-loader spin"></i>
                 <span>{launchStageLabel(lp.stage)}</span>
               {:else if mig && !lp}
-                <span class="mig-chip" title={mig.currentFile}>
+                <span class="mig-chip" use:launcherTip={mig.currentFile}>
                   <i class="ti ti-arrows-right-left spin-slow"></i>
-                  <span>{t('mods.migratingTitle')} {mig.done}/{mig.total}</span>
+                  <span>{t('mods.migratingTitle')}</span>
                 </span>
               {:else if status === 'downloading' || status === 'updating'}
                 <i class="ti {prog?.mode === 'paused' ? 'ti-player-pause' : 'ti-download'}"></i>
@@ -792,9 +813,9 @@
               {:else if othersRunning.length}
                 <!-- Голови акаунтів, у яких ця збірка ЗАРАЗ запущена (крім
                      поточного) — замість «версія · лоадер» у sidebar. -->
-                <span class="sp-heads" title={othersRunning.map(o => o.username).join(', ')}>
+                <span class="sp-heads" use:launcherTip={othersRunning.map(o => o.username).join(', ')}>
                   {#each othersRunning as o (o.id)}
-                    <img src={headFor(o.uuid)} alt="" title={o.username} />
+                    <img src={headFor(o.uuid)} alt="" use:launcherTip={o.username} />
                   {/each}
                 </span>
               {:else}
@@ -813,7 +834,7 @@
                  збірки, крутіння оновлення чи лупа — клік м'яко зупиняє
                  качку компонентів гри (раніше зупинити було неможливо
                  до кінця завантаження). -->
-            <button class="sp-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
+            <button class="sp-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} use:launcherTip={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
               {#if lp?.stage === 'java'}
               <img src={javaLogo} alt="" />
             {:else if limg}
@@ -827,15 +848,15 @@
                  manifest_fetched/extracting/finalizing) — той самий
                  принцип, що для sti вище, окрім паузи (там лишається
                  кнопка «продовжити»). -->
-            <div class="sp-st {dsti.cls}" title={downloadStageLabel(prog?.stage)}>
+            <div class="sp-st {dsti.cls}" use:launcherTip={downloadStageLabel(prog?.stage)}>
               <i class="ti {dsti.icon}"></i>
             </div>
           {:else if mig && !lp}
-            <button class="sp-btn sp-mig" disabled title={t('mods.migratingTitle')}>
+            <button class="sp-btn sp-mig" disabled use:launcherTip={t('mods.migratingTitle')}>
               <i class="ti ti-arrows-right-left"></i>
             </button>
           {:else}
-            <button class="sp-btn sp-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} title={spBtnTitle(bv)}>
+            <button class="sp-btn sp-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} use:launcherTip={spBtnTitle(bv)}>
               {#if status === 'running'}<i class="ti ti-player-stop"></i>
               {:else if status === 'ready'}<i class="ti ti-player-play"></i>
               {:else if status === 'needs-update'}<i class="ti ti-refresh"></i>
@@ -941,7 +962,7 @@
                 onmouseenter={openStatusMenu}
                 onclick={() => (statusMenu ? (statusMenu = false) : openStatusMenu())}
                 aria-haspopup="menu" aria-expanded={statusMenu}
-                title={canPickStatus ? myStatusText : t('social.me.offlineHint')}>
+                use:launcherTip={canPickStatus ? myStatusText : t('social.me.offlineHint')}>
           <i class="um-dot {myStatus}"></i>
           <span class="acc-st-lbl">{myStatusText}</span>
           <i class="ti ti-chevron-right acc-st-chev"></i>
@@ -979,7 +1000,7 @@
                 {#if !acc.isLicensed && acc.licensedNickMine}
                   <!-- Пріоритет ліцензійного акаунта: скіном під цим ніком
                        керує ліцензійний акаунт — редактор скіна закритий. -->
-                  <span class="adi-lock" title={t('licensedNickBusy')}><i class="ti ti-lock"></i></span>
+                  <span class="adi-lock" use:launcherTip={t('licensedNickBusy')}><i class="ti ti-lock"></i></span>
                 {/if}
               </div>
               <div
@@ -992,11 +1013,11 @@
                 {acc.isLicensed ? t('licensed') : acc.isShaurmaSkinAccount ? t('shaurmaAccount') : t('notLicensed')}
               </div>
             </div>
-            <button class="acc-dd-remove" onclick={(e: any) => { e.stopPropagation(); removeAccount(acc.id) }} title={t('acc.delete')}>
+            <button class="acc-dd-remove" onclick={(e: any) => { e.stopPropagation(); removeAccount(acc.id) }} use:launcherTip={t('acc.delete')}>
               <i class="ti ti-trash"></i>
             </button>
             {#if !acc.isLicensed}
-              <button class="acc-dd-rename" onclick={(e: any) => { e.stopPropagation(); openRenameAccount(acc) }} title={t('acc.rename')}>
+              <button class="acc-dd-rename" onclick={(e: any) => { e.stopPropagation(); openRenameAccount(acc) }} use:launcherTip={t('acc.rename')}>
                 <i class="ti ti-edit"></i>
               </button>
             {/if}
@@ -1026,7 +1047,7 @@
       <div class="ue-row">
         <!-- Одне значення, без підміни при наведенні: що саме — тип акаунта чи статус —
              вибирає користувач у «Вигляд» акаунта (accountPrefs.widgetLine). -->
-        <div class="ue ue-type" title={accTypeLabel}>
+        <div class="ue ue-type" use:launcherTip={accTypeLabel}>
           {#if accountPrefs.widgetLine === 'status'}
             <span class="ue-k ue-status {avDot}" data-testid="account-status">{myStatusText}</span>
           {:else}
@@ -1048,7 +1069,7 @@
         </div>
       </div>
     </div>
-    <button class="dot-btn" title={t('accounts')}><i class="ti ti-chevron-up"></i></button>
+    <button class="dot-btn" use:launcherTip={t('accounts')}><i class="ti ti-chevron-up"></i></button>
   </div>
 </aside>
 

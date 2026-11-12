@@ -60,7 +60,7 @@ type modrinthInstance struct {
 // scanModrinth сканує Modrinth App. Повертає Launcher з Found=false, якщо
 // теки даних немає (або базу не вдалось відкрити).
 func scanModrinth() Launcher {
-	l := Launcher{Kind: LauncherModrinth, Name: "Modrinth App"}
+	l := Launcher{Kind: LauncherModrinth, Name: "Modrinth App", Packs: []Pack{}}
 	settingsDir := modrinthSettingsDir()
 	if settingsDir == "" || !dirExists(settingsDir) {
 		l.DataDir = settingsDir

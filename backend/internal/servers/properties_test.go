@@ -484,17 +484,10 @@ func TestBuildCommand_Velocity(t *testing.T) {
 
 func TestBuildCommand_Forge120(t *testing.T) {
 	dir := t.TempDir()
-	// Forge ≥1.17 з args-файлом. ЗМІНЕНО (не логіка, сам тест): раніше тут
-	// писався лише win_args.txt, що на Linux/macOS ніколи не знаходився
-	// (findLoaderArgsFile/buildForgeArgs обидва обирають ім'я файлу за
-	// runtime.GOOS, як і оригінал GDLauncher — platform_args_file_name()
-	// у modloader_install.rs так само cfg!(windows)-залежний). Тест
-	// проходив лише випадково — раніше буквально впав би у фолбек на
-	// server.jar на не-Windows CI, і contains(a,"win_args.txt") ||
-	// contains(a,"unix_args.txt") ніколи не спрацював би. GDLauncher-івський
-	// тестовий хелпер write_neoforge_install (той самий тестовий модуль,
-	// рядки 84-91 modloader_launch.rs) якраз пише ОБИДВА файли з цієї самої
-	// причини — той самий підхід тут.
+	// Forge ≥1.17 з args-файлом. Тест проходив лише випадково.
+	// GDLauncher-івський тестовий хелпер write_neoforge_install (той
+	// самий тестовий модуль, рядки 84-91 modloader_launch.rs) якраз пише
+	// ОБИДВА файли з цієї самої причини — той самий підхід тут.
 	forgeDir := filepath.Join(dir, "libraries", "net", "minecraftforge", "forge", "1.20.1-47.4.10")
 	os.MkdirAll(forgeDir, 0755)
 	os.WriteFile(filepath.Join(forgeDir, "win_args.txt"), []byte("--fml.forgeVersion=47.4.10"), 0644)

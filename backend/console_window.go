@@ -52,6 +52,11 @@ type windowOptions struct {
 	MinHeight int    `json:"minHeight"`
 	Frameless bool   `json:"frameless"`
 	URL       string `json:"url"`
+	// Background — "transparent" (за замовчуванням, коли порожньо) | "solid".
+	// BackgroundHex — колір для solid у форматі "#rrggbb" (див. winOptions у
+	// shell/window_exec.go).
+	Background    string `json:"background,omitempty"`
+	BackgroundHex string `json:"backgroundHex,omitempty"`
 	// Hidden — створити вікно НЕпоказаним (див. опис у shell/window_exec.go).
 	Hidden bool `json:"hidden,omitempty"`
 
@@ -148,6 +153,12 @@ func (a *App) ShowConsoleWindowFor(buildID string) {
 // console_window.go: якщо процес не завершується насправді — відхиляємо
 // закриття, інакше дозволяємо.
 func (a *App) onShellWindowClosing(id string) string {
+	// Вікно запуску ярлика (Alt+F4 тощо) = «Скасувати»: зупиняємо запуск і
+	// повертаємо головний екран. Саме вікно знищує ShortcutWindowCancel.
+	if id == shortcutWindowID {
+		go a.ShortcutWindowCancel()
+		return `{"action":"hide"}`
+	}
 	if consoleAppQuitting.Load() {
 		return `{"action":"close"}`
 	}

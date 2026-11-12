@@ -3,7 +3,7 @@ package p2p
 import "testing"
 
 // Ці тести фіксують контракт вимикача P2P (Налаштування → Основне →
-// «Вимкнути «LAN через інтернет» (P2P)»), який раніше працював наполовину:
+// «Вимкнути «LAN через інтернет» (P2P)»).
 //
 //  1. Старт лаунчера піднімав слухач НАВІТЬ при вимкненій фічі (виклик ішов
 //     повз обгортку App, яка читає налаштування);
@@ -41,7 +41,7 @@ func TestStopGuestServiceIsIdempotent(t *testing.T) {
 
 // TestStopGuestServiceAllowsRestart — головна регресія: після Stop прапорець
 // має повернутись у «не запущено», щоб наступний Ensure реально створив
-// сервіс заново (раніше sync.Once робив це неможливим).
+// сервіс заново.
 func TestStopGuestServiceAllowsRestart(t *testing.T) {
 	api := newTestAPI(t)
 	api.mu.Lock()

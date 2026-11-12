@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // PackCompareDialog — двосторонній порівнювач модів двох збірок.
   // Обидві сторони РІВНОправні й клікабельні: клік по будь-якій стороні
   // (PackCompareChip) відкриває той самий пікер (PackPicker), лише
@@ -15,6 +17,8 @@
   import modrinthIcon from '../assets/images/Modrinth_icon.png'
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
   import type { ModComparePack, ModCompareReport, ModCompareRow, ModCompareSide, CompareInstallRequest } from './types'
+  import EmptyState from './EmptyState.svelte'
+  import SearchField from './SearchField.svelte'
 
   let {
     packId,
@@ -224,26 +228,17 @@
 
     <!-- ═══ Стан: одна зі сторін ще не обрана ═══ -->
     {#if !leftPackId || !rightPackId}
-      <div class="pcd-empty">
-        <i class="ti ti-git-compare"></i>
-        <div>{t('mods.comparePickPack')}</div>
-      </div>
+      <EmptyState icon="ti-git-compare" title={t('mods.comparePickPack')} />
     {:else if loading}
       <div class="pcd-loading">
         <i class="ti ti-loader spin"></i>
         <div>{t('mods.compareLoading')}</div>
       </div>
     {:else if err}
-      <div class="pcd-empty">
-        <i class="ti ti-alert-triangle"></i>
-        <div>{t('error.withMessage', { message: err })}</div>
-      </div>
+      <EmptyState icon="ti-alert-triangle" color="var(--red)" title={t('error.withMessage', { message: err })} />
     {:else if report}
       {#if report.rows.length === 0}
-        <div class="pcd-empty">
-          <i class="ti ti-mood-empty"></i>
-          <div>{t('mods.compareEmpty')}</div>
-        </div>
+        <EmptyState icon="ti-mood-empty" title={t('mods.compareEmpty')} />
       {:else}
         <!-- ═══ Підсумкові чипи ═══ -->
         <div class="pcd-summary">
@@ -297,9 +292,9 @@
       {:else if side.canInstall}
         <span class="pcd-badge missing"><i class="ti ti-minus"></i>{t('mods.compareStatusMissing')}</span>
       {:else if side.compatNote === 'noCompatVersion'}
-        <span class="pcd-badge warn" title={t('mods.compareNoCompatVersion')}><i class="ti ti-alert-triangle"></i>{t('mods.compareNoCompatVersion')}</span>
+        <span class="pcd-badge warn" use:launcherTip={t('mods.compareNoCompatVersion')}><i class="ti ti-alert-triangle"></i>{t('mods.compareNoCompatVersion')}</span>
       {:else}
-        <span class="pcd-badge dim" title={t('mods.compareNotFound')}><i class="ti ti-circle-x"></i>{t('mods.compareStatusMissing')}</span>
+        <span class="pcd-badge dim" use:launcherTip={t('mods.compareNotFound')}><i class="ti ti-circle-x"></i>{t('mods.compareStatusMissing')}</span>
       {/if}
       {#if side.localCopy}<span class="pcd-tag local">{t('mods.compareLocalCopy')}</span>{/if}
     </div>
@@ -323,7 +318,7 @@
           class="pcd-action-btn"
           class:update={side.status === 'outdated'}
           disabled={busy}
-          title={actionLabel(side)}
+          use:launcherTip={actionLabel(side)}
           aria-label={actionLabel(side)}
           onclick={() => installSide(row, which)}
         >
@@ -340,7 +335,7 @@
           {/if}
         </button>
         {#if !busy && side.status !== 'outdated' && sourceIconFor(side)}
-          <img class="pcd-src-badge" src={sourceIconFor(side)} alt="" title={side.source === 'modrinth' ? 'Modrinth' : 'CurseForge'} />
+          <img class="pcd-src-badge" src={sourceIconFor(side)} alt="" use:launcherTip={side.source === 'modrinth' ? 'Modrinth' : 'CurseForge'} />
         {/if}
       {/if}
     </div>
@@ -358,10 +353,7 @@
     onclose={() => { pickerOpen = false; pickerFilter = '' }}
   >
     {#if packPicker && packPicker.items.length > 4}
-      <div class="pcd-modal-search">
-        <i class="ti ti-search"></i>
-        <input placeholder={t('browser.searchPack')} bind:value={pickerFilter} />
-      </div>
+      <SearchField variant="strip" placeholder={t('browser.searchPack')} bind:value={pickerFilter} />
     {/if}
     {#if packPicker && packPicker.items.length > 0}
       <PackPicker
@@ -398,12 +390,11 @@
     font-size: 11.5px; font-weight: 600;
   }
 
-  /* ── Порожні/завантаження стани ── */
-  .pcd-empty, .pcd-loading {
+  /* ── Стан завантаження ── */
+  .pcd-loading {
     display: flex; flex-direction: column; align-items: center; gap: 12px;
     padding: 42px 0; color: var(--text-mute); font-size: 13px; text-align: center;
   }
-  .pcd-empty i, .pcd-loading i { font-size: 44px; color: var(--text-dim); }
   .pcd-loading i { font-size: 32px; color: var(--violet-l); }
 
   /* ── Підсумок ── */
@@ -491,18 +482,5 @@
   }
 
   /* ── Пікер збірки: пошук ── */
-  .pcd-modal-search {
-    display: flex; align-items: center; gap: 9px;
-    margin: -16px -20px 14px; padding: 10px 20px;
-    border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--bg-input) 40%, transparent);
-  }
-  .pcd-modal-search > i { color: var(--text-mute); font-size: 15px; }
-  .pcd-modal-search input {
-    flex: 1; background: transparent; border: none; outline: none;
-    color: var(--text); font: 500 12.5px var(--font-ui);
-  }
-  .pcd-modal-search input::placeholder { color: var(--text-dim); }
-
   :global(.pcd-pp) { max-height: 360px; overflow-y: auto; }
 </style>

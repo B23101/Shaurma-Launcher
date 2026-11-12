@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // ── Браузер контенту ──────────────────────────────────────────────────
   // Портує UX веб-апки Modrinth (modrinth/code) у стиль лаунчера:
@@ -33,6 +35,8 @@
   import { kindForTab, serversForTab, serverVisual, coreName, type BrowserServer } from './servers/serverTargets'
   import { CORE_META } from './servers/constants'
   import type { PackPickerItem, PackRow, PackFolderRow } from './PackPicker.svelte'
+  import EmptyState from './EmptyState.svelte'
+  import SearchField from './SearchField.svelte'
 
   // Палітра кольорів колекцій (та сама, що в редакторі папок/збірок).
   const cbColorPresets = ['#7b4dff', '#ff8a00', '#10b981', '#3b82f6', '#ef4444', '#f59e0b', '#8fd3ff', '#ff6b9d']
@@ -72,7 +76,7 @@
   } = $props<{
     // projectType — тип контенту, з якого відкрили браузер (кнопка
     // «Додати з браузера» у вкладці «Контент»): моди/ресурспаки/шейдери/
-    // датапаки. Порожній = «Моди» (як раніше).
+    // датапаки. Порожній = «Моди».
     packContext?: { id: string; name: string; mcVersion: string; loader: string; projectType?: string } | null
     serverContext?: { id: string; name: string; mcVersion: string; loader: string; kind: 'mods' | 'plugins' } | null
     // servers — власні сервери для перемикача цілі встановлення «Збірки ↔
@@ -120,12 +124,7 @@
   ]
   // serverContext обмежує видимі вкладки до ОДНОГО типу — того, що вміє
   // цей конкретний сервер (kind: 'mods' | 'plugins' уже визначено при
-  // відкритті браузера з картки сервера, див. activeType нижче). Раніше
-  // тут лишались ОБИДВІ вкладки «Моди»/«Плагіни» одразу для будь-якого
-  // серверного контексту — мод-сервер (Fabric/Forge/NeoForge/Quilt) і
-  // плагін-сервер (Paper/Purpur/Velocity) не можуть встановити контент
-  // іншого типу, тож друга вкладка була мертвим вибором, що вів у
-  // порожню видачу.
+  // відкритті браузера з картки сервера, див. activeType нижче).
   const contentTypes = $derived(
     serverContext ? allContentTypes.filter(c => c.id === (serverContext.kind === 'plugins' ? 'plugin' : 'mod')) : allContentTypes
   )
@@ -151,12 +150,9 @@
   let bookmarkedEntries = $state<BrowserEntry[]>([])
   let bookmarkedKeys = $state<Set<string>>(new Set())
   let loadingBookmarks = $state(false)
-  // savedTypeFilter — перемикач типу контенту ВСЕРЕДИНІ «Закладок»
-  // ('' = усі типи разом). Раніше bookmarkedEntries завжди показував усі
-  // збережені моди/ресурспаки/шейдери/датапаки одним суцільним грідом
-  // без можливості відфільтрувати — на великому списку закладок важко
-  // знайти саме шейдер серед сотні модів. Фільтрація суто клієнтська
-  // (bookmarkedEntries вже завантажені цілком), нового запиту не треба.
+  // savedTypeFilter — перемикач типу контенту ВСЕРЕДИНІ «Закладок» ('' =
+  // усі типи разом). Фільтрація суто клієнтська (bookmarkedEntries вже
+  // завантажені цілком), нового запиту не треба.
   let savedTypeFilter = $state('')
   const savedFilteredEntries = $derived(
     savedTypeFilter ? bookmarkedEntries.filter(e => e.type === savedTypeFilter) : bookmarkedEntries
@@ -315,18 +311,12 @@
   // розділу «Збережено» (там натискання прибирає закладку одразу зі
   // списку, що показано, без повторного відкриття розділу).
   //
-  // OPTIMISTIC UPDATE: раніше клас .on (жовта «запалена» зірочка)
-  // з'являвся лише ПІСЛЯ того, як await App.ToggleBookmark повернувся —
-  // на повільнішому диску/першому виклику після запуску (сховище ще не
-  // прогріте) це відчувалось як «клікнув — зірочка лишилась
-  // невидимою/сірою», хоча закладка насправді ЗБЕРЕГЛАСЬ (просто UI ще
-  // не встиг оновитись, а виглядало це так, ніби бекенд «не бачить»
-  // такого проєкту). Тепер bookmarkedKeys перемикається ОДРАЗУ на клік,
-  // синхронно, ще до відповіді бекенду — зірочка запалюється миттєво.
-  // Якщо бекенд усе ж повернув відмінний результат або помилку (напр.
-  // порожній projectId — «некоректний проєкт для закладки»), локальний
-  // стан ВІДКОЧУЄТЬСЯ назад і показується тост з причиною — так реальна
-  // відмова більше не виглядає як мовчазний глюк.
+  // OPTIMISTIC UPDATE. Тепер bookmarkedKeys перемикається ОДРАЗУ на
+  // клік, синхронно, ще до відповіді бекенду — зірочка запалюється
+  // миттєво. Якщо бекенд усе ж повернув відмінний результат або помилку
+  // (напр. порожній projectId — «некоректний проєкт для закладки»),
+  // локальний стан ВІДКОЧУЄТЬСЯ назад і показується тост з причиною —
+  // так реальна відмова більше не виглядає як мовчазний глюк.
   async function toggleBookmark(entry: BrowserEntry) {
     const key = entry.source + '|' + (entry.projectId || entry.id)
     const wasBookmarked = bookmarkedKeys.has(key)
@@ -674,12 +664,7 @@
   // ПОВНИЙ обраний тег (не лише назву): Modrinth і CurseForge фільтрують
   // категорію РІЗНИМИ ключами — Modrinth за назвою/slug (searchVersion API
   // так влаштований офіційно), CurseForge — ВИКЛЮЧНО за числовим
-  // categoryId. Раніше обидва джерела отримували той самий спільний рядок
-  // назв (selectedCategories.join(',')) — для CurseForge це ніколи не
-  // працювало як справжній фільтр API (назва — не ідентифікатор), і
-  // фільтрація там відбувалась постфактум на вже обрізаній лімітом видачі
-  // (баг: обраний тег часто давав порожній результат, хоча сумісних
-  // проєктів під тегом було багато).
+  // categoryId.
   let selectedCategories = $state<BrowserCategory[]>([])
   let categories = $state<BrowserCategory[]>([])
   // Рядок НАЗВ вибраних категорій — те, що йде у BrowserSearchModrinth
@@ -696,22 +681,18 @@
   let results = $state<BrowserSearchResult>({ modrinth: [], curseforge: [], cfDisabled: false, totalHits: 0, hasMore: false })
   // searching — «жодне з двох джерел ще не відповіло» (показуємо скелетон
   // на весь грід). searchingModrinth/searchingCurseForge — точний стан
-  // КОЖНОГО джерела окремо: Modrinth і CurseForge пошук іде паралельно
-  // і НЕ чекає одне одного (App.BrowserSearchModrinth/CurseForge — два
-  // незалежні виклики), тож секція CurseForge може ще показувати «шукає…»
-  // (наприклад, б'ється в rate limit CurseForge API), поки Modrinth уже
-  // відрендерив свої картки — раніше єдиний прапорець searching тримав
-  // ВЕСЬ грід на скелетоні, доки не відповість НАЙПОВІЛЬНІШЕ з двох джерел.
-  // searchingModrinth/searchingCurseForge — точний стан КОЖНОГО джерела
-  // окремо: Modrinth і CurseForge пошук іде паралельно і НЕ чекає одне
+  // КОЖНОГО джерела окремо: Modrinth і CurseForge пошук іде паралельно і НЕ
+  // чекає одне одного (App.BrowserSearchModrinth/CurseForge — два незалежні
+  // виклики), тож секція CurseForge може ще показувати «шукає…» (наприклад,
+  // б'ється в rate limit CurseForge API), поки Modrinth уже відрендерив
+  // свої картки. Modrinth і CurseForge пошук іде паралельно і НЕ чекає одне
   // одного (App.BrowserSearchModrinth/CurseForge — два незалежні виклики).
-  // resultsReadyModrinth/resultsReadyCurseForge — «це джерело вже
-  // відповіло хоч раз для поточного пошуку» (на відміну від searching*,
-  // не скидається на false між сторінками одного джерела — потрібне лише
-  // для першого показу гріда замість скелетона).
-  // true лише поки джерело бере участь у поточному пошуку (не вимкнене
-  // фільтром джерела/відсутнім ключем) і ще не відповіло на ПОТОЧНИЙ
-  // (не застарілий) запит.
+  // resultsReadyModrinth/resultsReadyCurseForge — «це джерело вже відповіло
+  // хоч раз для поточного пошуку» (на відміну від searching*, не скидається
+  // на false між сторінками одного джерела — потрібне лише для першого
+  // показу гріда замість скелетона). true лише поки джерело бере участь у
+  // поточному пошуку (не вимкнене фільтром джерела/відсутнім ключем) і ще
+  // не відповіло на ПОТОЧНИЙ (не застарілий) запит.
   let searchingModrinth = $state(false)
   let searchingCurseForge = $state(false)
   // hasAnyResult — чи є вже хоч щось для показу (з будь-якого з двох
@@ -754,9 +735,7 @@
   // мапа projectId → встановлений файл. Заповнюється коли packFilterId != ''.
   let installedMap = $state<Record<string, BrowserInstalledItem>>({})
   // installedMapLoading — поки true, картки показують скелетон бейджа
-  // замість "немає"/"встановлено": раніше під час довантаження мапи
-  // картки на короткий час показували неправильний ("не встановлено")
-  // стан, який потім різко змінювався — вигладало як миготіння.
+  // замість "немає"/"встановлено".
   let installedMapLoading = $state(false)
   // Прогрес встановлення (browser:progress): projectId → percent.
   let installProgress = $state<Record<string, number>>({})
@@ -831,8 +810,6 @@
 
   // Модалка встановлення МОДПАКА з картки (клік по кнопці на картці):
   // вибір версії + перевірка «вже встановлено» (оновлення або нова копія).
-  // Раніше кнопка на модпаку вела на сторінку проєкту — тепер показує
-  // модульне вікно, як DownloadProject modal у Modrinth app.
   let modpackDialog = $state<{
     entry: BrowserEntry
     versions: BrowserVersionView[]
@@ -841,12 +818,9 @@
     check: BrowserModpackInstallCheck | null
   } | null>(null)
 
-  // Модалка вибору СВІТІВ для датапака (InstallDatapackToWorlds): коли
-  // встановлюємо датапак, треба вказати, у які світи збірки його класти
-  // (saves/<world>/datapacks). Мультивибір — юзер сам відмічає світи.
-  // ВАЖЛИВО: працює І з фільтром збірки (activePack — світи саме цієї
-  // збірки), І без нього (спершу вибір збірки в packPickDialog, потім —   // світи цієї збірки), як у ModpackPage. Раніше датапак з фільтром
-   // збірки встановлювався ОДРАЗУ в datapacks/ збірки без вибору світів.
+   // Модалка вибору СВІТІВ для датапака (InstallDatapackToWorlds): коли встановлюємо датапак, треба вказати, у які світи збірки його класти
+   // (saves/<world>/datapacks). Мультивибір — юзер сам відмічає світи. ВАЖЛИВО: працює І з фільтром збірки (activePack — світи саме цієї
+   // збірки), І без нього (спершу вибір збірки в packPickDialog, потім — // світи цієї збірки), як у ModpackPage.
    let worldDialog = $state<{
      entry: BrowserEntry
      packId: string
@@ -1097,11 +1071,8 @@
   // Якщо для поточного типу контенту немає жодного сумісного сервера
   // (hasTargetServers === false) — автоматично повертаємось на «Збірки» й
   // ФІЛЬТР ЦІЛІ ВСТАНОВЛЕННЯ взагалі не згадує сервери (умова показу
-  // вкладок «Збірки/Сервери» нижче — просто hasTargetServers, без
-  // фолбеку на поточний pickMode). Раніше без цього ефекту людина, що
-  // раніше вибирала «Сервери» на іншій вкладці, потрапляла на порожній
-  // стан «Немає серверів з підтримкою…» замість того, щоб про сервери
-  // тут узагалі не йшлось. Не чіпає «Плагіни» — там сервер ЄДИНА ціль.
+  // вкладок «Збірки/Сервери» нижче — просто hasTargetServers, без фолбеку
+  // на поточний pickMode). Не чіпає «Плагіни» — там сервер ЄДИНА ціль.
   $effect(() => {
     if (activeType !== 'plugin' && !hasTargetServers && pickMode === 'servers') pickMode = 'packs'
   })
@@ -1262,21 +1233,11 @@
   //
   // РАСЕ-ЗАХИСТ (searchSeq): пошуки можуть перекриватись — користувач
   // ввів новий запит і натиснув Enter, поки попередній запит ще летить
-  // (мережа повільна), або клікнув фільтр/сторінку. Раніше відповідь
-  // СТАРІШОГО запиту могла прийти ПІСЛЯ новішого і затерти його
-  // результати + передчасно зняти searching (спінер зникав, а запит ще
-  // не завершився). Тепер кожен запит бере свій номер; відповідь зі
-  // застарілим номером відкидається повністю (не чіпає results і не
-  // знімає searching) — на екрані завжди результати ОСТАННЬОГО пошуку.
+  // (мережа повільна), або клікнув фільтр/сторінку.
   //
   // НЕЗАЛЕЖНІСТЬ ДЖЕРЕЛ: Modrinth і CurseForge викликаються ДВОМА окремими
   // запитами (App.BrowserSearchModrinth / App.BrowserSearchCurseForge), не
-  // через один await App.BrowserSearch(...). Раніше єдиний виклик чекав
-  // ОБИДВА джерела разом — коли CurseForge гальмував (rate limit 4
-  // запити/с, повільна мережа), спінер висів навіть на давно готових
-  // результатах Modrinth. Тепер кожне джерело оновлює СВОЮ частину
-  // results щойно відповість, незалежно від того, як довго відповідає
-  // інше — жодного очікування CurseForge для показу Modrinth, і навпаки.
+  // через один await App.BrowserSearch(...).
   let searchSeq = 0
   // Тип контенту останнього запущеного пошуку (не $state — лише для порівняння).
   let lastSearchType = ''
@@ -1311,15 +1272,11 @@
 
     searchingModrinth = wantModrinth
     searchingCurseForge = wantCurseForge	    // Скидаємо ОБИДВА джерела незалежно від того, яке бере участь:
-	    // раніше при виключному фільтрі (curseforge/modrinth) невибране
-	    // джерело НЕ очищалось, і на екрані лишались СТАРІ результати
-	    // іншого джерела — «вибрав CurseForge, а бачу Modrinth».
-	    // ШВИДКІСТЬ (stale-while-revalidate): НЕ обнуляємо списки на старті
-	    // пошуку — старі картки лишаються на екрані, поки не прийдуть нові
-	    // (як у GDLauncher). Раніше `modrinth: []` показувало порожній
-	    // екран/скелетон на кожен клік по фільтру/сторінці. Обнуляємо лише
-	    // джерело, яке в цьому пошуку НЕ бере участі (щоб не лишались
-	    // результати вимкненого джерела), і помилки.
+	    // ШВИДКІСТЬ (stale-while-revalidate): НЕ обнуляємо списки на
+	    // старті пошуку — старі картки лишаються на екрані, поки не
+	    // прийдуть нові (як у GDLauncher). Обнуляємо лише джерело, яке в
+	    // цьому пошуку НЕ бере участі (щоб не лишались результати
+	    // вимкненого джерела), і помилки.
 	    results = {
 	      ...results,
 	      modrinth: wantModrinth && !typeChanged ? results.modrinth : [],
@@ -1361,13 +1318,9 @@
         }
       }).catch((e: any) => {
         if (seq !== searchSeq) return
-        // Раніше тут стояло `modrinth: []` — одна невдала спроба (офлайн,
-        // тимчасовий 429 від Modrinth, обрив TLS) ПОРОЖНИЛА вже показаний
-        // список, і браузер виглядав так, ніби «проєкти перестали
-        // завантажуватись», хоча впав лише один запит. Стабільність:
-        // лишаємо попередні результати на екрані, а причину показуємо
-        // інлайн через results.modrinthError (порожній список + помилка →
-        // блок «немає з'єднання» з кнопкою повтору).
+        // Стабільність: лишаємо попередні результати на екрані, а причину
+        // показуємо інлайн через results.modrinthError (порожній список +
+        // помилка → блок «немає з'єднання» з кнопкою повтору).
         results = { ...results, modrinthError: String(e) }
         toast(t('error.withMessage', { message: e }), 'error')
       }).finally(() => {
@@ -1659,10 +1612,7 @@
   // installedMap), і перезапускає пошук під новий контекст. Версію/лоадер
   // для пошуку НЕ чіпаємо тут — їх підставляють derived searchVersion/
   // searchLoader з активної збірки (коли вкладка не «Модпаки»), тож вони
-  // ніколи не «протікають» у вільний пошук модпаків. Раніше зміна
-  // packFilterId (перевибір збірки у фільтрі, або вхід через packContext з
-  // менеджера модів) не скидала ці поля — фільтри/результати лишались від
-  // попередньої збірки, поки користувач не натискав "Пошук" вручну.
+  // ніколи не «протікають» у вільний пошук модпаків.
   function setPackFilter(id: string) {
     // Вибір збірки завжди знімає серверний контекст — інакше браузер
     // продовжив би встановлювати в сервер, хоч у фільтрі стоїть збірка
@@ -1712,15 +1662,12 @@
     // Сумісність цього елемента з активною збіркою НЕ підтверджена (мережева
     // помилка фільтра пошуку, fail-open — елемент лишили у видачі, але без
     // гарантії). Попереджаємо ОКРЕМИМ діалогом перед звичайним install/
-    // update-підтвердженням: раніше юзер дізнавався про (не)сумісність лише
-    // після кліку, з тексту помилки InstallBrowserContentVersion — тепер
-    // видно заздалегідь, з можливістю все одно спробувати (реальну перевірку
-    // все одно робить бекенд при встановленні).
-    // Діалог «Сумісність не підтверджена» ПРИБРАНО: він змушував щоразу
-    // натискати «Спробувати», а бекенд (InstallBrowserContentVersion /
-    // InstallServerBrowserVersion) і так перевіряє сумісність перед
-    // завантаженням та повертає зрозумілу помилку, якщо версії немає.
-    // Значок «Не підтверджено» на кнопці лишається як тиха підказка.
+    // update-підтвердженням. Діалог «Сумісність не підтверджена» ПРИБРАНО:
+    // він змушував щоразу натискати «Спробувати», а бекенд
+    // (InstallBrowserContentVersion / InstallServerBrowserVersion) і так
+    // перевіряє сумісність перед завантаженням та повертає зрозумілу
+    // помилку, якщо версії немає. Значок «Не підтверджено» на кнопці
+    // лишається як тиха підказка.
     if (entry.type === 'modpack') {
       // Модпак: модульне вікно вибору версії + «вже встановлено»
       // (оновити або створити копію) — як DownloadProject modal у Modrinth
@@ -1729,11 +1676,9 @@
       return
     }
     if (entry.type === 'datapack') {
-      // Датапак ЗАВЖДИ йде через вибір світів: з фільтром збірки — світи
-      // саме цієї збірки, без фільтра — спершу вибір збірки (packPickDialog),
-      // а після вибору — світи (worldDialog). Раніше з фільтром збірки
-      // датапак встановлювався одразу без вибору світів, і юзер не міг
-      // вказати, у які світи його класти.
+      // Датапак ЗАВЖДИ йде через вибір світів: з фільтром збірки — світи саме
+      // цієї збірки, без фільтра — спершу вибір збірки (packPickDialog), а
+      // після вибору — світи (worldDialog).
       if (activePack) {
         await openWorldDialog(activePack.id, activePack.name, entry)
         return
@@ -1839,9 +1784,7 @@
       packPickDialog = null
       // Для датапака версія обов'язкова (InstallDatapackToWorlds), тож при
       // «Авто» резолвимо рекомендовану під обрану збірку перед вибором світів.
-      // БАГ «вікно вибору світів не відкривається»: раніше помилка
-      // резолву версії (напр. збій API) йшла без try/catch — клік мовчки
-      // губився, і жодне вікно не показувалось. Тепер помилка видима.
+      // БАГ «вікно вибору світів не відкривається». Тепер помилка видима.
       try {
         let vv = versionId
         if (!vv) {
@@ -1925,7 +1868,7 @@
         toast(t('browser.project.installedAs', { name: entry.name }), 'success')
         modpackDialog = null
         // Одразу на сторінку новоствореної збірки — там видно живий
-        // прогрес качання (раніше лишались у браузері з тостом).
+        // прогрес качання.
         onOpenPack?.(created.id)
         return
       }
@@ -1937,12 +1880,10 @@
   }
 
   // confirmInstallOrUpdate — модалка підтвердження перед встановленням/
-  // оновленням мода з картки/сторінки. Раніше клік одразу тягнув
-  // найновішу версію без жодного підтвердження — незручно, якщо
-  // клікнули випадково або не помітили, що це оновлення, а не перше
-  // встановлення. Три випадки: не встановлено → «Встановити?»;
-  // встановлена стара версія → «Оновити з X до Y?»; уже актуальна →
-  // повідомляємо і не встановлюємо повторно без явного другого кліку.
+  // оновленням мода з картки/сторінки. Три випадки: не встановлено →
+  // «Встановити?»; встановлена стара версія → «Оновити з X до Y?»; уже
+  // актуальна → повідомляємо і не встановлюємо повторно без явного
+  // другого кліку.
   async function confirmInstallOrUpdate(
     name: string, projectType: string, packId: string, source: string, projectId: string,
     installed: BrowserInstalledItem | undefined,
@@ -2032,9 +1973,7 @@
     try {
       // Версії НЕ завантажуємо: вибір версії прибрано з UI — завжди «авто»
       // (selectedVersionId=''), лаунчер підбирає версію під (mc, loader)
-      // обраної збірки при встановленні. Раніше спершу йшов запит версій,
-      // і лише потім — сумісних збірок: модалка «спочатку показувала
-      // немає збірки, а потім список». Тепер одразу запит збірок.
+      // обраної збірки при встановленні.
       const list = (await App.GetBrowserCompatiblePacks(entry.source, entryKey(entry), entry.type, contentDirFor(entry.type), '')) ?? []
       // Модалка могла закритись (packPickDialog=null) або відкритись інший
       // діалог, поки йшов запит сумісних збірок — застосовуємо результат
@@ -2182,12 +2121,7 @@
   // ВАЖЛИВО (фікс «фільтр збірки не застосовується на сторінці проєкту»):
   // якщо користувач на цій сторінці сам обрав фільтр збірки (activePack —
   // радіо-кнопки «Показати для збірки X»), це передається на сторінку
-  // проєкту ЯВНО. Раніше тут ішов лише (source, projectId) — сторінка
-  // проєкту отримувала packContext ЛИШЕ якщо його задали ЗОВНІ (кнопка
-  // «Шукати моди» з конкретної збірки), а власний вибір користувача в
-  // фільтрі губився при переході на картку → сторінка проєкту не знала,
-  // під яку збірку підбирати версію, і не могла показати «вже
-  // встановлено», навіть коли фільтр збірки був явно обраний.
+  // проєкту ЯВНО.
   function openEntry(entry: BrowserEntry) {
     commitSearchToHistory()
     const ctx = serverContext
@@ -2211,6 +2145,34 @@
     currentPage = 1
     const id = setTimeout(() => doSearch(1), 0)
     return () => clearTimeout(id)
+  })
+
+  // Стан для крихт верхньої панелі (App.svelte → Topbar): активний розділ
+  // («Збережено» чи тип контенту) і збірка/сервер-фільтр. Лише читає стан.
+  $effect(() => {
+    const ct = contentTypes.find(c => c.id === activeType)
+    const saved = viewMode === 'saved'
+    const pack = activePack && activeType !== 'modpack'
+      ? { id: activePack.id, name: activePack.name, img: packAsset(activePack.iconUrl) || '', icon: (activePack as any).icon || 'ti-puzzle', color: (activePack as any).color || '', isServer: !!(activePack as any).isServer }
+      : null
+    window.dispatchEvent(new CustomEvent('browser:state', { detail: {
+      section: saved
+        ? { id: 'saved', label: t('browser.saved.tab'), icon: 'ti-star', color: 'var(--yellow)' }
+        : { id: activeType, label: ct?.label ?? '', icon: ct?.icon ?? 'ti-cube', color: ct?.color ?? '' },
+      pack,
+    } }))
+  })
+  // Клік по крихті розділу у верхній панелі (в т.ч. зі сторінки проєкту).
+  $effect(() => {
+    const onGoto = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id
+      if (!id) return
+      if (id === 'saved') openSavedView()
+      else if (contentTypes.some(c => c.id === id)) selectContentType(id)
+      else backToSearch()
+    }
+    window.addEventListener('browser:goto', onGoto)
+    return () => window.removeEventListener('browser:goto', onGoto)
   })
 
   // Скрол результатів (результати скроляться у .cb-main): при прокрутці
@@ -2254,7 +2216,7 @@
         {#if item.bannerUrl}
           <img class="cb-card-banner-img" src={item.bannerUrl} alt="" loading="lazy" decoding="async" use:smartImage />
         {/if}
-        <span class="cb-srcbadge" title={srcName}><img src={srcIcon} alt={srcName} loading="lazy" /></span>
+        <span class="cb-srcbadge" use:launcherTip={srcName}><img src={srcIcon} alt={srcName} loading="lazy" /></span>
       </div>
     {/if}
     {#if item.iconUrl}
@@ -2269,10 +2231,10 @@
           <span class="cb-card-by"><i class="ti ti-user"></i> {item.author}</span>
         {/if}
         {#if mode !== 'detailed' && state === 'update'}
-          <i class="ti ti-circle-check-filled cb-card-installed" title={t('browser.installed.short')}></i>
+          <i class="ti ti-circle-check-filled cb-card-installed" use:launcherTip={t('browser.installed.short')}></i>
         {/if}
         {#if mode === 'compact'}
-          <span class="cb-srcbadge" title={srcName}><img src={srcIcon} alt={srcName} loading="lazy" /></span>
+          <span class="cb-srcbadge" use:launcherTip={srcName}><img src={srcIcon} alt={srcName} loading="lazy" /></span>
         {:else if mode === 'grid'}
           <span class="cb-card-dl"><i class="ti ti-download"></i> {formatDownloads(item.downloads)}</span>
         {/if}
@@ -2282,7 +2244,7 @@
       <div class="cb-card-desc">{item.description}</div>
       {#if mode === 'detailed'}
         <div class="cb-card-meta">
-          <span class="cb-card-src {item.source === 'curseforge' ? 'cf' : 'mr'}" title={srcName}>
+          <span class="cb-card-src {item.source === 'curseforge' ? 'cf' : 'mr'}" use:launcherTip={srcName}>
             <img src={srcIcon} alt="" loading="lazy" />
             {srcName}
           </span>
@@ -2319,7 +2281,7 @@
         <button
           class="cb-bookmark-btn"
           class:on={bookmarkedKeys.has(bmKey)}
-          title={bookmarkedKeys.has(bmKey) ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
+          use:launcherTip={bookmarkedKeys.has(bmKey) ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
           onclick={(e) => { e.stopPropagation(); toggleBookmark(item) }}
         >
           <i class="ti {bookmarkedKeys.has(bmKey) ? 'ti-star-filled' : 'ti-star'}"></i>
@@ -2329,7 +2291,7 @@
                Бекенд теж відхиляє modpack в AddToCollection. -->
           <button
             class="cb-bookmark-btn"
-            title={t('browser.saved.addToCollection')}
+            use:launcherTip={t('browser.saved.addToCollection')}
             onclick={(e) => openAddToCollectionMenu(e, item)}
           >
             <i class="ti ti-folder-plus"></i>
@@ -2338,7 +2300,7 @@
         {#if opts?.removable}
           <button
             class="cb-bookmark-btn"
-            title={t('browser.saved.removeFromCollection')}
+            use:launcherTip={t('browser.saved.removeFromCollection')}
             onclick={(e) => { e.stopPropagation(); removeFromOpenCollection(item) }}
           >
             <i class="ti ti-x"></i>
@@ -2419,7 +2381,7 @@
           class="cb-tab"
           class:active={viewMode === 'search' && activeType === ct.id}
           style="--tb-c:{ct.color}"
-          title={ct.label}
+          use:launcherTip={ct.label}
           onclick={() => selectContentType(ct.id)}
         >
           <i class="ti {ct.icon}"></i>
@@ -2447,10 +2409,7 @@
         {#if loadingBookmarks}
           <div class="cb-saved-loading"><i class="ti ti-loader spin"></i> {t('loading')}</div>
         {:else if bookmarkedEntries.length === 0}
-          <div class="cb-empty">
-            <i class="ti ti-star"></i>
-            <p>{t('browser.saved.emptyBookmarks')}</p>
-          </div>
+          <EmptyState icon="ti-star" title={t('browser.saved.emptyBookmarks')} />
         {:else}
           <!-- Перемикач типу контенту всередині закладок: пілюля для
                кожного типу, що РЕАЛЬНО є серед закладок (savedTypesPresent),
@@ -2493,10 +2452,7 @@
         {#if loadingCollectionItems}
           <div class="cb-saved-loading"><i class="ti ti-loader spin"></i> {t('loading')}</div>
         {:else if openCollectionItems.length === 0}
-          <div class="cb-empty">
-            <i class="ti ti-folder"></i>
-            <p>{t('browser.saved.emptyCollection')}</p>
-          </div>
+          <EmptyState icon="ti-folder" title={t('browser.saved.emptyCollection')} />
         {:else}
           <div class="cb-grid">
             {#each openCollectionItems as item (item.source + '|' + item.id)}
@@ -2514,10 +2470,7 @@
         {#if loadingCollections}
           <div class="cb-saved-loading"><i class="ti ti-loader spin"></i> {t('loading')}</div>
         {:else if collectionsList.length === 0}
-          <div class="cb-empty">
-            <i class="ti ti-folder"></i>
-            <p>{t('browser.saved.emptyCollections')}</p>
-          </div>
+          <EmptyState icon="ti-folder" title={t('browser.saved.emptyCollections')} />
         {:else}
           <div class="cb-collections-grid">
             {#each collectionsList as c (c.id)}
@@ -2529,10 +2482,10 @@
                 <div class="cb-collection-name">{c.name}</div>
                 <div class="cb-collection-count">{t('browser.saved.itemCount', { count: c.itemCount })}</div>
                 <div class="cb-collection-actions">
-                  <button class="btn btn-ghost btn-xs" onclick={(e: Event) => { e.stopPropagation(); renameCollectionPrompt(c) }} title={t('browser.saved.renameCollection')}>
+                  <button class="btn btn-ghost btn-xs" onclick={(e: Event) => { e.stopPropagation(); renameCollectionPrompt(c) }} use:launcherTip={t('browser.saved.renameCollection')}>
                     <i class="ti ti-pencil"></i>
                   </button>
-                  <button class="btn btn-ghost btn-xs cb-collection-delete" onclick={(e: Event) => { e.stopPropagation(); deleteCollectionPrompt(c) }} title={t('browser.saved.deleteCollectionBtn')}>
+                  <button class="btn btn-ghost btn-xs cb-collection-delete" onclick={(e: Event) => { e.stopPropagation(); deleteCollectionPrompt(c) }} use:launcherTip={t('browser.saved.deleteCollectionBtn')}>
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>
@@ -2561,7 +2514,7 @@
             onblur={() => { commitSearchToHistory(); setTimeout(() => { showSearchHistory = false }, 160) }}
           />
           {#if query}
-            <button class="cb-search-clear" title={t('browser.clearSearch')} onclick={() => { cancelLiveSearch(); query = ''; doSearch(1) }}><i class="ti ti-x"></i></button>
+            <button class="cb-search-clear" use:launcherTip={t('browser.clearSearch')} onclick={() => { cancelLiveSearch(); query = ''; doSearch(1) }}><i class="ti ti-x"></i></button>
           {/if}
           {#if showSearchHistory && !query && searchHistoryForType.length > 0}
             <div class="cb-search-history">
@@ -2611,13 +2564,13 @@
           {#each displayModes as m (m.id)}
             <button type="button" class="cb-view-btn" class:on={displayMode === m.id}
                     role="radio" aria-checked={displayMode === m.id}
-                    title={m.label} aria-label={m.label} onclick={() => (displayMode = m.id)}>
+                    use:launcherTip={m.label} aria-label={m.label} onclick={() => (displayMode = m.id)}>
               <i class="ti {m.icon}"></i>
             </button>
           {/each}
         </div>
         <button type="button" class="cb-filters-toggle" class:on={filtersOpen}
-                aria-expanded={filtersOpen} aria-label={t('browser.filters')} title={t('browser.filters')}
+                aria-expanded={filtersOpen} aria-label={t('browser.filters')} use:launcherTip={t('browser.filters')}
                 onclick={() => (filtersOpen = !filtersOpen)}>
           <i class="ti ti-filter"></i><span>{t('browser.filters')}</span>
           {#if activeFilterChips.length > 0}<b class="cb-filters-badge">{activeFilterChips.length}</b>{/if}
@@ -2636,7 +2589,7 @@
             <span class="cb-chip">
               {#if ch.img}<img src={ch.img} alt="" />{:else if ch.icon}<i class="ti {ch.icon}"></i>{/if}
               <span class="cb-chip-label">{ch.label}</span>
-              <button type="button" class="cb-chip-x" title={t('browser.chips.remove')} aria-label={t('browser.chips.remove')} onclick={ch.onRemove}><i class="ti ti-x"></i></button>
+              <button type="button" class="cb-chip-x" use:launcherTip={t('browser.chips.remove')} aria-label={t('browser.chips.remove')} onclick={ch.onRemove}><i class="ti ti-x"></i></button>
             </span>
           {/each}
           <button type="button" class="cb-chips-clear" onclick={clearFilterChips}><i class="ti ti-refresh"></i> {t('browser.reset')}</button>
@@ -2684,18 +2637,15 @@
           <!-- Офлайн / мережева помилка Modrinth: показуємо причину людською
                мовою замість порожнього «Нічого не знайдено» (немає сенсу
                казати «нічого немає», коли просто немає інтернету). -->
-          <div class="cb-empty cb-empty-error">
-            <i class="ti ti-wifi-off"></i>
-            <div>{results.modrinthError}</div>
-            <button class="btn btn-ghost btn-sm" onclick={() => doSearch(currentPage)}>
-              <i class="ti ti-refresh"></i> {t('browser.retry')}
-            </button>
-          </div>
+          <EmptyState icon="ti-wifi-off" color="var(--red)" title={results.modrinthError}>
+            {#snippet actions()}
+              <button class="btn btn-ghost btn-sm" onclick={() => doSearch(currentPage)}>
+                <i class="ti ti-refresh"></i> {t('browser.retry')}
+              </button>
+            {/snippet}
+          </EmptyState>
         {:else}
-          <div class="cb-empty">
-            <i class="ti ti-mood-sad"></i>
-            <div>{t('browser.noResults')}</div>
-          </div>
+          <EmptyState icon="ti-mood-sad" title={t('browser.noResults')} />
         {/if}
       {:else}
         {#if searchingCurseForge}
@@ -2755,7 +2705,7 @@
     <aside class="cb-sidebar">
       <div class="cbs-panel">
         <div class="cbs-title"><i class="ti ti-filter"></i> {t('browser.filters')}
-          <button type="button" class="cbs-close" aria-label={t('close')} title={t('close')} onclick={() => (filtersOpen = false)}><i class="ti ti-x"></i></button>
+          <button type="button" class="cbs-close" aria-label={t('close')} use:launcherTip={t('close')} onclick={() => (filtersOpen = false)}><i class="ti ti-x"></i></button>
         </div>
 
         <!-- Джерело: сегментований перемикач -->
@@ -2951,7 +2901,7 @@
                   <button type="button" class="cbs-chip" class:on={isCategorySelected(cat)} aria-pressed={isCategorySelected(cat)}
                           onclick={() => { toggleCategory(cat); doSearch(1) }}>
                     {tagLabel(cat.name)}
-                    {#if cat.source === 'curseforge'}<span class="cbs-src" title="CurseForge">CF</span>{/if}
+                    {#if cat.source === 'curseforge'}<span class="cbs-src" use:launcherTip={"CurseForge"}>CF</span>{/if}
                   </button>
                 {/each}
               </div>
@@ -2973,9 +2923,9 @@
 {#snippet pagerTop()}
   {#if totalPages > 1}
     <div class="cb-pager cb-pager-top">
-      <button class="cb-pg-btn" title={t('browser.page.prev')} aria-label={t('browser.page.prev')} onclick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1 || searching}><i class="ti ti-chevron-left"></i></button>
+      <button class="cb-pg-btn" use:launcherTip={t('browser.page.prev')} aria-label={t('browser.page.prev')} onclick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1 || searching}><i class="ti ti-chevron-left"></i></button>
       <span class="cb-pager-count">{currentPage} / {totalPages}</span>
-      <button class="cb-pg-btn" title={t('browser.page.next')} aria-label={t('browser.page.next')} onclick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages || searching}><i class="ti ti-chevron-right"></i></button>
+      <button class="cb-pg-btn" use:launcherTip={t('browser.page.next')} aria-label={t('browser.page.next')} onclick={() => goToPage(currentPage + 1)} disabled={currentPage >= totalPages || searching}><i class="ti ti-chevron-right"></i></button>
     </div>
   {/if}
 {/snippet}
@@ -3044,10 +2994,7 @@
         <div class="cb-side-note"><i class="ti ti-server"></i> {t('browser.target.serverOnlyMod')}</div>
       {/if}
       {#if !packPickDialog.loading && packPickDialog.packs.length > 0}
-        <div class="cb-modal-search">
-          <i class="ti ti-search"></i>
-          <input placeholder={t('browser.searchPack')} bind:value={packPickFilter} />
-        </div>
+        <SearchField variant="strip" placeholder={t('browser.searchPack')} bind:value={packPickFilter} />
       {/if}
         {#if packPickDialog.loading}
           <!-- «Аналізуємо…» ПОКИ ЙДЕ ЗАПИТ (раніше умова залежала від
@@ -3156,7 +3103,7 @@
                 {@const p = infoById.get(packId)}
                 {#if p}
                   {#if p.alreadyInstalled}
-                    <span class="cb-pp-installed-badge" title={t('browser.alreadyInstalled', { file: p.installedFileName ?? p.name })}>
+                    <span class="cb-pp-installed-badge" use:launcherTip={t('browser.alreadyInstalled', { file: p.installedFileName ?? p.name })}>
                       <i class="ti ti-circle-check"></i>
                     </span>
                   {/if}
@@ -3328,7 +3275,7 @@
           onclick={() => { if (collectionEditDialog) collectionEditDialog.color = col }}
         ></button>
       {/each}
-      <label class="cb-col-custom" title={t('browser.saved.customColor')} style="--pcol:{collectionEditDialog.color}">
+      <label class="cb-col-custom" use:launcherTip={t('browser.saved.customColor')} style="--pcol:{collectionEditDialog.color}">
         <i class="ti ti-color-picker"></i>
         <input type="color" value={collectionEditDialog.color} oninput={(e: Event) => { if (collectionEditDialog) collectionEditDialog.color = (e.target as HTMLInputElement).value }} />
       </label>
@@ -4149,19 +4096,6 @@
   /* ═══════════════════════════════════════════════════════════════════
      МОДАЛКИ БРАУЗЕРА (спільні з іншими вікнами лаунчера)
      ═══════════════════════════════════════════════════════════════════ */
-  .cb-modal-search {
-    display: flex; align-items: center; gap: 9px;
-    margin: -16px -20px 14px; padding: 10px 20px;
-    border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--bg-input) 40%, transparent);
-  }
-  .cb-modal-search > i { color: var(--text-mute); font-size: 15px; }
-  .cb-modal-search input {
-    flex: 1; background: transparent; border: none; outline: none;
-    color: var(--text); font: 500 12.5px var(--font-ui);
-  }
-  .cb-modal-search input::placeholder { color: var(--text-dim); }
-
   .cb-pack-list { display: flex; flex-direction: column; gap: 8px; }
   .cb-pack-row {
     display: flex; align-items: center; justify-content: space-between;

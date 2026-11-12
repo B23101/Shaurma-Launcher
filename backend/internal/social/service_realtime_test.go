@@ -22,7 +22,7 @@ func snapFrame(extra string) string {
 }
 
 // Головний регрес: друзі, що були онлайн ДО нашого підключення, мають показуватись
-// одразу після hello — раніше кадр friends_snapshot ігнорувався.
+// одразу після hello.
 func TestSnapshotShowsAlreadyOnlineFriendsInstantly(t *testing.T) {
 	e := newSvcEnv(t)
 	e.svc.Start()

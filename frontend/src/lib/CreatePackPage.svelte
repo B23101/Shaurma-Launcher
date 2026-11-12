@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import javaLogo from '../assets/images/java.svg'
   // ── Сторінка "Нова збірка" ────────────────────────────────────────────
   // Дві вкладки:
@@ -234,7 +236,10 @@
   // Палітра/«свій колір»/пресети живуть у СПІЛЬНОМУ AppearanceEditor — тут
   // лишається тільки сам стан (color/iconSrcPath/iconName), щоб форма й
   // сторінка сервера використовували один і той самий віджет.
-  let color = $state('#ff8a00')
+  // Дефолтний колір нової збірки — НЕ помаранчевий: випадковий з холодної палітри
+  // (фіолет/синій/зелений/рожевий/бірюзовий). Користувач змінює його у блоці «Вигляд».
+  const defaultPackColors = ['#7b4dff', '#3b82f6', '#10b981', '#ec4899', '#06b6d4']
+  let color = $state(defaultPackColors[Math.floor(Math.random() * defaultPackColors.length)])
   let iconSrcPath = $state('')
   let backgroundSrcPath = $state('')
   // Пресет-іконка (Tabler): за замовчуванням пазл. Якщо користувач обрав
@@ -292,11 +297,8 @@
   async function submitManual() {
     if (!mcVersion) { toast(t('createPack.error.mcVersionRequired'), 'error'); return }
     if (!effectiveName) { toast(t('createPack.error.nameRequired'), 'error'); return }
-    // Захист від створення збірки з обраним лоадером, для якого немає
-    // ЖОДНОЇ версії під поточну MC (loaderVersions порожній і loaderVersion
-    // порожній) — раніше форма це дозволяла: збірка створювалась з
-    // loaderVersion:"" і не могла коректно запуститись. Vanilla версії
-    // не потребує (loaderVersion завжди не використовується).
+    // Vanilla версії не потребує (loaderVersion завжди не
+    // використовується).
     if (loader !== 'vanilla' && !loaderVersion) {
       toast(t('createPack.error.loaderVersionRequired'), 'error')
       return
@@ -556,12 +558,10 @@
 
   // ── Візуальний прев'ю: РЕАЛЬНА картка .inst-tile + перемикачі станів ──
   // Окрім "простих" статусів (ready/running/not-installed/needs-update),
-  // реальна картка в App.svelte вміє показувати ЩЕ й стадії самого
-  // запуску (lp.stage: checking → worker_update → java → loader) і
-  // підстадії синхронізації файлів (prog.stage: manifest_fetched →
-  // extracting → finalizing, інакше — просто "downloading"). Раніше тут
-  // був один статичний прогрес-бар на 47% — тепер кожен перемикач нижче
-  // відповідає РЕАЛЬНОМУ стану, який реально трапляється в бекенді.
+  // реальна картка в App.svelte вміє показувати ЩЕ й стадії самого запуску
+  // (lp.stage: checking → worker_update → java → loader) і підстадії
+  // синхронізації файлів (prog.stage: manifest_fetched → extracting →
+  // finalizing, інакше — просто "downloading").
   type PreviewState =
     | 'ready' | 'running' | 'not-installed' | 'needs-update'
     | 'downloading' | 'updating' | 'paused'
@@ -745,7 +745,7 @@
         {/if}
       </div>
       {#if previewSti}
-        <div class="it-st {previewSti.cls}" title={launchStageLabel(previewLaunchStage)}>
+        <div class="it-st {previewSti.cls}" use:launcherTip={launchStageLabel(previewLaunchStage)}>
           {#if previewLimg}
             <img src={previewLimg} alt="" />
           {:else}
@@ -753,11 +753,11 @@
           {/if}
         </div>
       {:else if previewDsti}
-        <div class="it-st {previewDsti.cls}" title={downloadStageLabel(previewSyncStageResolved)}>
+        <div class="it-st {previewDsti.cls}" use:launcherTip={downloadStageLabel(previewSyncStageResolved)}>
           <i class="ti {previewDsti.icon}"></i>
         </div>
       {:else}
-        <button class="it-btn it-{previewBtnClass}" title={previewStateLabel}>
+        <button class="it-btn it-{previewBtnClass}" use:launcherTip={previewStateLabel}>
           <i class="ti {previewBtnIcon} {previewBtnSpin ? 'spin' : ''}"></i>
         </button>
       {/if}
@@ -770,16 +770,16 @@
     {/key}
     <div class="status-pills">
       {#each previewStates as ps (ps.id)}
-        <button class="pill" class:sel={previewState === ps.id} onclick={() => previewState = ps.id} title={t(ps.labelKey)}>
+        <button class="pill" class:sel={previewState === ps.id} onclick={() => previewState = ps.id} use:launcherTip={t(ps.labelKey)}>
           <i class="ti {ps.icon}"></i> {t(ps.labelKey)}
         </button>
       {/each}
     </div>
     {#key `${color}|${iconName}|${iconSrcPath}|${backgroundSrcPath}`}
-    <div class="inst-banner" style="margin-top:14px;height:110px" style:background={backgroundPreviewUrl ? undefined : `linear-gradient(135deg, color-mix(in srgb, ${color} 55%, #241a10), color-mix(in srgb, ${color} 22%, #120c06))`} style:background-image={backgroundPreviewUrl ? `url('${backgroundPreviewUrl}')` : undefined}>
+    <div class="inst-banner" style="margin-top:14px;height:110px" style:background={backgroundPreviewUrl ? undefined : `linear-gradient(135deg, color-mix(in srgb, ${color} 55%, #15131f), color-mix(in srgb, ${color} 22%, #0b0a12))`} style:background-image={backgroundPreviewUrl ? `url('${backgroundPreviewUrl}')` : undefined}>
       <div class="ib-title">
         <span class="ib-ic">
-          {#if iconPreviewUrl}<img src={iconPreviewUrl} alt="" />{:else}<i class="ti {iconName || 'ti-puzzle'}" style="color:{color || 'var(--orange)'}"></i>{/if}
+          {#if iconPreviewUrl}<img src={iconPreviewUrl} alt="" />{:else}<i class="ti {iconName || 'ti-puzzle'}" style="color:{color || 'var(--pc)'}"></i>{/if}
         </span>
         <div class="ib-meta">
           <div class="ib-name">{previewName}</div>
@@ -790,7 +790,7 @@
   </div>
 {/snippet}
 
-<div class="create-page">
+<div class="create-page" style="--pc:{color}">
   <div class="tabbar" data-tour="tabs">
   <button class="tab-btn" class:active={tab === 'manual'} onclick={() => tab = 'manual'}>
     <i class="ti ti-adjustments"></i> {t('createPack.tab.manual')}
@@ -934,7 +934,7 @@
           <div class="row col">
             <div class="flex" style="justify-content:space-between">
               <div class="rl-sub">{t('createPack.ramMin')}: <b class="mono" style="color:#fff">{ramMinValue} MB</b></div>
-              <div class="rl-sub">{t('createPack.ramMax')}: <b class="mono" style="color:var(--orange)">{ramMaxValue} MB</b></div>
+              <div class="rl-sub">{t('createPack.ramMax')}: <b class="mono" style="color:var(--pc)">{ramMaxValue} MB</b></div>
             </div>
             <div class="ram-track" onpointerdown={startRamDrag} onpointermove={onRamDragMove} onpointerup={stopRamDrag} onpointercancel={stopRamDrag}>
               <div class="ram-fill" style="left:{ramMinPct}%;width:{ramMaxPct - ramMinPct}%"></div>
@@ -1049,7 +1049,7 @@
             <div class="bundle-pack-list">
               {#each bundlePreview.packs as bp (bp.packId)}
                 <div class="bundle-pack-row">
-                  <span class="bpi" style="--pcol:{bp.color || 'var(--orange)'}"><i class="ti ti-package"></i></span>
+                  <span class="bpi" style="--pcol:{bp.color || 'var(--pc)'}"><i class="ti ti-package"></i></span>
                   <div class="bpi-info">
                     <div class="bpi-name">{bp.name || bp.packId}</div>
                     <div class="rl-sub">{formatLoaderLabel(bp.loader)} · {bp.mcVersion || '—'} · {t('createPack.import.bundlePackFiles', { count: bp.fileCount })}</div>
@@ -1081,7 +1081,7 @@
             <div class="row col">
               <div class="flex" style="justify-content:space-between">
                 <div class="rl-sub">{t('createPack.ramMin')}: <b class="mono" style="color:#fff">{ramMinValue} MB</b></div>
-                <div class="rl-sub">{t('createPack.ramMax')}: <b class="mono" style="color:var(--orange)">{ramMaxValue} MB</b></div>
+                <div class="rl-sub">{t('createPack.ramMax')}: <b class="mono" style="color:var(--pc)">{ramMaxValue} MB</b></div>
               </div>
               <div class="ram-track" onpointerdown={startRamDrag} onpointermove={onRamDragMove} onpointerup={stopRamDrag} onpointercancel={stopRamDrag}>
                 <div class="ram-fill" style="left:{ramMinPct}%;width:{ramMaxPct - ramMinPct}%"></div>

@@ -1,12 +1,7 @@
 <script lang="ts">
-  // ── WhitelistPanel: «дозволені понад маніфест» моди шаурма-збірки ─────
-  // Раніше ніде в лаунчері не було видно, ЯКІ саме моди автор збірки
-  // дозволив через Pack Manager (whitelist) — лаунчер їх просто мовчки не
-  // видаляв під час перевірки цілісності файлів, без жодного сліду в UI.
-  // Ця панель показує список: іконка + назва + перехід на сторінку
-  // Modrinth/CurseForge, коли запис додано за посиланням на проєкт
-  // (platform/projectUrl заповнені); для jar/manual-записів — звичайна
-  // картка без іконки, лише назва/modId.
+  import { tip as launcherTip } from './friends/tooltip'
+
+  // ── WhitelistPanel:
   //
   // Компонент сам малює свою картку-обгортку (card-head + заголовок) і
   // САМ вирішує, чи показуватись: більшість шаурма-збірок білий список
@@ -79,7 +74,7 @@
               <div class="wlp-modid">{e.modId}</div>
             </div>
             {#if e.projectUrl}
-              <a href={e.projectUrl} target="_blank" rel="noopener noreferrer" class="wlp-link" title={t('whitelist.openPage')}>
+              <a href={e.projectUrl} target="_blank" rel="noopener noreferrer" class="wlp-link" use:launcherTip={t('whitelist.openPage')}>
                 <i class="ti ti-external-link"></i>
               </a>
             {/if}

@@ -16,8 +16,7 @@ package main
 // хвостом .dll навіть на Linux, тому dlopen отримував шлях до файлу, якого
 // на диску просто нема (там лежить backend.so).
 //
-// Використовуються всюди в shell (updater_phase.go, bootstrap.go), де
-// раніше стояли рядкові літерали "backend.dll"/"updater.dll".
+// Використовуються всюди в shell (updater_phase.go, bootstrap.go).
 import "runtime"
 
 // backendLibraryName — ім'я файлу backend-модуля для поточної ОС:

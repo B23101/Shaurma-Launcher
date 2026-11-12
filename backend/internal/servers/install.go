@@ -1,11 +1,5 @@
 // install.go — завантаження та встановлення ядра сервера (Vanilla/Paper/
-// Purpur/Fabric/Quilt/Forge/NeoForge/Velocity). Раніше ця логіка існувала
-// ЛИШЕ у integration_test.go (тест сам качав jar в обхід продакшн-коду) —
-// CreateServer писав тільки server.json, а InstallCore ніхто не викликав.
-// Тепер install відбувається ЛІНИВО: так само, як збірка створюється без
-// завантаження Minecraft-компонентів (це відбувається лише при першому
-// запуску), CreateServer лише зберігає конфіг, а InstallCore викликається
-// з Manager.Start() перед стартом java, якщо ядра ще немає на диску.
+// Purpur/Fabric/Quilt/Forge/NeoForge/Velocity).
 //
 // Провайдер-абстракція (coreInstaller/coreInstallers нижче) і
 // LaunchConfig-персистентність перенесені з GDLauncher Carbon
@@ -50,7 +44,7 @@ type InstallProgress func(text string)
 // coreInstaller — єдиний внутрішній інтерфейс встановлення ядра. Кожне
 // ядро реєструє свою реалізацію в coreInstallers нижче; CoreInstalled і
 // InstallCore лише диспетчерять через мапу замість дублювання switch на
-// 8 кейсів у двох місцях (як було раніше).
+// 8 кейсів у двох місцях.
 //
 // Перенесено концептуально з provider.rs::ServerProvider (Rust trait
 // object) — Go-варіант через map[string]coreInstaller, оскільки в Go
@@ -72,8 +66,7 @@ type coreInstaller interface {
 }
 
 // coreInstallers — реєстр coreInstaller за ядром. Заповнюється в init()
-// нижче, по одному запису на кожен switch-кейс, що раніше дублювався в
-// CoreInstalled і InstallCore.
+// нижче, по одному запису на кожен switch-кейс.
 var coreInstallers map[string]coreInstaller
 
 func init() {
@@ -794,8 +787,6 @@ func (velocityInstaller) install(ctx context.Context, srv *Server, javaPath stri
 }
 
 // installVelocityCore качає velocity.jar з fill.papermc.io v3.
-// Раніше використовувався api.papermc.io/v2, який PaperMC закрив
-// (відповідає 410 Gone) — звідси і був баг «Velocity не встановлюється».
 func installVelocityCore(ctx context.Context, dir, loaderVer string, onProgress ServerInstallProgressFunc) error {
 	// 1. Версія проксі: явна (з UI) або рекомендована стабільна.
 	ver := loaderVer

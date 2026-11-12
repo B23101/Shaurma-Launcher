@@ -27,10 +27,7 @@ func TestRestartArgs(t *testing.T) {
 	}
 }
 
-// TestSupStateNeverGivesUp — головна вимога до нагляду: він НІКОЛИ не
-// «здається» (раніше після 5 збоїв за 10 хв робив os.Exit(1), і лаунчер
-// переставав запускатись). Пауза між спробами зростає, але спроби не
-// закінчуються.
+// Пауза між спробами зростає, але спроби не закінчуються.
 func TestSupStateNeverGivesUp(t *testing.T) {
 	st := newSupState()
 	for i := 0; i < 200; i++ {

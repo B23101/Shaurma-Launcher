@@ -2,7 +2,19 @@
 // Одна голова — один запит: результат кешується за ніком, а паралельні запити зливаються в один.
 import { App } from '../wails'
 
-const cache = new Map<string, string>()
+const cache = new Map<string, { value: string; used: number }>()
+const IDLE_MS = 5 * 60_000
+let cleanupTimer: ReturnType<typeof setTimeout> | undefined
+
+function scheduleCleanup() {
+  if (cleanupTimer !== undefined || cache.size === 0) return
+  cleanupTimer = setTimeout(() => {
+    cleanupTimer = undefined
+    const cutoff = Date.now() - IDLE_MS
+    for (const [key, entry] of cache) if (entry.used <= cutoff) cache.delete(key)
+    scheduleCleanup()
+  }, IDLE_MS)
+}
 const pending = new Map<string, Promise<string>>()
 
 /** Голова акаунта як data URL або '' (скіна немає / не вдалося). Не кидає помилок. */
@@ -11,11 +23,11 @@ export function friendHead(nickname: string | undefined | null): Promise<string>
   if (!nick) return Promise.resolve('')
   const key = nick.toLowerCase()
   const hit = cache.get(key)
-  if (hit !== undefined) return Promise.resolve(hit)
+  if (hit !== undefined) { hit.used = Date.now(); return Promise.resolve(hit.value) }
   let p = pending.get(key)
   if (!p) {
     p = App.GetAccountHead('', nick, false)
-      .then((h) => { const v = h || ''; cache.set(key, v); return v })
+      .then((h) => { const v = h || ''; cache.set(key, { value: v, used: Date.now() }); scheduleCleanup(); return v })
       .catch(() => '')
       .finally(() => { pending.delete(key) })
     pending.set(key, p)

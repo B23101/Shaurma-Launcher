@@ -278,6 +278,9 @@ func windowCreate(id, optsJSON string) {
 		// відображає (WebView тримає DOM-фокус і blur не приходить).
 		win.RegisterHook(events.Common.WindowFocus, func(*application.WindowEvent) {
 			mainWinActive = true
+			// Користувач повернувся — одразу знімаємо «економний» рівень
+			// пам'яті WebView2, не чекаючи backend.
+			setWebviewMemoryLevel(win, false)
 			backendDispatch("window:active", `{"active":true}`)
 		})
 		win.RegisterHook(events.Common.WindowLostFocus, func(*application.WindowEvent) {
@@ -349,6 +352,13 @@ func windowOp(id, op string) {
 		win.UnMaximise()
 	case "focus":
 		win.Focus()
+	case "memory-low", "memory-normal":
+		// Цільовий рівень пам'яті WebView2 (webview_memory_windows.go).
+		// Рішення «коли» приймає backend (webview_memory.go); shell лише
+		// виконує, бо тільки він має доступ до COM WebView2.
+		if id == "main" {
+			setWebviewMemoryLevel(win, op == "memory-low")
+		}
 	case "close":
 		win.Close()
 	case "destroy":
@@ -396,11 +406,10 @@ func parseHexColor(s string) (application.RGBA, error) {
 
 // sendWindowState — зміна стану головного вікна -> backend (windowstate.go).
 //
-// ВАЖЛИВО (виправлення «на Linux головне вікно відкривається криво»):
+// ВАЖЛИВО (Linux, позиція головного вікна):
 //
-//  1. Поле hasPos тепер шлеться ЯВНО. Раніше його тут не було, а backend
-//     розбирає подію в ту саму структуру windowState і робить
-//     winStateLast = st — тобто відсутнє поле ставало false і ЗАТИРАЛО
+//  1. Поле hasPos шлеться ЯВНО: backend розбирає подію в ту саму структуру windowState і робить
+//     winStateLast = st — відсутнє поле стало б false і ЗАТЕРЛО б
 //     збережену ознаку «позиція відома». У результаті на диску лежала
 //     позиція, яку ніхто не відновлював, і вікно щоразу опинялось там,
 //     де його поставив WM.
@@ -486,15 +495,13 @@ func fetchSavedWindowState() (savedWindowState, bool) {
 // створенні вікна.
 //
 // ВАЖЛИВО (Linux): основний шлях відновлення розміру тепер — ПАРАМЕТРИ
-// СТВОРЕННЯ вікна (див. loadBackendAndShowMain у updater_phase.go).
-// Раніше вікно створювалось дефолтним 1280x820, показувалось, і лише
-// після завантаження сторінки йому міняли розмір/позицію. На Windows це
-// майже непомітно, а на GTK — видимий стрибок: вікно з'являється одного
-// розміру, потім перескакує в інший, WebKit переверстує сторінку, і в
-// частині WM/композиторів вікно лишається в поламаній геометрії (саме
-// те «криво відображає головний екран»). Тут лишилась лише максимізація/
-// повний екран і фолбек, якщо на етапі створення стан прочитати не
-// вдалось.
+// СТВОРЕННЯ вікна (див. loadBackendAndShowMain у updater_phase.go). На
+// Windows це майже непомітно, а на GTK — видимий стрибок: вікно
+// з'являється одного розміру, потім перескакує в інший, WebKit
+// переверстує сторінку, і в частині WM/композиторів вікно лишається в
+// поламаній геометрії (саме те «криво відображає головний екран»). Тут
+// лишилась лише максимізація/ повний екран і фолбек, якщо на етапі
+// створення стан прочитати не вдалось.
 func restoreWindowState(win *application.WebviewWindow) {
 	if win == nil {
 		return
@@ -551,13 +558,9 @@ func applyWindowState(win *application.WebviewWindow, st savedWindowState, withG
 
 // sanitizeWindowSize перевіряє збережений розмір на осмисленість.
 //
-// Раніше тут стояв жорсткий clamp 1920x1080. Це ламало Linux-користувачів
-// з 2560x1440/4K-моніторами: вікно, розтягнуте на пів екрана 1440p,
-// після перезапуску стискалось до 1920x1080, і разом із відновленою
-// позицією виглядало саме як «лаунчер відкрився криво». Розмір узятий з
-// РЕАЛЬНОГО вікна на цій же машині, тож обмежувати його чужим числом
-// сенсу нема — відсікаємо лише явне сміття (нулі, від'ємні, абсурдно
-// великі значення після зміни конфігурації моніторів).
+// Розмір узятий з РЕАЛЬНОГО вікна на цій же машині, тож обмежувати його
+// чужим числом сенсу нема — відсікаємо лише явне сміття (нулі, від'ємні,
+// абсурдно великі значення після зміни конфігурації моніторів).
 func sanitizeWindowSize(w, h int) (int, int) {
 	if w < winMinWidth || h < winMinHeight {
 		return 0, 0
@@ -597,8 +600,7 @@ func explicitPosition(has bool) application.WindowStartPosition {
 		return application.WindowXY
 	}
 	// WindowCentered — дефолтний стартовий стан Wails (значення 0).
-	// Позицію НЕ задаємо: Wails сам вирішить, де розмістити вікно, як і
-	// раніше (коли в opts її взагалі не було).
+	// Позицію НЕ задаємо:
 	return application.WindowCentered
 }
 

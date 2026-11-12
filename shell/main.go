@@ -21,19 +21,17 @@ package main
 //
 // ГОНКА СТАРТУ (Linux, знайдено емпірично — panic у dispatchOnMainThread):
 // updaterModule.initModule()/backendModule.initModule() викликаються ще ДО
-// app.Run(). Якщо .so синхронно (чи з власної горутини, майже одразу)
-// шле колбек назад у shell (cgoEmit і т.п.), той колбек кличе
+// app.Run(). Якщо .so синхронно (чи з власної горутини, майже одразу) шле
+// колбек назад у shell (cgoEmit і т.п.), той колбек кличе
 // application.InvokeAsync -> dispatchOnMainThread, а внутрішня черга
 // головного потоку в GTK-варіанті Wails v3 (Linux) ініціалізується лише
-// ВСЕРЕДИНІ app.Run(), не в application.New(). application.Get() до
-// цього моменту вже повертає НЕ nil (об'єкт створений), тож перевірка
-// "app != nil" у колбеках не рятує — падає рівно в dispatchOnMainThread
-// на недоініціалізованому полі. На Windows та сама послідовність,
-// вочевидь, не проявляється (native message queue живе одразу після
-// створення вікна, до явного "run loop"), тому раніше це не було
-// помітно. Захист — mainThreadReady (main_thread_ready.go): усі
-// колбеки, які роблять InvokeAsync/InvokeSync, чекають на нього перед
-// першим викликом; закривається одноразово одразу після старту app.Run().
+// ВСЕРЕДИНІ app.Run(), не в application.New(). application.Get() до цього
+// моменту вже повертає НЕ nil (об'єкт створений), тож перевірка "app !=
+// nil" у колбеках не рятує — падає рівно в dispatchOnMainThread на
+// недоініціалізованому полі. Захист — mainThreadReady
+// (main_thread_ready.go): усі колбеки, які роблять InvokeAsync/InvokeSync,
+// чекають на нього перед першим викликом; закривається одноразово одразу
+// після старту app.Run().
 
 import (
 	"encoding/json"
@@ -66,12 +64,8 @@ const startupGraceDelay = 700 * time.Millisecond
 // логіни/cookies користувача переживають оновлення, але закешований
 // старий фронт не залипає.
 //
-// Раніше профіль жорстко сидів у %LOCALAPPDATA%\<InstallDir>\webview2 і
-// лишався там, навіть якщо користувач обрав власну теку встановлення.
-// Тепер профіль завжди поруч з exe — куди б лаунчер не встановили.
-// installDirName — ім'я теки, де лежить exe (ShaurmLauncher чи
-// ShaurmLauncherBase). Використовується, щоб дві редакції лаунчера не
-// ділили SingleInstance-lock.
+// Використовується, щоб дві редакції лаунчера не ділили
+// SingleInstance-lock.
 func installDirName() string {
 	installName := "ShaurmLauncher"
 	if exe, err := os.Executable(); err == nil {
@@ -229,10 +223,10 @@ func parseLaunchArg(args []string) string {
 // packFileExts — розширення файлів збірок, які лаунчер розпізнає при
 // запуску з файлу (Windows-асоціація). Реєстрація самих асоціацій — в
 // installer.iss (.shaurmpack/.shaurmbundle -> цей exe).
-var packFileExts = []string{".shaurmpack", ".shaurmbundle"}
+var packFileExts = []string{".shaurmpack", ".shaurmbundle", ".mrpack"}
 
 // isPackFileArg повертає true, якщо args[i] — шлях до файлу збірки
-// (розширення .shaurmpack/.shaurmbundle) і файл реально існує.
+// (розширення .shaurmpack/.shaurmbundle/.mrpack) і файл реально існує.
 func isPackFileArg(arg string) bool {
 	if arg == "" || strings.HasPrefix(arg, "-") {
 		return false
@@ -297,6 +291,12 @@ func dispatchPackFileOpenToBackend() {
 // підключено.
 func dispatchLaunchToBackend() {
 	if launchPackID == "" {
+		return
+	}
+	// Backend ще не підключено (триває оновлення/завантаження компонентів) —
+	// лишаємо дані: loadBackendAndShowMain передасть їх одразу після
+	// підключення.
+	if backendModule == nil || current != backendModule {
 		return
 	}
 	payload := struct {
@@ -394,7 +394,11 @@ func main() {
 	go ensureURLProtocol()
 	// --background: автозапуск «у фоні» (startupMode=background) — головне
 	// вікно не показується, лише трей. Лише для ХОЛОДНОГО старту.
-	startBackground = hasArg(os.Args[1:], "--background")
+	//
+	// Запуск з ярлика (--launch) --background перекриває: користувач щойно
+	// клікнув ярлик збірки, тож вікно запуску ярлика (backend) показується
+	// незалежно від прапорця, який міг лишитись від минулого перезапуску.
+	startBackground = hasArg(os.Args[1:], "--background") && launchPackID == ""
 	setWindowHiddenMarker(startBackground)
 
 	// Self-update компонентів: .new-файли з минулого запуску (updater.dll.new,
@@ -420,7 +424,7 @@ func main() {
 	// 0xc0000374» від наглядача. Ставимо фільтр ДО створення вікон/WebView2,
 	// щоб наступна така аварія лишила звіт з модулем і міні-дампом
 	// (logs/crash-native.log + logs/crash-*.dmp). No-op поза Windows і в
-	// батьківському процесі-наглядачі (він виходить раніше).
+	// батьківському процесі-наглядачі.
 	installNativeCrashReporter()
 
 	initCallbacks()
@@ -478,12 +482,20 @@ func main() {
 				if fl := parseFriendLinkArg(data.Args); fl != "" {
 					openFriendLink = fl
 				}
-				// Повторний запуск exe/ярлика, коли лаунчер уже працює (у т.ч.
-				// сховано в трей у фоновому режимі) = «покажи мене». Виняток —
-				// другий автозапуск ОС (--autostart), який вікно не відкриває.
-				// Раніше без --launch/файлу/посилання повторний запуск не робив нічого.
+				// Повторний запуск exe/ярлика, коли лаунчер уже працює (у т.ч. сховано
+				// в трей у фоновому режимі) = «покажи мене». Виняток — другий
+				// автозапуск ОС (--autostart), який вікно не відкриває.
 				if pid == "" && pfp == "" && openFriendLink == "" && !hasArg(data.Args, "--autostart") {
 					application.InvokeAsync(revealFromSecondInstance)
+				}
+				// Клік по ярлику збірки (лише --launch, без файлу/посилання):
+				// головне вікно НЕ чіпаємо — що показати, вирішує backend
+				// (shortcut_window.go): головне вікно було відкрите → гра
+				// стартує як з кнопки «Грати», інакше — окреме вікно
+				// запуску ярлика, а лаунчер лишається в треї.
+				if pid != "" && pfp == "" && openFriendLink == "" {
+					application.InvokeAsync(dispatchLaunchToBackend)
+					return
 				}
 				if pid != "" || pfp != "" || openFriendLink != "" {
 					// Показуємо і фокусуємо головне вікно (воно могло бути

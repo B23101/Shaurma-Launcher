@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // Картка запрошення на сервер / тимчасовий доступ у чаті. Та сама мова оформлення, що й
   // ModCard (обкладинка з пігулками, іконка, заголовок, статистика, кнопки) — щоб обидві
   // «поширені» картки виглядали як одна родина. Уся логіка (вхід, запуск, копіювання)
@@ -55,7 +57,7 @@
   <div class="ic-main">
     <div class="ic-ic"><i class="ti {temp ? 'ti-door-enter' : 'ti-server-2'}"></i></div>
     <div class="ic-titles">
-      <div class="ic-name" title={title}>{title}</div>
+      <div class="ic-name" use:launcherTip={title}>{title}</div>
       {#if kind}<div class="ic-by"><i class="ti ti-broadcast"></i><span>{kind}</span></div>{/if}
     </div>
   </div>
@@ -65,31 +67,28 @@
       <div class="ic-stats">
         <span class="ic-stat"><i class="ti ti-cube"></i> {version || '—'}</span>
         <span class="ic-stat"><i class="ti ti-users"></i> {max ? `${players}/${max}` : '—'}</span>
-        <span class="ic-stat"><i class="ti ti-lock"></i> лише для запрошених</span>
+        <span class="ic-stat"><i class="ti ti-lock"></i> лише за запрошенням</span>
       </div>
     {:else if perm && !dead}
       <div class="ic-stats">
-        {#if offline}
-          <span class="ic-stat"><i class="ti ti-moon"></i> сервер зараз вимкнено</span>
-        {:else}
+        {#if !offline}
           <span class="ic-stat"><i class="ti ti-cube"></i> {version || '—'}</span>
           <span class="ic-stat"><i class="ti ti-users"></i> {max ? `${players}/${max}` : '—'}</span>
         {/if}
-        <span class="ic-stat"><i class="ti ti-infinity"></i> постійна адреса</span>
       </div>
     {/if}
 
     <button class="ic-addr" data-testid="chat-invite-copy" onclick={onCopy} use:tip={t('social.chat.invite.copy')} aria-label={t('social.chat.invite.copy')}>
       <i class="ti ti-server-2"></i>
-      <span class="ic-addr-t" title={addr}>{addr}</span>
+      <span class="ic-addr-t" use:launcherTip={addr}>{addr}</span>
       <i class="ti ti-copy ic-addr-cp"></i>
     </button>
 
     {#if dead}
       <div class="ic-note bad" data-testid="chat-invite-dead"><i class="ti ti-circle-x"></i> {deadText}</div>
     {:else if host}
-      <div class="ic-note"><i class="ti ti-broadcast"></i> Ваш світ відкритий — друзі бачать цю картку</div>
-    {:else}
+      <div class="ic-note"><i class="ti ti-broadcast"></i> Ваш світ відкрито для друзів</div>
+    {:else if canJoin || !own}
       <div class="ic-acts">
         {#if canJoin}
           <button class="ic-btn pri" data-testid="chat-invite-join" onclick={onJoin} disabled={joining}>
@@ -101,8 +100,6 @@
           <button class="ic-btn {canJoin ? 'ghost grow' : 'pri'}" data-testid="chat-invite-play" onclick={onPlay}>
             <i class="ti ti-device-gamepad-2"></i> {t('servers.p2p.shared.play')}
           </button>
-        {:else}
-          <span class="ic-own"><i class="ti ti-user-check"></i> це ваша кімната</span>
         {/if}
       </div>
     {/if}
@@ -168,7 +165,6 @@
   .ic-btn.ghost:hover { color: var(--text); border-color: rgba(var(--orange-rgb), .5); }
   .ic-btn.grow { flex: 1; }
   .ic-btn i { font-size: 15px; }
-  .ic-own { display: inline-flex; align-items: center; gap: 5px; font: 650 11px/1 var(--font-ui); color: var(--text-dim); }
   .ic-spin { animation: ic-rot .8s linear infinite; }
   @keyframes ic-rot { to { transform: rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .ic, .ic-spin { animation: none; } .ic:hover { transform: none; } }

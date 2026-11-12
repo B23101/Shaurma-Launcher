@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── «Сервер разом зі збіркою» ──────────────────────────────────────────
   // Одна картка для обох сторін зв'язку (backend/pack_server_link.go):
   //   · на сторінці збірки (packId) — які сервери стартують разом із нею;
@@ -131,10 +133,10 @@
       </div>
       <div class="st-row-ctl">
         {#if !p.missing && ownMc && p.mc && p.mc !== ownMc}
-          <span class="st-tag warn" title={t('packlink.versionMismatchHint')}><i class="ti ti-alert-triangle"></i> {t('packlink.versionMismatch')}</span>
+          <span class="st-tag warn" use:launcherTip={t('packlink.versionMismatchHint')}><i class="ti ti-alert-triangle"></i> {t('packlink.versionMismatch')}</span>
         {/if}
         <button type="button" class="st-iconbtn danger" onclick={() => remove(l)} disabled={busy}
-                title={t('packlink.remove')} aria-label={t('packlink.remove')}><i class="ti ti-unlink"></i></button>
+                use:launcherTip={t('packlink.remove')} aria-label={t('packlink.remove')}><i class="ti ti-unlink"></i></button>
       </div>
     </div>
     {#each toggles as tg (tg.key)}

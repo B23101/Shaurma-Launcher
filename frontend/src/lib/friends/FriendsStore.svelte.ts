@@ -1,10 +1,6 @@
 // ══════════════════════════════════════════════════════════════════════════
 // FriendsStore — уся логіка розділу «Друзі Shaurma» без жодної розмітки.
 //
-// Раніше все це жило в одному компоненті на 1000+ рядків разом зі стилями.
-// Тепер компоненти (список, рядок, модалки, чат) лише читають цей store й
-// викликають його методи — тож кожен можна міняти окремо.
-//
 // БЕЗПЕКА ВІДОБРАЖЕННЯ (як і було): усе, що показується (нік, назва збірки,
 // колір), бекенд уже санітизував, але UI не довіряє йому наосліп — жодного
 // {@html}, колір перевіряється регуляркою, помилки показуються ПЕРЕКЛАДОМ
@@ -111,6 +107,8 @@ export class FriendsStore {
 
   /** Хто натиснув «Профіль» / «Запросити» — модалки живуть у шеллі. */
   profileId = $state('')
+  /** Стек профілів, з яких перейшли у «спільного друга»: кнопка «Назад» у вікні профілю. */
+  profileBack = $state<{ id: string; nickname: string; handle?: string }[]>([])
   tempInviteFor = $state('')
 
   #setActive: (id: string) => void
@@ -160,8 +158,7 @@ export class FriendsStore {
       return
     }
     pending.forEach(id => this.#activityPending.add(id))
-    // Відповіді збираємо й застосовуємо ОДНИМ махом: раніше кожна приходила окремо, і список
-    // «перешиковувався» десятки разів поспіль — рядок втікав з-під курсора і клік влучав в інший чат.
+    // Відповіді збираємо й застосовуємо ОДНИМ махом.
     const found: Record<string, number> = {}
     const worker = async () => {
       for (let id = pending.shift(); id; id = pending.shift()) {
@@ -256,7 +253,12 @@ export class FriendsStore {
     this.st.conn === 'online' ? t('social.conn.online') :
     this.st.conn === 'connecting' ? t('social.conn.connecting') : t('social.conn.off'))
 
-  profilePeer = $derived(this.st.friends.find((x) => x.accountId === this.profileId) ?? null)
+  /** Профіль не-друга (учасник групи, адресат вихідного запиту): друзів із таким id немає. */
+  profileStub = $state<SocialFriend | null>(null)
+  profilePeer = $derived(
+    this.st.friends.find((x) => x.accountId === this.profileId)
+      ?? (this.profileStub && this.profileStub.accountId === this.profileId ? this.profileStub : null))
+  profileIsFriend = $derived(!!this.profileId && this.st.friends.some((x) => x.accountId === this.profileId))
 
   peerById(id: string): SocialFriend | null {
     return this.st.friends.find((f) => f.accountId === id) ?? this.otherChats.find((f) => f.accountId === id) ?? null
@@ -405,7 +407,46 @@ export class FriendsStore {
     if (!this.isFriend(f.accountId)) this.rememberFormer(f)
     this.#setActive(f.accountId)
   }
-  openProfile(f: SocialFriend) { if (f?.accountId) this.profileId = f.accountId }
+  openProfile(f: SocialFriend) {
+    if (!f?.accountId) return
+    // Не друг: друга в st.friends немає, тож тримаємо «заглушку», інакше вікно не відкриється.
+    this.profileStub = this.isFriend(f.accountId) ? null : f
+    this.profileId = f.accountId
+  }
+  /** Перехід з відкритого профілю в інший (спільний друг): запам'ятовує поточний, щоб можна було повернутись. */
+  openProfileFromProfile(id: string, nickname = '') {
+    const cur = this.profilePeer
+    if (cur && this.profileId && id !== this.profileId) {
+      this.profileBack = [...this.profileBack.slice(-19), { id: cur.accountId, nickname: cur.nickname, handle: cur.handle }]
+    }
+    this.openProfileById(id, nickname)
+  }
+  /** Повернення до попереднього профілю зі стеку. */
+  profileGoBack() {
+    const prev = this.profileBack[this.profileBack.length - 1]
+    if (!prev) return
+    this.profileBack = this.profileBack.slice(0, -1)
+    this.openProfileById(prev.id, prev.nickname, prev.handle ?? '')
+  }
+  /** Профіль за id: для учасників груп і вихідних запитів, де є лише id / нік. */
+  openProfileById(id: string, nickname = '', handle = '') {
+    if (!id) return
+    const known = this.st.friends.find((x) => x.accountId === id)
+    if (known) { this.openProfile(known); return }
+    const peer = this.peerProfiles[id]
+    this.openProfile({
+      accountId: id, nickname: peer?.nickname || nickname || id.slice(0, 8) + '…',
+      handle: peer?.handle || handle || undefined, since: 0, presence: { status: 'offline' },
+    } as SocialFriend)
+    if (!peer) {
+      App.GetChatPeerProfile(id).then((p) => {
+        if (!p?.accountId) return
+        this.peerProfiles[id] = p
+        if (this.profileId === id && this.profileStub?.accountId === id)
+          this.profileStub = { ...this.profileStub, nickname: p.nickname || this.profileStub.nickname, handle: p.handle || this.profileStub.handle }
+      }).catch(() => {})
+    }
+  }
 
   // ── Додавання друзів ──────────────────────────────────────────────────
   /** Що саме ввів користувач: посилання-запрошення, UUID або @handle. */
@@ -424,6 +465,18 @@ export class FriendsStore {
     await App.SendFriendInvite(h.accountId)
     toast(t('social.inviteSent', { name: clean(h.nickname) }), 'success')
     void this.loadSent()
+  }
+  /** Запит у друзі з вікна профілю. true — надіслано (помилку вже показано тостом). */
+  async inviteFromProfile(f: SocialFriend): Promise<boolean> {
+    try {
+      await App.SendFriendInvite(f.accountId)
+      toast(t('social.inviteSent', { name: clean(f.nickname) }), 'success')
+      void this.loadSent()
+      return true
+    } catch (e) {
+      toast(this.errText(e), 'error')
+      return false
+    }
   }
   async loadSent() {
     try { this.sent = (await App.ListSentFriendInvites()) ?? [] } catch { /* старий сервер — просто без списку */ }

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Доступ до P2P-кімнати: режим, списки, співхости ──────────────────
   // Працює з тією ж адресою, що й ServerP2PWidget (книга адрес бекенда, мітка = serverId).
   // ДОСТУП — ЦЕ ПАРАМЕТРИ АДРЕСИ, А НЕ «ОХОРОНЕЦЬ, ЩО ПРАЦЮЄ ЛИШЕ ПІД ЧАС РОБОТИ»:
@@ -83,8 +85,7 @@
       host = sub ? (hs.find((h) => h.subdomain === sub) ?? null) : null
     } catch { host = null }
     if (!sub) { roomAccess = ''; return }
-    // Режим кімнати читаємо НЕЗАЛЕЖНО від хостингу: саме через це перемикач
-    // раніше виглядав «мертвим», коли сервер зупинено.
+    // Режим кімнати читаємо НЕЗАЛЕЖНО від хостингу.
     try { roomAccess = ((await App.P2PRoomAccess(sub)) || '') as P2PAccess | '' }
     catch { /* старий вузол / немає мережі — лишаємо як було */ }
     try { acl = await App.P2PACL(sub) } catch { /* кімнати може не бути на вузлі */ }
@@ -220,11 +221,11 @@
                 {@const fr = friendOf(it.id)}
                 <div class="spa-row">
                   <FriendAvatar nickname={it.nick || fr?.nickname} color={it.color || fr?.color} status={fr?.presence?.status} size={26} />
-                  <span class="spa-who" title={it.id}>
+                  <span class="spa-who" use:launcherTip={it.id}>
                     <span class="spa-nick" style="color:{friendColor(it.color || fr?.color, 'var(--text)')}">{it.nick || fr?.nickname || playerLabel(it)}</span>
                     {#if it.handle}<small>@{it.handle}</small>{:else}<small>{it.id.slice(0, 8)}…</small>{/if}
                   </span>
-                  <button class="spa-x" disabled={busy} title={t('servers.p2p.remove')} aria-label={t('servers.p2p.remove')} onclick={() => removeAcl(it.id, kind)}><i class="ti ti-x"></i></button>
+                  <button class="spa-x" disabled={busy} use:launcherTip={t('servers.p2p.remove')} aria-label={t('servers.p2p.remove')} onclick={() => removeAcl(it.id, kind)}><i class="ti ti-x"></i></button>
                 </div>
               {:else}
                 <div class="spa-empty">{t('servers.p2p.acl.empty')}</div>
@@ -269,11 +270,11 @@
             {@const fr = friendOf(c.id)}
             <div class="spa-row">
               <FriendAvatar nickname={c.nick || fr?.nickname} color={c.color || fr?.color} status={fr?.presence?.status} size={26} />
-              <span class="spa-who" title={c.id}>
+              <span class="spa-who" use:launcherTip={c.id}>
                 <span class="spa-nick" style="color:{friendColor(c.color || fr?.color, 'var(--text)')}">{c.nick || fr?.nickname || playerLabel(c)}</span>
                 {#if c.handle}<small>@{c.handle}</small>{:else}<small>{c.id.slice(0, 8)}…</small>{/if}
               </span>
-              <button class="spa-x" disabled={busy} title={t('servers.p2p.remove')} aria-label={t('servers.p2p.remove')} onclick={() => removeCo(c.id)}><i class="ti ti-x"></i></button>
+              <button class="spa-x" disabled={busy} use:launcherTip={t('servers.p2p.remove')} aria-label={t('servers.p2p.remove')} onclick={() => removeCo(c.id)}><i class="ti ti-x"></i></button>
             </div>
           {:else}
             <div class="spa-empty">{t('servers.p2p.co.empty')}</div>

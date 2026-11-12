@@ -37,7 +37,6 @@ func ensureForwardingSecret(proxyDir string) (string, error) {
 	if data, err := os.ReadFile(path); err == nil {
 		s := strings.TrimSpace(string(data))
 		if s != "" {
-			// Секрет, створений раніше з правами 0644, звужуємо до 0600 (best-effort).
 			_ = os.Chmod(path, 0600)
 			return s, nil
 		}

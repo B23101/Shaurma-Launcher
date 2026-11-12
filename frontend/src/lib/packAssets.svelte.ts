@@ -138,22 +138,24 @@ export function forgetLocalAssets() {
   if (changed) persistNow()
 }
 
-export function packAsset(url: string | undefined | null): string | undefined {
+export function packAsset(url: string | undefined | null, maxSide = 0): string | undefined {
   if (!url) return undefined
   // Уже готова картинка (іконка сервера в списках міграції/порівняння) —
   // бекенд для неї не потрібен.
   if (url.startsWith('data:')) return url
-  const hit = packAssets[url]
+  const side = maxSide > 0 ? Math.min(1920, Math.ceil(maxSide)) : 0
+  const key = side ? `${url}#thumb=${side}` : url
+  const hit = packAssets[key]
   if (hit !== undefined) return hit || undefined
-  if (!inflight.has(url)) {
-    inflight.add(url)
-    App.GetPackAsset(url)
+  if (!inflight.has(key)) {
+    inflight.add(key)
+    ;(side ? App.GetPackAssetThumbnail(url, side) : App.GetPackAsset(url))
       .then((d) => {
         const dataUrl = d ?? ''
-        packAssets[url] = dataUrl
+        packAssets[key] = dataUrl
         if (dataUrl && shouldPersist(url)) {
           const pc = loadPersistCache()
-          pc[url] = { dataUrl, at: Date.now() }
+          pc[key] = { dataUrl, at: Date.now() }
           // LRU-обрізання: поки сумарний розмір не влізе в ліміт,
           // викидаємо найстаріші записи.
           let total = Object.values(pc).reduce((n, e) => n + bytesOf(e.dataUrl), 0)
@@ -170,7 +172,8 @@ export function packAsset(url: string | undefined | null): string | undefined {
           persistNow()
         }
       })
-      .catch(() => { packAssets[url] = '' })
+      .catch(() => { packAssets[key] = '' })
+      .finally(() => { inflight.delete(key) })
   }
   return undefined
 }

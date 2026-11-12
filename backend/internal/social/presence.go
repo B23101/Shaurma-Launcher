@@ -293,10 +293,6 @@ func (p *PresenceClient) State() ConnState {
 
 // SetPolicy — приватність гравця. Це захист у глибину: VPS і так фільтрує за
 // presence_prefs, але ми не відправляємо зайвого й самі.
-//
-// ОКРІМ того, шлемо кадр set_privacy: хаб тримає приватність у пам'яті й
-// раніше оновлював її лише при реконекті — через це зміна в UI «не
-// працювала» (друзі бачили людину онлайн після «Приховати статус»).
 func (p *PresenceClient) SetPolicy(pol Privacy) {
 	pol = NormalizePrivacy(pol)
 	p.mu.Lock()
@@ -323,13 +319,8 @@ func (p *PresenceClient) SetPolicy(pol Privacy) {
 //
 // Для значень, які НЕ є вибором користувача: безпечний дефолт на старті
 // (showServerTo=nobody, поки справжні налаштування не прочитано) і копія
-// приватності, яку щойно віддав сам сервер (snapshot / HTTP). Раніше їх
-// теж слали кадром set_privacy, і хаб приймав їх як зміну користувача:
-// дефолт «nobody» перетирав у пам'яті хабу справжнє «friends», сервер
-// слав свіжий snapshot, UI показував «nobody», далі приходило справжнє
-// значення — і перемикач «Збірка, у яку я граю» скакав друзі ↔ ніхто на
-// кожному старті/оновленні. Клієнтська фільтрація статусу (p.policy)
-// працює так само, як і в SetPolicy.
+// приватності, яку щойно віддав сам сервер (snapshot / HTTP). Клієнтська
+// фільтрація статусу (p.policy) працює так само, як і в SetPolicy.
 func (p *PresenceClient) SetPolicyLocal(pol Privacy) {
 	pol = NormalizePrivacy(pol)
 	p.mu.Lock()
@@ -578,10 +569,6 @@ func sanitizeLastSeen(v, nowMs int64) int64 {
 	return v
 }
 
-// handleSnapshot — ГОЛОВНИЙ фікс «статус не в реальному часі»: раніше цей кадр
-// ігнорувався, тож друзі, які вже були онлайн до нашого підключення, показувались
-// офлайн, доки самі не змінять статус. Тут же беремо й список друзів, запити та
-// лічильники — Worker для цього більше не опитується.
 func (p *PresenceClient) handleSnapshot(data []byte) {
 	var w snapshotWire
 	if json.Unmarshal(data, &w) != nil {
@@ -1128,8 +1115,7 @@ type inEvent struct {
 	PackName   string `json:"packName"`
 	PackColor  string `json:"packColor"`
 	Code       string `json:"code"`
-	// Message — об'єкт у групових подіях (group_message / group_message_edited). Раніше було string, і
-	// json.Unmarshal падав на КОЖНОМУ груповому повідомленні → кадр мовчки відкидався (чат групи не оновлювався).
+	// Message — об'єкт у групових подіях (group_message / group_message_edited).
 	Message    json.RawMessage `json:"message"`
 
 	// Чат (розділи 1.5.2): поля названі буквально як у VPS-протоколі.

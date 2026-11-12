@@ -163,7 +163,128 @@ function stopSystemThemeWatch() {
   systemThemeHandler = null
 }
 
-export function applyTheme(theme: string, custom?: { bg?: string; card?: string; text?: string }) {
+// ── Розширена власна тема ────────────────────────────────────────────────
+// Три базові кольори (фон/картки/текст) давали лише «одну коробку»: бічна панель,
+// панелі, поля вводу й рамки виводились з них автоматично, і окремо їх підкрутити
+// було неможливо. ThemeExtra — необов'язкові «ручки» поверх базових: немає ключа =
+// «авто» (поведінка як і раніше), є ключ = точний колір/значення користувача.
+export type ThemeDepth = 'flat' | 'normal' | 'deep'
+export interface ThemeExtra {
+  sidebar?: string   // бічна панель і шапка вікна (--bg-window)
+  panel?: string     // панелі та випадаючі меню (--bg-panel)
+  input?: string     // поля вводу, перемикачі, «жолоби» (--bg-input)
+  border?: string    // рамки й роздільники (--border/--border-hi)
+  muted?: string     // другорядний текст (--text-mute/--text-dim)
+  radius?: number    // масштаб скруглень, % (40..200; 100 = як є)
+  depth?: ThemeDepth // сила тіней: плоско / звичайно / глибоко
+}
+export const THEME_EXTRA_COLOR_KEYS = ['sidebar', 'panel', 'input', 'border', 'muted'] as const
+export const RADIUS_MIN = 40
+export const RADIUS_MAX = 200
+
+const HEX6 = /^#[0-9a-fA-F]{6}$/
+
+/** Безпечний розбір themeCustomExtra: невалідні ключі просто відкидаються. */
+export function parseThemeExtra(raw: unknown): ThemeExtra {
+  let o: any = raw
+  if (typeof raw === 'string') {
+    if (!raw.trim()) return {}
+    try { o = JSON.parse(raw) } catch { return {} }
+  }
+  if (!o || typeof o !== 'object') return {}
+  const out: ThemeExtra = {}
+  for (const k of THEME_EXTRA_COLOR_KEYS) {
+    if (typeof o[k] === 'string' && HEX6.test(o[k])) out[k] = o[k].toLowerCase()
+  }
+  const r = Number(o.radius)
+  if (Number.isFinite(r) && r >= RADIUS_MIN && r <= RADIUS_MAX) out.radius = Math.round(r)
+  if (o.depth === 'flat' || o.depth === 'normal' || o.depth === 'deep') out.depth = o.depth
+  return out
+}
+
+/** Серіалізація для settings.json: лише задані ключі, порожнє = «всі авто». */
+export function stringifyThemeExtra(x: ThemeExtra): string {
+  const clean = parseThemeExtra(x)
+  return Object.keys(clean).length ? JSON.stringify(clean) : ''
+}
+
+export function mixHex(a: string, b: string, t: number): string {
+  const A = hexToRgb(a), B = hexToRgb(b)
+  const f = (x: number, y: number) => Math.round(x + (y - x) * t).toString(16).padStart(2, '0')
+  return `#${f(A.r, B.r)}${f(A.g, B.g)}${f(A.b, B.b)}`
+}
+
+/** Чи вважати власну тему «світлою» (за яскравістю фону) — для коректних тіней і акцентів. */
+export function isLightPalette(bg: string): boolean {
+  return HEX6.test(bg) && luminance(bg) > 0.4
+}
+
+const CUSTOM_VARS = [
+  '--bg-app', '--bg-window', '--bg-card', '--bg-panel', '--bg-input', '--bg-input-hi',
+  '--text', '--text-mute', '--text-dim', '--border', '--border-hi', '--hover', '--hover-strong',
+  '--r-sm', '--r-md', '--r-lg', '--r-xl',
+  '--lift', '--elev-1', '--elev-2', '--elev-3', '--elev-4',
+]
+
+// Тіні для режимів depth: множник на «чорноту» (0 — без тіней, 1 — як у темі за замовчуванням).
+function depthShadows(depth: ThemeDepth, light: boolean): Record<string, string> {
+  if (depth === 'normal') return {}
+  const k = depth === 'flat' ? 0 : 1.6
+  const a = (v: number) => Math.min(.9, +(v * k * (light ? .45 : 1)).toFixed(3))
+  return {
+    '--lift': `0 0 0 1px var(--border)${k ? `, 0 1px 2px rgba(0,0,0,${a(.3)}), 0 12px 32px -12px rgba(0,0,0,${a(.5)})` : ''}`,
+    '--elev-1': k ? `0 1px 2px rgba(0,0,0,${a(.3)})` : 'none',
+    '--elev-2': k ? `0 6px 16px -6px rgba(0,0,0,${a(.5)})` : 'none',
+    '--elev-3': k ? `0 18px 40px -14px rgba(0,0,0,${a(.6)})` : 'none',
+    '--elev-4': k ? `0 40px 90px -30px rgba(0,0,0,${a(.7)})` : 'none',
+  }
+}
+
+/**
+ * Чисте обчислення CSS-змінних власної теми (без DOM): його використовують і
+ * applyTheme (на :root), і живе прев'ю в налаштуваннях (на локальному блоці) —
+ * тому прев'ю гарантовано збігається з тим, що побачить увесь лаунчер.
+ */
+export function customThemeVars(bg: string, card: string, text: string, extra?: string | ThemeExtra): { vars: Record<string, string>; light: boolean } {
+  const x = parseThemeExtra(extra)
+  const light = isLightPalette(bg)
+  const v: Record<string, string> = {
+    '--bg-app': bg,
+    '--bg-window': x.sidebar ?? card,
+    '--bg-card': card,
+    '--bg-panel': x.panel ?? card,
+    '--bg-input': x.input ?? card,
+    '--text': text,
+    '--hover': text + '14',
+    '--hover-strong': text + '24',
+  }
+  if (x.input) v['--bg-input-hi'] = mixHex(x.input, text, .1)
+  if (x.muted) {
+    v['--text-mute'] = x.muted
+    v['--text-dim'] = mixHex(x.muted, bg, .35)
+  } else {
+    v['--text-mute'] = text + 'b3' // 70% прозорості
+    v['--text-dim'] = text + '80'  // 50% прозорості
+  }
+  if (x.border) {
+    v['--border'] = x.border
+    v['--border-hi'] = mixHex(x.border, text, .2)
+  } else {
+    v['--border'] = text + '1c'    // ~11% прозорості
+    v['--border-hi'] = text + '33'
+  }
+  if (x.radius && x.radius !== 100) {
+    const s = x.radius / 100
+    v['--r-sm'] = `${Math.round(8 * s)}px`
+    v['--r-md'] = `${Math.round(10 * s)}px`
+    v['--r-lg'] = `${Math.round(16 * s)}px`
+    v['--r-xl'] = `${Math.round(24 * s)}px`
+  }
+  Object.assign(v, depthShadows(x.depth ?? 'normal', light))
+  return { vars: v, light }
+}
+
+export function applyTheme(theme: string, custom?: { bg?: string; card?: string; text?: string; extra?: string | ThemeExtra }) {
   const root = document.documentElement
   stopSystemThemeWatch()
   let resolved = theme
@@ -174,33 +295,20 @@ export function applyTheme(theme: string, custom?: { bg?: string; card?: string;
     systemThemeHandler = () => { root.setAttribute('data-theme', mql.matches ? 'light' : 'dark'); applyAccent(...currentAccent) }
     mql.addEventListener('change', systemThemeHandler)
   }
-  const t = resolved === 'light' ? 'light' : resolved === 'oled' ? 'oled' : 'dark'
+  const isCustom = theme === 'custom' && !!custom?.bg && !!custom?.card && !!custom?.text
+  const computed = isCustom ? customThemeVars(custom!.bg!, custom!.card!, custom!.text!, custom!.extra) : null
+  // Власна тема зі світлим фоном має отримати light-гілку CSS (тіні, підсвітка коду,
+  // читабельний акцент) — раніше вона завжди ставала «dark» навіть на білому фоні.
+  const t = computed
+    ? (computed.light ? 'light' : 'dark')
+    : resolved === 'light' ? 'light' : resolved === 'oled' ? 'oled' : 'dark'
   root.setAttribute('data-theme', t)
   applyAccent(...currentAccent)
 
-  // Кастомна тема: прибираємо старі inline-змінні та ставимо кольори юзера.
-  if (theme === 'custom' && custom?.bg && custom?.card && custom?.text) {
-    const bg = custom.bg
-    const card = custom.card
-    const text = custom.text
-    root.style.setProperty('--bg-app', bg)
-    root.style.setProperty('--bg-window', card)
-    root.style.setProperty('--bg-card', card)
-    root.style.setProperty('--bg-panel', card)
-    root.style.setProperty('--bg-input', card)
-    root.style.setProperty('--text', text)
-    root.style.setProperty('--text-mute', text + 'b3') // 70% прозорості
-    root.style.setProperty('--text-dim', text + '80')  // 50% прозорості
-    root.style.setProperty('--border', text + '1c')    // ~11% прозорості
-    root.style.setProperty('--border-hi', text + '33')
-    root.style.setProperty('--hover', text + '14')
-    root.style.setProperty('--hover-strong', text + '24')
-  } else {
-    // Повертаємось на дефолтну палітру: inline-змінні більше не потрібні.
-    for (const v of ['--bg-app', '--bg-window', '--bg-card', '--bg-panel', '--bg-input', '--text', '--text-mute', '--text-dim', '--border', '--border-hi', '--hover', '--hover-strong']) {
-      root.style.removeProperty(v)
-    }
-  }
+  // Спершу прибираємо ВСІ inline-змінні теми: так знятий з «авто» параметр справді
+  // повертається до похідного значення, а не лишається від попереднього застосування.
+  for (const k of CUSTOM_VARS) root.style.removeProperty(k)
+  if (computed) for (const [k, val] of Object.entries(computed.vars)) root.style.setProperty(k, val)
 }
 
 // Вмикач/вимикач декоративних UI-анімацій (Налаштування → Вигляд).
@@ -251,7 +359,7 @@ export function applyPlatform(platform: string) {
 export function applyAppearance(s: Settings) {
   const x = s as any
   applyAccent(s.accent, s.accentCustom, x.accentCustomMode, x.accentCustom2)
-  applyTheme(s.theme, { bg: s.themeCustomBg, card: s.themeCustomCard, text: s.themeCustomText })
+  applyTheme(s.theme, { bg: s.themeCustomBg, card: s.themeCustomCard, text: s.themeCustomText, extra: (s as any).themeCustomExtra })
   applyAnimations(x.animationsEnabled !== false)
   applyPerformanceMode(!!x.performanceMode)
   applyFont(s.font, s.fontPath).catch(() => {})

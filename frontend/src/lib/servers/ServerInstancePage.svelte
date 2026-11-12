@@ -15,6 +15,7 @@
   // мережа з P2P, мережа серверів проксі), а дані йдуть через віддалений
   // канал (remoteServers.svelte.ts), а не з локального бекенду.
   import { tick } from 'svelte'
+  import { tip as launcherTip } from '../friends/tooltip'
   import { App } from '../wails'
   import { toast, confirmDialog } from '../toast.svelte'
   import { t } from '../i18n.svelte'
@@ -37,8 +38,10 @@
   import RemoteAccessPanel from './components/RemoteAccessPanel.svelte'
   import ServerAppearanceTab from './tabs/ServerAppearanceTab.svelte'
   import ServerFilesTab from './tabs/ServerFilesTab.svelte'
+  import ServerPlayersStrip from './components/ServerPlayersStrip.svelte'
   import ShareModal from '../ShareModal.svelte'
-  import { slideTabs } from '../slideTabs'
+  import { slideTabs, smoothTabsWheel } from '../slideTabs'
+  import { tabsFit } from '../tabsFit'
   import { remote, remoteAct, remoteAsView, startRemote } from './remoteServers.svelte'
 
   let {
@@ -79,10 +82,15 @@
 
   let localSrv = $state<ServerView | null>(null)
   const srv = $derived(isRemote ? (rs ? remoteAsView(rs) : null) : localSrv)
+  // Для крихт верхньої панелі: назва відкритого сервера.
+  $effect(() => {
+    window.dispatchEvent(new CustomEvent('server:meta', { detail: srv ? { id: serverId, name: srv.name } : null }))
+  })
+  $effect(() => () => { window.dispatchEvent(new CustomEvent('server:meta', { detail: null })) })
   let shareOpen = $state(false)
   let loading = $state(true)
   let ipBarKey = $state(0)
-  type TabId = 'proxy' | 'console' | 'mods' | 'plugins' | 'worlds' | 'network' | 'appearance' | 'access' | 'settings' | 'files'
+  type TabId = 'proxy' | 'console' | 'players' | 'mods' | 'plugins' | 'worlds' | 'network' | 'appearance' | 'access' | 'settings' | 'files'
   let tab = $state<TabId>('console')
   let actionBusy = $state(false)
   // 'properties' — окрема сторінка server.properties (як налаштування лаунчера)
@@ -251,10 +259,8 @@
   const hasWorlds = $derived(!!srv && srv.core !== 'velocity')
 
   // ЄДИНИЙ візуал сервера (той самий порядок пріоритету, що в ServerBanner,
-  // картці бібліотеки та списку цілей встановлення):
-  // PNG лаунчера → пресет → протокольна server-icon.png → іконка ядра.
-  // Раніше тут був прямий CORE_META — через це колір сторінки ігнорував
-  // пресет/PNG сервера, якщо колір явно не задано.
+  // картці бібліотеки та списку цілей встановлення): PNG лаунчера → пресет
+  // → протокольна server-icon.png → іконка ядра.
   const vis = $derived(serverVisual({
     core: srv?.core || '',
     color: srv?.color,
@@ -282,6 +288,7 @@
     const manage: NavItem[] = [
       ...(isVelocity ? [{ id: 'proxy' as const, icon: 'ti-topology-star-3', label: t('proxy.tab') }] : []),
       { id: 'console', icon: 'ti-terminal-2', label: t('servers.tabs.console') },
+      { id: 'players', icon: 'ti-users', label: t('servers.tabs.players') },
       { id: 'network', icon: 'ti-network', label: t('servers.tabs.network') },
       { id: 'access', icon: 'ti-users-group', label: t('servers.nav.access') },
     ]
@@ -304,6 +311,9 @@
   $effect(() => {
     if (isRemote && tabItems.length > 0 && !tabItems.some(i => i.id === tab)) tab = tabItems[0].id as TabId
   })
+
+  // Поступове стискання таббара (відступи → щільніше → іконки з кінця) — дія tabsFit,
+  // логіка й стилі спільні зі сторінкою збірки (lib/tabsFit.ts, style.css).
 
   let contentEl = $state<HTMLElement | null>(null)
   let propsFocus = $state('')
@@ -502,10 +512,11 @@
     </ServerBanner>
 
     <!-- ═══ ВКЛАДКИ (той самий ковзний таббар, що в збірки) ═══ -->
-    <div class="tabbar tb-slide sv-tabs" use:slideTabs aria-label={srv.name} role="tablist">
+    <div class="tabbar tb-slide sv-tabs" use:slideTabs use:smoothTabsWheel use:tabsFit aria-label={srv.name} role="tablist">
       {#each tabItems as it (it.id)}
-        <button class="tab-btn" class:active={tab === it.id} role="tab" aria-selected={tab === it.id} onclick={() => openTab(it.id)}>
-          <i class="ti {it.icon}"></i> {it.label}
+        <button class="tab-btn" class:active={tab === it.id} role="tab" aria-selected={tab === it.id} aria-label={it.label}
+                use:launcherTip={it.label} onclick={() => openTab(it.id)}>
+          <i class="ti {it.icon}"></i><span class="sv-tab-label">{it.label}</span>
           {#if it.id === 'properties'}<i class="ti ti-arrow-up-right sv-tab-out"></i>{/if}
         </button>
       {/each}
@@ -522,6 +533,10 @@
           <div class="sv-console-wrap">
             <ServerConsoleTab {serverId} serverColor={pcol} autoStart={wantAutoStart && !isRemote} preflight={runPreflight} remoteServer={rs} />
           </div>
+        {/key}
+      {:else if tab === 'players' && !isRemote}
+        {#key `players:${serverId}`}
+          <div class="sv-panel"><ServerPlayersStrip page {serverId} running={isRunning} /></div>
         {/key}
       {:else if tab === 'proxy' && (isVelocity || isRemote)}
         <div class="sv-scroll"><ServerProxyTab {srv} {onOpenServer} remoteServer={rs} /></div>

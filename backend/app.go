@@ -1,7 +1,6 @@
 package main
 
 import (
-	"shaurma-launcher-backend/internal/jvmargs"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -13,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"shaurma-launcher-backend/internal/crashguard"
+	"shaurma-launcher-backend/internal/jvmargs"
 	"sort"
 	"strings"
 	"sync"
@@ -107,7 +107,7 @@ type App struct {
 	// Віддалене керування серверами друзів (remote_control_*.go).
 	remoteInit sync.Once
 	remoteRT   *remoteRT
-	p2pAPI   *p2p.API
+	p2pAPI     *p2p.API
 	// activeInstallID — instanceID збірки, чиє встановлення компонентів
 	// (EnsureLoader/EnsureVersion/Java) зараз реально виконує a.inst/
 	// a.javaInst. Обидва інсталери ГЛОБАЛЬНІ на весь App (не по-збіркам),
@@ -147,6 +147,11 @@ type App struct {
 	// пройти ctx-перевірку до паузи) не має затерти стан «Пауза» назад
 	// у running — фінальний emitCustomPaused перемогає.
 	customImportPaused map[string]bool
+	// customImportRuns — фонові конвеєри імпорту, що ще виконуються для
+	// packID (незалежно від cancel-функції, яку скасування прибирає).
+	// DeletePack чекає їх завершення, інакше запізнілий Save імпорту
+	// відтворює видалену збірку («фантомний пак»).
+	customImportRuns map[string]*customImportRun
 
 	// blockedWaiters — очікування рішення користувача по заблокованих
 	// модах (імпорт CurseForge zip, діалог як у Prism). Ключ — packID;
@@ -198,8 +203,7 @@ type App struct {
 	buildsReg *builds.Registry
 	sessionsM *sessions.Manager
 
-	// syncMgr — менеджер нової двочергової системи синхронізації збірок
-	// Шаурма V2 (DOWNLOAD_SYNC_DESIGN_V2.md): тримає активні Runner-сесії
+	// syncMgr — менеджер двочергової синхронізації збірок Шаурма: тримає активні Runner-сесії
 	// по packID, дозволяє одночасну качку кількох збірок, дає Pause/Cancel
 	// і прапорець HasActive для попередження при закритті лаунчера.
 	syncMgr *syncengine.Manager
@@ -274,16 +278,10 @@ type App struct {
 
 	// launchClickAccount — акаунт, який фронтенд бачив активним у МОМЕНТ
 	// КЛІКУ «Грати» (App.svelte doLaunch передає activeAccount().id у
-	// LaunchInstance). Виправляє race condition: LaunchInstance раніше
-	// читав a.cfg.ActiveAccount() у момент ВИКОНАННЯ на бекенді, а не в
-	// момент кліку — якщо гравець паралельно перемикав акаунт (напр., поки
-	// на екрані йшла тривала перевірка/встановлення лоадерів попереднього
-	// запуску іншої збірки), гра стартувала на акаунті, обраному ПІЗНІШЕ,
-	// а не на тому, що був активний, коли гравець натиснув кнопку. Нижчий
-	// пріоритет, ніж launchAccountOverride (ярлик) і AccountIDOverride
-	// (прив'язка збірки) — лише підміняє МОМЕНТ читання активного акаунта,
-	// не сам факт "хто має пріоритет", якщо для збірки явно налаштовано
-	// інше.
+	// LaunchInstance). Виправляє race condition: Нижчий пріоритет, ніж
+	// launchAccountOverride (ярлик) і AccountIDOverride (прив'язка збірки)
+	// — лише підміняє МОМЕНТ читання активного акаунта, не сам факт "хто
+	// має пріоритет", якщо для збірки явно налаштовано інше.
 	launchClickAccount   map[string]string
 	launchClickAccountMu sync.Mutex
 
@@ -352,15 +350,10 @@ type App struct {
 
 	// modResolveCache — ГЛОБАЛЬНИЙ кеш результату мережевого резолву мода
 	// за sha1 файлу, СПІЛЬНИЙ для всіх збірок (на відміну від
-	// modUpdateCache вище, який прив'язаний до конкретної packID). Раніше
-	// той самий мод (напр. Create тієї самої версії), встановлений у 5
-	// різних збірках, перевірявся в мережі 5 разів окремо — Modrinth/
-	// CurseForge били запитами даремно. Тепер: перша збірка, що перевіряє
-	// мод з певним sha1, кладе результат сюди; всі наступні збірки (і
-	// повторні перевірки цієї ж збірки) з тим самим sha1 читають з кешу
-	// без походу в мережу. Ключ — sha1 файлу (порожній sha1 не кешується,
-	// бо не унікальний). TTL — щоб з часом підхопити нові версії модів
-	// на Modrinth/CurseForge, а не кешувати "немає оновлення" назавжди.
+	// modUpdateCache вище, який прив'язаний до конкретної packID). Ключ —
+	// sha1 файлу (порожній sha1 не кешується, бо не унікальний). TTL —
+	// щоб з часом підхопити нові версії модів на Modrinth/CurseForge, а
+	// не кешувати "немає оновлення" назавжди.
 	modResolveCache   map[string]modResolveEntry
 	modResolveCacheMu sync.Mutex
 
@@ -438,22 +431,15 @@ type modResolveEntry struct {
 const modResolveCacheTTL = 30 * time.Minute
 
 // newUpdateChecker створює update.Checker і одразу виставляє канал
-// (stable/beta) з наявного settings.json — щоб і фонова checkAutoUpdate(),
-// і перша ручна перевірка в налаштуваннях одразу дивились у канал, який
-// користувач обрав раніше, а не в дефолтний "stable" до першого SaveSettings.
+// (stable/beta) з наявного settings.json — щоб і фонова checkAutoUpdate(), і
+// перша ручна перевірка в налаштуваннях одразу дивились у канал.
 //
-// ВИПРАВЛЕННЯ (Linux показував версію 2.0.0 у «Про лаунчер», хоча
-// апдейтер бачив актуальну): тут раніше стояло readLauncherVersion(cfg.Dir()).
-// cfg.Dir() — це тека ДАНИХ лаунчера (%APPDATA%\.shaurm / ~/.shaurm), а
-// launcher-version.json пише updater у теку ВСТАНОВЛЕННЯ (installDir —
-// та сама, що shell передає в backend_init, і ту саму, з коментаря
-// readLauncherVersion). На Windows ці дві теки в частині сетапів
-// випадково збігались (installDir поруч з APPDATA-профілем однакового
-// користувача), тому баг там не проявлявся; на Linux (AppImage —
-// installDir у XDG data dir, а cfg.Dir() лишається ~/.shaurm) шлях був
-// просто неправильний — файл там ніколи не лежав, і readLauncherVersion
-// мовчки відкочувалась на жорстко вшите "2.0.0". cfg.InstallDir() віддає
-// саме installDir.
+// На Windows ці дві теки в частині сетапів випадково збігались (installDir
+// поруч з APPDATA-профілем однакового користувача), тому баг там не
+// проявлявся; на Linux (AppImage — installDir у XDG data dir, а cfg.Dir()
+// лишається ~/.shaurm) шлях був просто неправильний — файл там ніколи не
+// лежав, і readLauncherVersion мовчки відкочувалась на жорстко вшите "2.0.0".
+// cfg.InstallDir() віддає саме installDir.
 func newUpdateChecker(cfg *config.Manager) *update.Checker {
 	c := update.NewChecker(readLauncherVersion(cfg.InstallDir()))
 	c.SetChannel(cfg.GetSettings().UpdateChannel)
@@ -505,6 +491,7 @@ func NewApp() *App {
 		versionsProv:        custompack.NewVersionsProvider(),
 		customImportCancel:  map[string]context.CancelFunc{},
 		customImportPaused:  map[string]bool{},
+		customImportRuns:    map[string]*customImportRun{},
 		blockedWaiters:      map[string]chan custompack.BlockedModsDecision{},
 		customImportStateAt: map[string]time.Time{},
 		modUpdateCache:      map[string]modUpdateCacheEntry{},
@@ -522,7 +509,7 @@ func NewApp() *App {
 	a.skinRestoreTracker = newSkinRestoreTracker()
 	// Іконки Шаурма-акаунтів (аватарка в сайдбарі): у Shaurma-редакції
 	// беремо скін із власного сервера скінів замість Mojang (no-op у
-	// base — див. offline_account_base.go). Виклик тут, а не одразу в
+	// base). Виклик тут, а не одразу в
 	// avatar.NewService вище, бо резолвер — замикання на методи App
 	// (a.skinRequest), яких до завершення &App{...} ще нема.
 	a.wireShaurmaAvatarResolver()
@@ -720,14 +707,10 @@ func (a *App) ServiceStartup() error {
 	// задач), і зміну аргументів (--background) після оновлення лаунчера.
 	// Помилка не фатальна для старту — лише лог.
 	a.syncAutostart()
-	// Канал оновлень застосовуємо ПІСЛЯ завантаження налаштувань: раніше
-	// newUpdateChecker читав cfg.GetSettings() у NewApp ДО cfg.Load() (який
-	// викликається тут, у ServiceStartup), тож чекер при старті завжди бачив
-	// дефолтний "stable" — канал з settings.json (напр. "beta") застосовувався
-	// лише після першого SaveSettings. Через це «Перевірити оновлення» могло
-	// казати «актуальна версія», поки апдейтер (що читає settings.json напряму)
-	// знаходив beta-оновлення. Тепер канал з налаштувань прикладається одразу
-	// після Load.
+	// Канал оновлень застосовуємо ПІСЛЯ завантаження налаштувань. Через це
+	// «Перевірити оновлення» могло казати «актуальна версія», поки апдейтер (що
+	// читає settings.json напряму) знаходив beta-оновлення. Тепер канал з
+	// налаштувань прикладається одразу після Load.
 	a.updater.SetChannel(a.cfg.GetSettings().UpdateChannel)
 
 	// Discord Rich Presence: підтримуємо з'єднання у фоні і публікуємо
@@ -858,12 +841,6 @@ func (a *App) ServiceStartup() error {
 	// Скін збірки: повертаємо вигляд акаунтів для снапшотів, чиї ігри вже
 	// завершились, поки лаунчер був мертвий (крах/перезапуск/вимкнення ПК).
 	// Живі сесії не чіпаємо — їх поверне exit-хендлер після зупинки гри.
-	//
-	// ПРИСКОРЕННЯ СТАРТУ: раніше це виконувалось СИНХРОННО в ServiceStartup,
-	// а відновлення скіна ходить у мережу з ретраями (до ~93 с на збірку) —
-	// якщо після краху лишився снапшот, backend:ready приходив із запізненням
-	// у десятки секунд. Тепер у фоні, ПІСЛЯ rewireComponents (використовує
-	// вже фінальний a.wardrobe).
 	go func() {
 		defer crashguard.Recover("a.restoreStaleBuildSkins")
 		a.restoreStaleBuildSkins()
@@ -907,7 +884,7 @@ func (a *App) ServiceStartup() error {
 	a.startNetworkStatusLoop()
 	// Пам'ять: старт створює пік (парсинг сховища, скан збірок, міграції) —
 	// після того як усе осіло, одразу віддаємо зайве ОС, а не чекаємо
-	// першого тіку memtrim (раніше — 5 хв).
+	// першого тіку memtrim.
 	go func() {
 		defer crashguard.Recover("a.postStartupTrim")
 		time.Sleep(12 * time.Second)
@@ -960,15 +937,8 @@ func (a *App) GetLaunchWarnings(packID string) model.LaunchWarnings {
 	w.LowRamDismissed = icfg.LowRamDismissed
 
 	si := sysinfo.Collect(a.cfg.Dir())
-	// ВАЖЛИВО: раніше тут стояло si.TotalRAMMB (загальний обсяг ВСТАНОВЛЕНОЇ
-	// пам'яті) — перевірка №2 фактично звіряла виділену RAM з тим, скільки
-	// пам'яті ФІЗИЧНО СТОЇТЬ у системі, а не скільки її ВІЛЬНО ЗАРАЗ. Через
-	// це попередження не спрацьовувало навіть коли у користувача реально
-	// лишалось критично мало вільної RAM (браузер/інші програми зайняли
-	// решту) — воно порівнювало виділені 4-8 ГБ з усіма 16+ ГБ пам'яті,
-	// які "є в комп'ютері", а не з тим, що можна реально виділити зараз.
-	// FreeRAMMB — вільна пам'ять НА ЦЮ МИТЬ (Windows: AvailPhys,
-	// Linux: MemAvailable) — саме те, з чим і повинна звірятись RAM гри.
+	// FreeRAMMB — вільна пам'ять НА ЦЮ МИТЬ (Windows: AvailPhys, Linux:
+	// MemAvailable) — саме те, з чим і повинна звірятись RAM гри.
 	w.AvailableRAMMB = si.FreeRAMMB
 	if w.AvailableRAMMB <= 0 {
 		// Платформа без підтримки FreeRAMMB (напр. macOS-стаб) — фолбек на
@@ -1047,10 +1017,8 @@ func (a *App) GetPackIndex() ([]api.PackIndexEntry, error) {
 // (Range-резюме), тобто пауза НЕ починає завантаження з нуля.
 func (a *App) PauseDownload(packID string) {
 	if a.isCustomPack(packID) {
-		// М'яка зупинка активного імпорту: прогрес лишається в dlTransient
-		// з Mode="paused", кнопка в UI стає "Продовжити". Раніше тут
-		// викликався CancelModpackImport (без події paused), через що
-		// картка «зависала» у стані downloading і «Продовжити» не з'являвся.
+		// М'яка зупинка активного імпорту: прогрес лишається в dlTransient з
+		// Mode="paused", кнопка в UI стає "Продовжити".
 		a.PauseModpackImport(packID)
 		return
 	}
@@ -1124,9 +1092,11 @@ func (a *App) ResumeModpackImport(packID string) (custompack.Pack, error) {
 	a.customImportMu.Unlock()
 	packName := pack.Name
 	archivePath := pack.ArchivePath
+	endRun := a.beginCustomImportRun(packID)
 
 	go func() {
 		defer crashguard.Recover("app.go:1040")
+		defer endRun()
 		defer func() {
 			cancel()
 			a.customImportMu.Lock()
@@ -1275,8 +1245,7 @@ func localFileDataURL(path string) (string, error) {
 		// Збірка ще НЕ встановлена (іконка/фон з `installations/<id>/`)
 		// або файл видалено — це не помилка, а «асета поки немає».
 		// Фронтенд (packAssets) кешує порожній результат і показує
-		// fallback-іконку; раніше помилка через автолог call() шуміла
-		// в журналі на кожній невстановленій збірці.
+		// fallback-іконку.
 		if os.IsNotExist(err) {
 			return "", nil
 		}
@@ -1416,6 +1385,9 @@ func (a *App) emitLaunchDone(instanceID string) {
 func (a *App) emitLaunchError(instanceID string, err error) {
 	a.storeLaunch(instanceID, LaunchProgress{InstanceID: instanceID, Error: err.Error(), Done: true})
 	a.emit("launch:progress", LaunchProgress{InstanceID: instanceID, Error: err.Error(), Done: true})
+	// Запуск з вікна ярлика закінчився помилкою — відкриваємо головний екран,
+	// де користувач побачить тост і пропозицію авто-починки.
+	a.shortcutWindowLaunchFailed(instanceID)
 	// Авто-починка: помилка запуску (Java, лоадер, файли) → пропозиція лагоджень.
 	a.repairOnLaunchError(instanceID, err)
 }
@@ -1587,10 +1559,7 @@ func (a *App) SelectActivePack(packID string) {
 //
 // Останній випадок критичний: settings.JavaPath може розійтись з поточною
 // папкою даних (застаріле значення після зміни папки даних, незавершене
-// перенесення в майстрі, легасі-імпорт зі старого лаунчера тощо). Раніше
-// жорстка рівність javaPath == cfg.JavaDir() відправляла такий шлях у гілку
-// «ручної Java» — лаунчер лише перевіряв наявність javaw.exe і помирав
-// «java not found at <теку>\bin\javaw.exe», навіть не спробувавши качати.
+// перенесення в майстрі, легасі-імпорт зі старого лаунчера тощо).
 //
 // Явний шлях до .exe (ручна Java) — НЕ керується лаунчером: якщо файл
 // відсутній, це помилка користувача, і її треба показати, а не затирати.
@@ -1819,16 +1788,7 @@ func (a *App) LaunchInstance(instanceID string) error {
 
 	// Шаурма-збірки: перед запуском ЗАВЖДИ звіряємо локальний стан файлів
 	// проти маніфесту worker'а через BuildPlan — а не лише тоді, коли
-	// InstalledVersion відрізняється від версії на сервері. Порівняння
-	// версій — це один рядок на всю збірку: якщо версія НЕ змінилась, а
-	// гравець сам видалив/зіпсував мод, шейдерпак чи конфіг, версії
-	// однакові, і раніше цей блок пропускав перевірку ЦІЛКОМ — BuildPlan
-	// (який якраз вміє звіряти по кожному файлу окремо: хеші, on_missing,
-	// orphan-видалення) узагалі не викликався. Тепер синк запускається
-	// щоразу; для вже актуальної збірки BuildPlan має швидкий шлях (0
-	// мережевих завантажень, лише existence-перевірки на диску) і одразу
-	// повертає ModeComplete — тож зайвої затримки для звичайного запуску
-	// це не додає, а биту/неповну установку саме тут і виправляє.
+	// InstalledVersion відрізняється від версії на сервері.
 	if build.IsShaurma {
 		a.emitLaunchProgress(instanceID, LaunchStageWorkerUpdate, "Перевірка файлів збірки...")
 		if entry, err := a.packs.GetPackByID(instanceID); err == nil {
@@ -1902,15 +1862,10 @@ func (a *App) LaunchInstance(instanceID string) error {
 	javaWarn := ""
 	// managedJava — теку Java керує САМ лаунчер: вбудована тека лаунчера
 	// (cfg.JavaDir()), порожній шлях (дефолт = вбудована) або БУДЬ-ЯКА
-	// тека, яку користувач обрав для Java, але де javaw.exe ще не існує.
-	// У такій теці лаунчер САМ ставить потрібний мажор замість того, щоб
+	// тека, яку користувач обрав для Java, але де javaw.exe ще не існує. У
+	// такій теці лаунчер САМ ставить потрібний мажор замість того, щоб
 	// падати «java not found» — шлях користувача підпорядковується, а не
-	// ігнорується (див. isLauncherManagedJava). Раніше тут була жорстка
-	// рівність javaPath == cfg.JavaDir(): якщо settings.JavaPath розходився
-	// з поточною папкою даних (застаріле значення після зміни папки,
-	// незавершене перенесення в майстрі тощо), лаунчер вважав Java
-	// «ручною» і падав «java not found at <теку>/bin/javaw.exe», навіть
-	// не спробувавши завантажити Java у теку користувача.
+	// ігнорується (див. isLauncherManagedJava).
 	managedJava := a.isLauncherManagedJava(javaPath)
 	// Тека, в яку лаунчер ставить Java (порожня = вбудована cfg.JavaDir()).
 	// Захоплюємо ДО першого перепризначення javaPath на шлях до exe.
@@ -1918,11 +1873,8 @@ func (a *App) LaunchInstance(instanceID string) error {
 	a.emitLaunchProgress(instanceID, LaunchStageJava, "Перевірка Java...")
 	// Порожній javaPath (налаштування не збережені / дефолт) = вбудована Java
 	// лаунчера: EnsureMajorWithComponent сам ставить ПОТРІБНИЙ мажор (Java 21 для
-	// neoforge 1.21.1, Java 17 для forge 1.20.1 тощо) використовуючи component
-	// з version.json (якщо є) для повної автономності. Раніше порожній шлях
-	// минав цю гілку і запускав на Java, що лишилась у теці з минулого
-	// разу (напр. Java 17 замість 21) — звідси "Unsupported major.minor
-	// version 65.0" при читанні bootstraplauncher-2.0.2.jar.
+	// neoforge 1.21.1, Java 17 для forge 1.20.1 тощо) використовуючи component з
+	// version.json (якщо є) для повної автономності.
 	if managedJava {
 		// Спочатку спробуємо отримати component з version.json (якщо вже завантажений)
 		// Це дозволить встановити правильну Java навіть для майбутніх версій (30+)
@@ -2052,9 +2004,6 @@ func (a *App) LaunchInstance(instanceID string) error {
 	} else {
 		maxRAM = intOverride(settings.MaxRAM, icfg.MaxRAMOverride)
 	}
-	// Мінімальна RAM (-Xms) окремим полем: якщо для збірки не задано,
-	// LaunchConfig.MinRAM лишається 0 і Launcher сам порахує ram/2 —
-	// та сама поведінка, що й раніше, коли цього поля не було.
 	minRAM := 0
 	if build.UseCustomRAM && build.MinRAMMB > 0 {
 		minRAM = intOverride(build.MinRAMMB, icfg.MinRAMOverride)
@@ -2129,7 +2078,7 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// клієнту на Yggdrasil-API нашого worker'а. Хук викликається для акаунта
 	// БУДЬ-ЯКОГО типу (офлайн / Microsoft / Шаурма) — єдиний вимикач це
 	// налаштування DisableSkins. Хук повертає додаткові JVM-аргументи
-	// (порожньо в base-збірці — див. offline_account_base.go; у shaurma —
+	// (порожньо в base-збірці; у shaurma —
 	// wardrobe_inject.go + authlib_injector.go). Помилки не блокують
 	// запуск — лише попередження в консоль збірки.
 	extraJVMArgs := a.prepareOfflineAccount(account, build.ID, gameDir)
@@ -2257,7 +2206,11 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// Вікно лаунчера під час гри (gameLaunchAction): згорнути/сховати —
 	// за потреби з затримкою. Єдине місце для будь-якого способу запуску
 	// (кнопка «Грати», ярлик, сервер, трей).
-	a.applyGameLaunchWindow()
+	// Запуск через вікно ярлика: воно закривається, лаунчер лишається в
+	// треї (головне вікно й так сховане — згортати/ховати нічого).
+	if !a.shortcutWindowGameStarted(build.ID) {
+		a.applyGameLaunchWindow()
+	}
 	return nil
 }
 
@@ -2273,31 +2226,10 @@ func (a *App) wireSessionLauncher(l *minecraft.Launcher, account model.Account, 
 		repairSessionStart = time.Unix(restored.SavedAt, 0)
 	}
 	l.SetOutputHandler(func(line string) {
+		// Local views pull only their visible page; do not broadcast log text.
 		if buf != nil {
 			buf.Append(line)
-			// «console:line» (живий потік для вікна/віджета) шлемо ЛИШЕ для
-			// поточного буфера консолі — перемикання акаунтів не повинно
-			// домішувати чужі логи у відображувану консоль. Скоупований
-			// buildConsole:line йде завжди (для перемикача/архіву).
-			//
-			// ВАЖЛИВО: не a.emit() напряму — при великому потоці логів
-			// (флуд/краш-дамп, сотні-тисячі рядків/сек) кожен a.emit це
-			// окремий CGo-виклик + задача в черзі UI-потоку shell'а; черга
-			// нічим не обмежена і росте швидше, ніж UI встигає її розібрати
-			// — звідси «зависання» інтерфейсу і ріст пам'яті. emitConsoleLine/
-			// emitBuildConsoleLine складають рядки в батчер (console_batch.go)
-			// і шлють їх пачками (console:lines/buildConsole:lines), тому
-			// кількість подій за секунду обмежена незалежно від того, скільки
-			// пише гра.
-			if buf == a.activeConsoleBuf() {
-				a.emitConsoleLine(line)
-			}
 		}
-		a.emitBuildConsoleLine(model.BuildConsoleLine{
-			BuildID:   build.ID,
-			AccountID: account.ID,
-			Line:      line,
-		})
 	})
 	l.SetExitHandler(func(code int) {
 		// wasUserStop споживається РІВНО ОДИН раз на будь-якому виході
@@ -2375,21 +2307,14 @@ func (a *App) wireSessionLauncher(l *minecraft.Launcher, account model.Account, 
 		// Гра закрилась (крашем чи штатно) — головне вікно лаунчера має
 		// піднятись ПЕРШИМ, і лише ПОТІМ (за потреби) вікно консолі.
 		//
-		// Раніше порядок був: emit("game:exit") → maybeAutoShowConsole.
-		// game:exit — асинхронна подія, яку фронтенд ловить і вже САМ
-		// викликає RestoreWindowAfterGame() через JS event loop. Але
-		// maybeAutoShowConsole нижче виконувався одразу й СИНХРОННО у Go
-		// і встигав реально показати native-вікно консолі раніше, ніж
-		// фронтенд встигав дійти до свого обробника — тому користувач
-		// бачив спочатку вікно консолі (яке виглядає як "консоль"), а
-		// вже потім головне вікно лаунчера. Тепер піднімаємо головне
-		// вікно тут напряму з Go (той самий код, що й RestoreWindowAfterGame),
-		// синхронно й ДО показу консолі — порядок гарантований.
 		// Що робити з вікном після виходу з гри — рішення winbehavior
-		// (gameExitAction + restoreOnCrash; не чіпає вікно, поки йде ще
-		// якась паралельна гра). Раніше це робив фронтенд на game:exit
-		// (restore/quit) плюс тут окрема гілка — тепер одне місце.
-		a.applyGameExitWindow(code, wasUserStop)
+		// (gameExitAction + restoreOnCrash; не чіпає вікно, поки йде ще якась
+		// паралельна гра). Запуск з ярлика + крах під час завантаження →
+		// головний екран відкривається завжди; решта випадків — за
+		// налаштуваннями.
+		if !a.shortcutWindowGameExited(build.ID, code, wasUserStop) {
+			a.applyGameExitWindow(code, wasUserStop)
+		}
 		// Краш (ненульовий код) + showConsoleOnCrash → показати вікно
 		// консолі. Штатний вихід
 		// (код 0) + showConsoleOnClose → показати останні рядки логу.
@@ -2732,8 +2657,7 @@ func (a *App) CancelGameInstall(instanceID string) {
 		return
 	}
 	// «Зупинити» під час встановлення компонентів: скасовуємо І встановлення
-	// Minecraft (EnsureLoader/EnsureVersion), І качку Java — раніше Java
-	// ігнорувала скасування, і «Стоп» під час качки Java нічого не робив.
+	// Minecraft (EnsureLoader/EnsureVersion), І качку Java.
 	a.inst.RequestCancelInstall()
 	a.javaInst.RequestCancelInstall()
 }
@@ -2819,9 +2743,7 @@ func (a *App) HideToTray() {
 	a.hideToTray("frontend")
 }
 
-// hideToTray — ЄДИНЕ місце, що ховає головне вікно в трей. Кожне приховування
-// лишає в лозі один рядок із причиною (раніше «лаунчер зник» не можна було
-// пояснити).
+// hideToTray — ЄДИНЕ місце, що ховає головне вікно в трей.
 func (a *App) hideToTray(reason string) {
 	logHideToTray(reason)
 	bridgeWindowOp("main", "hide")
@@ -2830,10 +2752,6 @@ func (a *App) hideToTray(reason string) {
 	// встигає/приходить при програмному hide(), а без цього прапорця
 	// сповіщення чату вважали б, що користувач і так дивиться на лаунчер.
 	setNotifyMainWindowActive(false)
-	// Лаунчер згорнуто в трей — найкращий момент віддати ОС те, що
-	// звільнилось під час останнього сканування/завантаження: далі ми не
-	// працюємо з інтерфейсом, тож пік RSS backend.so тримати немає сенсу
-	// (див. memtrim.go — раніше це робилось лише на окремі важкі операції).
 	// ВАЖЛИВО: на Linux це звільняє лише Go-хіп/glibc-арени backend.so.
 	// Окремий WebKitGTK-процес (webview) свою пам'ять цим НЕ звільняє —
 	// win.Hide() лише ховає вікно, WebProcess лишається живим з усіма
@@ -2917,16 +2835,6 @@ func (a *App) GetSettings() model.Settings { return a.cfg.GetSettings() }
 // а не settings.json (docs/dev/DATA_ARCHITECTURE.md: «жодних центральних хабів,
 // глобальний файл містить лише те, що спільне для всіх»). Фронтенд
 // викликає це при старті замість localStorage.
-//
-// РЕГРЕСІЯ (виправлено): раніше GetPackLayout/SavePackLayout/
-// GetPackFolders/SavePackFolders читали й писали s.PackOrder/PackPinned/
-// PackFolders у settings.json, хоча store.GetBuildLayout()/
-// SaveBuildLayout() (окремий файл .build-layout.json) уже існували й
-// навіть заповнювались один раз при міграції з SQLite
-// (migrateLayoutFromSettings) — але жоден наступний виклик після
-// міграції в цей файл більше не писав, тож він одразу застарівав, а
-// сортування/закріплення/папки продовжували жити в shaurma.json
-// всупереч задокументованій архітектурі.
 func (a *App) GetPackLayout() map[string]interface{} {
 	layout := a.migrateLayoutFromSettingsOnce()
 	order := layout.PackOrder
@@ -2951,6 +2859,36 @@ func (a *App) SavePackLayout(order []string, pinned []string) error {
 	layout := st.GetBuildLayout()
 	layout.PackOrder = order
 	layout.PackPinned = pinned
+	return st.SaveBuildLayout(layout)
+}
+
+// GetOpenFolders повертає ID папок, розгорнутих у sidebar.
+func (a *App) GetOpenFolders() []string {
+	layout := a.migrateLayoutFromSettingsOnce()
+	if layout.OpenFolders == nil {
+		return []string{}
+	}
+	return layout.OpenFolders
+}
+
+// SaveOpenFolders зберігає, які папки розгорнуті в sidebar
+// (.build-layout.json). Дублікати й порожні ID відсіваються.
+func (a *App) SaveOpenFolders(ids []string) error {
+	st := a.cfg.Store()
+	if st == nil {
+		return fmt.Errorf("сховище не ініціалізовано")
+	}
+	seen := map[string]bool{}
+	clean := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" || seen[id] || len(id) > 200 {
+			continue
+		}
+		seen[id] = true
+		clean = append(clean, id)
+	}
+	layout := st.GetBuildLayout()
+	layout.OpenFolders = clean
 	return st.SaveBuildLayout(layout)
 }
 
@@ -3129,9 +3067,7 @@ func (a *App) SaveSettings(s model.Settings) error {
 	prevSettings := a.cfg.GetSettings()
 	prevAllowAlphaBeta := prevSettings.AllowAlphaBetaModUpdates
 	// Ручний статус для друзів («Відійшов» / «Невидимий») змінюється ТІЛЬКИ через
-	// SetPresenceMode, а не через сторінку налаштувань. Фронтенд тримає знімок
-	// settings, завантажений раніше, — без цього будь-яке збереження налаштувань
-	// повертало б старий presenceMode і статус «відкочувався» до «В мережі».
+	// SetPresenceMode, а не через сторінку налаштувань.
 	s.PresenceMode = prevSettings.PresenceMode
 	// «Не турбувати» — частина того самого вибору статусу (SetPresenceMode): застарілий знімок
 	// не повинен ні вмикати його назад, ні вимикати.
@@ -3261,13 +3197,8 @@ func (a *App) syncFolderSettings() error {
 // й клали файли вже в нові теки.
 
 // reconcileLegacyFolders — одноразова консолідація легасі-тек у папці
-// даних .shaurm. УСЕ, що колись лежало у ВЛАСНИХ кастомних теках (старі
-// settings.InstanceDir/JavaPath з попередньої версії лаунчера або override
-// з launcher-location.json, напр. збірки у D:\ShaurmLauncher замість
-// .shaurm\installations), переноситься ВСЕРЕДИНІ .shaurm — щоб уся тека
-// даних відповідала єдиному шляху користувача і її можна було змінити
-// цілком (SetAppDir). Після успіху settings скидаються на похідні .shaurm,
-// а override прибираються.
+// даних .shaurm. Після успіху settings скидаються на похідні .shaurm, а
+// override прибираються.
 //
 // Fail-safe: якщо перенесення не вдалось (диск/права/заблоковані файли) —
 // лишаємо легасі-шлях у дії (лаунчер продовжує ним користуватись, жодної
@@ -3353,13 +3284,6 @@ func (a *App) rewireComponents() {
 	// які ніхто не шле, і консоль лишається порожньою до ручного релоаду.
 	a.srvAPI.Manager().SetCallbacks(
 		func(serverID string, line model.ConsoleLine) {
-			a.emit("server:line", map[string]any{
-				"serverId": serverID,
-				"id":       line.ID,
-				"time":     line.Time,
-				"level":    line.Level,
-				"text":     line.Text,
-			})
 			a.remoteOnLine(serverID, line)
 		},
 		func(serverID string, status servers.ServerStatus) {
@@ -3402,11 +3326,9 @@ func (a *App) rewireComponents() {
 			"list":     ev.List,
 		})
 	})
-	// Прогрес створення бекапів світів → "server:backup-progress".
-	// Раніше ручний бекап великого світу був "чорним ящиком" без жодного
-	// зворотного зв'язку, а авто-бекап — узагалі невидимий.
-	// Фонові ланцюги мережі Velocity (сервер не запустився разом із проксі
-	// тощо) → "server:network-event".
+	// Прогрес створення бекапів світів → "server:backup-progress". Фонові
+	// ланцюги мережі Velocity (сервер не запустився разом із проксі тощо)
+	// → "server:network-event".
 	a.srvAPI.SetNetworkNotifyCallback(func(proxyID, serverID, message string) {
 		a.emit("server:network-event", map[string]any{"proxyId": proxyID, "serverId": serverID, "message": message})
 	})
@@ -3582,13 +3504,9 @@ func (a *App) activeConsoleBuf() *console.Buffer {
 // recordSyncProgress наповнює dlTransient-канал прогресу (житвить sidebar,
 // картку збірки в "Моїх збірках" і сторінку збірки одночасно) — єдиний
 // шлях, яким тепер надходить прогрес завантажень збірок (від sync.Runner).
-// (Колись був ще recordDownloadProgress для мертвої сесійної системи
-// download.Engine — видалено разом з нею.)
-// (syncengine.Manager): той самий dlTransient-канал живить sidebar, картку
-// збірки в "Моїх збірках" і сторінку збірки одночасно, тож усі три місця
-// UI завжди показують один консистентний прогрес/стан. Mode/Stage/
-// NoInternet прокидаються прямо в builds.Progress, щоб UI показував
-// "Зупинено", "Скасовано", "Немає інтернету" без окремих подій-тостів.
+// Mode/Stage/ NoInternet прокидаються прямо в builds.Progress, щоб UI
+// показував "Зупинено", "Скасовано", "Немає інтернету" без окремих
+// подій-тостів.
 func (a *App) recordSyncProgress(sp syncengine.RunnerProgress) {
 	p := &builds.Progress{
 		Percent:     sp.OverallPercent,
@@ -3828,9 +3746,6 @@ func (a *App) GetStorageUsage() model.StorageInfo {
 // лише ВСТАНОВЛЕНІ збірки (not-installed не мають теки установки, або
 // вона порожня) — список береться з GetBuilds, тож кастомні теж входять.
 func (a *App) GetStoragePacks() []model.StoragePackEntry {
-	// Спершу збираємо ВСТАНОВЛЕНІ збірки (для коректного done/total у
-	// прогресі — раніше total рахував і невстановлені, і бар «доїжджав»
-	// до 100% раніше, ніж вимірювались усі теки).
 	type inst struct {
 		id      string
 		name    string
@@ -4021,10 +3936,8 @@ func (a *App) AnalyzeUnusedJava() UnusedJavaInfo {
 	// (minecraft.EffectiveJavaMajor проходить увесь ланцюг InheritsFrom):
 	// так аналіз бачить, що Forge 1.17.1 запускається саме на Java 16 (її
 	// декларує vanilla-батько), а не «вгадує» 17 за номером версії MC.
-	// Раніше тут був лише RecommendedMajor — тож Java 16 для 1.17.x
-	// позначалася «невикористаною» і пропонувалась до видалення, хоча
-	// збірка без неї не запускалась. Якщо version.json профілю немає на
-	// диску або він не вказує javaVersion — падаємо на стару евристику.
+	// Якщо version.json профілю немає на диску або він не вказує
+	// javaVersion — падаємо на стару евристику.
 	mcBase := filepath.Join(a.cfg.Dir(), "minecraft")
 	needed := map[int]bool{}
 	for _, v := range a.GetBuilds() {
@@ -4457,12 +4370,7 @@ func (a *App) ListPinnedServers() []model.PinnedServerView {
 
 	// packIDs у стабільному (відсортованому) порядку: AllInstanceConfigs()
 	// повертає map, а порядок ітерації по map у Go НЕ гарантований і
-	// змінюється від виклику до виклику. Раніше цикл нижче йшов прямо
-	// `for packID, icfg := range a.cfg.AllInstanceConfigs()`, тому список
-	// закріплених серверів на «Моїх збірках» щоразу перебудовувався у
-	// випадковому порядку — саме тому закріплений сервер "не піднімався
-	// вгору стабільно": він міг опинитись першим, а міг і не першим,
-	// незалежно від того, коли його закріпили.
+	// змінюється від виклику до виклику.
 	allCfgs := a.cfg.AllInstanceConfigs()
 	packIDs := make([]string, 0, len(allCfgs))
 	for packID := range allCfgs {
@@ -4949,27 +4857,12 @@ func (a *App) LoginPirate(username string) error {
 	return nil
 }
 
-// RemoveAccount видаляє акаунт. Скидаємо кеш списку збірок і тут: приватна
-// збірка, доступна саме через ЦЕЙ акаунт, має зникнути зі списку одразу
-// (а не чекати packsIndexTTL і показувати те, до чого вже немає доступу).
+// RemoveAccount видаляє акаунт. Кеш списку збірок скидається тут же: приватна
+// збірка, доступна лише через цей акаунт, має зникнути зі списку одразу
+// (а не чекати packsIndexTTL).
 //
-// БАГ (виправлено): раніше видалення офлайн-акаунта зі списку в лаунчері
-// автоматично звільняло нік і на сервері скінів (releaseSkinNicknameIfMatches
-// → DELETE /api/nickname → users.nickname = NULL), навіть коли причина
-// видалення — просто «прибрати запис зі списку локально» (наприклад, щоб
-// потім увійти під ним же наново). Це змішувало дві незалежні дії:
-//  1. видалити ЛОКАЛЬНИЙ запис офлайн-акаунта в лаунчері (нешкідливо —
-//     лаунчер просто «забуває» про нього, все на сервері лишається як є);
-//  2. звільнити нік на сервері скінів (Google-акаунт втрачає прив'язку,
-//     наступний вхід через ту саму пошту знову запитує вигадати нік) —
-//     це має бути окрема, явна дія користувача («Вийти зі скін-акаунта»
-//     в SkinAccountPanel вже саме так і працює — LogoutSkinAccount НЕ
-//     чіпає нік на сервері, лише видаляє локальний JWT).
-//
-// Тому видалення акаунта зі списку більше НЕ звільняє нік на сервері —
-// ця дія лишається виключно за явним запитом користувача (майбутня кнопка
-// «Звільнити нік» у самому SkinAccountPanel, якщо вона знадобиться), а не
-// за побічним ефектом видалення локального запису.
+// Видалення акаунта зі списку НЕ звільняє нік на сервері скінів: це окрема явна
+// дія користувача (LogoutSkinAccount теж лише видаляє локальний JWT).
 func (a *App) RemoveAccount(accountID string) error {
 	acc, _ := a.cfg.GetAccountByID(accountID)
 	if err := a.cfg.RemoveAccount(accountID); err != nil {
@@ -5710,13 +5603,6 @@ func (a *App) ApplyWardrobePreset(accountID, presetID string) error {
 	// Скін змінився (на Mojang для ліцензійного акаунта, або на сервері
 	// скінів Shaurma для офлайн-акаунта) — знаходимо UUID І нік акаунта,
 	// чия аватарка кешується, і скидаємо ОБИДВА можливих записи кеша.
-	//
-	// БАГ (виправлено): раніше тут завжди передавався порожній username,
-	// тому для офлайн/Shaurma-акаунтів чистився лише кеш під ключем uuid —
-	// а headFromShaurmaSkin (internal/avatar) кешує такі голови під ключем
-	// "shaurma_"+нік, який після ApplyWardrobePreset так і лишався
-	// незмінним аж до TTL (1 година). Саме тому гравець і всі інші бачили
-	// старий скін навіть після успішного оновлення на сервері.
 	uuid, username := "", ""
 	for _, acc := range a.cfg.GetAccounts() {
 		if acc.ID == accountID {

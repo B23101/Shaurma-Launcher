@@ -275,19 +275,18 @@ func Import(opts ImportOptions) (*ImportResult, error) {
 	}
 
 	// 3a. Завантаження стартують ОДРАЗУ і йдуть паралельно з розпаковуванням
-	// overrides/bundled (раніше качання починалось лише після того, як
-	// розпаковано все з архіву). Шляхи не перетинаються: файли з toDownload
-	// у skipExtract і з архіву не розпаковуються; зайві запити лише на
-	// фолбек у download-воркері, а zip.Reader безпечний для паралельного читання.
-	// Великі файли качаємо першими, щоб найдовший не стартував останнім і не
-	// розтягував «хвіст» імпорту.
+	// overrides/bundled. Шляхи не перетинаються: файли з toDownload у skipExtract
+	// і з архіву не розпаковуються; зайві запити лише на фолбек у
+	// download-воркері, а zip.Reader безпечний для паралельного читання. Великі
+	// файли качаємо першими, щоб найдовший не стартував останнім і не розтягував
+	// «хвіст» імпорту.
 	sort.SliceStable(toDownload, func(i, j int) bool { return toDownload[i].Size > toDownload[j].Size })
 	var resMu sync.Mutex
 	var downloadErr error
 	dctx, dcancel := context.WithCancel(ctx)
 	dlDone := make(chan struct{})
 	// Помилка розпакування чи скасування: зупиняємо нові завантаження й
-	// дочікуємось воркерів ДО закриття архіву (r.Close відкладено раніше).
+	// дочікуємось воркерів ДО закриття архіву.
 	defer func() { dcancel(); <-dlDone }()
 	if len(toDownload) == 0 {
 		close(dlDone)

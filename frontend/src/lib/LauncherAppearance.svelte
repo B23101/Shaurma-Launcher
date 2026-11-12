@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── LauncherAppearance — єдиний редактор вигляду лаунчера ───────────────
   // Три рядки: Тема · Акцент · Власні кольори (Gradient/Flat + 2 hex).
   //
@@ -136,12 +138,12 @@
       <div class="la-swatches" role="radiogroup" aria-label={t('settings.appearance.accent')}>
         {#each SWATCHES as k}
           <button class="la-sw" class:sel={accent === k} role="radio" aria-checked={accent === k}
-                  style="background:{swatchBg(k)}" title={t('accent.' + k)} aria-label={t('accent.' + k)}
+                  style="background:{swatchBg(k)}" use:launcherTip={t('accent.' + k)} aria-label={t('accent.' + k)}
                   onclick={() => onchange('accent', k)}></button>
         {/each}
         <button class="la-sw la-sw-custom" class:sel={accent === 'custom'} role="radio" aria-checked={accent === 'custom'}
                 style="background:{accent === 'custom' ? accentGrad : 'var(--bg-input)'}"
-                title={t('accent.custom')} aria-label={t('accent.custom')} onclick={pickCustom}>
+                use:launcherTip={t('accent.custom')} aria-label={t('accent.custom')} onclick={pickCustom}>
           <i class="ti ti-color-picker"></i>
         </button>
       </div>
@@ -165,7 +167,7 @@
           </div>
 
           <div class="la-color">
-            <label class="lc-chip" style="background:{c1}" title={t('settings.appearance.pickColor')}>
+            <label class="lc-chip" style="background:{c1}" use:launcherTip={t('settings.appearance.pickColor')}>
               <input type="color" value={c1} oninput={(e) => onchange('accentCustom', (e.currentTarget as HTMLInputElement).value)} />
             </label>
             <input class="lc-hex" type="text" value={c1} maxlength="7" spellcheck="false"
@@ -175,7 +177,7 @@
 
           {#if mode === 'gradient'}
             <div class="la-color">
-              <label class="lc-chip" style="background:{c2}" title={t('settings.appearance.pickColor')}>
+              <label class="lc-chip" style="background:{c2}" use:launcherTip={t('settings.appearance.pickColor')}>
                 <input type="color" value={c2} oninput={(e) => onchange('accentCustom2', (e.currentTarget as HTMLInputElement).value)} />
               </label>
               <input class="lc-hex" type="text" value={c2} maxlength="7" spellcheck="false"

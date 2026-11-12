@@ -65,11 +65,6 @@ func lowMemoryModeEnabled() bool {
 }
 
 // launcherWebviewGpuPolicy — апаратне прискорення webview-вікна.
-// Дефолт — як було досі (прискорення увімкнене) і додатково поважає
-// вимкнене апаратне прискорення з ui.json: раніше цей прапорець на
-// Windows лише додавав --disable-gpu, а на Linux не діяв взагалі — тепер
-// діє (скоруючись політикою NEVER), бо GTK4 не має окремого шляху
-// «--disable-gpu».
 //
 // На Linux ще два випадки примусового NEVER:
 //   - робочого GPU нема (див. noWorkingGpu) — щоб політика не суперечила
@@ -96,6 +91,23 @@ func launcherWebviewGpuPolicy() application.WebviewGpuPolicy {
 // вимкнув GPU-прискорення — ["--disable-gpu"], інакше nil. Відсутність
 // файлу або прапорця = дефолт (GPU увімкнено).
 func launcherBrowserArgs() []string {
+	return append(launcherMemoryBrowserArgs(), launcherGPUBrowserArgs()...)
+}
+
+// launcherMemoryBrowserArgs — прапорці, що зменшують пам'ять WebView2 БЕЗ
+// впливу на плавність (GPU лишається). Діють завжди.
+//   - SpareRendererForSitePerProcess вимкнено: Chromium тримає наперед
+//     запущений «запасний» рендерер (десятки МБ), який лаунчеру не потрібен.
+//   - semi-space V8 4 МБ (дефолт 16): менша «молода» купа JS, мінімально
+//     частіші дрібні збірки сміття.
+func launcherMemoryBrowserArgs() []string {
+	return []string{
+		"--disable-features=SpareRendererForSitePerProcess",
+		`--js-flags=--max-semi-space-size=4`,
+	}
+}
+
+func launcherGPUBrowserArgs() []string {
 	// Безпечний режим після повторюваних збоїв (supervisor.go:
 	// SHAURMA_SAFE_MODE=1): GPU-композитинг WebView2 — найбільша нативна
 	// підсистема в нашому процесі, і саме вона бере участь у пошкодженні

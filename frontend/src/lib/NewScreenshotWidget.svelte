@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Плаваючий віджет «новий скріншот» ─────────────────────────────────
   // Живе поверх усього лаунчера (той самий шар, що Toasts.svelte —
   // фіксоване позиціонування знизу справа), самостійно підписується на
@@ -79,7 +81,7 @@
   <div class="scr-widget-stack">
     {#each cards as c (c.id)}
       <div class="scr-widget">
-        <button class="scr-widget-close" onclick={() => dismiss(c.id)} title={t('widget.dismiss')}><i class="ti ti-x"></i></button>
+        <button class="scr-widget-close" onclick={() => dismiss(c.id)} use:launcherTip={t('widget.dismiss')}><i class="ti ti-x"></i></button>
         <div class="scr-widget-thumb" onclick={() => openEdit(c)}>
           {#if c.thumb}
             <img src={c.thumb} alt={c.entry.fileName} />
@@ -89,7 +91,7 @@
         </div>
         <div class="scr-widget-info">
           <div class="scr-widget-title"><i class="ti ti-camera"></i> {t('widget.newScreenshot')}</div>
-          <div class="scr-widget-pack" title={c.packName}>{c.packName}</div>
+          <div class="scr-widget-pack" use:launcherTip={c.packName}>{c.packName}</div>
           <div class="scr-widget-time">{fmtTime(c.entry.modified)}</div>
           <div class="scr-widget-actions">
             <button class="scr-widget-btn" onclick={() => openEdit(c)}><i class="ti ti-edit"></i> {t('widget.edit')}</button>

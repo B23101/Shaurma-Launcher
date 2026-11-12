@@ -266,8 +266,7 @@ func (a *App) collectUsedVersions(versionsDir string, installed []StorageVersion
 		//    InheritsFrom сходиться до MC-версії збірки. Це покриває ВСІ
 		//    формати профілів: 1.20.1-forge-47.4.10, fabric-loader-0.19.3-1.20.1,
 		//    neoforge-26.2.0.48-beta, neoforge-21.11.45 (де MC-версія ВЗАГАЛІ
-		//    не читається з імені). Раніше профілі NeoForge рахувались
-		//    «невикористаними», бо ім'я не містило MC як чистий префікс/суфікс.
+		//    не читається з імені).
 		for id := range byID {
 			if used[id] {
 				continue
@@ -373,10 +372,7 @@ func (a *App) AnalyzeStorageVersions() StorageVersionsInfo {
 	// null, а фронтенд у вкладці «Пам'ять і кеш» робить
 	// storageVersions.installed.length / storageVersions.unused.length
 	// прямо в шаблоні — null там кидав би TypeError "Cannot read properties
-	// of null (reading 'length')" при відкритті розділу. Це і був краш
-	// налаштувань, що з'явився після перенесення даних у БД (раніше
-	// код повертав не-nil, але після рефакторингу гілки з помилкою
-	// лишали слайси nil).
+	// of null (reading 'length')" при відкритті розділу.
 	info.Installed = []StorageVersionEntry{}
 	info.Unused = []string{}
 

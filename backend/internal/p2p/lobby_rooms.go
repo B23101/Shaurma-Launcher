@@ -57,9 +57,8 @@ func (c *LobbyClient) LeaseKick(ctx context.Context, address, ownerSecret string
 
 // RoomAccessSet змінює режим доступу кімнати, НЕ вимагаючи активної сесії хостингу (власник за
 // ownerSecret-ом). Навіщо: гравці готують доступ заздалегідь — «зайдуть лише друзі» має
-// зберігатися до старту сервера, а не лише поки кімната хоститься (раніше режим мінявся виключно
-// через host-update, тому в UI перемикач був заблокований без запущеного сервера).
-// Порожній access у відповіді = вузол старий і не знає цього ендпоінту (404 Not Found).
+// зберігатися до старту сервера, а не лише поки кімната хоститься. Порожній access у відповіді =
+// вузол старий і не знає цього ендпоінту (404 Not Found).
 func (c *LobbyClient) RoomAccessSet(ctx context.Context, subdomain, ownerSecret, access string) error {
 	req := map[string]string{"subdomain": subdomain, "ownerSecret": ownerSecret, "access": access}
 	err := c.doJSON(ctx, http.MethodPost, "/p2p/room/access", req, nil)
@@ -89,7 +88,7 @@ func (c *LobbyClient) RoomAccessGet(ctx context.Context, subdomain, ownerSecret 
 // ── admit ─────────────────────────────────────────────────────────────────
 
 // AdmitResult — відповідь POST /p2p/admit. ExpiresAt — коли спливає сам квиток (unix мс): після цього
-// admit із ним завжди false, тож повторні перевірки підключених гостей мають зупинятись раніше.
+// admit із ним завжди false.
 type AdmitResult struct {
 	OK        bool   `json:"ok"`
 	AccountID string `json:"accountId"`

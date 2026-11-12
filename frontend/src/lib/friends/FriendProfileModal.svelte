@@ -12,7 +12,7 @@
   import { lastSeenText } from './lastSeen'
   import { tip } from './tooltip'
   import { buildFriendLink } from './friendLink'
-  import { safeBio, safeColor, hueOf, shortId } from './profileStyle'
+  import { safeBio, safeColor, hueOf, shortId, profileAccent } from './profileStyle'
   import type { SocialFriend } from '../types'
 
   let {
@@ -88,7 +88,7 @@
   title={f ? clean(f.nickname) : t('social.profile.title')}
   subtitle={statusText}
   icon="ti-user-circle"
-  color={color || `hsl(${hue} 72% 52%)`}
+  color={profileAccent(f?.color, f?.accountId ?? '')}
   width="760px"
   bodyClass="fpm-ui"
   onclose={onclose}

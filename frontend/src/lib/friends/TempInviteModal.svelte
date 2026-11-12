@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   import { recentInvitesStore } from './recentInvites'
   import { onMount, untrack } from 'svelte'
   import { App } from '../wails'
@@ -14,10 +16,6 @@
 
   // Модальне вікно «Запросити у мій світ»: LAN-світ або локальний сервер → тимчасовий P2P-доступ
   // лише для обраних друзів. Доступ живе, поки відкритий світ.
-  //
-  // Шапка, хрестик, анімація появи/зникнення і футер — СПІЛЬНІ з рештою лаунчера
-  // (UiModal): раніше це вікно малювало власну шапку з власним хрестиком, який
-  // відрізнявся розміром і позицією від усіх інших модалок.
   //
   // ЧОТИРИ ДЖЕРЕЛА, у порядку зверху вниз (спершу те, що вже відкрито):
   //   1. уже відкриті тимчасові доступи (ListTempInvites) — найтиповіший
@@ -457,7 +455,7 @@
               {@const on = !full && chosenGroups.has(g.id)}
               <button class="inv-fr" class:on class:invited={full} disabled={full}
                       data-testid="temp-invite-group-{g.id}"
-                      title={full ? 'Запрошення вже надіслано в цю групу' : g.title}
+                      use:launcherTip={full ? 'Запрошення вже надіслано в цю групу' : g.title}
                       onclick={() => toggleGroup(g.id)}>
                 <GroupAvatar title={g.title} icon={g.settings.icon} color={g.settings.color} size={32} />
                 <span class="inv-fr-txt">
@@ -474,7 +472,7 @@
             {@const on = !inv && chosen.has(f.accountId)}
             <button class="inv-fr" class:on class:invited={inv} class:off={rank(f) === 3} disabled={inv}
                     data-testid="temp-invite-friend-{f.accountId}"
-                    title={inv ? 'Уже має доступ' : f.nickname}
+                    use:launcherTip={inv ? 'Уже має доступ' : f.nickname}
                     onclick={() => toggle(f.accountId)}>
               <FriendAvatar nickname={f.nickname} color={f.color} status={f.presence?.status} size={32} />
               <span class="inv-fr-txt">

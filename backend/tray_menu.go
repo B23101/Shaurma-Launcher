@@ -14,7 +14,7 @@ import (
 
 // ── Трей + "закрити насправді чи сховати" (БІЗНЕС-ЛОГІКА) ────────────────
 //
-// РОЗБИТТЯ tray.go (нова архітектура):
+// Розподіл ролей:
 //   - Бізнес-логіка (яка іконка, який текст пунктів меню, що робить кожен
 //     пункт, коли ховати головне вікно у трей) — ТУТ, у backend.dll;
 //   - Виконавча частина (реальне application.SystemTray.New(), Menu.Add(),
@@ -75,15 +75,12 @@ func (a *App) ensureTray() {
 // усіх редакцій (shaurma/base) — редакція є суто внутрішнім технічним
 // каналом збірки/оновлень і не повинна бути видимою користувачу ніде: ні в
 // треї, ні в заголовку вікна, ні в диспетчері задач/taskbar/меню "Пуск".
-// Раніше тут поверталось "Shaurma Base" для base-редакції — саме це
-// просочувалось у підпис трею користувачу; це й був баг.
 func launcherDisplayName() string {
 	return "Shaurma Launcher"
 }
 
 // onTrayClick — клік по пункту меню трею (подія "tray:click:<id>" від
-// shell через __dispatch). ІДЕНТИЧНА логіка OnClick-ів з оригінального
-// tray.go:
+// shell через __dispatch):
 //   - "show" — розгорнути головне вікно;
 //   - "quit" — закрити лаунчер повністю (зупинить гру).
 func (a *App) onTrayClick(id string) {
@@ -152,9 +149,8 @@ func (a *App) shutdown() {
 }
 
 // onMainWindowClosing — рішення при закритті ГОЛОВНОГО вікна (подія
-// "window:closing:main" від shell через __dispatch). ІДЕНТИЧНА логіка
-// setupWindowCloseHook з оригінального tray.go, але повертає shell'у
-// рішення action JSON замість того, щоб напряму кликати event.Cancel():
+// "window:closing:main" від shell через __dispatch). Повертає shell'у
+// рішення action JSON, а не скасовує подію сам:
 //   - {"action":"hide"}  — сховати вікно у трей (процес живе далі);
 //   - {"action":"close"} — дозволити закриття (процес завершується).
 func (a *App) onMainWindowClosing() string {

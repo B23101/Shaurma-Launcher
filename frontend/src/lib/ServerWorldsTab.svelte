@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Світи сервера + бекапи ────────────────────────────────────────────
   // Список світів (з server.properties level-name), для кожного — бекапи:
   // створити zip, відновити (бекенд сам робить pre-restore копію), видалити.
@@ -285,7 +287,7 @@
         {#if totalBackupsMB > 0}· {fmtSize(totalBackupsMB)}{/if}
       </p>
     </div>
-    <button class="swt-ibtn" onclick={loadWorlds} title="Оновити список світів" aria-label="Оновити список світів">
+    <button class="swt-ibtn" onclick={loadWorlds} use:launcherTip={"Оновити список світів"} aria-label="Оновити список світів">
       <i class="ti ti-refresh" class:spin={loading}></i>
     </button>
   </header>
@@ -442,19 +444,19 @@
                 <span class="swt-meta">{fmtSize(w.sizeMB)} · змінено {fmtAgo(w.modified)}</span>
               </span>
               {#if backups[w.name] !== undefined}
-                <span class="swt-last" class:none={!latest} title={latest ? `Останній бекап: ${fmtDate(latest.created)}` : 'Бекапів цього світу ще немає'}>
+                <span class="swt-last" class:none={!latest} use:launcherTip={latest ? `Останній бекап: ${fmtDate(latest.created)}` : 'Бекапів цього світу ще немає'}>
                   {#if latest}
                     <i class="ti ti-shield-check"></i> {fmtAgo(latest.created)}
                   {:else}
                     <i class="ti ti-shield-off"></i> без бекапів
                   {/if}
                 </span>
-                {#if list.length > 0}<span class="swt-count" title="Бекапів цього світу">{list.length}</span>{/if}
+                {#if list.length > 0}<span class="swt-count" use:launcherTip={"Бекапів цього світу"}>{list.length}</span>{/if}
               {/if}
               <i class="ti ti-chevron-down swt-chev" class:open={expanded[w.name]}></i>
             </button>
             <button class="btn btn-primary btn-sm swt-create" onclick={() => createBackup(w.name)} disabled={!!busy}
-                    title="Створити бекап цього світу зараз">
+                    use:launcherTip={"Створити бекап цього світу зараз"}>
               {#if busy === w.name}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-device-floppy"></i>{/if}
               <span>Бекап</span>
             </button>
@@ -485,16 +487,16 @@
                         <div class="swt-bk-meta">
                           <span>{fmtSize(b.sizeMB)}</span>
                           {#if b.files}<span>{b.files} {plural(b.files, ['файл', 'файли', 'файлів'])}</span>{/if}
-                          <span class="swt-bk-file" title={b.name}>{b.name}</span>
+                          <span class="swt-bk-file" use:launcherTip={b.name}>{b.name}</span>
                         </div>
                         <div class="swt-bar" aria-hidden="true"><span style="width:{Math.max(4, (b.sizeMB / maxBackupSize(w.name)) * 100)}%"></span></div>
                       </div>
                       <div class="swt-bk-actions">
                         <button class="btn btn-ghost btn-sm" onclick={() => restoreBackup(w.name, b)} disabled={running}
-                                title={running ? 'Зупиніть сервер для відновлення' : 'Відновити світ з цього бекапу'}>
+                                use:launcherTip={running ? 'Зупиніть сервер для відновлення' : 'Відновити світ з цього бекапу'}>
                           <i class="ti ti-history"></i> Відновити
                         </button>
-                        <button class="swt-ibtn danger" onclick={() => deleteBackup(w.name, b)} title="Видалити бекап" aria-label="Видалити бекап">
+                        <button class="swt-ibtn danger" onclick={() => deleteBackup(w.name, b)} use:launcherTip={"Видалити бекап"} aria-label="Видалити бекап">
                           <i class="ti ti-trash"></i>
                         </button>
                       </div>
@@ -511,7 +513,12 @@
 </div>
 
 <style>
-  .swt { display: flex; flex-direction: column; gap: 12px; height: 100%; overflow-y: auto; padding: 2px 4px 8px 2px; }
+  .swt { display: flex; flex-direction: column; gap: 12px; flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 2px 4px 8px 2px; }
+  /* КЛЮЧОВЕ: діти .swt — flex-елементи з overflow:hidden (.swt-auto, .swt-world), а
+     для таких min-height:auto = 0. Коли розкритий світ роздував вміст понад висоту
+     вкладки, flex стискав ці картки (авто-бекап «схлопувався» в тонку лінію).
+     Нічого не стискаємо — надлишок скролиться в самому .swt. */
+  .swt > * { flex-shrink: 0; }
   .swt i.spin { animation: swt-spin 1s linear infinite; }
   @keyframes swt-spin { to { transform: rotate(360deg); } }
 
@@ -623,8 +630,8 @@
   .swt-hint { font: 400 12px/1.4 var(--font-ui); color: var(--text-dim); max-width: 340px; }
 
   /* ── Світи ── */
-  .swt-list { display: flex; flex-direction: column; gap: 10px; }
-  .swt-world { border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card); overflow: hidden; transition: border-color .2s, box-shadow .2s; }
+  .swt-list { display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; }
+  .swt-world { flex-shrink: 0; border: 1px solid var(--border); border-radius: 16px; background: var(--bg-card); overflow: hidden; transition: border-color .2s, box-shadow .2s; }
   .swt-world:hover { border-color: var(--border-hi); }
   .swt-world.open { border-color: color-mix(in srgb, var(--pcol, var(--orange)) 28%, var(--border)); }
   .swt-world.flash { animation: swt-flash 3s ease-out; }
@@ -635,6 +642,8 @@
     color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 12px;
   }
   .swt-main:hover { background: var(--hover); }
+  /* Кільце фокуса всередині картки: .swt-world має overflow:hidden і обрізало зовнішнє. */
+  .swt-main:focus-visible { outline-offset: -3px; }
   .swt-w-ic {
     width: 42px; height: 42px; border-radius: 13px; flex-shrink: 0; display: grid; place-items: center; font-size: 20px;
     color: var(--pcol, var(--orange)); background: color-mix(in srgb, var(--pcol, var(--orange)) 13%, transparent);
@@ -652,8 +661,8 @@
   .swt-expand { border-top: 1px solid var(--border); background: var(--bg-panel); padding: 8px 14px 12px; }
   /* Розгорнутий список не росте безмежно: інакше один світ займає весь екран і
      решту (авто-бекап, інші світи) не видно. Довгий список скролиться всередині. */
-  .swt-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: min(340px, 45vh); overflow-y: auto; }
-  .swt-bk { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 6px 12px 0; }
+  .swt-tl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-height: min(380px, 50vh); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+  .swt-bk { position: relative; display: flex; align-items: center; gap: 14px; padding: 12px 10px 12px 0; }
   .swt-bk + .swt-bk { border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
   .swt-dot {
     width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-left: 4px;

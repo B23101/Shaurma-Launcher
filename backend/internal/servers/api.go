@@ -27,9 +27,8 @@ type API struct {
 	manager  *Manager
 	dataDir  string
 	javaInst *java.Installer
-	// backupProgress — колбек подій прогресу бекапів світів (ставить
-	// app.go → a.emit("server:backup-progress", …)). Раніше створення бекапу
-	// було синхронним чорним ящиком без жодного зворотного зв'язку.
+	// backupProgress — колбек подій прогресу бекапів світів (ставить app.go
+	// → a.emit("server:backup-progress", …)).
 	backupMu       sync.RWMutex
 	backupProgress func(serverID string, p BackupProgress)
 	// backupLocks — по одному м'ютексу на сервер. Два бекапи ОДНОГО сервера
@@ -256,11 +255,8 @@ func (a *API) CreateServer(req NewServerRequest) (ServerView, error) {
 	// туди його пише лаунчер при першому запуску, там його редагує гравець і
 	// гра). Окремий порт у лаунчері — лише кеш для списку серверів.
 	//
-	// Зайнятий порт БІЛЬШЕ НЕ ВАЛИТЬ СТВОРЕННЯ: раніше людина, що тримала
-	// запущений сервер на 25565, отримувала «Не вдалося створити сервер:
-	// порт 25565 зайнятий: наш сервер «Forge 26.3»» — хоча новий сервер
-	// навіть не встановлений, а порт займав ЇЇ Ж власний сервер. Тепер беремо
-	// наступний вільний порт, а гравець у будь-який момент міняє його в
+	// Зайнятий порт БІЛЬШЕ НЕ ВАЛИТЬ СТВОРЕННЯ. Тепер беремо наступний
+	// вільний порт, а гравець у будь-який момент міняє його в
 	// server.properties (вкладка «Властивості» → server-port).
 	port := req.Port
 	if port == 0 {
@@ -735,15 +731,9 @@ func (a *API) StartServer(id string) error {
 			port, portCheck.Holder, portCheck.Holder)
 	}
 
-	// Перевірка RAM.
-	allRunning := a.getUsedRAM()
-	ramCheck := CheckRAM(srv.RAMMB, allRunning)
-	// Блокуємо лише коли сервер фізично не вміщується у вільну пам'ять.
-	// «Впритул» (з запасом менше ramSafetyMarginMB) — це попередження
-	// передстарту (preflight.go), а не відмова.
-	if srv.RAMMB > ramCheck.Available {
-		return fmt.Errorf("недостатньо вільної пам'яті: серверу потрібно %d МБ, зараз вільно %d МБ. Закрийте інші програми або зменште RAM сервера", srv.RAMMB, ramCheck.Available)
-	}
+	// RAM тут НЕ блокує старт: нестача вільної пам'яті — це лише
+	// попередження передстарту (preflight.go, модалка з кнопкою «Запустити»),
+	// так само як RAM-попередження збірок. Рішення приймає людина.
 
 	// Знаходимо/встановлюємо Java → ліниво ставимо ядро → запускаємо.
 	// (Спільний шлях з NetworkStart — кожен сервер мережі стартує через
@@ -974,8 +964,7 @@ func (a *API) SaveServerProperties(id string, updates []PropUpdate) error {
 	}
 
 	// Спершу пишемо файл: WriteServerProperties валідує значення (діапазони
-	// портів тощо) і може відхилити виклик. Раніше Server.Port у сторі
-	// оновлювався ДО цього, тож відхилене збереження все одно міняло порт.
+	// портів тощо) і може відхилити виклик.
 	if err := WriteServerPropertiesForVersion(srv.Dir, srv.MCVersion, updates); err != nil {
 		return err
 	}
@@ -1252,9 +1241,7 @@ func (a *API) RestoreWorldBackup(serverID, worldName, backupID string) error {
 	return RestoreBackup(srv.Dir, worldName, "", backupID)
 }
 
-// DeleteWorldBackup видаляє бекап. ВАЖЛИВО: тека береться з ТЕКИ СЕРВЕРА
-// (<serverDir>/.shaurma/backups), а не з глобальної теки даних лаунчера —
-// раніше тут був саме останній варіант, і «видалений» бекап лишався на диску.
+// DeleteWorldBackup видаляє бекап.
 func (a *API) DeleteWorldBackup(serverID, worldName, backupID string) error {
 	srv, err := a.store.Get(serverID)
 	if err != nil {

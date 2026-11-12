@@ -97,6 +97,11 @@ func TestMemTrimHelperChild(t *testing.T) {
 // msedgewebview2.exe) тримає 32 МБ; після тримування його робочий набір
 // мусить упасти, а процес — лишитись живим.
 func TestTrimProcessWorkingSetsTrimsChildProcess(t *testing.T) {
+	// Тестова дитина — не msedgewebview2.exe, тож для цього тесту дозволяємо всіх.
+	prevAllowed := trimChildAllowed
+	trimChildAllowed = func(string) bool { return true }
+	defer func() { trimChildAllowed = prevAllowed }()
+
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatalf("os.Executable: %v", err)
@@ -172,4 +177,15 @@ func TestTrimProcessWorkingSetsReleasesWorkingSet(t *testing.T) {
 	}
 	t.Logf("робочий набір: %.1f МБ → %.1f МБ (процесів оброблено: %d)",
 		float64(before)/(1<<20), float64(after)/(1<<20), trimmed)
+}
+
+func TestTrimChildAllowedOnlyWebView2(t *testing.T) {
+	for _, exe := range []string{"javaw.exe", "java.exe", "cmd.exe", "ShaurmLauncher.exe"} {
+		if trimChildAllowed(exe) {
+			t.Fatalf("%s не має отримувати EmptyWorkingSet", exe)
+		}
+	}
+	if !trimChildAllowed("msedgewebview2.exe") || !trimChildAllowed("MSEdgeWebView2.EXE") {
+		t.Fatal("WebView2 має оброблятись")
+	}
 }

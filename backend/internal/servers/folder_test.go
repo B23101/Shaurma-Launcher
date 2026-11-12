@@ -8,8 +8,7 @@ import (
 )
 
 // SanitizeServerFolder має ЗБЕРІГАТИ кирилицю та пробіли — це головна
-// причина, чому це не slugify: раніше «Мій Сервер» ставало «server», і всі
-// кириличні назви злипались в одну теку.
+// причина, чому це не slugify.
 func TestSanitizeServerFolderKeepsCyrillicAndSpaces(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"Мій Сервер", "Мій Сервер"},

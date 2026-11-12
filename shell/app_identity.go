@@ -53,10 +53,7 @@ const (
 	// для ВСІХ редакцій. Редакція (shaurma/base) — суто внутрішній канал
 	// збірки/оновлень і НЕ повинна бути видимою користувачу ніде: ні в
 	// заголовку вікна, ні в треї, ні в диспетчері задач/taskbar/меню
-	// "Пуск" Windows чи в аналогах на Linux. Раніше тут існувала окрема
-	// launcherDisplayNameBase = "Shaurma Base", яка просочувалась саме
-	// туди (через Options.Description і через трей —
-	// backend/tray_menu.go) — це й було багом.
+	// "Пуск" Windows чи в аналогах на Linux.
 	launcherDisplayNameShaurma = "Shaurma Launcher"
 
 	// linuxAppIDTokenShaurma / linuxAppIDTokenBase — НЕ людяні назви, а

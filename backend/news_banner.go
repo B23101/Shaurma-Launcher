@@ -174,8 +174,7 @@ func fetchLatestRelease() (string, error) {
 
 // findNewsForVersion шукає в news.json новину, у title якої згадується
 // номер версії І є картинка (перший збіг перемагає — feed відсортований від
-// найновіших). Записи без картинки пропускаємо: раніше перший збіг без
-// playPageImage ламав пошук, хоча далі міг бути придатний запис.
+// найновіших). Записи без картинки пропускаємо.
 func findNewsForVersion(feed *newsFeed, version string) *newsEntry {
 	if feed == nil || version == "" {
 		return nil

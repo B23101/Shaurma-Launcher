@@ -107,8 +107,7 @@ type HostSession struct {
 
 // StartHost піднімає tsnet-ноду, слухає на її Tailscale-адресі, проксіює
 // все на 127.0.0.1:minecraftPort і публікує щойно отриману IP під
-// cfg.Subdomain через /p2p/host-update. Адреса має бути ВЖЕ застовблена
-// раніше (через API.ClaimP2PAddress) — StartHost сам адресу не створює.
+// cfg.Subdomain через /p2p/host-update.
 func StartHost(ctx context.Context, cfg HostConfig) (*HostSession, error) {
 	hid := newTraceID("h")
 	total := startWatch()
@@ -500,10 +499,8 @@ func (s *HostSession) UDPStatsSnapshot() UDPStats {
 	return st
 }
 
-// SetUDP вмикає/вимикає/перемикає UDP-тунель голосу НА ЖИВІЙ сесії — без перезапуску
-// tsnet-ноди (раніше потрібно було зупиняти й знову запускати тунель). port == ""
-// вимикає. Новий порт одразу публікується в lobby; якщо публікація не вдалась —
-// змінений стан відкочується, щоб UI не бачив «UDP працює», коли гості про нього не знають.
+// Новий порт одразу публікується в lobby; якщо публікація не вдалась — змінений стан
+// відкочується, щоб UI не бачив «UDP працює», коли гості про нього не знають.
 func (s *HostSession) SetUDP(port string) error {
 	select {
 	case <-s.closed:

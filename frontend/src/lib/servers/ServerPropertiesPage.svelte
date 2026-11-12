@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // ── Сторінка «Властивості сервера» (server.properties) ─────────────────
   //
   // ОКРЕМИЙ РОЗДІЛ, а не картка в кінці «Налаштувань» (так просив
@@ -91,8 +93,7 @@
   })
 
   // ── Групування ────────────────────────────────────────────────────────
-  // Дубль ключа (файл з двома однаковими рядками) раніше ламав keyed-each.
-  // Бекенд уже зливає дублі, але тут лишаємо страховку.
+  // Дубль ключа. Бекенд уже зливає дублі, але тут лишаємо страховку.
   const entries = $derived.by(() => {
     const seen = new Map<string, PropEntry>()
     for (const e of propsDoc?.entries ?? []) {
@@ -413,7 +414,7 @@
     <div class="st-row-text">
       <div class="st-row-name spp-name">
         <span>{propName(entry)}</span>
-        {#if entry.newWorldOnly}<span class="st-tag" title={t('servers.props.newWorldOnlyHint')}><i class="ti ti-world-plus"></i> {t('servers.props.newWorldOnly')}</span>{/if}
+        {#if entry.newWorldOnly}<span class="st-tag" use:launcherTip={t('servers.props.newWorldOnlyHint')}><i class="ti ti-world-plus"></i> {t('servers.props.newWorldOnly')}</span>{/if}
         {#if !entry.known}<span class="st-tag">{t('servers.props.unknownKey')}</span>{/if}
       </div>
       {#if hint}<div class="st-row-hint">{hint}</div>{/if}
@@ -421,7 +422,7 @@
         <code>{entry.key}</code>
         {#if defText && canResetDefault(entry)}
           <span aria-hidden="true">·</span>
-          <button class="spp-def" title={t('servers.props.useDefault')} onclick={() => setValue(entry, entry.default ?? '')}>{defText}</button>
+          <button class="spp-def" use:launcherTip={t('servers.props.useDefault')} onclick={() => setValue(entry, entry.default ?? '')}>{defText}</button>
         {/if}
       </div>
       {#if err}<div class="spp-err"><i class="ti ti-alert-circle"></i> {err}</div>{/if}
@@ -457,7 +458,7 @@
                  oninput={(ev) => setValue(entry, (ev.currentTarget as HTMLInputElement).value)} />
         {/if}
         <input class="st-input num mono" class:bad={err !== ''} type="text" inputmode="numeric" value={entry.value}
-               title={range} aria-label={propName(entry)} aria-invalid={err !== ''}
+               use:launcherTip={range} aria-label={propName(entry)} aria-invalid={err !== ''}
                onkeydown={(ev) => { if (ev.key === 'ArrowUp' || ev.key === 'ArrowDown') { ev.preventDefault(); stepInt(entry, ev.key === 'ArrowUp' ? 1 : -1) } }}
                oninput={(ev) => setValue(entry, (ev.currentTarget as HTMLInputElement).value.trim())} />
         {#if entry.unit}<span class="st-unit">{entry.unit}</span>{/if}
@@ -470,7 +471,7 @@
                oninput={(ev) => setValue(entry, (ev.currentTarget as HTMLInputElement).value)} />
         {#if entry.secret}
           <button class="st-iconbtn" onclick={() => revealed[entry.key] = !revealed[entry.key]}
-                  title={revealed[entry.key] ? t('servers.props.hide') : t('servers.props.show')}
+                  use:launcherTip={revealed[entry.key] ? t('servers.props.hide') : t('servers.props.show')}
                   aria-label={revealed[entry.key] ? t('servers.props.hide') : t('servers.props.show')}>
             <i class="ti {revealed[entry.key] ? 'ti-eye-off' : 'ti-eye'}"></i>
           </button>
@@ -481,7 +482,7 @@
       {/if}
 
       {#if isDirty(entry)}
-        <button class="st-iconbtn" title={t('servers.props.revertOne')} aria-label={t('servers.props.revertOne')} onclick={() => revertOne(entry)}>
+        <button class="st-iconbtn" use:launcherTip={t('servers.props.revertOne')} aria-label={t('servers.props.revertOne')} onclick={() => revertOne(entry)}>
           <i class="ti ti-arrow-back-up"></i>
         </button>
       {/if}
@@ -528,12 +529,12 @@
           <div class="st-nav-title">{t('servers.props.sections')}</div>
           <button class="st-nav-item" class:active={!searching && tab === OVERVIEW} onclick={() => { search = ''; activeTab = OVERVIEW }}>
             <i class="ti ti-layout-dashboard"></i><span>{t('servers.props.overview')}</span>
-            {#if insights.some(i => i.level !== 'info')}<em class="spp-mark warn" title={t('servers.props.insights')}></em>{/if}
+            {#if insights.some(i => i.level !== 'info')}<em class="spp-mark warn" use:launcherTip={t('servers.props.insights')}></em>{/if}
           </button>
           {#each groups as g (g.id)}
             <button class="st-nav-item" class:active={!searching && tab === g.id} onclick={() => { search = ''; activeTab = g.id }}>
               <i class="ti {PROP_GROUP_ICON[g.id] ?? 'ti-dots'}"></i><span>{t(`props.group.${g.id}`)}</span>
-              {#if dirtyByGroup[g.id]}<em class="spp-mark" title={t('servers.props.dirty', { n: dirtyByGroup[g.id] })}></em>{/if}
+              {#if dirtyByGroup[g.id]}<em class="spp-mark" use:launcherTip={t('servers.props.dirty', { n: dirtyByGroup[g.id] })}></em>{/if}
             </button>
           {/each}
         </div>
@@ -616,7 +617,7 @@
                     <p>{group.id === PROP_LEGACY ? t('servers.props.legacyNote', { v: propsDoc.mcVersion || '—' }) : t(`props.groupDesc.${group.id}`)}</p>
                   </div>
                   {#if groupResettable(group.id) > 0}
-                    <button class="btn btn-ghost btn-sm" onclick={() => resetGroupDefaults(group.id)} title={t('servers.props.resetGroupHint')}>
+                    <button class="btn btn-ghost btn-sm" onclick={() => resetGroupDefaults(group.id)} use:launcherTip={t('servers.props.resetGroupHint')}>
                       <i class="ti ti-restore"></i> {t('servers.props.resetGroup')}
                     </button>
                   {/if}

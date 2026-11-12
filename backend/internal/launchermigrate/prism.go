@@ -194,7 +194,7 @@ func knownShortcutDirs() []string {
 // scanPrism сканує Prism Launcher у стандартній теці даних. Повертає
 // Launcher з Found=false, якщо теки даних немає.
 func scanPrism() Launcher {
-	l := Launcher{Kind: LauncherPrism, Name: "Prism Launcher"}
+	l := Launcher{Kind: LauncherPrism, Name: "Prism Launcher", Packs: []Pack{}}
 	dir := prismDataDir()
 	if dir == "" || !dirExists(dir) {
 		l.DataDir = dir

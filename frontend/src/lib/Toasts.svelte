@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import { toasts, dismissToast, toastAnchor } from './toast.svelte'
   import { t as translate } from './i18n.svelte'
   import { App } from './wails'
@@ -37,7 +39,7 @@
           <button
             class="toast-copy"
             class:copied={copiedId === t.id}
-            title={translate('error.copy')}
+            use:launcherTip={translate('error.copy')}
             onclick={(e) => copyToast(e, t.id, t.message)}
           >
             <i class="ti {copiedId === t.id ? 'ti-check' : 'ti-copy'}"></i>

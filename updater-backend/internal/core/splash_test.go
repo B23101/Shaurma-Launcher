@@ -31,3 +31,24 @@ func TestHoldSplash_HoldsMinimum(t *testing.T) {
 		t.Fatalf("holdSplash протримав екран занадто довго: %v", elapsed)
 	}
 }
+
+// TestHold_QuickSkipsPause — запуск з ярлика (Quick): «порожні» сценарії не
+// тримають splash мінімальний час, гра стартує одразу.
+func TestHold_QuickSkipsPause(t *testing.T) {
+	cb := Callbacks{Quick: true}
+	began := time.Now()
+	cb.hold(time.Now())
+	if d := time.Since(began); d > 100*time.Millisecond {
+		t.Fatalf("швидкий режим не має чекати, але hold спав %v", d)
+	}
+}
+
+// TestHold_NormalKeepsPause — звичайний старт (без ярлика) поводиться як раніше.
+func TestHold_NormalKeepsPause(t *testing.T) {
+	cb := Callbacks{}
+	began := time.Now()
+	cb.hold(time.Now())
+	if d := time.Since(began); d < minSplashShow-150*time.Millisecond {
+		t.Fatalf("звичайний режим мав триматись ~%v, але hold спав %v", minSplashShow, d)
+	}
+}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── FolderViewModal — вікно відкритої папки (збірки / сервери) ───────────
   // Оболонка — спільний UiModal (шапка з іконкою папки, Esc, фокус), кнопки
   // дій — .btn.btn-ghost у шапці, решта — глобальні .fm-* зі style.css.
@@ -13,6 +15,7 @@
   import UiModal from './UiModal.svelte'
   import { t } from './i18n.svelte'
   import { safeFolderIcon } from './folderMeta'
+  import EmptyState from './EmptyState.svelte'
 
   export interface FolderAction {
     icon: string
@@ -60,10 +63,7 @@
     <div class="fm-hint fm-hint-top"><i class="ti ti-info-circle"></i> {managedHint}</div>
   {/if}
   {#if count === 0}
-    <div class="fm-empty">
-      <i class="ti ti-folder-off"></i>
-      <div>{emptyText}</div>
-    </div>
+    <EmptyState icon="ti-folder-off" title={emptyText} />
   {:else}
     {@render children?.()}
   {/if}
@@ -71,7 +71,7 @@
 
 {#snippet acts()}
   {#each actions as a (a.label)}
-    <button class="btn btn-ghost fm-btn" class:danger={a.danger} onclick={a.onclick} title={a.label} aria-label={a.label}>
+    <button class="btn btn-ghost fm-btn" class:danger={a.danger} onclick={a.onclick} use:launcherTip={a.label} aria-label={a.label}>
       <i class="ti {a.icon}"></i><span>{a.label}</span>
     </button>
   {/each}

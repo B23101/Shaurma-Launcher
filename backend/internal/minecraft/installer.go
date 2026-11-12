@@ -366,14 +366,7 @@ func (inst *Installer) ensureVersionInner(versionID string) (*VersionJSON, error
 	}
 
 	clientPath := filepath.Join(vDir, versionID+".jar")
-	// needClientDownload: якщо файл відсутній — качаємо однозначно. Якщо
-	// присутній, але задана очікувана sha1 (Mojang завжди її дає) — звіряємо
-	// проти диска: раніше тут була лише перевірка "файл існує", і битий
-	// (не докачаний/пошкоджений) client jar з попереднього невдалого
-	// запуску назавжди лишався на диску, ніколи не перекачувався і ламав
-	// усі наступні кроки, що від нього залежать (forge/neoforge processors
-	// падали з checksum mismatch на самому першому патчі, бо clean jar не
-	// той, якого очікує binpatch).
+	// needClientDownload: якщо файл відсутній — качаємо однозначно.
 	needClientDownload := false
 	if _, err := os.Stat(clientPath); os.IsNotExist(err) {
 		needClientDownload = true
@@ -684,8 +677,7 @@ func (inst *Installer) ensureLibraries(vjson *VersionJSON) error {
 	// natives-прохід окремо (а не в тому ж циклі, як було): по-перше, він
 	// має охопити й natives-only бібліотеки (jinput-platform), яких нема в
 	// tasks, а по-друге — не втрачати natives для бібліотек, чий артефакт
-	// уже був на диску (раніше вони йшли далі через continue і natives не
-	// докачувались). Скачуємо лише відсутні.
+	// уже був на диску. Скачуємо лише відсутні.
 	for i := range vjson.Libraries {
 		lib := &vjson.Libraries[i]
 		if !inst.shouldInclude(*lib) || lib.Downloads.Classifiers == nil {
@@ -964,18 +956,12 @@ func (inst *Installer) getNativesKey() string {
 
 // downloadFile качає файл у dest. Якщо onBytes != nil — звітує прогрес
 // по байтах (для реального % при качці великих файлів: клієнтський jar,
-// asset index тощо).
-// downloadFile качає url у dest. Пише спершу у тимчасовий файл поруч
-// (dest + ".part") і лише при повному успіху (і, якщо переданий
-// expectedSha1, при збігу контрольної суми) перейменовує його в dest —
-// os.Rename атомарний у межах однієї файлової системи. Це усуває клас
-// багів "битий файл на диску сприймається як готовий": раніше при
-// обриві мережі/завершенні процесу посеред запису на диску лишався
-// НЕПОВНИЙ файл із фінальним іменем, і подальші перевірки на кшталт
-// os.Stat(dest) бачили "файл існує" й більше ніколи не перекачували
-// його — саме так у клієнта виникав checksum mismatch у forge
-// binarypatcher (net.mojang.blaze3d...binpatch Checksum: X, Exists:
-// true, Reading patch — але фактичний вміст clean-jar не той) і
+// asset index тощо). downloadFile качає url у dest. Пише спершу у
+// тимчасовий файл поруч (dest + ".part") і лише при повному успіху (і,
+// якщо переданий expectedSha1, при збігу контрольної суми) перейменовує
+// його в dest — os.Rename атомарний у межах однієї файлової системи. Це
+// усуває клас багів "битий файл на диску сприймається як готовий". X,
+// Exists: true, Reading patch — але фактичний вміст clean-jar не той) і
 // безкінечна перерозпаковка forge-processors при кожному запуску.
 func (inst *Installer) downloadFile(url, dest string, opts ...interface{}) error {
 	var report func(done, total int64)

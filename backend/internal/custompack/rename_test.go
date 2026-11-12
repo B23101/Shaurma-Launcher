@@ -7,8 +7,7 @@ import (
 )
 
 // TestRenameFileBackendNoPhantom — файловий фолбек: після Rename старий ID
-// не повинен лишатись у списку (весь файл перезаписується атомарно, тож
-// фантома тут не було й раніше — тест лишень фіксує очікувану поведінку).
+// не повинен лишатись у списку (весь файл перезаписується атомарно.
 func TestRenameFileBackendNoPhantom(t *testing.T) {
 	configDir := t.TempDir()
 	instancesDir := filepath.Join(configDir, "installations")

@@ -1,7 +1,5 @@
 // ── Живий статус сервера ──────────────────────────────────────────────
-// Підписка на server:status + server:install-progress. Раніше цей код
-// був продубльований у бібліотеці та в сторінці сервера — тут одна
-// реалізація, яку викликають обидві сторінки.
+// Підписка на server:status + server:install-progress.
 import { App, on } from '../../wails'
 import type { ServerView, ServerInstallProgress } from '../../types'
 

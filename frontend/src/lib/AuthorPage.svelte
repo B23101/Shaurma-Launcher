@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Сторінка автора ──────────────────────────────────────────────────
   // Модель — 1-в-1 з Modrinth app UserPage: профіль автора/організації
   // (аватар, ім'я, роль, біо, дата реєстрації) + усі його проєкти сіткою
@@ -105,7 +107,7 @@
     <div class="ap-topbar">
       <button class="btn btn-ghost btn-sm" onclick={onBack}><i class="ti ti-arrow-left"></i> {t('browser.project.back')}</button>
       {#if author.profileUrl}
-        <a class="ap-external" href={author.profileUrl} target="_blank" rel="noreferrer" title={t('browser.author.openProfile')}>
+        <a class="ap-external" href={author.profileUrl} target="_blank" rel="noreferrer" use:launcherTip={t('browser.author.openProfile')}>
           <i class="ti ti-external-link"></i> {author.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}
         </a>
       {/if}
@@ -155,7 +157,7 @@
               {/if}
               <div class="ap-card-body">
                 <div class="ap-card-name">
-                  <span class="ap-src-dot {p.source === 'curseforge' ? 'cf' : 'mr'}" title={p.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}></span>
+                  <span class="ap-src-dot {p.source === 'curseforge' ? 'cf' : 'mr'}" use:launcherTip={p.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}></span>
                   <span class="ap-card-title">{p.name}</span>
                 </div>
                 <div class="ap-card-tags">

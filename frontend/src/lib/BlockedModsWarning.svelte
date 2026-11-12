@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // BlockedModsWarning — попередження на сторінці збірки про моди, які
   // не вдалося завантажити при імпорті (автор заблокував, Modrinth не
   // знайдено). Показується під банером збірки; клік відкриває модалку
@@ -56,7 +58,7 @@
               <input type="checkbox" checked={m.downloaded} onchange={() => toggleDownloaded(m.fileName, !m.downloaded)} />
               <i class="ti ti-check"></i>
             </label>
-            <span class="bm-file" title={m.fileName}>
+            <span class="bm-file" use:launcherTip={m.fileName}>
               <i class="ti ti-file"></i>
               <span>{m.fileName}</span>
             </span>
@@ -64,7 +66,7 @@
               <span class="bm-badge req">{t('import.blocked.required')}</span>
             {/if}
             {#if m.websiteUrl}
-              <button class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl!)} title={m.websiteUrl}>
+              <button class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl!)} use:launcherTip={m.websiteUrl}>
                 <i class="ti ti-external-link"></i>
               </button>
             {/if}

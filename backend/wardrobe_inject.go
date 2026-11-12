@@ -52,6 +52,19 @@ func (a *App) skinRequest(method, path string, body []byte) (*http.Response, err
 // Launch hook — викликається з LaunchInstance ПЕРЕД стартом JVM
 // ═══════════════════════════════════════════════════════════════════════
 // Спільний hook скінів для обох редакцій.
+// skinsDisabledFor — чи вимкнена скін-система Shaurma для ЦІЄЇ збірки:
+// перевизначення збірки (InstanceConfig.SkinSystemOverride) сильніше за
+// глобальне налаштування «Скіни» (DisableSkins); порожнє = успадкувати глобальне.
+func (a *App) skinsDisabledFor(buildID string) bool {
+	switch a.cfg.GetInstanceConfig(buildID).SkinSystemOverride {
+	case "shaurma":
+		return false
+	case "mojang":
+		return true
+	}
+	return a.cfg.GetSettings().DisableSkins
+}
+
 func (a *App) prepareOfflineAccount(account model.Account, buildID, gameDir string) []string {
 	_ = gameDir // у теку гри нічого не пишемо: скін віддає Yggdrasil-API в рантаймі
 
@@ -63,9 +76,9 @@ func (a *App) prepareOfflineAccount(account model.Account, buildID, gameDir stri
 	// серверах. join/hasJoined локальний проксі надсилає напряму до Mojang.
 	// При збої проксі ліцензійний акаунт запускається без інжектора.
 	licensed := account.IsLicensed || account.Type == "microsoft"
-	if a.cfg.GetSettings().DisableSkins {
+	if a.skinsDisabledFor(buildID) {
 		if buf := a.consoleBufFor(account.ID, buildID); buf != nil {
-			buf.AppendLevel(console.LevelSystem, "Скіни вимкнено в налаштуваннях — запуск без скін-системи")
+			buf.AppendLevel(console.LevelSystem, "Скін-систему Shaurma вимкнено для цієї збірки — запуск зі стандартними скінами Mojang")
 		}
 		return nil
 	}
@@ -181,10 +194,7 @@ func (a *App) activeLookFromSkinServer(accountID string) (look *model.ActiveLook
 
 // GetFriendLook повертає вигляд (скін) довільного гравця Шаурми за ніком —
 // для 3D-моделі у вікні профілю друга. Береться з нашого сервера скінів
-// (там живуть скіни Shaurma/офлайн-акаунтів, яких Mojang не знає — раніше
-// профіль друга шукав скін лише на Mojang, тому для таких друзів
-// 3D-модель не вантажилась). nil, nil — на сервері запису немає: фронтенд
-// тоді пробує Mojang (ліцензійний друг).
+// (там живуть скіни Shaurma/офлайн-акаунтів, яких Mojang не знає.
 func (a *App) GetFriendLook(nickname string) (*model.ActiveLook, error) {
 	nickname = strings.TrimSpace(nickname)
 	if nickname == "" {

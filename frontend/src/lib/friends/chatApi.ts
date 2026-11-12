@@ -56,7 +56,10 @@ export interface GroupChatInfo {
   sysText(body: string): string
   onSettings(): void
   onMembers(): void
+  /** id учасників, що прочитали повідомлення. */
   readers(messageId: number): Promise<string[]>
+  /** Курсори «прочитано до» інших учасників: для галочок «переглянуто». */
+  readCursors(): Promise<{ by: string; upTo: number }[]>
   muted: boolean
   toggleMute(): void
   /** «Отримати збірку» з картки build_offer. */

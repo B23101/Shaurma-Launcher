@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // PackPicker — спільний рендер списку збірок з ПАПКАМИ для всіх меню
   // вибору (фільтр «Збірка» в браузері, «Копіювати в іншу збірку»,
   // вибір цільової збірки тощо). Папки розкриваються/згортаються як у
@@ -149,7 +151,7 @@
   }
 
   function iconFor(r: PackRow) {
-    return r.iconSrc || packAsset(r.iconUrl)
+    return r.iconSrc || packAsset(r.iconUrl, 128)
   }
 </script>
 
@@ -174,7 +176,7 @@
             return { src: ic, paused: false, pcol: r?.color || fpcol, preset: r?.icon || 'ti-puzzle' }
           })}
           <div class="pp-folder" class:open={isOpen} style="--pcol:{fpcol}">
-            <div class="pp-folder-head" onclick={() => toggle(item.id)} title={f.name}>
+            <div class="pp-folder-head" onclick={() => toggle(item.id)} use:launcherTip={f.name}>
               <div class="pp-stack">
                 {#if f.packIds.length === 0}
                   <span class="pp-stack-fallback pp-stack-empty" style="--pcol:{fpcol}"><i class="ti ti-folder"></i></span>

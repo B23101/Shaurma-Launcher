@@ -32,6 +32,8 @@ if [ -n "${GOOGLE_ID:-}" ]; then
   [ -n "${GOOGLE_SECRET:-}" ] && BE_LD="$BE_LD -X main.shaurmaGoogleClientSecret=$GOOGLE_SECRET"
 fi
 [ -n "${CF_KEY:-}" ] && BE_LD="$BE_LD -X shaurma-launcher-backend/internal/custompack.curseForgeAPIKey=$CF_KEY"
+[ -n "${GEMINI_KEY:-}" ] && BE_LD="$BE_LD -X shaurma-launcher-backend/internal/ai.DefaultAPIKey=$GEMINI_KEY"
+[ -n "${GROQ_KEY:-}" ] && BE_LD="$BE_LD -X shaurma-launcher-backend/internal/ai.DefaultGroqAPIKey=$GROQ_KEY"
 (cd backend && go build -tags production,shaurma -buildmode=c-shared -trimpath -buildvcs=false -ldflags "$BE_LD" -o ../out/backend.so .)
 
 echo '== shell'

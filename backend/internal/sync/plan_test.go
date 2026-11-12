@@ -29,8 +29,6 @@ func TestBuildPlanArchiveNotReplannedWhenTracked(t *testing.T) {
 	// ВИПРАВЛЕННЯ №1 (регресійний тест): після розпаковки архів записується
 	// в State.Files (markArchiveComplete), тож повторний BuildPlan НЕ має
 	// планувати архів знову, якщо тека існує і updatedAt не змінився.
-	// Раніше markTaskComplete повертав рано для IsArchive, State.Files не
-	// мав запису, і архів перекачувався при КОЖНОМУ запуску гри.
 	state.Files["configs/my-config.zip"] = FileRecord{
 		Path:      "configs/my-config.zip",
 		SHA:       "aabb",
@@ -171,9 +169,7 @@ func TestBuildPlanOnMissingFoldersSkippedWhenExists(t *testing.T) {
 // МАЄ довстановитись, а не лишити збірку без файлів назавжди.
 //
 // Саме так поводиться код із 2026-08-09 (див. коментар у plan.go): єдина
-// умова пропуску — тека ФІЗИЧНО є на диску зараз. Раніше цей тест
-// закріплював зворотне (InstalledOnMissing назавжди блокував відновлення),
-// і тому падав на здоровому коді.
+// умова пропуску — тека ФІЗИЧНО є на диску зараз.
 func TestBuildPlanOnMissingFoldersRestoredWhenFolderLost(t *testing.T) {
 	manifest := &PackManifest{
 		ID:          "test-pack",
@@ -297,9 +293,7 @@ func TestBuildPlanWhitelistProtectsForeignJars(t *testing.T) {
 
 // TestBuildPlanHashModDestPath — регресія: шейдерпак/ресурспак з прямим
 // CDN-URL (Modrinth хостить і їх так само, як моди — теж є в hashMods,
-// Черга А) має якатись за HashMod.DestPath, а НЕ жорстко в mods/. Раніше
-// DestPath не існував, і будь-який HashMod беззастережно йшов у
-// "mods/"+FileName — шейдерпак опинявся серед звичайних модів.
+// Черга А) має якатись за HashMod.DestPath, а НЕ жорстко в mods/.
 func TestBuildPlanHashModDestPath(t *testing.T) {
 	manifest := &PackManifest{
 		ID:        "test-pack",
@@ -436,10 +430,7 @@ func TestBuildPlanArchiveReplannedWhenUpdated(t *testing.T) {
 }
 
 // TestBuildPlanDoesNotRemoveServersDatAsOrphan — регресія: після оновлення
-// збірки servers.dat зникав. Раніше файл ішов у workerFiles (запис у
-// State.Files з ключем packs/<id>/overrides/servers.dat), потім правило
-// стало on_missing → файл перейшов в onMissingFiles, ключ випав із seenKeys
-// і запис вважався «осиротілим» → servers.dat видалявся з диска гравця.
+// збірки servers.dat зникав.
 func TestBuildPlanDoesNotRemoveServersDatAsOrphan(t *testing.T) {
 	manifest := &PackManifest{
 		ID:        "test-pack",

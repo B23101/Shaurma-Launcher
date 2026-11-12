@@ -155,12 +155,8 @@ func (a *App) CreateCustomPack(p CustomPackFormParams) (custompack.Pack, error) 
 	if err != nil {
 		return custompack.Pack{}, err
 	}
-	// РAM з форми збірки → per-instance конфіг: раніше значення жили лише в
-	// записі збірки (їх використовував запуск через UseCustomRAM), а сторінка
-	// збірки читала InstanceConfig — тому галочка «використовувати свої
-	// налаштування RAM» на сторінці показувалась УВІМКНЕНОЮ за замовчуванням
-	// («глобальні»), а введені значення виглядали скинутими. Тепер сіємо
-	// конфіг одразу при створенні.
+	// РAM з форми збірки → per-instance конфіг. Тепер сіємо конфіг одразу при
+	// створенні.
 	if pack.UseCustomRAM && pack.MaxRAMMB > 0 {
 		cfg := a.cfg.GetInstanceConfig(pack.ID)
 		cfg.MaxRAMOverride = pack.MaxRAMMB
@@ -318,17 +314,10 @@ func (a *App) validateLoaderBeforeCreate(p CustomPackFormParams) error {
 // Зміна назви, кольору, опису, іконки, фону — дозволена під запущеною грою.
 // Зміна MCVersion/Loader/LoaderVersion — заблокована (ламає запущену сесію).
 //
-// Авто-збірки (vanilla release/snapshot, isAutoPackID) — ОКРЕМИЙ випадок:
-// їхню версію гри й лоадер керує ЛИШЕ фонова синхронізація
+// Авто-збірки (vanilla release/snapshot, isAutoPackID) — ОКРЕМИЙ випадок: їхню
+// версію гри й лоадер керує ЛИШЕ фонова синхронізація
 // (checkAutoVersionPacks/ensureAutoVersionSync) на основі autoPackRecord.Target,
-// а не користувач. Раніше форма дозволяла ввести довільні MCVersion/Loader
-// прямо тут — це не ламало запуск одразу, але розсинхронізовувало
-// збережений cp.MCVersion із Target: наступна перевірка або мовчки
-// перезаписувала ручну правку назад (бо порівнює Target з поточним
-// MCVersion), або, якщо Target випадково збігався зі старим значенням,
-// нова версія гри взагалі не підхоплювалась при запуску. Тому для
-// авто-збірок версію/лоадер тут ігноруємо повністю (примусово залишаємо
-// старі значення) — лишається доступне тільки косметичне редагування.
+// а не користувач.
 func (a *App) UpdateCustomPack(id string, p CustomPackFormParams) (custompack.Pack, error) {
 	old, _ := a.customPacks.Get(id)
 	if _, isAuto := a.isAutoPackID(id); isAuto {
@@ -612,8 +601,10 @@ func (a *App) ImportModpackArchive(archivePath string, detected *custompack.Dete
 		err  error
 	}, 1)
 
+	endRun := a.beginCustomImportRun(preID)
 	go func() {
 		defer crashguard.Recover("custompack_api.go:604")
+		defer endRun()
 		pack, err := custompack.ImportArchive(
 			ctx, a.customPacks, a.cfg.InstancesDir(), archivePath, detected,
 			custompack.ImportParams{
@@ -673,9 +664,7 @@ func (a *App) ImportModpackArchive(archivePath string, detected *custompack.Dete
 				if ctx.Err() == nil {
 					// Справжня помилка імпорту: ТЕРМІНАЛЬНА sync:progress з
 					// mode="error" + errorMsg, щоб картка НЕ лишалась у стані
-					// downloading назавжди. Раніше помилка емітилась лише
-					// download:error, який фронт показував як "[object Object]"
-					// (String(об'єкта)) — імпорт виглядав «завислим без причини».
+					// downloading назавжди.
 					packName := id
 					if cp, ok := a.customPacks.Get(id); ok && cp.Name != "" {
 						packName = cp.Name
@@ -736,6 +725,54 @@ func (a *App) ImportModpackArchive(archivePath string, detected *custompack.Dete
 		a.applyMinecraftDefaultsNow(res.pack.ID)
 		a.emit("builds:changed", res.pack.ID)
 		return res.pack, nil
+	}
+}
+
+// customImportRun — лічильник активних фонових конвеєрів імпорту одного
+// packID; idle закривається, коли останній з них завершився.
+type customImportRun struct {
+	n    int
+	idle chan struct{}
+}
+
+// beginCustomImportRun реєструє запуск фонового конвеєра імпорту для packID
+// (викликати ДО `go`) і повертає функцію завершення (defer у горутині).
+func (a *App) beginCustomImportRun(packID string) func() {
+	a.customImportMu.Lock()
+	r := a.customImportRuns[packID]
+	if r == nil || r.n == 0 {
+		r = &customImportRun{idle: make(chan struct{})}
+		a.customImportRuns[packID] = r
+	}
+	r.n++
+	a.customImportMu.Unlock()
+	return func() {
+		a.customImportMu.Lock()
+		r.n--
+		if r.n == 0 {
+			close(r.idle)
+			if a.customImportRuns[packID] == r {
+				delete(a.customImportRuns, packID)
+			}
+		}
+		a.customImportMu.Unlock()
+	}
+}
+
+// waitCustomImportStopped чекає (до timeout), поки фоновий імпорт packID
+// реально завершиться після cancel(): скасування лише подає сигнал, а
+// конвеєр ще може встигнути записати збірку в Store.
+func (a *App) waitCustomImportStopped(packID string, timeout time.Duration) {
+	a.customImportMu.Lock()
+	r := a.customImportRuns[packID]
+	a.customImportMu.Unlock()
+	if r == nil {
+		return
+	}
+	select {
+	case <-r.idle:
+	case <-time.After(timeout):
+		log.Printf("DeletePack: імпорт %s не зупинився за %s, продовжуємо видалення", packID, timeout)
 	}
 }
 
@@ -992,9 +1029,6 @@ func (a *App) saveCustomImportStateLocked(ip custompack.ImportProgress) {
 	a.customImportStateAt[ip.PackID] = time.Now()
 	a.customImportStateMu.Unlock()
 
-	// Атомарний Update: тік прогресу змінює ЛИШЕ ImportState у свіжому
-	// записі й не може відкотити іконку/назву, які користувач змінив під
-	// час імпорту (раніше тут було Get → Save усієї копії кожні ~700 мс).
 	_, _, _ = a.customPacks.Update(ip.PackID, func(p *custompack.Pack) error {
 		st := p.ImportState
 		if st == nil {

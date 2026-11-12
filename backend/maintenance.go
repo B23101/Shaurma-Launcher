@@ -11,8 +11,8 @@
 //     (видалені/фантомні) — стан-сирота. Стан завершених (StageComplete)
 //     збірок НЕ чіпаємо: його Files — це кеш хешів, який дозволяє наступному
 //     запуску гри не хешувати всі файли збірки заново;
-//   - іконки ярликів (.ico у cache/shortcuts): якщо .lnk на робочому столі
-//     видалений — іконка більше не потрібна, реєстр теж чиститься;	//   - аватари в cache: файли, які не відкривались 30 днів — це кеш, вони
+//   - ярлики збірок: видалений .lnk → прибираємо запис і .ico; зниклу
+//     іконку/змінений exe — відновлюємо (RepairShortcuts);	//   - аватари в cache: файли, які не відкривались 30 днів — це кеш, вони
 //     відновлюються автоматично при наступному показі. Скіни гардеробу
 //     (.shaurm/skins) НЕ чіпаються — це постійні дані користувача;
 //   - gallery_meta: метадані скріншотів, чиї файли вже видалені з диска
@@ -207,33 +207,12 @@ func (a *App) cleanupDuplicateSettings(st *store.Store) {
 	}
 }
 
-// cleanupShortcutIcons видаляє .ico іконки ярликів, чиї .lnk на робочому
-// столі вже видалені (користувач прибрав ярлик вручну або збірку видалили),
-// і чистить відповідні записи реєстру.
+// cleanupShortcutIcons — обслуговування ярликів: прибирає записи/іконки
+// ярликів, чиї .lnk користувач видалив, і ВІДНОВЛЮЄ ті, в яких зникла
+// іконка або змінився exe лаунчера (див. RepairShortcuts).
 func (a *App) cleanupShortcutIcons() {
-	reg := a.loadShortcutRegistry()
-	if len(reg) == 0 {
-		return
-	}
-	desktop, err := desktopDir()
-	changed := false
-	for packID, lnkName := range reg {
-		exists := false
-		if err == nil {
-			_, statErr := os.Stat(filepath.Join(desktop, lnkName))
-			exists = statErr == nil
-		}
-		if exists {
-			continue
-		}
-		// Ярлика немає — прибираємо запис реєстру та іконку .ico.
-		delete(reg, packID)
-		_ = os.Remove(filepath.Join(a.cfg.CacheDir(), "shortcuts", packID+".ico"))
-		changed = true
-	}
-	if changed {
-		_ = a.saveShortcutRegistry(reg)
-		log.Printf("maintenance: прибрано записи ярликів без .lnk на робочому столі")
+	if n := a.RepairShortcuts(); n > 0 {
+		log.Printf("maintenance: відновлено ярликів: %d", n)
 	}
 }
 
@@ -355,10 +334,9 @@ func (a *App) cleanupExpiredTempMods() {
 
 // applyExpiredTempMod застосовує дію (видалити/вимкнути) до ОДНОГО
 // простроченого запису і знімає його мітку з Pack.TempMods незалежно від
-// результату видалення файлу — файл, якого вже немає на диску (гравець
-// прибрав його вручну раніше), не повинен лишати мертву мітку назавжди.
-// Повертає true, якщо запис оброблено (для підрахунку в лозі й для
-// вирішення, чи запускати cleanupOrphanedTempDeps).
+// результату видалення файлу — файл, якого вже немає на диску. Повертає
+// true, якщо запис оброблено (для підрахунку в лозі й для вирішення, чи
+// запускати cleanupOrphanedTempDeps).
 func (a *App) applyExpiredTempMod(packID, modsDir, fileName string, e custompack.TempModEntry) bool {
 	var err error
 	switch e.Action {

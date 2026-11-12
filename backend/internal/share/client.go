@@ -793,7 +793,7 @@ func (d *Downloader) prepare(ctx context.Context, m *Manifest) error {
 	d.mu.Unlock()
 	if j, ok := loadJournal(stage); ok && len(j.Done) > 0 {
 		// Після краху/вимкнення живлення файл із правильним розміром ще не означає правильний
-		// вміст (кеш ФС міг не дописатись) — тож прийняте раніше переперевіряємо sha256.
+		// вміст (кеш ФС міг не дописатись).
 		d.emit(ProgVerifying)
 		for _, i := range j.Done {
 			if err := ctx.Err(); err != nil {

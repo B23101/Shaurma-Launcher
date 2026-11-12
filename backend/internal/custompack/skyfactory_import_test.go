@@ -232,8 +232,7 @@ func TestImportSkyFactory4WithoutAPIKeyFailsFast(t *testing.T) {
 // TestDownloadImportTasksCancelUnblocksFast — пауза/скасування під час
 // завантаження кількох файлів (downloadImportTasks) має розблокувати
 // весь конвеєр ШВИДКО, навіть коли один файл висить на мовчазному
-// з'єднанні. Раніше io.Copy блокувався назавжди (5-хв таймаут клієнта) —
-// екран імпорту «зависав намертво».
+// з'єднанні.
 func TestDownloadImportTasksCancelUnblocksFast(t *testing.T) {
 	// Сервер: приймає TCP і НЕ шле заголовки (типовий мовчазний CDN).
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -298,12 +297,11 @@ func TestDownloadImportTasksCancelUnblocksFast(t *testing.T) {
 	}
 }
 
-// TestDownloadImportTasksSilentServerFailsFast — сервер, що прийняв TCP і
-// не відповідає (мовчазний CDN), обривається через ResponseHeaderTimeout
+// TestDownloadImportTasksSilentServerFailsFast — сервер, що прийняв TCP і не
+// відповідає (мовчазний CDN), обривається через ResponseHeaderTimeout
 // РЕАЛЬНОГО production-клієнта (той, що створюється всередині
-// downloadImportTasks з транспортом з ResponseHeaderTimeout var). Раніше
-// такий сервер тримав downloadImportTasks увесь 5-хв Timeout клієнта —
-// «імпорт завис на розхешуванні». Таймаут стиснутий до мілісекунд через var.
+// downloadImportTasks з транспортом з ResponseHeaderTimeout var). Таймаут
+// стиснутий до мілісекунд через var.
 func TestDownloadImportTasksSilentServerFailsFast(t *testing.T) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

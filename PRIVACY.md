@@ -7,10 +7,11 @@ It does not contain advertising and does not sell data.
 
 - **Game files and metadata:** Mojang/Microsoft (versions, libraries, assets, skins), mod-loader metadata and downloads
   (Forge, NeoForge, Fabric, Quilt, Paper, Purpur and others), Modrinth and CurseForge (mod/modpack search and downloads).
-- **Updates:** the launcher asks `api.shaurma-launcher.org` for the current version (it sends the release channel, the installed
-  version and the platform) and downloads its components from this repository's GitHub Releases, verifying them against an
-  Ed25519-signed manifest. If an update is rejected, the launcher sends a short report (version and reason, no personal data).
-  Older builds still fetch updates from the Shaurma CDN with a channel access token.
+- **Updates:** the launcher asks `api.shaurma-launcher.org` which version is current (it sends the release channel and the
+  installed version; the updater also sends the platform). If that server is silent, the launcher reads the latest release
+  manifest from this repository on GitHub. Components are downloaded from this repository's GitHub Releases and verified
+  against an Ed25519-signed manifest. If the updater rejects an update, it sends a short report (version and reason, no
+  personal data). Older builds still fetch updates from the Shaurma CDN with a channel access token.
 - **Access to private modpacks (only if you add a certificate):** activation sends the certificate file, a public device key
   generated on your computer, the launcher version and operating system, and optionally your nickname. The server stores the
   device record (key, time, IP address, launcher version) to grant, log and revoke access; inactive devices expire after
@@ -20,20 +21,25 @@ It does not contain advertising and does not sell data.
 
 ## Only if you use the feature
 
-- **Friends, chat, shared playtime:** your account identifiers, nickname, friend list,
-  messages and total playtime per day are exchanged with Shaurma servers. Playtime synced to the cloud is visible only to you.
+- **Friends, chat:** your account identifiers, nickname, friend list and messages are exchanged with Shaurma servers.
+- **Cloud playtime (on by default once you are signed in to a Shaurma account):** the launcher sends your total play time per
+  day (seconds and session count, for the last 14–80 days), older history once as monthly totals, and the number of packs
+  that have playtime. Pack names, mod lists and the per-pack breakdown are not sent; they stay on your computer. You can
+  see your own data; friends who can open your profile see only the total time and the pack count. Turn it off in
+  Settings ("Don't store play time in the cloud") or stop recording time altogether ("Record time in packs").
 - **Peer-to-peer play and server tools:** connections are relayed or brokered by Shaurma servers. A friend can start or stop
   your servers remotely **only** if you explicitly grant that permission; nothing is allowed by default and every attempt is
   logged locally.
 - **AI helpers (translation, review, crash analysis):** the text you submit is sent to the AI provider (Groq / Google Gemini).
-- **Log sharing:** if you choose to upload a game log, it is sent to the log-sharing service you pick.
+  For crash analysis the launcher first removes tokens, session ids, launch arguments, your nickname, OS user name,
+  computer name and server addresses from the log.
+- **Log sharing:** if you choose to upload a game log, it is sent to mclo.gs.
 - **Discord Rich Presence:** talks to your local Discord client only.
 
-## Anonymous statistics (opt-in, OFF by default)
+## No usage statistics
 
-If you accept the one-time question in the launcher, it sends a small report at most every few hours: nickname (encrypted on
-arrival), anonymous device hash, total playtime and session count, launcher version and platform.
-It never sends tokens, e-mail, file paths, modpack names or mod lists. You can turn it off in Settings at any time.
+The launcher does not send usage analytics or telemetry. The "Analytics" page in the launcher is computed from local
+playtime records on your computer; the only playtime that leaves it is the optional cloud playtime described above.
 
 ## Local data
 
@@ -55,11 +61,9 @@ The services you choose also process connection metadata such as IP addresses ac
 - CurseForge: https://www.curseforge.com/legal/privacy-policy
 - Discord (when Rich Presence is enabled): https://discord.com/privacy
 
-AI provider keys are not embedded by the repository release scripts. AI features require
-user-supplied credentials at runtime unless a separately operated service is explicitly configured.
-A CurseForge key supplied with a distributed desktop build must be treated as publicly recoverable;
-users may override it with their own key in Settings. No credential in a client binary can serve as
-proof of membership or permission to access private data.
+Release builds made by the project's CI embed Gemini and Groq API keys taken from GitHub Secrets, and may embed a
+CurseForge key. Any key shipped in a client binary must be treated as publicly recoverable; users may replace the CurseForge
+key with their own in Settings. No credential in a client binary can serve as proof of membership or permission to access private data.
 
 ## Network permissions and optional features
 
@@ -68,7 +72,7 @@ application-specific inbound and outbound firewall rules for private and public 
 It requires administrator approval. The firewall is not disabled. Uninstallation removes
 the rules belonging to this installation. Existing block rules and organization policies
 may still prevent P2P access. P2P, remote server access, AI helpers and social features are
-activated by using those features; anonymous statistics remain off until you opt in.
+activated by using those features.
 
 After a P2P connection failure, or when you select the network check in Settings,
 the launcher can inspect its Windows Firewall rules and contact the P2P control

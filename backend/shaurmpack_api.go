@@ -420,12 +420,8 @@ func validatePackDownloadURL(raw string) error {
 }
 
 // shaurmpackHTTP — ЄДИНИЙ клієнт для всіх завантажень модів з .shaurmpack.
-// Раніше кожен файл створював свій http.Client на http.DefaultTransport, у
-// якого лише 2 «гарячі» з'єднання на хост: 10 паралельних воркерів постійно
-// закривали й заново відкривали TLS-з'єднання до cdn.modrinth.com. Тут
-// з'єднання перевикористовуються (keep-alive, HTTP/2), що помітно пришвидшує
-// збірки з сотнею дрібних модів. DisableCompression — щоб байти на диску
-// збігались із розміром і SHA-1 з маніфесту.
+// DisableCompression — щоб байти на диску збігались із розміром і SHA-1 з
+// маніфесту.
 var shaurmpackHTTP = &http.Client{
 	Timeout: 5 * time.Minute,
 	Transport: &http.Transport{
@@ -475,7 +471,7 @@ func shaurmpackOpenURL(url string) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+shaurmpack-import; shaurmaofficial2210@gmail.com)")
+	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+shaurmpack-import; +https://github.com/B23101/Shaurma-Launcher)")
 	if custompack.IsCurseForgeCDNURL(url) && custompack.HasCurseForgeAPIKey() {
 		req.Header.Set("x-api-key", custompack.CurseForgeAPIKeyValue())
 	}
@@ -767,9 +763,7 @@ func (a *App) shaurmpackSHA1Of() func(absPath string) (string, error) {
 // ExportShaurmpackRequest — параметри експорту в .shaurmpack з фронтенду.
 //
 // Included/Excluded — ТОЙ САМИЙ вибір папок/файлів, що й у mrpack-експорті
-// (ExportPackRequest). Раніше цих полів тут не було взагалі, тож модалка
-// експорту малювала дерево вибору, а .shaurmpack усе одно пакував УСЮ теку
-// збірки — саме скарга «я вибрав mods, а він пакує все».
+// (ExportPackRequest).
 type ExportShaurmpackRequest struct {
 	PackID      string   `json:"packId"`
 	Name        string   `json:"name"`

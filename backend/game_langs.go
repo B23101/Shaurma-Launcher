@@ -19,14 +19,6 @@ import (
 	"shaurma-launcher-backend/internal/model"
 )
 
-// ── Мови гри з ОРИГІНАЛЬНИХ json-мов Mojang ─────────────────────────────
-// Раніше список мов у налаштуваннях збірки був захардкоджений (оптимальні
-// 15 мов). Тепер беремо його з справжнього asset index версії Minecraft:
-//   assets/indexes/<id>.json  →  ключі "minecraft/lang/<code>.json"
-// а назви (language.name + language.region) читаємо з САМИХ файлів мов
-// (assets/objects/<hh>/<hash>, той самий кеш, що й гра; при відсутності —
-// довантажуємо з CDN Mojang і зберігаємо в той самий кеш).
-//
 // Так список завжди відповідає конкретній версії гри (нові мови з'являються
 // автоматично), а не фіксованому набору.
 
@@ -136,11 +128,9 @@ func loadGameLanguages(baseDir, mcVersion string) ([]model.GameLanguage, error) 
 	vjsonPath := filepath.Join(baseDir, "versions", mcVersion, mcVersion+".json")
 	data, err := os.ReadFile(vjsonPath)
 	if err != nil {
-		// Версія ще НЕ встановлена (збірка не завантажена) — це не помилка,
-		// а просто «мов поки немає». Раніше кидали помилку, яка через
-		// автолог call() потрапляла в журнал помилок лаунчера (шум: сторінка
-		// кожної невстановленої збірки писала «не знайдено version.json»).
-		// Фронтенд і так лишає fallback-список мов при порожньому результаті.
+		// Версія ще НЕ встановлена (збірка не завантажена) — це не помилка, а
+		// просто «мов поки немає». Фронтенд і так лишає fallback-список мов
+		// при порожньому результаті.
 		if os.IsNotExist(err) {
 			return []model.GameLanguage{}, nil
 		}

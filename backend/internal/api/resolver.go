@@ -77,13 +77,6 @@ type mrVersion struct {
 	} `json:"dependencies"`
 }
 
-// PrimaryFileIndex повертає індекс файлу, позначеного Modrinth-ом як
-// "primary" (саме він — той архів/мод, що встановлюється), або 0, якщо
-// жоден файл не позначено primary — раніше код усюди брав Files[0]
-// напряму, а Modrinth не гарантує, що первинний файл іде першим у
-// масиві (у версій з кількома файлами, напр. складні модпаки типу
-// Cobblemon, це призводило до "не має посилання на архів модпаку",
-// бо URL брався з побічного файлу, а не з головного архіву).
 func (v mrVersion) PrimaryFileIndex() int {
 	for i := range v.Files {
 		if v.Files[i].Primary {
@@ -318,17 +311,8 @@ func BestModrinthMatch(hits []mrDepHit, depName string) *mrDepHit {
 // pickBestModrinthMatch — вибір найкращого збігу (порт Java-версії):
 // спершу точний збіг slug/title (нормалізовані — lowercase, тільки
 // [a-z0-9]), потім slug/title, що ПОЧИНАЄТЬСЯ з потрібної назви (короткий
-// modId типу "flywheel" чи "jei" — саме такий пошуковий запит формується
-// з modId у mods.toml, а не довільна фраза користувача). "Часткового
-// входження підрядка" НЕДОСТАТНЬО як критерію — Modrinth-пошук за
-// "flywheel" реально повертає аддони на кшталт "Iris & Oculus Flywheel
-// Compat" чи "Flywheel Version Fix" вище за сам мод Flywheel, і раніше
-// код мовчки брав перший-ліпший хіт (hits[0]) навіть коли жоден
-// результат не відповідав шуканому modId — звідси в Create показувалась
-// "залежність" на аддон, якого немає в mods.toml. Тепер: якщо немає
-// збігу за префіксом — вважаємо, що на Modrinth нічого не знайдено
-// (nil), і викликач падає у CurseForge-фолбек / повідомлення про ручний
-// пошук, замість підсовувати випадковий мод як нібито знайдену залежність.
+// modId типу "flywheel" чи "jei" — саме такий пошуковий запит формується з
+// modId у mods.toml, а не довільна фраза користувача).
 func pickBestModrinthMatch(hits []mrDepHit, depName string) *mrDepHit {
 	if len(hits) == 0 {
 		return nil

@@ -9,15 +9,20 @@
   let { inv, compact = false }: { inv: SocialInvite; compact?: boolean } = $props()
   const s = useFriendsStore()
   const name = $derived(clean(inv.fromNickname))
+  // У вихідному запиті fromAccountId/fromNickname — це АДРЕСАТ.
+  const openProfile = () => s.openProfileById(inv.fromAccountId, inv.fromNickname, inv.fromHandle)
 </script>
 
 <div class="rq" class:busy={s.busy === inv.id} class:compact
      use:tip={compact ? t('friends.outgoing') : ''}
      onclick={() => { if (compact) s.setCompact(false) }} role="presentation">
-  <FAvatar size={36} head={s.heads[inv.fromNickname] ?? ''} initial={initialOf(inv.fromNickname)} />
+  <button class="rq-av" disabled={compact} tabindex={compact ? -1 : 0} aria-label={t('ff.profile.open')}
+          onclick={(e) => { e.stopPropagation(); openProfile() }}>
+    <FAvatar size={36} head={s.heads[inv.fromNickname] ?? ''} initial={initialOf(inv.fromNickname)} />
+  </button>
   {#if !compact}
     <div class="rq-info">
-      <div class="rq-name"><span class="rq-nick">{name}</span></div>
+      <button class="rq-name rq-open" onclick={openProfile}><span class="rq-nick">{name}</span></button>
       <div class="rq-sub"><i class="ti ti-clock"></i> {t('friends.pending')}</div>
     </div>
     <div class="rq-acts">
@@ -31,6 +36,11 @@
     background: var(--bg-input); border: 1px solid var(--border); transition: opacity .2s; }
   .rq.busy { opacity: .5; pointer-events: none; }
   .rq.compact { justify-content: center; padding: 0; height: 60px; margin: 4px 10px; cursor: pointer; }
+  .rq-av { all: unset; display: grid; place-items: center; flex: 0 0 auto; border-radius: 50%; cursor: pointer; }
+  .rq-av:disabled { cursor: inherit; }
+  .rq-av:focus-visible, .rq-open:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+  .rq-open { all: unset; box-sizing: border-box; display: flex; align-items: baseline; gap: 7px; min-width: 0; font: 700 14px/1.2 var(--font-ui); color: var(--text); cursor: pointer; }
+  .rq-open:hover .rq-nick { text-decoration: underline; }
   .rq-info { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .rq-name { display: flex; align-items: baseline; gap: 7px; min-width: 0; font: 700 14px/1.2 var(--font-ui); color: var(--text); }
   .rq-nick { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

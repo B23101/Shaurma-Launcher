@@ -1,13 +1,11 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── ModListExportDialog: експорт списку модів збірки ──────────────────
   // Порт Prism ExportToModList: користувач обирає формат (HTML/Markdown/
   // plain/JSON/CSV) та поля (автор, URL, версія, ім'я файлу) і отримує
   // готовий список — для форуму/README/спільноти. Результат копіюється
   // в буфер обміну (як у Prism — діалог з прев'ю і «Copy to Clipboard»).
-  //
-  // ОБСЯГ експорту вибирається ВСЕРЕДИНІ діалогу (пілюлі «Усі моди» /
-  // «Лише вибрані»), а не окремою кнопкою в панелі масових дій — раніше
-  // було два окремих експорти з різним обсягом, що дублювало один діалог.
   //
   // Стиль модалки — стандартний для лаунчера (modal-head + X справа),
   // плюс прев'ю результату для кожного формату, щоб користувач бачив,
@@ -170,7 +168,7 @@
                   <button
                     class="mel-format-pill {format === fc.value ? 'sel' : ''}"
                     onclick={() => { format = fc.value; doExport() }}
-                    title={fc.label}
+                    use:launcherTip={fc.label}
                   >
                     <i class="ti {fc.value === 'html' ? 'ti-code' : fc.value === 'json' ? 'ti-braces' : fc.value === 'csv' ? 'ti-table' : fc.value === 'plain' ? 'ti-file-text' : 'ti-markdown'}"></i>
                     {fc.label}

@@ -213,9 +213,7 @@ type BrowserSearchResult struct {
 	CFDisabled bool `json:"cfDisabled"`
 	// CFError — помилка запиту CurseForge (якщо ключ є, але API відмовив).
 	CFError string `json:"cfError,omitempty"`
-	// ModrinthError — помилка запиту Modrinth (мережа/API). Раніше помилка
-	// ковталась, і фронтенд показував порожній список без пояснення;
-	// тепер UI бачить «Немає інтернету» замість тиші (офлайн-режим).
+	// ModrinthError — помилка запиту Modrinth (мережа/API).
 	ModrinthError string `json:"modrinthError,omitempty"`
 	// TotalHits — загальна кількість результатів пошуку (пагінація).
 	TotalHits int `json:"totalHits"`
@@ -261,14 +259,7 @@ type BrowserCompatiblePack struct {
 	Whitelisted bool `json:"whitelisted,omitempty"`
 	// Unconfirmed — сумісність НЕ вдалось перевірити мережевим запитом
 	// (CurseForge: відсутній API-ключ, таймаут, rate limit тощо), а не
-	// «підтверджено несумісна». Раніше при err != nil збірка просто
-	// пропускалась (continue) нарівні з реальною несумісністю — при
-	// нестабільному CurseForge (не завантажився список версій мода)
-	// діалог встановлення показував «немає сумісної збірки» навіть коли
-	// збірка (напр. fabric 1.20.1 під мод fabric 1.20.1) насправді
-	// підходила. Тепер такі збірки лишаються у списку з цим прапорцем —
-	// той самий fail-open принцип, що вже застосований у
-	// browserEntryCompatibility для сторінки/картки контенту.
+	// «підтверджено несумісна».
 	Unconfirmed bool `json:"unconfirmed,omitempty"`
 }
 
@@ -533,17 +524,13 @@ func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, cat
 		res.CFDisabled = true
 		return res
 	}
-	// ВАЖЛИВО (баг фільтрації категорій CurseForge): раніше сюди приходив
-	// той самий спільний рядок НАЗВ категорій, що й для Modrinth
-	// (selectedCategories.join(',') на фронтенді), і категорія
-	// відсіювалась ПІСЛЯ пошуку, порівнянням назви (cfHasAnyCategory) —
-	// вже на видачі, обрізаній до `limit` (типово 30) НЕФІЛЬТРОВАНИХ
-	// найпопулярніших хітів. Якщо обраний тег не входив у ці 30 —
-	// результат ставав порожнім, хоча реально під тегом могло бути багато
-	// сумісних проєктів. Тепер фронтенд шле окремі ЧИСЛОВІ ID категорій
-	// CurseForge (BrowserCategory.cfId), і вони йдуть прямо у
-	// categoryId(s) офіційного /mods/search — сервер сам повертає лише
-	// проєкти цього тегу, і `limit` ріже вже відфільтровану видачу.
+	// ВАЖЛИВО (баг фільтрації категорій CurseForge). Якщо обраний тег не
+	// входив у ці 30 — результат ставав порожнім, хоча реально під тегом
+	// могло бути багато сумісних проєктів. Тепер фронтенд шле окремі
+	// ЧИСЛОВІ ID категорій CurseForge (BrowserCategory.cfId), і вони
+	// йдуть прямо у categoryId(s) офіційного /mods/search — сервер сам
+	// повертає лише проєкти цього тегу, і `limit` ріже вже відфільтровану
+	// видачу.
 	cfCategoryIDs := parseBrowserCategoryIDs(categoryIds)
 
 	// Розумний пошук — той самий словник, що для Modrinth (browsersearch
@@ -557,13 +544,8 @@ func (a *App) BrowserSearchCurseForge(query, projectType, mcVersion, loader, cat
 	// Той самий тип-залежний фільтр лоадера, що й для Modrinth:
 	// ресурспаки/датапаки/шейдери не фільтруються за лоадером збірки.
 	// ВАЖЛИВО: передаємо gameVersion+modLoaderType прямо у facet-параметри
-	// CurseForge search API (SearchProjects) — раніше сумісність
-	// перевірялась ЛИШЕ пост-фактум окремим запитом GetModFiles на КОЖЕН
-	// хіт (filterCompatibleEntries), що для 30 хітів означало ще ~30
-	// додаткових запитів крізь rate limiter 4/с (~7-8с лише на фільтр,
-	// і мережевий збій одного запиту прибирав хіт зі списку — звідси
-	// "постійно немає сумісних"). Тепер API одразу повертає лише
-	// сумісні за версією/лоадером результати, і додаткова перевірка
+	// CurseForge search API (SearchProjects). Тепер API одразу повертає
+	// лише сумісні за версією/лоадером результати, і додаткова перевірка
 	// (нижче) лишається дешевою підстраховкою для мультизавантажувальних
 	// модів, а не основним фільтром.
 	cfLoader := effectiveLoaderForType(projectType, loader)
@@ -651,9 +633,7 @@ func (a *App) filterCompatibleEntries(entries []model.BrowserEntry, projectType,
 	}
 	// ВАНІЛЬНА ЗБІРКА НЕ ПРИЙМАЄ МОДИ: для mod/modpack vanilla-лоадер
 	// лишається як є — фільтр `browserEntryCompatibility` перевірить чи є
-	// у проєкту версії під vanilla (немає → мод відсіюється). Раніше
-	// vanilla завжди очищувався до "" (theseus instance_matches_targets),
-	// через що будь-який мод вважався «сумісним» з ванільною збіркою.
+	// у проєкту версії під vanilla (немає → мод відсіюється).
 	loader = strings.ToLower(loader)
 
 	keep := make([]bool, len(entries))
@@ -689,10 +669,7 @@ func (a *App) filterCompatibleEntries(entries []model.BrowserEntry, projectType,
 // CompatibilityUnconfirmed=true; ця функція запускається у фоні (виклик не
 // чекає на неї) і шле подію "browser:compat" на кожен хіт по готовності —
 // картка в ContentBrowser.svelte або знімає позначку "перевіряється", або
-// ховається (якщо підтверджено несумісний). Раніше фронтенд бачив список
-// лише ПІСЛЯ того, як усі N хітів пройшли перевірку (по 6 паралельно,
-// впираючись у rate limiter CurseForge 4 запити/с) — тепер список видно
-// одразу, а статус сумісності «дотягується».
+// ховається (якщо підтверджено несумісний).
 func (a *App) filterCompatibleEntriesAsync(entries []model.BrowserEntry, projectType, mcVersion, loader string, extraLoaders []string) {
 	if len(entries) == 0 || mcVersion == "" {
 		return
@@ -1006,7 +983,7 @@ type BrowserGameVersion struct {
 // GetBrowserGameVersions повертає список версій гри для фільтра браузера.
 // Пріоритет — теги Modrinth /tag/game_version (лише версії з контентом,
 // вже в Modrinth-порядку: найновіші спочатку, "major" й release окремо).
-// Fallback — повний Mojang-маніфест (як було раніше), якщо теги недоступні.
+// Fallback — повний Mojang-маніфест, якщо теги недоступні.
 func (a *App) GetBrowserGameVersions() []BrowserGameVersion {
 	if gv, err := a.modrinth.GetGameVersionTags(); err == nil && len(gv) > 0 {
 		out := make([]BrowserGameVersion, 0, len(gv))
@@ -1174,12 +1151,6 @@ func (a *App) GetBrowserProjectDetail(source, projectID string) (*BrowserProject
 		// Автор проєкту: ID + ім'я + аватар + роль (щоб клік по автору
 		// відкривав його профіль, як Modrinth UserPage).
 		//
-		// ВАЖЛИВО: раніше тут було ДВА виклики — GetProjectAuthor(d.ID) і
-		// GetProjectAuthorFull(d.ID), а перший усередині просто кличе
-		// другий. Тобто сторінка проєкту робила той самий запит
-		// /project/{id}/members ДВІЧІ — зайві 150–200 мс і ще одна точка
-		// відмови (мережа «блимає» → «не вдалося завантажити проєкт»).
-		//
 		// Учасники команди й організація — паралельно, як у Modrinth app
 		// (get_team + get_organization): обидва потрібні для секції авторів.
 		var (
@@ -1238,8 +1209,7 @@ func (a *App) GetBrowserProjectDetail(source, projectID string) (*BrowserProject
 			AuthorAvatar: authorAvatar,
 			AuthorURL:    authorURL,
 			Creators:     creators,
-			// GameVersions/Loaders — тепер з /project (раніше лишались
-			// порожніми для Modrinth, і сайдбар сумісності був порожнім).
+			// GameVersions/Loaders — тепер з /project.
 			MCVersions: append([]string{}, d.GameVersions...),
 			Loaders:    append([]string{}, d.Loaders...),
 		}
@@ -1364,11 +1334,8 @@ func (a *App) GetBrowserProjectVersions(source, projectID, projectType, mcVersio
 			}
 			if len(v.Files) > 0 {
 				// PrimaryFileIndex — Modrinth не гарантує, що позначений
-				// "primary" файл (той самий архів/мод, що встановлюється)
-				// іде першим у масиві. Раніше тут бралося Files[0] напряму,
-				// через що у версій з кількома файлами (напр. складні
-				// модпаки) можна було отримати URL побічного файлу і
-				// зловити RuntimeError "не має посилання на архів модпаку".
+				// "primary" файл (той самий архів/мод, що встановлюється) іде
+				// першим у масиві.
 				pf := v.Files[v.PrimaryFileIndex()]
 				view.FileName = pf.Filename
 				view.FileURL = pf.URL
@@ -1398,14 +1365,10 @@ func (a *App) GetBrowserProjectVersions(source, projectID, projectType, mcVersio
 				Name:          f.FileName,
 				VersionNumber: f.FileName,
 				// VersionType з РЕАЛЬНОГО каналу CurseForge (releaseType:
-				// 1=release/2=beta/3=alpha). Раніше лишався порожнім для всіх
-				// CurseForge-файлів, через що pickBestBrowserVersion не міг
-				// віддати перевагу стабільному релізу й брав найсвіжіший файл
-				// за датою — включно з beta/alpha, випущеними після останнього
-				// стабільного (реально: JEI 1.19.2/1.21.1 — перші 3-4 файли
-				// beta, release нижче). Тепер список версій і авто-вибір
-				// «останній сумісний» працюють за тим самим правилом
-				// release → beta → alpha, що й для Modrinth.
+				// 1=release/2=beta/3=alpha). JEI 1.19.2/1.21.1 — перші 3-4
+				// файли beta, release нижче). Тепер список версій і авто-вибір
+				// «останній сумісний» працюють за тим самим правилом release →
+				// beta → alpha, що й для Modrinth.
 				VersionType: custompack.CFReleaseTypeName(f.ReleaseType),
 				// f.GameVersions з CurseForge змішує версії гри й назву
 				// лоадера — тут потрібні лише версії гри для бейджа на
@@ -1519,10 +1482,8 @@ func (a *App) GetBrowserCompatiblePacks(source, projectID, projectType, contentD
 		}()
 	}
 
-	// Відбір збірок локально (без мережі), далі — ОДИН запит версій на
-	// кожну унікальну пару (mc, loader), паралельно. Раніше на кожну збірку
-	// йшло два послідовні запити (projectHasVersionFor + browserLatestFileName),
-	// тож 10 збірок означали 20 запитів поспіль — модалка «довго думала».
+	// Відбір збірок локально (без мережі), далі — ОДИН запит версій на кожну
+	// унікальну пару (mc, loader), паралельно.
 	type candidate struct {
 		pack   int
 		loader string
@@ -1674,9 +1635,7 @@ func (a *App) whitelistedShaurmaPacks(source, projectID, contentDir string) []Br
 	if a.packs == nil {
 		// Немає провайдера шаурма-збірок (тестовий App без повної
 		// ініціалізації або base-збірка без відповідної частини) — білий
-		// список порожній, кандидатів немає. Раніше nil-deref падав тут
-		// у будь-якому виклику GetBrowserCompatiblePacks для типу "mod"
-		// без встановленого a.packs (виявив живий тест).
+		// список порожній, кандидатів немає.
 		return nil
 	}
 	index, err := a.packs.GetPackIndex()
@@ -1872,16 +1831,12 @@ func (a *App) CreateBrowserModpack(source, projectID, versionID string, force bo
 	// Унікальний ID/тека ЗБІРКИ — так само, як CreateCustomPack/Import:
 	// без цього дві встановлені копії того самого модпаку (напр. другий
 	// раз з іншою версією) писались під тим самим порожнім ID і друга
-	// затирала першу в Store. Тека створюється одразу (постійна, НЕ tmp),
-	// щоб іконка/фон, завантажені нижче, лишились на диску після виходу
-	// з функції — раніше вони писались у os.MkdirTemp з defer RemoveAll,
-	// тож зникали одразу після створення картки.
+	// затирала першу в Store.
 	//
 	// UniqueIDAndName замість самого UniqueID: при колізії id отримує
 	// суфікс -2/-3/..., і назва тепер отримує ТОЙ САМИЙ суфікс у форматі
 	// «(2)», «(3)», щоб дві картки того самого модпаку не виглядали
-	// однаково (раніше id ставав "cobblemon-official-modpack-2", а назва
-	// лишалась просто "Cobblemon Official Modpack" — не відрізнити).
+	// однаково.
 	id, packName := a.customPacks.UniqueIDAndName(detail.Name)
 	packDir := filepath.Join(a.cfg.InstancesDir(), id) // custom pack → installations/<id>/
 	if err := os.MkdirAll(packDir, 0755); err != nil {
@@ -1891,14 +1846,12 @@ func (a *App) CreateBrowserModpack(source, projectID, versionID string, force bo
 		return custompack.Pack{}, fmt.Errorf("не вдалося створити .minecraft: %w", err)
 	}
 
-	// Іконка: webp→png + домінантний колір (той самий конвеєр, що раніше).
+	// Іконка: webp→png + домінантний колір (той самий конвеєр.
 	iconPath, dominantColor := imageconvert.FetchIconToPNG(detail.IconURL, packDir)
 
 	// Фон (банер картки/сторінки збірки) — featured-зображення галереї
 	// проєкту, якщо автор його позначив, інакше перше зображення галереї
-	// (Modrinth gallery / CurseForge screenshots). Раніше фон узагалі не
-	// завантажувався для модпаків з браузера — pack.BackgroundPath
-	// лишався порожнім, навіть коли в галереї проєкту скріншоти є.
+	// (Modrinth gallery / CurseForge screenshots).
 	backgroundPath := ""
 	if bgURL := browserBackgroundURL(detail); bgURL != "" {
 		backgroundPath = imageconvert.FetchImageToPNG(bgURL, packDir, "background")
@@ -2030,11 +1983,7 @@ func (a *App) browserVersionArchiveInfo(source, projectID, versionID string) (st
 //
 // АСИНХРОННИЙ: повертає pack ID одразу (як ImportModpackArchive), а сам
 // конвеєр (архів → розпаковка → моди) іде у фоні з прогресом у
-// sync:progress — той самий екран, що для Шаурма-збірок. Це виправляє
-// мертву кнопку «Завантажити»: раніше весь шлях був СИНХРОННИМ у межах
-// Wails-виклику, тож на великих модпаках кнопка висіла без жодного
-// прогресу (а на деяких архівах — і взагалі не запускалась, бо архів
-// качався без прогрес-подій, а фронт чекав на результат).
+// sync:progress — той самий екран, що для Шаурма-збірок.
 func (a *App) DownloadBrowserModpack(packID string) (custompack.Pack, error) {
 	pack, ok := a.customPacks.Get(packID)
 	if !ok {
@@ -2063,9 +2012,11 @@ func (a *App) DownloadBrowserModpack(packID string) (custompack.Pack, error) {
 	a.customImportMu.Unlock()
 
 	packName := pack.Name
+	endRun := a.beginCustomImportRun(packID)
 
 	go func() {
 		defer crashguard.Recover("browser_api.go:1879")
+		defer endRun()
 		defer func() {
 			cancel()
 			a.customImportMu.Lock()
@@ -2395,8 +2346,7 @@ const browserInstalledCacheTTL = 60 * time.Second
 //     файли збірки не змінились — результат береться з диска ЗА МС,
 //     без жодного sha1 і без мережі.
 //  2. Якщо контент змінився — sha1 рахуються для всіх файлів і
-//     резолвляться ОДНИМ POST /version_files (раніше було N окремих
-//     /version_file запитів на кожен файл).
+//     резолвляться ОДНИМ POST /version_files.
 //  3. In-memory кеш з коротким TTL — захист від повторних викликів у межах
 //     сесії (картки + сторінка проєкту).
 func (a *App) GetBrowserInstalledMap(packID string) map[string]BrowserInstalledItem {
@@ -2498,12 +2448,11 @@ func (a *App) browserInstalledMapFor(cacheKey, base string) map[string]BrowserIn
 	// додаткових запитів (pathological-збірки з десятками не-модринт-файлів не
 	// мають гальмувати браузер) і не перезаписуємо вже знайдені проєкти.
 	//
-	// РЕГРЕСІЯ (виправлено): цикл раніше йшов ПОСЛІДОВНО — до 30 окремих
-	// HTTP round-trip'ів один за одним. Для збірки з великою кількістю
-	// CurseForge-контенту (Modrinth-хеш його не впізнає) це були реально
-	// відчутні секунди на саму лише перевірку «встановлено/оновити». Пул
-	// воркерів (той самий принцип, що filterCompatibleEntries нижче) —
-	// час перевірки обмежений найповільнішим запитом, а не сумою всіх.
+	// Для збірки з великою кількістю CurseForge-контенту (Modrinth-хеш
+	// його не впізнає) це були реально відчутні секунди на саму лише
+	// перевірку «встановлено/оновити». Пул воркерів (той самий принцип,
+	// що filterCompatibleEntries нижче) — час перевірки обмежений
+	// найповільнішим запитом, а не сумою всіх.
 	if len(toResolve) > 0 {
 		var unresolved []hashedFile
 		for _, f := range toResolve {
@@ -2862,7 +2811,7 @@ func contentDirToProjectType(contentDir string) string {
 // що не можна встановити будь-яку версію»: фільтр визначає ЦІЛЬОВУ збірку,
 // а версію користувач обирає сам зі списку на сторінці проєкту.
 func (a *App) InstallBrowserContentVersion(packID, source, projectID, versionID, contentDir string, replace bool) (BrowserInstallResult, error) {
-	// Джерело збірки: кастомна (customPacks, як і раніше) АБО шаурма —
+	// Джерело збірки: кастомна (customPacks) АБО шаурма —
 	// але для шаурма-збірки встановлення дозволене ЛИШЕ якщо САМЕ ЦЕЙ
 	// проєкт (source+projectID) є в її ефективному білому списку
 	// (internal/api.GetEffectiveWhitelistDetailed). Перевірка тут, на
@@ -2920,12 +2869,6 @@ func (a *App) InstallBrowserContentVersion(packID, source, projectID, versionID,
 	// незалежно від replace, коли в теці вже лежить файл ЦЬОГО Ж проєкту)
 	// — покладатись тільки на прапорець означало б пропустити саме той
 	// випадок, який і треба заблокувати.
-	//
-	// РЕГРЕСІЯ (виправлено): раніше a.errPackRunning(packID) викликався
-	// БЕЗУМОВНО для будь-якого встановлення — «Закрийте гру» показувалось
-	// навіть для щойно знайденого в браузері мода, якого у збірці не було
-	// взагалі, хоча реального ризику для запущеної сесії в цьому випадку
-	// немає.
 	if replace || a.GetBrowserInstalledMap(packID)[projectID].ProjectID != "" {
 		if err := a.errPackRunning(packID); err != nil {
 			return BrowserInstallResult{}, err
@@ -2987,8 +2930,7 @@ func (a *App) InstallBrowserContentVersion(packID, source, projectID, versionID,
 	// Видаляємо СТАРІ файли того самого проєкту (у збірці вже є цей мод/
 	// ресурспак, але старішої версії) — щоб після встановлення нової версії
 	// не лишилося двох версій одного контенту (дублікат у mods/ ламає
-	// запуск гри, у resourcepacks/ — плутає гру). Раніше стара версія з
-	// ІНШИМ іменем файлу лишалась лежати поруч з новою. Пошук іде за sha1
+	// запуск гри, у resourcepacks/ — плутає гру). Пошук іде за sha1
 	// (Modrinth batch) + fallback за slug з імені файлу.
 	a.removeOldProjectFiles(destDir, projectID, filepath.Base(destFile))
 	// Прогрес встановлення — у подію browser:progress (показуємо на
@@ -3366,13 +3308,7 @@ func (a *App) GetBrowserRecommendedVersion(source, projectID, projectType, mcVer
 // версія потрібного каналу і є найновішою.
 //
 // ВАЖЛИВО (CurseForge): у CurseForge-версій VersionType НЕ заповнюється
-// (там немає каналів release/beta/alpha — є лише файли з датами). Раніше
-// для будь-якого CurseForge-списку цикл не знаходив жодного каналу і
-// повертав nil — «найкращу версію» не вдавалось обрати НІКОЛИ, хоча
-// список був непорожній. Це проявлялось як «Спершу обери версію» при
-// встановленні мода з CurseForge у збірку (InstallBrowserContentVersion
-// з versionID=” не міг підібрати версію автоматично) і як порожній
-// вибір версії у модалках — тоді як Modrinth (з каналами) працював.
+// (там немає каналів release/beta/alpha — є лише файли з датами).
 // Фолбек: якщо жоден канал не знайдено, беремо найсвіжіший файл
 // (versions[0] — API віддає новіші перші).
 func pickBestBrowserVersion(versions []BrowserVersionView) *BrowserVersionView {
@@ -3414,7 +3350,7 @@ func (a *App) downloadContentFile(url, dest, projectID, packID, fileName string)
 		if err != nil {
 			return err
 		}
-		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (browser-content; shaurmaofficial2210@gmail.com)")
+		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (browser-content; +https://github.com/B23101/Shaurma-Launcher)")
 		resp, err := client.Do(req)
 		if err != nil {
 			lastErr = err
@@ -3552,7 +3488,7 @@ func downloadFileToResumable(ctx context.Context, url, dest string, onBytes func
 		if err != nil {
 			return err
 		}
-		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (browser-content; shaurmaofficial2210@gmail.com)")
+		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (browser-content; +https://github.com/B23101/Shaurma-Launcher)")
 		if resumeFrom > 0 {
 			req.Header.Set("Range", fmt.Sprintf("bytes=%d-", resumeFrom))
 		}

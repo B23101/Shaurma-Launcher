@@ -1,10 +1,12 @@
 <script lang="ts">
+  import { tip as launcherTip } from './lib/friends/tooltip'
+
   import javaLogo from './assets/images/java.svg'
   import UiModal from './lib/UiModal.svelte'
   import P2PNetworkDialog from './lib/P2PNetworkDialog.svelte'
   import './lib/settings/settings.css'
   import './style.css'
-  import { onMount, onDestroy } from 'svelte'
+  import { onMount, onDestroy, flushSync } from 'svelte'
   import { fade, fly, slide } from 'svelte/transition'
   import { flip } from 'svelte/animate'
   import { cubicOut, quintOut } from 'svelte/easing'
@@ -19,6 +21,7 @@
   import { App, on, Application, Window, type SignInResult, type DeviceChoice } from './lib/wails'
   import { flushAllPendingConfigs } from './lib/pendingConfigFlush'
   import { toast, confirmDialog } from './lib/toast.svelte'
+  import { resolveSettingRef, tp, settingPathText } from './lib/settings/nav'
   import type { Account, Settings, SyncProgress, BrowserEntry, BrowserVersionView, PackIndexEntry, SettingDef, StorageInfo, StoragePackEntry, StorageVersionsInfo, StorageSuggestion, StorageLibrariesInfo, StorageAssetsInfo, UnusedJavaInfo, UpdateInfo, FolderPaths, Build, BuildView, BuildProgress, BuildStartEvent, BuildExitEvent, BuildStatus, LaunchProgress, PreLaunchModIssues, LaunchWarnings, ServerPing, PinnedServerView, PackFolder, BlockedCFMod, SystemInfo, AnalyticsSummary, SkinPreset, DBHealth, AutoPackView, ServerPlayerEvent } from './lib/types'
   import { autoPackIcons } from './lib/autoPackIcons'
   import type { PackRow, PackFolderRow, PackPickerItem } from './lib/PackPicker.svelte'
@@ -28,7 +31,6 @@
   import { safeFolderIcon } from './lib/folderMeta'
   import LauncherMigrationModal from './lib/LauncherMigrationModal.svelte'
   import ShortcutDialog from './lib/ShortcutDialog.svelte'
-  import LaunchProgressOverlay from './lib/LaunchProgressOverlay.svelte'
   import Wizard from './lib/Wizard.svelte'
   import BirthdayMode from './lib/BirthdayMode.svelte'
   import Toasts from './lib/Toasts.svelte'
@@ -70,11 +72,11 @@
   import RenameAccountModal from './lib/RenameAccountModal.svelte'
   import GlobalSearchModal from './lib/GlobalSearchModal.svelte'
   import SettingsPage from './lib/SettingsPage.svelte'
-  import ServersLibraryPage from './lib/servers/ServerLibraryPage.svelte'
+  import ServersLibraryPage, { warmServerList } from './lib/servers/ServerLibraryPage.svelte'
   import ServerInstancePage from './lib/servers/ServerInstancePage.svelte'
   import ServerWizard from './lib/ServerWizard.svelte'
   import { grpTitleKeys, normalizeSectionId } from './lib/settingsMeta'
-  import { searchSettings as searchSettingsIndex, labelKeyOf, revealSetting } from './lib/settings/registry'
+  import { searchSettings as searchSettingsIndex, labelKeyOf, revealSetting, settingsSectionById } from './lib/settings/registry'
   import { packAsset } from './lib/packAssets.svelte'
   import { orderMainBuildViews, orderFlatBuildViews, deriveServerFolders, mergeFolders } from './lib/packOrder'
   import AnimatedIcon from './lib/AnimatedIcon.svelte'
@@ -101,7 +103,8 @@
   // масштаб елементів (sidebarScale, 0.8–1.25 — повзунок у «Вигляд»). Обидва
   // значення зберігаються у БД через settings (див. derived нижче) — на
   // відміну від старого localStorage, вони переживають перезапуск лаунчера.
-  let sidebarCollapsed = $state(false)
+  // sidebarCollapsed — derived від settings.sidebarCollapsed (див. нижче): стан
+  // стиснення зберігається у БД, а не в localStorage.
   let sbResizing = $state(false)
   let accDropdownOpen = $state(false)
   let settingsTab = $state('general')
@@ -297,6 +300,137 @@
   $effect(() => {
     if (currentPage === 'browser') browserVisited = true
   })
+  // ── Крихти верхньої панелі для «Браузера контенту» ────────────────────
+  // [збірка-фільтр] › Браузер контенту › Розділ › [іконка] Проєкт › Автор.
+  // Розділ і збірку звітує ContentBrowser (browser:state), проєкт — ModpackPage
+  // (browser:project). Клік по елементу повертає на відповідний рівень.
+  type CbSection = { id: string; label: string; icon: string; color: string }
+  let browserState = $state<{ section: CbSection; pack: { id: string; name: string; img: string; icon: string; color: string; isServer: boolean } | null } | null>(null)
+  let browserProjectMeta = $state<{ source: string; projectId: string; name: string; iconUrl: string; projectType: string } | null>(null)
+  $effect(() => {
+    const onState = (e: Event) => { browserState = (e as CustomEvent).detail ?? null }
+    const onProj = (e: Event) => { browserProjectMeta = (e as CustomEvent).detail ?? null }
+    window.addEventListener('browser:state', onState)
+    window.addEventListener('browser:project', onProj)
+    return () => { window.removeEventListener('browser:state', onState); window.removeEventListener('browser:project', onProj) }
+  })
+  function cbSectionFor(type: string): CbSection | null {
+    const map: Record<string, CbSection> = {
+      modpack: { id: 'modpack', label: t('browser.tab.modpacks'), icon: 'ti-package', color: 'var(--orange)' },
+      mod: { id: 'mod', label: t('browser.tab.mods'), icon: 'ti-puzzle', color: 'var(--green)' },
+      plugin: { id: 'plugin', label: t('browser.tab.plugins'), icon: 'ti-plug', color: '#14b8a6' },
+      resourcepack: { id: 'resourcepack', label: t('browser.tab.resourcepacks'), icon: 'ti-photo', color: 'var(--violet)' },
+      shader: { id: 'shader', label: t('browser.tab.shaders'), icon: 'ti-brush', color: '#ff6b9d' },
+      datapack: { id: 'datapack', label: t('browser.tab.datapacks'), icon: 'ti-database', color: 'var(--blue)' },
+    }
+    return map[type] ?? null
+  }
+  function cbGoto(id: string) {
+    browserProject = null; browserAuthor = null
+    window.dispatchEvent(new CustomEvent('browser:goto', { detail: { id } }))
+  }
+  const browserTrail = $derived.by(() => {
+    if (currentPage !== 'browser') return null
+    const inProject = !!browserProject
+    const items: { key: string; label: string; icon?: string; img?: string; color?: string; onclick?: (() => void) | null }[] = []
+    // Збірка-фільтр (або збірка, з якої відкрили проєкт) — на початку дерева.
+    let pk: { id: string; name: string; img: string; icon: string; color: string; isServer: boolean } | null = null
+    if (inProject) {
+      const c = browserPackContext
+      if (c) {
+        const bp = browserPacks.find(p => p.id === c.id)
+        pk = { id: c.id, name: c.name, img: packAsset(bp?.iconUrl) || '', icon: bp?.icon || (c.isServer ? 'ti-server' : 'ti-puzzle'), color: bp?.color || '', isServer: !!c.isServer }
+      }
+    } else pk = browserState?.pack ?? null
+    if (pk) {
+      const id = pk.id
+      items.push({ key: 'pack:' + id, label: pk.name, img: pk.img || undefined, icon: pk.icon, color: pk.color || undefined, onclick: pk.isServer ? null : () => openPackPage(id) })
+    }
+    items.push({ key: 'browser', label: t('nav.browser'), icon: 'ti-package', onclick: inProject || browserAuthor ? () => { browserProject = null; browserAuthor = null } : null })
+    const meta = inProject && browserProjectMeta && browserProjectMeta.projectId === browserProject!.projectId ? browserProjectMeta : null
+    const sec = inProject ? (meta ? cbSectionFor(meta.projectType) : null) : browserState?.section ?? null
+    if (sec) items.push({ key: 'sec:' + sec.id, label: sec.label, icon: sec.icon, color: sec.color, onclick: inProject || browserAuthor ? () => cbGoto(sec.id) : null })
+    if (inProject) {
+      items.push({
+        key: 'proj:' + browserProject!.projectId,
+        label: meta?.name || '…',
+        img: meta?.iconUrl || undefined,
+        icon: meta ? (sec?.icon ?? 'ti-cube') : 'ti-loader-2',
+        color: sec?.color,
+        onclick: browserAuthor ? () => { browserAuthor = null } : null,
+      })
+      if (browserAuthor) items.push({ key: 'author:' + browserAuthor.authorId, label: browserAuthor.authorName, icon: 'ti-user' })
+    }
+    return items
+  })
+
+  // ── Крихти інших розділів ─────────────────────────────────────────────
+  let serverMeta = $state<{ id: string; name: string } | null>(null)
+  $effect(() => {
+    const on = (e: Event) => { serverMeta = (e as CustomEvent).detail ?? null }
+    window.addEventListener('server:meta', on)
+    return () => window.removeEventListener('server:meta', on)
+  })
+  let friendsMeta = $state<{ kind: string; id: string; name: string } | null>(null)
+  $effect(() => {
+    const on = (e: Event) => { friendsMeta = (e as CustomEvent).detail ?? null }
+    window.addEventListener('friends:meta', on)
+    return () => window.removeEventListener('friends:meta', on)
+  })
+  type TrailEntry = { key: string; label: string; icon?: string; img?: string; color?: string; onclick?: (() => void) | null }
+  const sectionTrail = $derived.by((): TrailEntry[] | null => {
+    const page = currentPage
+    const root = (deeper: boolean, fn: () => void): TrailEntry => ({
+      key: 'root:' + page, label: t(pageTitles[page]), icon: pageIcons[page], onclick: deeper ? fn : null,
+    })
+    if (page === 'instances') {
+      if (showCreatePack) {
+        return [
+          root(true, closeCreatePack),
+          { key: 'create', label: t('createPack.title'), icon: 'ti-plus', onclick: null },
+          { key: 'create:' + createPackTab, label: createPackTab === 'import' ? t('createPack.tab.import') : t('createPack.tab.manual'), icon: createPackTab === 'import' ? 'ti-file-import' : 'ti-hammer', onclick: null },
+        ]
+      }
+      if (openPackId) {
+        const pk = openPack
+        return [
+          root(true, () => navigate('instances')),
+          { key: 'pack:' + openPackId, label: pk?.name ?? '…', img: packAsset(builds.find(b => b.build.id === openPackId)?.build.iconUrl) || undefined, icon: pk?.icon || 'ti-box', color: pk?.color || undefined, onclick: null },
+        ]
+      }
+      return null
+    }
+    if (page === 'analytics') {
+      return [{ key: 'inst', label: t('nav.instances'), icon: pageIcons.instances, onclick: () => navigate('instances') }, { key: 'an', label: t('nav.analytics'), icon: pageIcons.analytics, onclick: null }]
+    }
+    if (page === 'servers') {
+      if (showServerWizard) return [root(true, () => { showServerWizard = false }), { key: 'new', label: t('servers.lib.create'), icon: 'ti-plus', onclick: null }]
+      if (openRemote || openServerId) {
+        const id = openRemote ? openRemote.serverId : openServerId
+        return [
+          root(true, () => { openRemote = null; openServerId = ''; openServerAutoStart = false }),
+          { key: 'srv:' + id, label: serverMeta && serverMeta.id === id ? serverMeta.name : '…', icon: openRemote ? 'ti-cloud' : 'ti-server-2', onclick: null },
+        ]
+      }
+      return null
+    }
+    if (page === 'friends') {
+      if (!friendsMeta) return null
+      return [
+        root(true, () => window.dispatchEvent(new CustomEvent('friends:close'))),
+        { key: 'fr:' + friendsMeta.id, label: friendsMeta.name || '…', icon: friendsMeta.kind === 'group' ? 'ti-users-group' : 'ti-user', onclick: null },
+      ]
+    }
+    if (page === 'settings') {
+      const sec = settingsSectionById[normalizeSectionId(settingsTab)] ?? settingsSectionById.general
+      return [
+        root(true, () => { settingsTab = 'general' }),
+        { key: 'st:' + sec.id, label: t(sec.titleKey), icon: sec.icon, onclick: null },
+      ]
+    }
+    return null
+  })
+
   // Браузер контенту: чи результати проскролені вниз (подія browser:scroll
   // від ContentBrowser). На сторінці контенту topbar у ВЕРХУ ховає
   // іконку/назву розділу (вони й так видно в табах браузера), а при
@@ -399,15 +533,7 @@
   // відкриває діалог лагоджень поверх усього; модалку краху ховаємо, щоб не дублювати.
   const AUTO_REPAIR_OFF = false // true — сховати вікно доктора крашів для всіх
   let repairDialog = $state<null | { packId: string; report: import('./lib/types').RepairReport }>(null)
-  // Остання закрита користувачем пропозиція (щоб повторна подія не відкривала її знову).
-  let repairDismissed = { sig: '', at: 0 }
   function closeRepairDialog() {
-    if (repairDialog) {
-      repairDismissed = {
-        sig: repairDialog.packId + '|' + (repairDialog.report?.issues ?? []).map((i: any) => i.id).sort().join(','),
-        at: Date.now()
-      }
-    }
     repairDialog = null
   }
   let modalLogin = $state(false)
@@ -507,7 +633,7 @@
     if (!id) return null
     const bv = builds.find(b => b.build.id === id)
     if (bv) {
-      const icon = packIconSrc(packAsset(bv.build.iconUrl))
+      const icon = packIconSrc(packAsset(bv.build.iconUrl, 128))
       return { id, name: bv.build.name, icon, ti: icon ? '' : (bv.build.icon || 'ti-puzzle'), color: bv.build.color || 'var(--orange)' }
     }
     const folder = packFolders.find(f => f.id === id)
@@ -1026,10 +1152,36 @@
     // Запам'ятовуємо, ЩО САМЕ було активним до переходу: якщо це була
     // сторінка збірки — «згасає» картка збірки в sidebar, інакше — пункт
     // верхнього меню (Мої збірки/Браузер/Гардероб/Налаштування).
-    if (currentPage === 'instances' && openPackId) flashDeactivate(null, openPackId)
-    else flashDeactivate(currentPage, null)
-    currentPage = page; openPackId = null; showCreatePack = false
-    if (page === 'browser' && resetBrowser) { browserProject = null; browserAuthor = null; browserPackContext = null; browserServerContext = null }
+    pageTransition(() => {
+      if (currentPage === 'instances' && openPackId) flashDeactivate(null, openPackId)
+      else flashDeactivate(currentPage, null)
+      currentPage = page; openPackId = null; showCreatePack = false
+      if (page === 'browser' && resetBrowser) { browserProject = null; browserAuthor = null; browserPackContext = null; browserServerContext = null }
+    })
+  }
+
+  // Плавний перехід між розділами: View Transitions API робить справжній
+  // cross-fade старої й нової сторінки (раніше стара зникала миттєво, а
+  // гардероб/налаштування/друзі/аналітика з'являлись без анімації взагалі).
+  // Де API немає (WebKitGTK), вимкнені анімації або режим продуктивності —
+  // звичайна миттєва зміна + CSS-fade появи (див. style.css, html:not([data-vt])).
+  function pageTransition(change: () => void) {
+    const doc = document as any
+    const html = document.documentElement
+    if (
+      typeof doc.startViewTransition !== 'function' ||
+      html.dataset.animations === 'off' ||
+      html.dataset.performanceMode === 'on' ||
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ) { change(); return }
+    html.dataset.vt = '1'
+    try {
+      const vt = doc.startViewTransition(() => { flushSync(change) })
+      vt.finished.catch(() => {}).finally(() => { delete html.dataset.vt })
+    } catch {
+      delete html.dataset.vt
+      change()
+    }
   }
 
   // ── Глобальний пошук (модалка Ctrl+F / клік по полю пошуку) ──────────
@@ -1232,6 +1384,21 @@
     settingsTab = sectionId
     revealSetting(key)
   }
+  // Клікабельні шляхи до налаштувань («Налаштування → Гра → Вікно ↗») по всьому
+  // лаунчеру шлють подію 'open-setting' (settings/nav.ts → goToSetting): відкриваємо
+  // потрібний розділ і підсвічуємо рядок. Шлях береться з реєстру, тож не застаріває.
+  $effect(() => {
+    const h = (e: Event) => {
+      const r = resolveSettingRef(String((e as CustomEvent).detail ?? ''))
+      if (!r) return
+      searchOpen = false
+      navigate('settings')
+      settingsTab = r.section
+      if (r.anchor) revealSetting(r.anchor)
+    }
+    window.addEventListener('open-setting', h)
+    return () => window.removeEventListener('open-setting', h)
+  })
   function searchGoPreset(id: string) {
     searchOpen = false
     navigate('wardrobe')
@@ -1242,11 +1409,13 @@
   let searchTargetQuery = $state('')
   $effect(() => { if (searchTargetQuery) { const q = searchTargetQuery; searchTargetQuery = ''; window.dispatchEvent(new CustomEvent('global-search-query', { detail: q })) } })
   function openPackPage(id: string) {
-    if (id !== openPackId || currentPage !== 'instances') {
-      if (currentPage === 'instances' && openPackId) flashDeactivate(null, openPackId)
-      else if (currentPage !== 'instances') flashDeactivate(currentPage, null)
-    }
-    pushPackHistory(id); openPackId = id; currentPage = 'instances'; showCreatePack = false
+    pageTransition(() => {
+      if (id !== openPackId || currentPage !== 'instances') {
+        if (currentPage === 'instances' && openPackId) flashDeactivate(null, openPackId)
+        else if (currentPage !== 'instances') flashDeactivate(currentPage, null)
+      }
+      pushPackHistory(id); openPackId = id; currentPage = 'instances'; showCreatePack = false
+    })
     // Позначаємо збірку АКТИВНОЮ для консолі: окреме вікно консолі
     // прив'язується до неї (а не до останньої ЗАПУЩЕНОЇ з минулого разу) —
     // інакше його кнопка «Запустити» запускала б стару збірку (баг
@@ -1299,7 +1468,7 @@
     }
   }
 
-  // ── Відкриття .shaurmpack/.shaurmbundle через Windows-асоціацію ──────────
+  // ── Відкриття .mrpack/.shaurmpack/.shaurmbundle через Windows-асоціацію ──────────
   // (двічі клік у Провіднику / «Відкрити за допомогою» → лаунчер запускається
   // зі шляхом як аргументом; shell → подія packfile:open, backend кладе шлях
   // як pending на випадок холодного старту). БЕЗ модалки: поводимось так само,
@@ -1313,6 +1482,18 @@
       if (/\.shaurmpack$/i.test(path)) {
         const pack = await App.StartShaurmpackImport(path)
         toast(t('osPack.started', { name: pack?.name ?? '' }), 'info')
+        instanceTab = 'custom'
+        navigate('instances')
+        await loadData()
+        if (pack?.id) openPackPage(pack.id)
+      } else if (/\.mrpack$/i.test(path)) {
+        // .mrpack (Modrinth) — звичайний конвеєр імпорту: розпізнаємо маніфест
+        // і одразу імпортуємо у фоні з назвою/версією з самого файлу (без
+        // форми «Імпортувати»). Прогрес, пауза й діалог заблокованих модів —
+        // ті самі, що й при імпорті з вкладки «Імпортувати».
+        const detected = await App.DetectModpackArchive(path)
+        const pack = await App.ImportModpackArchive(path, detected, detected?.suggestedName ?? '', '#ff8a00', '', '')
+        toast(t('osPack.started', { name: pack?.name ?? detected?.suggestedName ?? '' }), 'info')
         instanceTab = 'custom'
         navigate('instances')
         await loadData()
@@ -1334,8 +1515,7 @@
     }
   }
   function toggleSidebar() {
-    sidebarCollapsed = !sidebarCollapsed
-    try { localStorage.setItem('shaurma.sidebarCollapsed', sidebarCollapsed ? '1' : '0') } catch { /* ок */ }
+    updateSetting('sidebarCollapsed', !sidebarCollapsed)
   }
 
   // ── Налаштування sidebar (у «Вигляді» налаштувань лаунчера) ────────────
@@ -1347,6 +1527,11 @@
   const sidebarOnlyPinned = $derived(!!settings.sidebarOnlyPinned)
   const sidebarScale = $derived((settings.sidebarScale ?? 1) as number)
   const sidebarWidth = $derived((settings.sidebarWidth ?? 220) as number)
+  // Стиснений sidebar (лише іконки): зберігається у settings.json, не в localStorage.
+  const sidebarCollapsed = $derived(!!settings.sidebarCollapsed)
+  // Де ховати кнопку «Створити» та перемикач типів у sidebar ('' | 'collapsed' | 'expanded' | 'all').
+  const sidebarHideCreate = $derived((settings.sidebarHideCreate ?? '') as string)
+  const sidebarHideSwitch = $derived((settings.sidebarHideSwitch ?? '') as string)
   function toggleSidebarOnlyPinned() {
     updateSetting('sidebarOnlyPinned', !settings.sidebarOnlyPinned)
   }
@@ -1502,7 +1687,7 @@
     onLanguageChange('p2p-reject', () => { App.SetP2PRejectTexts(p2pRejectTexts()).catch(() => {}) })
     setLanguage(settings.language)
     applyAccent(settings.accent, settings.accentCustom, (settings as any).accentCustomMode, (settings as any).accentCustom2)
-    applyTheme(settings.theme, { bg: settings.themeCustomBg, card: settings.themeCustomCard, text: settings.themeCustomText })
+    applyTheme(settings.theme, { bg: settings.themeCustomBg, card: settings.themeCustomCard, text: settings.themeCustomText, extra: (settings as any).themeCustomExtra })
     // За замовчуванням увімкнено (undefined трактуємо як true — старі
     // збережені стани/тестові моки без цього поля не мають раптово
     // вимикати анімації всім).
@@ -2195,10 +2380,31 @@
   // Зберігаємо стан розгорнутих папок при КОЖНІЙ зміні (і з App.svelte
   // через toggleFolderOpen, і з Sidebar через bind: — там стан мутується
   // напряму, без проміжних функцій).
+  // Стан також дублюється в бекенд (.build-layout.json): localStorage WebView
+  // може не пережити перезапуск, а файл у теці даних — переживає. Поки
+  // збережений стан не завантажено (openFoldersLoaded), нічого не пишемо в
+  // бекенд, щоб порожній стартовий масив не затер збережений.
+  let openFoldersLoaded = false
   $effect(() => {
     const ids = openFolderIds
     try { localStorage.setItem('shaurma.openFolders', JSON.stringify(ids)) } catch { /* ок */ }
+    if (openFoldersLoaded) {
+      const snapshot = [...ids]
+      queueSettingsSave(() => App.SaveOpenFolders(snapshot)).catch((e: any) => console.error('saveOpenFolders:', e))
+    }
   })
+
+  async function loadOpenFolders() {
+    try {
+      const ids = await App.GetOpenFolders()
+      if (Array.isArray(ids) && ids.length > 0) {
+        openFolderIds = ids.filter((x): x is string => typeof x === 'string')
+      }
+    } catch (e) { console.error('loadOpenFolders:', e) }
+    // Якщо в бекенді порожньо, лишається стан із localStorage (міграція) —
+    // його перший же ефект запише в бекенд.
+    openFoldersLoaded = true
+  }
 
   // Порядок збірок для ВІДОБРАЖЕННЯ:
   // - Закріплені: у порядку packLayout.pinned (окремий список)
@@ -3649,12 +3855,13 @@
     // враховує глобальний вимикач і «не показувати знову» для збірки.
     const w = await App.GetLaunchWarnings(id).catch(() => null)
     if (w && (w.showRecommended || w.showLowRam)) {
-      // RAM-попередження перехоплює запуск: мінімальне вікно прогресу
-      // прибираємо, щоб воно не застрягало позаду модалки (запуск ще
-      // не почався — графіка прогресу безглузда). Разом з ним прибираємо
-      // й індикатор «Перевірка збірки…», щоб кнопка не лишалась у стані
-      // «перевіряє» позаду модалки після скасування.
-      launchOverlay = null
+      // RAM-попередження перехоплює запуск: вікно запуску ярлика (якщо
+      // воно було) закриваємо й відкриваємо головний екран — модалка
+      // живе в ньому (запуск ще не почався — графіка прогресу
+      // безглузда). Разом з ним прибираємо й індикатор «Перевірка
+      // збірки…», щоб кнопка не лишалась у стані «перевіряє» позаду
+      // модалки після скасування.
+      endShortcutWindow(true)
       const next = { ...launchProgress }
       delete next[id]
       launchProgress = next
@@ -3885,70 +4092,71 @@
         launchCancelled = cancelled
         return
       }
+      // Помилка запуску: якщо запуск ішов із вікна ярлика — відкриваємо
+      // головний екран, щоб користувач побачив причину.
+      endShortcutWindow(true)
       toast(t('launchError', { message: e }), 'error')
     }
   }
 
   // Запуск збірки з ярлика на робочому столі (--launch <packID> [--account
-  // <id>] [--server <host>]): показуємо мінімальне вікно прогресу запуску і
-  // запускаємо через звичайний launch-шлях (перевірки RAM/модів/акаунта —
-  // ті самі, що й з кнопки «Грати»). Персональні опції ЯРЛИКА (акаунт/
-  // автоприєднання) зберігаємо у shortcutLaunchOpts — doLaunch передасть їх
-  // у LaunchInstanceShortcut, і вони перекриють акаунт/автоприєднання збірки
-  // рівно для цього запуску (як у Prism); решта параметрів — звичайні.
+  // <id>] [--server <host>]). Backend вирішує, ЯК показувати запуск
+  // (mode у pending-даних / події shortcut:launch):
+  //   • 'window' — головний екран не був відкритий: backend уже відкрив
+  //     окреме вікно запуску ярлика (shortcut.html), а ця (приховане
+  //     головне) вікно лише запускає гру й повідомляє вікну назву/іконку.
+  //     Коли гра стартує, backend закриває вікно, лаунчер лишається в
+  //     треї. Якщо потрібен користувач (помилка, RAM-попередження) —
+  //     endShortcutWindow(true) відкриває головний екран.
+  //   • 'plain' — головний екран уже був відкритий: жодних окремих вікон,
+  //     запуск такий самий, як після кнопки «Грати».
+  // Персональні опції ЯРЛИКА (акаунт/автоприєднання) зберігаємо у
+  // shortcutLaunchOpts — doLaunch передасть їх у LaunchInstanceShortcut, і
+  // вони перекриють акаунт/автоприєднання збірки рівно для цього запуску (як
+  // у Prism); решта параметрів — звичайні (перевірки RAM/модів/акаунта — ті
+  // самі, що й з кнопки «Грати»).
   //
-  // ВАЖЛИВО: на сторінку збірки НЕ переходимо (баг «переносить на сторінку
-  // збірки»): користувач клікнув ярлик і хоче одразу гру, а не сторінку.
-  // Якщо збірка ще не завантажена — показуємо оверлей зі станом, юзер
-  // побачить помилку/прогрес і зможе скасувати (CancelGameInstall).
-  async function launchFromShortcut(pid: string, opts?: { accountId?: string; autoJoinServer?: string }) {
+  // ВАЖЛИВО: на сторінку збірки НЕ переходимо — користувач клікнув ярлик і
+  // хоче одразу гру, а не сторінку.
+  async function launchFromShortcut(pid: string, opts?: { accountId?: string; autoJoinServer?: string; mode?: string }) {
     shortcutLaunchOpts = {
       accountId: opts?.accountId || '', autoJoinServer: opts?.autoJoinServer || '',
     }
-    const bv = builds.find(b => b.build.id === pid)
-    // Іконка: PNG збірки (data URL через packAsset) або пресет-гліф.
-    const iconUrl = bv?.build.iconUrl ? packAsset(bv.build.iconUrl) || '' : ''
-    const presetIcon = bv?.build.icon && !bv.build.iconUrl ? bv.build.icon : ''
-    if (bv?.status === 'ready') {
-      // Показуємо мінімальне вікно прогресу запуску (без повного UI):
-      // назва/іконка збірки + прогрес-бар стадій. Зникне на game:started
-      // (гра пішла), на помилку запуску або коли юзер натисне «Скасувати».
-      launchOverlay = {
-        packId: pid, name: bv.build.name,
-        iconUrl, presetIcon, color: bv.build.color || '',
+    if (opts?.mode === 'window') {
+      const bv = builds.find(b => b.build.id === pid)
+      // Іконка: PNG збірки (data URL через packAsset) або пресет-гліф.
+      // packAsset на холодному старті ще не має кешу й повертає порожньо
+      // (завантажує у фоні) — тож чекаємо мініатюру напряму, інакше вікно
+      // запуску лишалось би без іконки.
+      let iconUrl = ''
+      if (bv?.build.iconUrl) {
+        iconUrl = packAsset(bv.build.iconUrl, 128)
+          || await App.GetPackAssetThumbnail(bv.build.iconUrl, 128).catch(() => '')
+          || ''
       }
-      try { await ramCheckOrLaunch(pid) } catch (e: any) {
-        launchOverlay = null
-        toast(t('launchError', { message: e }), 'error')
-      }
-    } else {
-      // Збірка не завантажена (або ще качається). Показуємо оверлей і
-      // запускаємо через buildAction — він сам скачає і запустить.
-      launchOverlay = {
-        packId: pid, name: bv?.build.name || pid,
-        iconUrl, presetIcon, color: bv?.build.color || '',
-      }
-      try { await ramCheckOrLaunch(pid) } catch (e: any) {
-        launchOverlay = null
-        toast(t('launchError', { message: e }), 'error')
-      }
+      const presetIcon = bv?.build.icon && !bv.build.iconUrl ? bv.build.icon : ''
+      const name = bv?.build.name || pid
+      const color = bv?.build.color || ''
+      // launchOverlay тепер лише ознака «запуск іде через вікно ярлика».
+      launchOverlay = { packId: pid, name, iconUrl, presetIcon, color }
+      App.SetShortcutWindowInfo({ packId: pid, name, iconUrl, presetIcon, color }).catch(() => {})
+    }
+    // Збірка не завантажена (або ще качається) — ramCheckOrLaunch →
+    // doLaunch сам скачає і запустить.
+    try { await ramCheckOrLaunch(pid) } catch (e: any) {
+      endShortcutWindow(true)
+      toast(t('launchError', { message: e }), 'error')
     }
   }
 
-  // «Скасувати» на мінімальному вікні прогресу запуску: зупиняємо запуск
-  // цієї збірки і повертаємось до звичайного інтерфейсу.
-  async function cancelOverlayLaunch() {
-    const pid = launchOverlay?.packId
+  // Запуск ішов через вікно ярлика (launchOverlay), але далі потрібен
+  // користувач: закриваємо вікно запуску і (escalate) відкриваємо головний
+  // екран з усім, що потрібно (тост помилки, діалог, модалка). Без
+  // активного вікна ярлика нічого не робить.
+  function endShortcutWindow(escalate: boolean) {
+    if (!launchOverlay) return
     launchOverlay = null
-    if (!pid) return
-    // Під час встановлення компонентів (Java/лоадер/Minecraft) — м'яко
-    // скасовуємо качку (раніше тут був StopInstance, який у фазі
-    // встановлення НІЧОГО не робив — гра ще не запущена як процес, і
-    // «Скасувати» просто закривало вікно, а качка тривала далі).
-    try { await App.CancelGameInstall(pid) } catch { /* вже зупинено */ }
-    // Якщо гра все ж встигла стартувати (сесія вже зареєстрована) —
-    // зупиняємо її як звичайно (помилка ігнорується: нічого не запущено).
-    try { await App.StopInstance(pid) } catch { /* вже зупинено */ }
+    if (escalate) App.ShortcutWindowEscalate().catch(() => {})
   }
 
   // «Видалити дублікати»: для кожної групи лишаємо один увімкнений файл,
@@ -4004,7 +4212,7 @@
   // Скрізь, де ID картки/сторінки відомий, використовувати stopInstance.
   async function stopGame() {
     if (settings.confirmOnStop) {
-      const ok = await confirmDialog(t('pack.stopConfirm'), t('pack.stopConfirmHint'), {
+      const ok = await confirmDialog(t('pack.stopConfirm'), tp('pack.stopConfirmHint'), {
         confirmLabel: t('pack.stop'), cancelLabel: t('cancel'), danger: true
       })
       if (!ok) return
@@ -4026,7 +4234,7 @@
 
   async function stopInstance(packId: string) {
     if (settings.confirmOnStop) {
-      const ok = await confirmDialog(t('pack.stopConfirm'), t('pack.stopConfirmHint'), {
+      const ok = await confirmDialog(t('pack.stopConfirm'), tp('pack.stopConfirmHint'), {
         confirmLabel: t('pack.stop'), cancelLabel: t('cancel'), danger: true
       })
       if (!ok) return
@@ -4228,8 +4436,8 @@
       applyAccent(settings.accent, settings.accentCustom, (settings as any).accentCustomMode, (settings as any).accentCustom2)
     }
     if (key === 'language') setLanguage(v)
-    if (key === 'theme' || key === 'themeCustomBg' || key === 'themeCustomCard' || key === 'themeCustomText') {
-      applyTheme((settings as any).theme, { bg: (settings as any).themeCustomBg, card: (settings as any).themeCustomCard, text: (settings as any).themeCustomText })
+    if (key === 'theme' || key === 'themeCustomBg' || key === 'themeCustomCard' || key === 'themeCustomText' || key === 'themeCustomExtra') {
+      applyTheme((settings as any).theme, { bg: (settings as any).themeCustomBg, card: (settings as any).themeCustomCard, text: (settings as any).themeCustomText, extra: (settings as any).themeCustomExtra })
     }
     if (key === 'animationsEnabled') applyAnimations(v !== false)
     if (key === 'performanceMode') applyPerformanceMode(!!v)
@@ -4779,6 +4987,9 @@
 
   async function wizardFinished(o?: { createPack?: boolean }) {
     showWizard = false
+    // Міграція вже була в майстрі: гасимо автоматичне вікно на цей запуск.
+    migrationPromptDone = true
+    migrationOpen = false
     toast(t('settings.saved'), 'success')
     await loadData()
     // Обрав «Створити першу збірку» — після заставки відкриваємо створення
@@ -4976,9 +5187,12 @@
   }
 
   // Пост-логін черга модалок: єдиний крок — міграція збірок з інших лаунчерів
-  // (якщо знайдено лаунчер і ще не питали). Жодних запитів на згоду
-  // надсилати дані немає: лаунчер нічого не збирає й не передає.
+  // (якщо знайдено лаунчер і ще не питали).
   async function maybeShowPostLoginPrompts() {
+    // Під час майстра першого запуску нічого не показуємо: міграцію збірок
+    // майстер пропонує сам (крок «Файли»), інакше вікно спливало б ПІСЛЯ нього
+    // вдруге й накладалося на заставку.
+    if (showWizard) return
     maybeShowMigration()
   }
 
@@ -4987,7 +5201,7 @@
   // міграції. Один раз за запуск: після закриття migrationPromptDone
   // лишає вимкненим до наступного старту.
   async function maybeShowMigration() {
-    if (migrationPromptDone || migrationOpen) return
+    if (migrationPromptDone || migrationOpen || showWizard || showIntro) return
     try {
       const st = await App.MigrateStatus()
       // Вікно лише коли реально є що переносити (packCount — не перенесені
@@ -5197,7 +5411,7 @@
   function winClose() { flushUIState(); App.QuitLauncher() }
 
   async function removeAccount(id: string) {
-    const ok = await confirmDialog(t('acc.deleteConfirm'), t('acc.delete'), {
+    const ok = await confirmDialog(tp('acc.deleteConfirm'), t('acc.delete'), {
       confirmLabel: t('acc.delete'), cancelLabel: t('cancel'), danger: true
     })
     if (!ok) return
@@ -5281,6 +5495,9 @@
     // Відгук на кожен клік (стиск + пружина + хвиля) — див. lib/pressFx.ts.
     installPressFx()
     installRangeFx()
+    // Список серверів вантажимо у фоні вже зараз: сторінка «Сервери» тоді
+    // відкривається одразу з картками, без спінера.
+    setTimeout(() => warmServerList(), 2500)
     // Глобальний тихий журнал помилок: всі необроблені Promise-відхилення
     // та синхронні помилки пишуться у бекендовий кільцевий буфер
     // (launcher_errors.go). Юзер нічого не бачить — може лише Export.
@@ -5299,12 +5516,11 @@
 
     // Вбудовані шрифти (assets/ttf) — реєструємо @font-face у цьому документі.
     registerBundledFonts()
-    // Стиснений стан sidebar зберігається у localStorage (поточний сеанс),
-    // а ширина/масштаб/«лише закріплені» — у БД через settings: вони
-    // застосовуються з settings одразу після loadData().
-    try { sidebarCollapsed = localStorage.getItem('shaurma.sidebarCollapsed') === '1' } catch { /* ок */ }
+    // Стиснений стан, ширина, масштаб і «лише закріплені» sidebar зберігаються у БД
+    // через settings і застосовуються одразу після loadData().
     await loadPackLayout()
     await loadPackFolders()
+    await loadOpenFolders()
     await startWizard()
     await loadData()
     // Лаунчер запущено з ярлика на робочому столі (shell передав
@@ -5320,7 +5536,7 @@
     const pendingSc = await App.TakePendingShortcutLaunch().catch(() => null)
     if (pendingSc?.packId) {
       launchFromShortcut(pendingSc.packId, {
-        accountId: pendingSc.accountId, autoJoinServer: pendingSc.autoJoinServer,
+        accountId: pendingSc.accountId, autoJoinServer: pendingSc.autoJoinServer, mode: pendingSc.mode,
       })
     }
     // Лаунчер запущено з файлу збірки (.shaurmpack/.shaurmbundle через
@@ -5421,23 +5637,10 @@
       } else if (failed.length > 0) {
         toast(t('mods.migrateFailed', { n: failed.length }), 'error')
       }
-      // Знімаємо прогрес-банер через 2.5с (щоб користувач встиг побачити
-      // 100%), ПОРІВНЮЮЧИ знімок стану: видаляємо лише якщо запис не
-      // оновлювався після done (тобто це та сама міграція). Якщо за ці
-      // 2.5с стартувала НОВА міграція у ту саму збірку — її done/total
-      // вже інші, і старий таймаут її не зітре. На відміну від старої
-      // логіки зі збігом total, тут міграція, що завершилась з помилками
-      // на середині (total у done менший за total прогресу), ТЕЖ завжди
-      // знімається — картка не «зависає» назавжди.
-      const snap = migrateByPack[id]
-      setTimeout(() => {
-        const next = { ...migrateByPack }
-        const cur = next[id]
-        if (cur && snap && cur.done === snap.done && cur.total === snap.total && cur.currentFile === snap.currentFile) {
-          delete next[id]
-        }
-        migrateByPack = next
-      }, 2500)
+      // Банер знімаємо одразу — без таймерів і порівнянь знімків.
+      const next = { ...migrateByPack }
+      delete next[id]
+      migrateByPack = next
       refreshBuilds()
     })
     // Скін на акаунті змінився (гардероб) — перерендерюємо аватарки одразу:
@@ -5566,7 +5769,9 @@
       launchProgress = { ...launchProgress, [p.instanceId]: p }
       // Офлайн-попередження (warning, done=false): показуємо модалку і
       // ПРОДОВЖУЄМО слухати наступні події — це не кінець прогресу.
-      if (p.warning && !p.done) {
+      // У запуску через вікно ярлика головне вікно сховане — модалку не
+      // показуємо (інакше вона випливла б уже після гри).
+      if (p.warning && !p.done && !launchOverlay) {
         launchWarning = p.warning
       }
       if (p.done) {
@@ -5708,23 +5913,25 @@
       // перевірявся лише e.code !== 0, тож штатна ручна зупинка гри
       // показувала користувачу банер «гра завершилась аварійно», хоча
       // нічого аварійного не сталось.
-      if (e.accountId === activeAccountId && e.code !== 0 && !e.wasUserStop) {
-        launchedPackId = e.buildId
-        gameCrashed = true
-        try {
-          crashBannerHidden = localStorage.getItem('shaurma.crashBannerHidden') === '1'
-        } catch (err) { crashBannerHidden = false }
-      }
+      // Реакцію на краш (доктор / повідомлення / нічого) вирішує бекенд в
+      // onGameExitRepair: сюди приходить repair:report або game:crashed.
+      if (e.accountId === activeAccountId && e.code !== 0 && !e.wasUserStop) launchedPackId = e.buildId
+    })
+    // Простий краш без діагнозу і без відкритої консолі (game:crashed).
+    on('game:crashed', (e: { packId: string; accountId: string }) => {
+      if (!e?.packId || e.accountId !== activeAccountId || repairDialog) return
+      launchedPackId = e.packId
+      gameCrashed = true
+      try {
+        crashBannerHidden = localStorage.getItem('shaurma.crashBannerHidden') === '1'
+      } catch (err) { crashBannerHidden = false }
     })
     on('repair:report', (e: import('./lib/types').RepairReportEvent) => {
       if (AUTO_REPAIR_OFF) return // авто-починка тимчасово вимкнена
       if (!e?.packId || !e.report?.issues?.length) return
       // Вікно вже відкрите — не підміняємо звіт під руками (це скидало вибір
-      // і перезапускало діалог). Закрите користувачем — не відкриваємо знову
-      // той самий набір проблем протягом хвилини (повторні події краху).
+      // і перезапускало діалог). Закрите — кожен новий краш відкриває знову.
       if (repairDialog) return
-      const sig = e.packId + '|' + e.report.issues.map((i: any) => i.id).sort().join(',')
-      if (repairDismissed.sig === sig && Date.now() - repairDismissed.at < 60_000) return
       // Звичайна копія звіту (не реактивний проксі події) і лише ОДНЕ вікно
       // про краш: доктор замінює загальне «гра завершилась аварійно».
       repairDialog = { packId: e.packId, report: JSON.parse(JSON.stringify(e.report)) }
@@ -5750,6 +5957,7 @@
         launchFromShortcut(pid, {
           accountId: typeof sc === 'string' ? '' : sc?.accountId,
           autoJoinServer: typeof sc === 'string' ? '' : sc?.autoJoinServer,
+          mode: typeof sc === 'string' ? '' : sc?.mode,
         })
       }
     })
@@ -5811,7 +6019,7 @@
       if (!ev) return
       if (ev.status === 'start') toast('Підтвердіть вхід у Microsoft у браузері, щоб створити акаунт Шаурми', 'info', 8000)
       else if (ev.status === 'ok') toast('Акаунт Шаурми створено', 'success', 4000)
-      else if (ev.status === 'error') toast(`Акаунт Шаурми не створено: ${ev.message || 'помилка'}. Спробуйте в Налаштування → Скін-акаунт`, 'error', 9000)
+      else if (ev.status === 'error') toast(`Акаунт Шаурми не створено: ${ev.message || 'помилка'}. Спробуйте тут: ${settingPathText('card:account/profile')}`, 'error', 9000)
     })
     on('server:player', (ev: ServerPlayerEvent) => {
       if (!ev || !ev.name || ev.action === 'reset') return
@@ -5897,7 +6105,7 @@
   {@const prog = bv.progress}
   {@const pcol = pk.color || 'var(--orange)'}
   {@const othersRunning = otherRunningAccounts(bv)}
-  {@const icon = packAsset(pk.iconUrl)}
+  {@const icon = packAsset(pk.iconUrl, 128)}
   {@const iconSrc = packIconSrc(icon)}
   {@const lp = launchProgress[pk.id]}
   {@const sti = lp && !lp.done ? launchStageIcon(lp.stage) : null}
@@ -5907,7 +6115,7 @@
   {@const mig = migrateByPack[pk.id]}
   {@const isDragSrc = dragSrcId === pk.id}
   {@const isDropTarget = dropTargetId === pk.id}
-  <div class="inst-tile rise-in" class:running={status === 'running'} class:pin-badge={isPinned(pk.id)} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, inFolder)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={() => { if (inFolder) { if (suppressPackClick) return; folderModalId = null } openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor};animation-delay:{Math.min(gi,10)*30}ms">
+  <div class="inst-tile rise-in" class:running={status === 'running'} class:pin-badge={isPinned(pk.id)} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, inFolder)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={() => { if (inFolder) { if (suppressPackClick) return; folderModalId = null } openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor};animation-delay:{Math.min(gi,5)*12}ms">
     <div class="it-ic" class:has-icon={!!iconSrc} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
       {#if iconSrc}
         <AnimatedIcon src={iconSrc} paused={shouldPauseIcon(icon, inFolder ? 'folder' : 'grid', true)} alt="" />
@@ -5918,7 +6126,7 @@
         <!-- Іконка міграції модів поверх іконки збірки: видна
              завжди під час міграції (навіть коли збірка ще
              качається і підпис зайнятий прогресом качки). -->
-        <span class="it-mig-badge" title={t('mods.migratingTitle')}><i class="ti ti-arrows-right-left"></i></span>
+        <span class="it-mig-badge" use:launcherTip={t('mods.migratingTitle')}><i class="ti ti-arrows-right-left"></i></span>
       {/if}
     </div>
     <div class="it-info">
@@ -5932,17 +6140,17 @@
                після створення збірки з міграцією підпис показує
                саме її (а не «качається файли»), бо для гравця
                важливо бачити, що моди переносяться. -->
-          <span class="mig-chip" title={mig.currentFile}>
+          <span class="mig-chip" use:launcherTip={mig.currentFile}>
             <i class="ti ti-arrows-right-left spin-slow"></i>
-            <span>{t('mods.migratingTitle')} {mig.done}/{mig.total}</span>
+            <span>{t('mods.migratingTitle')}</span>
           </span>
         {:else if status === 'downloading' || status === 'updating'}
           <i class="ti {prog?.mode === 'paused' ? 'ti-player-pause' : 'ti-download'}"></i>
           <span>{packSubText(bv, lp)}</span>
         {:else if othersRunning.length}
-          <span class="it-heads" title={othersRunning.map(o => o.username).join(', ')}>
+          <span class="it-heads" use:launcherTip={othersRunning.map(o => o.username).join(', ')}>
             {#each othersRunning as o (o.id)}
-              <img src={headFor(o.uuid)} alt="" title={o.username} />
+              <img src={headFor(o.uuid)} alt="" use:launcherTip={o.username} />
             {/each}
           </span>
         {:else}
@@ -5950,7 +6158,7 @@
         {/if}
       </div>
       {#if mig && !lp && mig.name}
-        <div class="it-mig-name" title={mig.currentFile}>
+        <div class="it-mig-name" use:launcherTip={mig.currentFile}>
           {#if mig.iconUrl}<img src={mig.iconUrl} alt="" />{/if}
           <span>{mig.name}</span>
         </div>
@@ -5968,7 +6176,7 @@
       <!-- Під час встановлення Java/лоадера/оновлення файлів
            кнопка стає «Стоп» (скасувати встановлення) — 1:1 як
            у sidebar (.sp-st). -->
-      <button class="it-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} title={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
+      <button class="it-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} use:launcherTip={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
         {#if lp?.stage === 'java'}
               <img src={javaLogo} alt="" />
             {:else if limg}
@@ -5982,15 +6190,15 @@
            manifest_fetched/extracting/finalizing) — так само
            живий індикатор стадії, окрім паузи (там лишається
            кнопка «продовжити»). -->
-      <div class="it-st {dsti.cls}" title={downloadStageLabel(prog?.stage)}>
+      <div class="it-st {dsti.cls}" use:launcherTip={downloadStageLabel(prog?.stage)}>
         <i class="ti {dsti.icon}"></i>
       </div>
     {:else if mig && !lp}
-      <button class="it-btn it-mig" disabled title={t('mods.migratingTitle')}>
+      <button class="it-btn it-mig" disabled use:launcherTip={t('mods.migratingTitle')}>
         <i class="ti ti-arrows-right-left"></i>
       </button>
     {:else}
-      <button class="it-btn it-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} title={spBtnTitle(bv)}>
+      <button class="it-btn it-{spBtnClass(bv)}" onclick={(e: any) => { e.stopPropagation(); packBtnAction(bv) }} use:launcherTip={spBtnTitle(bv)}>
         {#if status === 'running'}<i class="ti ti-player-stop"></i>
         {:else if status === 'ready'}<i class="ti ti-player-play"></i>
         {:else if status === 'needs-update'}<i class="ti ti-refresh"></i>
@@ -6080,6 +6288,8 @@
     tabPinned={tabPinned}
     tabUnpinned={tabUnpinned}
     sidebarOnlyPinned={sidebarOnlyPinned}
+    sidebarHideCreate={sidebarHideCreate}
+    sidebarHideSwitch={sidebarHideSwitch}
     folderViews={folderViews}
     layoutItems={sidebarLayoutItems}
     launchProgress={launchProgress}
@@ -6140,8 +6350,8 @@
     <Topbar
       icon={topbarIcon}
       title={topbarTitle}
-      minimized={currentPage === 'browser' && !browserProject && !browserScrolled}
       crumb={topbarCrumb}
+      trail={browserTrail ?? sectionTrail}
       isMaximized={isMaximized}
       onsearch={openGlobalSearch}
       onmin={winMin}
@@ -6334,12 +6544,12 @@
                 {@const fIsDragSrc = dragFolderId === folder.id}
                 {@const fIsDropTarget2 = dropTargetId === folder.id}
                 {@const fIcons = fv.packs.slice(0, 3).map((p: BuildView) => {
-                  const fic = packAsset(p.build.iconUrl)
+                  const fic = packAsset(p.build.iconUrl, 128)
                   return { src: packIconSrc(fic), paused: shouldPauseIcon(fic, 'grid', false), pcol: p.build.color || fpcol, preset: p.build.icon || 'ti-puzzle' }
                 })}
                 <FolderTile class="rise-in {fIsDropTarget || (fIsDropTarget2 && (dropPos === 'before' || dropPos === 'after')) ? 'folder-drop' : ''} {fIsDropTarget2 && dropPos === 'before' ? 'drop-before' : ''} {fIsDropTarget2 && dropPos === 'after' ? 'drop-after' : ''} {fIsDragSrc ? 'drag-src' : ''}"
                             data-folder-id={folder.id} data-folder-drop={folder.id}
-                            style="--drop-c:{dragPackColor};animation-delay:{Math.min(gi,10)*30}ms"
+                            style="--drop-c:{dragPackColor};animation-delay:{Math.min(gi,5)*12}ms"
                             name={folder.name} color={fpcol} icon={folder.icon} icons={fIcons} total={fv.packs.length} animated
                             onpointerdown={(e: PointerEvent) => folderPointerDown(e, folder.id)} onpointermove={folderPointerMove} onpointerup={pointerDragEnd}
                             onclick={() => { if (suppressPackClick) return; folderModalId = folder.id }}
@@ -6753,18 +6963,6 @@
   oncancel={() => { renameAccountOpen = false; renameAccountTarget = null }}
 />
 
-<!-- ═══ МІНІМАЛЬНЕ ВІКНО ПРОГРЕСУ ЗАПУСКУ (запуск з ярлика збірки) ═══ -->
-{#if launchOverlay}
-  <LaunchProgressOverlay
-    packName={launchOverlay.name}
-    packIcon={launchOverlay.iconUrl}
-    presetIcon={launchOverlay.presetIcon}
-    packColor={launchOverlay.color}
-    progress={launchProgress[launchOverlay.packId] ?? null}
-    onCancel={cancelOverlayLaunch}
-  />
-{/if}
-
 <!-- ═══ ДІАЛОГ ЯРЛИКА ЗБІРКИ (назва + місце, як Prism) ═══ -->
 {#if shortcutDialogId}
   <ShortcutDialog
@@ -7002,7 +7200,7 @@
             <div class="fe-label">{t('packs.bundleExportDir')}</div>
             <div class="folder-row">
               <input class="st-input grow" bind:value={bse.outDir} placeholder={t('packs.bundleExportDirPlaceholder')} />
-              <button class="btn btn-ghost" onclick={pickBundleExportDir} title={t('browse')}><i class="ti ti-folder"></i></button>
+              <button class="btn btn-ghost" onclick={pickBundleExportDir} use:launcherTip={t('browse')}><i class="ti ti-folder"></i></button>
             </div>
           </div>
         {/if}

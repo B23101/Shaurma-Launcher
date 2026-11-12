@@ -46,9 +46,7 @@ func newRunnerForTest(installDir string) *Runner {
 
 // TestExtractOverrideFolderRemovesZip — РЕГРЕСІЙНИЙ ТЕСТ основного бага:
 // після успішної розпаковки архів-файл має бути видалений з
-// .override-archives/. Раніше zip лишався назавжди (видалявся лише на
-// успішному шляху через os.RemoveAll всієї теки наприкінці Run — а при
-// помилці розпаковки або повторних запусках сміття копилось).
+// .override-archives/.
 func TestExtractOverrideFolderRemovesZip(t *testing.T) {
 	dir := t.TempDir()
 	// Спершу створюємо .override-archives/my-config.zip
@@ -83,8 +81,6 @@ func TestExtractOverrideFolderRemovesZip(t *testing.T) {
 // TestExtractOverrideFolderKeepsZipOnError — помилка розпаковки (битий zip)
 // тепер ЛИШАЄ файл на диску: архів може знадобитись наступному запуску, і
 // downloadTask пропустить качку за хешем (resume без повторного качання).
-// Раніше defer os.Remove стирав zip навіть при помилці, тож наступний запуск
-// був змушений КАЧАТИ архів знову, хоч він уже лежав на диску.
 func TestExtractOverrideFolderKeepsZipOnError(t *testing.T) {
 	dir := t.TempDir()
 	archivesDir := filepath.Join(dir, ".override-archives")
@@ -115,8 +111,7 @@ func TestExtractOverrideFolderKeepsZipOnError(t *testing.T) {
 // TestExtractOverrideFolderSkipsAlreadyExtracted — «пауза→продовження не
 // повертає до розпакування»: якщо всі записи архіву вже на диску з тим самим
 // розміром, повторний виклик НЕ стирає destDir і НЕ розпаковує заново — лише
-// прибирає архів. Раніше повторна розпаковка робила RemoveAll + все спочатку,
-// затираючи навіть зміни користувача.
+// прибирає архів.
 func TestExtractOverrideFolderSkipsAlreadyExtracted(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := makeArchiveZips(t, dir, "cfg", map[string]string{"options.txt": "hello"})

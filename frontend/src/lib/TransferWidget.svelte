@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+  import { fly } from 'svelte/transition'
+
   // Індикатор активності у верхній панелі: одна кнопка з кільцем загального прогресу, клік —
   // список усього, що зараз триває (завантаження збірок, передачі друзям, встановлення ядра
   // сервера, міграції, експорт…). Передачі збірок показуються тут же розгорнутими рядками —
@@ -68,8 +71,6 @@
     open = !open
     if (open) place()
   }
-  // Нова передача від/для друга відкриває список сама (раніше вона одразу була видна в
-  // плаваючому віджеті); решта операцій запускається зі своїх сторінок і там же видна.
   const seen = new Set<string>()
   $effect(() => {
     const ids = [...ins.map(v => 'in:' + v.id), ...outs.map(o => 'out:' + o.id), ...(hiddenOffer ? ['offer:' + hiddenOffer.card.sid] : [])]
@@ -155,7 +156,7 @@
 
 {#if count > 0}
   <button bind:this={btn} class="act-btn {summary.tone}" class:open onclick={toggle}
-          title={t('activity.title')} aria-label={t('activity.title')} aria-expanded={open}>
+          use:launcherTip={t('activity.title')} aria-label={t('activity.title')} aria-expanded={open}>
     <svg class="act-ring" class:spin={summary.tone === 'run' && summary.pct < 0} viewBox="0 0 24 24" aria-hidden="true">
       <circle class="trk" cx="12" cy="12" r="9" />
       <circle class="val" cx="12" cy="12" r="9" stroke-dasharray={C}
@@ -166,77 +167,100 @@
   </button>
 {/if}
 
+<!-- Картка операції в стилі Modrinth: плитка-іконка, жирна назва, рядок стану з відсотком
+     праворуч і тонка смужка прогресу по нижньому краю картки. -->
+{#snippet card(o: { tone: string; icon: string; kind: 'in' | 'out'; title: string; sub: string; label?: string; tag?: { text: string; cls: string }; pct: number | null; paused?: boolean; onopen?: (() => void) | null; ctl?: { icon: string; label: string; run: () => void } | null })}
+  <div class="act-card {o.tone}" in:fly={{ y: -6, duration: 180 }}>
+    {#if o.onopen}
+      <button class="act-main" onclick={o.onopen} aria-label={t('share.details')}>
+        <span class="act-ic {o.kind}"><i class="ti {o.icon}"></i></span>
+        <span class="act-body">
+          <span class="act-title" use:launcherTip={o.title}>{o.title}</span>
+          <span class="act-line">
+            <span class="act-sub" use:launcherTip={o.sub}>{o.sub}</span>
+            {#if o.tag}<span class="st-tag {o.tag.cls}">{o.tag.text}</span>{:else if o.label}<span class="act-label">{o.label}</span>{/if}
+          </span>
+        </span>
+      </button>
+    {:else}
+      <div class="act-main static">
+        <span class="act-ic {o.kind}"><i class="ti {o.icon}"></i></span>
+        <span class="act-body">
+          <span class="act-title" use:launcherTip={o.title}>{o.title}</span>
+          <span class="act-line">
+            <span class="act-sub" use:launcherTip={o.sub}>{o.sub}</span>
+            {#if o.tag}<span class="st-tag {o.tag.cls}">{o.tag.text}</span>{:else if o.label}<span class="act-label">{o.label}</span>{/if}
+          </span>
+        </span>
+      </div>
+    {/if}
+    {#if o.ctl}
+      <div class="act-acts">
+        <button class="act-ctl" aria-label={o.ctl.label} use:launcherTip={o.ctl.label} onclick={o.ctl.run}><i class="ti {o.ctl.icon}"></i></button>
+      </div>
+    {/if}
+    {#if o.pct !== null}
+      <span class="act-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={o.pct < 0 ? undefined : o.pct}>
+        <span class="act-fill" class:paused={o.paused} class:ind={o.pct < 0} style="width:{o.pct < 0 ? 30 : o.pct}%"></span>
+      </span>
+    {/if}
+  </div>
+{/snippet}
+
 <Portal>
   {#if open && count > 0}
     <div bind:this={pop} class="st-menu act-pop" role="region" aria-label={t('activity.title')}
          style="top:{pos.top}px;right:{pos.right}px">
-      <div class="act-head">{t('activity.title')}</div>
+      <div class="act-head"><span>{t('activity.title')}</span><span class="st-tag">{count}</span></div>
       {#if hiddenOffer}
-        <div class="act-row offer">
-          <button class="act-open" onclick={() => { shareUi.offersHidden = false; open = false }} aria-label={t('share.details')}>
-            <span class="act-ic in"><i class="ti ti-gift"></i></span>
-            <span class="act-body">
-              <span class="act-top"><b title={hiddenOffer.card.n}>{hiddenOffer.card.n}</b><span class="act-from">{t('share.widget.from', { name: hiddenOffer.fromName })}</span></span>
-              <span class="act-sub">{t('share.widget.offerWaiting')}{shareUi.offers.length > 1 ? ' · +' + (shareUi.offers.length - 1) : ''}</span>
-            </span>
-          </button>
-        </div>
+        {@render card({
+          tone: 'offer', icon: 'ti-gift', kind: 'in', title: hiddenOffer.card.n,
+          sub: t('share.widget.from', { name: hiddenOffer.fromName }) + ' · ' + t('share.widget.offerWaiting') + (shareUi.offers.length > 1 ? ' · +' + (shareUi.offers.length - 1) : ''),
+          pct: null, onopen: () => { shareUi.offersHidden = false; open = false },
+        })}
       {/if}
       {#each ins as v (v.id)}
         {@const pc = v.phase === 'done' ? 100 : pctOf(v.progress.bytesDone, v.progress.bytesTotal || v.bytes)}
-        <div class="act-row {tone(v.phase, v.reason)}">
-          <button class="act-open" onclick={() => { openTransfer('in', v.id); open = false }} aria-label={t('share.details')}>
-            <span class="act-ic in"><i class="ti {v.phase === 'done' ? 'ti-circle-check' : v.phase === 'error' ? 'ti-alert-triangle' : 'ti-download'}"></i></span>
-            <span class="act-body">
-              <span class="act-top"><b title={v.name}>{v.name}</b><span class="act-from">{t('share.widget.from', { name: v.from })}</span></span>
-              {#if IN_ACTIVE.includes(v.phase) && v.phase !== 'connecting' && v.phase !== 'installing'}
-                <span class="act-bar"><span class="act-fill" class:paused={v.phase === 'paused' || v.progress.reconnecting} style="width:{pc}%"></span></span>
-              {/if}
-              <span class="act-sub">{IN_ACTIVE.includes(v.phase) && v.phase === 'downloading' ? pc + '% · ' : ''}{inLine(v)}</span>
-            </span>
-          </button>
-          {#if v.phase === 'downloading' || v.phase === 'paused'}
-            <div class="act-acts">
-              {#if v.phase === 'paused' && v.progress.pausedBy !== 'sender'}
-                <button aria-label={t('share.resume')} title={t('share.resume')} onclick={() => App.ShareResume(v.id).catch(err)}><i class="ti ti-player-play"></i></button>
-              {:else if v.phase === 'downloading'}
-                <button aria-label={t('share.pause')} title={t('share.pause')} onclick={() => App.SharePause(v.id).catch(err)}><i class="ti ti-player-pause"></i></button>
-              {/if}
-            </div>
-          {/if}
-        </div>
+        {@const bar = IN_ACTIVE.includes(v.phase) && v.phase !== 'connecting' && v.phase !== 'installing'}
+        {@render card({
+          tone: tone(v.phase, v.reason),
+          icon: v.phase === 'done' ? 'ti-circle-check' : v.phase === 'error' ? 'ti-alert-triangle' : 'ti-download',
+          kind: 'in', title: v.name,
+          sub: t('share.widget.from', { name: v.from }) + ' · ' + inLine(v),
+          label: v.phase === 'downloading' ? pc + '%' : undefined,
+          pct: bar ? pc : v.phase === 'connecting' || v.phase === 'installing' ? -1 : null,
+          paused: v.phase === 'paused' || v.progress.reconnecting,
+          onopen: () => { openTransfer('in', v.id); open = false },
+          ctl: v.phase === 'paused' && v.progress.pausedBy !== 'sender'
+            ? { icon: 'ti-player-play', label: t('share.resume'), run: () => App.ShareResume(v.id).catch(err) }
+            : v.phase === 'downloading'
+              ? { icon: 'ti-player-pause', label: t('share.pause'), run: () => App.SharePause(v.id).catch(err) }
+              : null,
+        })}
       {/each}
 
       {#each outs as o (o.id)}
         {@const finished = o.phase === 'closed' || o.phase === 'error'}
-        <div class="act-row" class:ok={finished && o.phase !== 'error'} class:bad={o.phase === 'error'}>
-          <button class="act-open" onclick={() => { openTransfer('out', o.id); open = false }} aria-label={t('share.details')}>
-            <span class="act-ic out"><i class="ti {finished ? 'ti-flag-check' : 'ti-upload'}"></i></span>
-            <span class="act-body">
-              <span class="act-top"><b title={o.name}>{o.name}</b>
-                {#if (o.recipients?.length ?? 0) > 0}<span class="act-from">{o.recipients.length === 1 ? t('share.widget.to', { name: friendName(o.recipients[0].id, o.names?.[o.recipients[0].id]) }) : t('share.widget.toN', { n: o.recipients.length })}</span>{/if}
-              </span>
-              {#if !finished}<span class="act-bar"><span class="act-fill" style="width:{outPct(o)}%"></span></span>{/if}
-              <span class="act-sub">{outLine(o)}</span>
-            </span>
-          </button>
-        </div>
+        {@render card({
+          tone: o.phase === 'error' ? 'bad' : finished ? 'ok' : '',
+          icon: finished ? 'ti-flag-check' : 'ti-upload', kind: 'out', title: o.name,
+          sub: ((o.recipients?.length ?? 0) > 0 ? (o.recipients.length === 1 ? t('share.widget.to', { name: friendName(o.recipients[0].id, o.names?.[o.recipients[0].id]) }) : t('share.widget.toN', { n: o.recipients.length })) + ' · ' : '') + outLine(o),
+          label: !finished ? outPct(o) + '%' : undefined,
+          pct: finished ? null : outPct(o),
+          onopen: () => { openTransfer('out', o.id); open = false },
+        })}
       {/each}
 
       {#each others as a (a.id)}
-        <div class="act-row {actTone(a)}">
-          <div class="act-open static">
-            <span class="act-ic out"><i class="ti {a.state === 'done' ? 'ti-circle-check' : a.state === 'error' ? 'ti-alert-triangle' : activityIcon(a.kind)}"></i></span>
-            <span class="act-body">
-              <span class="act-top"><b title={a.title || kindLabel(a)}>{a.title || kindLabel(a)}</b><span class="st-tag {actTagCls(a)}">{actTag(a)}</span></span>
-              {#if a.state === 'running' || a.state === 'paused'}
-                <span class="act-bar"><span class="act-fill" class:paused={a.state === 'paused'} class:ind={a.percent < 0}
-                      style="width:{a.percent < 0 ? 30 : a.percent}%"></span></span>
-              {/if}
-              <span class="act-sub" title={actSub(a)}>{actSub(a)}</span>
-            </span>
-          </div>
-        </div>
+        {@render card({
+          tone: actTone(a),
+          icon: a.state === 'done' ? 'ti-circle-check' : a.state === 'error' ? 'ti-alert-triangle' : activityIcon(a.kind),
+          kind: 'out', title: a.title || kindLabel(a), sub: actSub(a),
+          tag: a.state === 'running' && a.percent >= 0 ? undefined : { text: actTag(a), cls: actTagCls(a) },
+          label: a.state === 'running' && a.percent >= 0 ? a.percent + '%' : undefined,
+          pct: a.state === 'running' || a.state === 'paused' ? a.percent : null,
+          paused: a.state === 'paused',
+        })}
       {/each}
     </div>
   {/if}
@@ -264,30 +288,44 @@
   .act-pct { color: var(--orange); font-variant-numeric: tabular-nums; }
   @keyframes act-spin { from { transform: rotate(-90deg); } to { transform: rotate(270deg); } }
 
-  /* Список — .st-menu з налаштувань лаунчера; тут лише розкладка рядків. */
-  .act-pop { position: fixed; width: min(400px, calc(100vw - 32px)); max-height: min(480px, calc(100vh - 120px)); padding: 6px; gap: 2px; }
-  .act-head { padding: 6px 10px 8px; font: 700 12px var(--font-ui); color: var(--text-mute); text-transform: uppercase; letter-spacing: .04em; }
-  .act-row { display: flex; align-items: center; border-radius: 8px; flex: none; }
-  .act-pop .act-open { flex: 1; min-width: 0; justify-content: flex-start; gap: 10px; padding: 8px 10px; font-weight: 500; }
-  .act-open.static { display: flex; align-items: center; }
-  .act-ic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 16px; flex: none; }
+  /* Список — .st-menu з налаштувань лаунчера; усередині картки в стилі Modrinth. */
+  .act-pop { position: fixed; width: min(420px, calc(100vw - 32px)); max-height: min(520px, calc(100vh - 120px)); padding: 10px; gap: 8px; }
+  .act-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 2px; font: 700 13px var(--font-ui); color: var(--text); }
+
+  .act-card { position: relative; flex: none; display: flex; align-items: center; gap: 6px; overflow: hidden;
+    padding: 12px 12px 14px; border-radius: 16px; background: var(--hover); border: 1px solid var(--border);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .18); transition: border-color .15s, background .15s; }
+  .act-card:has(button.act-main:hover) { border-color: rgba(var(--orange-rgb), .45); background: var(--hover-strong); }
+  .act-pop .act-main { flex: 1; min-width: 0; width: auto; display: flex; align-items: center; justify-content: flex-start; gap: 12px;
+    padding: 0; border-radius: 10px; background: transparent; font-weight: 500; cursor: pointer; }
+  .act-pop .act-main:hover { background: transparent; }
+  .act-pop .act-main.static { cursor: default; }
+  .act-ic { width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; flex: none; border: 1px solid var(--border); }
   .act-ic.in { color: var(--blue); background: color-mix(in srgb, var(--blue) 15%, transparent); }
   .act-ic.out { color: var(--orange); background: rgba(var(--orange-rgb), .14); }
-  .act-row.ok .act-ic { color: var(--green); background: color-mix(in srgb, var(--green) 15%, transparent); }
-  .act-row.bad .act-ic { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
-  .act-row.pause .act-ic { color: var(--text-mute); background: var(--hover-strong); }
-  .act-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
-  .act-top { display: flex; gap: 8px; align-items: center; min-width: 0; color: var(--text); font-size: 12.5px; }
-  .act-top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
-  .act-top .st-tag { margin-left: auto; flex: none; }
-  .act-from { color: var(--text-mute); font-size: 11px; margin-left: auto; white-space: nowrap; }
-  .act-bar { display: block; height: 4px; border-radius: 99px; background: var(--bg-input); overflow: hidden; }
-  .act-fill { display: block; height: 100%; background: var(--orange); transition: width .3s; }
+  .act-card.ok .act-ic { color: var(--green); background: color-mix(in srgb, var(--green) 15%, transparent); }
+  .act-card.bad .act-ic { color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
+  .act-card.warn .act-ic { color: var(--yellow); background: color-mix(in srgb, var(--yellow) 14%, transparent); }
+  .act-card.pause .act-ic, .act-card.mute .act-ic { color: var(--text-mute); background: var(--hover-strong); }
+
+  .act-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .act-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 14px/1.25 var(--font-ui); color: var(--text); }
+  .act-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+  .act-sub { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-mute); }
+  .act-label { flex: none; font: 700 12px var(--font-ui); color: var(--text); font-variant-numeric: tabular-nums; }
+  .act-card.ok .act-label { color: var(--green); }
+  .act-card.bad .act-label { color: var(--red); }
+
+  .act-acts { display: flex; align-items: center; flex: none; }
+  .act-pop .act-ctl { width: 32px; height: 32px; padding: 0; justify-content: center; border-radius: 50%; background: var(--bg-input); font-size: 16px; }
+  .act-pop .act-ctl:hover { background: var(--hover-strong); }
+
+  /* Смужка прогресу — по нижньому краю картки (як у Modrinth). */
+  .act-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: var(--bg-input); overflow: hidden; }
+  .act-fill { display: block; height: 100%; background: var(--orange); border-radius: 0 3px 3px 0; transition: width .25s ease-in-out; }
+  .act-card.ok .act-fill { background: var(--green); }
+  .act-card.bad .act-fill { background: var(--red); }
   .act-fill.paused { background: var(--text-mute); }
   .act-fill.ind { animation: act-ind 1.2s ease-in-out infinite; }
   @keyframes act-ind { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-  .act-sub { font-size: 11px; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .act-acts { display: flex; align-items: center; padding: 0 6px; }
-  .act-pop .act-acts button { width: 28px; height: 28px; padding: 0; justify-content: center; background: var(--bg-input); }
-  .act-pop .act-acts button:hover { background: var(--hover-strong); }
 </style>

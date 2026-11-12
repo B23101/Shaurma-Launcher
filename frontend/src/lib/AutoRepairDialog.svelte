@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Доктор крашів (авто-починка збірки) ──────────────────────────────────
   // Відповідає на одне питання: «чому впала гра і що натиснути». Тому:
   //  • зверху — головна причина простими словами;
@@ -7,9 +9,7 @@
   //  • після вдалого лагодження — кнопка «Грати знову».
   // Закриття працює ЗАВЖДИ (хрестик, «Закрити», Esc, клік по тлі), навіть
   // поки лагодження триває: воно доробиться у фоні й повідомить тостом.
-  // Раніше вікно могло «застрягти» й перекривати лаунчер — саме через це
-  // доктора й вимикали.
-  // Відкривається: (1) подією repair:report після краху / помилки запуску,
+    // Відкривається: (1) подією repair:report після краху / помилки запуску,
   // (2) вручну («Діагностика» у «Продуктивності»).
   import { onMount, untrack } from 'svelte'
   import UiModal from './UiModal.svelte'
@@ -277,7 +277,7 @@
 
       <div class="dr-meta">
         {#if report?.exitCode != null && report.exitCode !== 0}<span>{t('repair.exitCode', { code: report.exitCode })}</span>{/if}
-        <button class="dr-link" onclick={() => mute(mainIssue!)} title={t('repair.muteHint')}><i class="ti ti-bell-off"></i>{t('repair.mute')}</button>
+        <button class="dr-link" onclick={() => mute(mainIssue!)} use:launcherTip={t('repair.muteHint')}><i class="ti ti-bell-off"></i>{t('repair.mute')}</button>
         {#if mutedKinds.length}<button class="dr-link" onclick={unmuteAll}>{t('repair.mutedCount', { n: mutedKinds.length })} · {t('repair.unmute')}</button>{/if}
       </div>
     {/if}

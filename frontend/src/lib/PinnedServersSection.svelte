@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Закріплені сервери (над картками на «Моїх збірках») ──────────────────
   // Wardrobe-style картки в адаптивній сітці; drag&drop з тим самим
   // «розсувним» ghost-slide індикатором, що в sidebar/wardrobe: цільова
@@ -53,8 +55,7 @@
   // pinnedServersCompact (Налаштування → Вигляд) ховає весь текст/MOTD/
   // бейдж і лишає лише коло іконки сервера з маленькою іконкою збірки в
   // кутку та статус-крапкою — займає значно менше місця по вертикалі,
-  // зручно коли закріплено багато серверів. Раніше перемикач жив у шапці
-  // секції (localStorage) — вигляд тепер керується з налаштувань.
+  // зручно коли закріплено багато серверів.
 
   let openMenu = $state<string | null>(null)
   // Позиція меню при рендері через Portal (position:fixed, за координатами
@@ -80,9 +81,6 @@
     const spaceBelow = window.innerHeight - r.bottom
     const openUp = spaceBelow < MENU_EST_HEIGHT && r.top > spaceBelow
     menuPos = {
-      // Праві краї меню й кнопки збігаються (той самий вигляд, що раніше
-      // давав right:0 у .pss-menu-wrap), лише координати тепер абсолютні
-      // (viewport), а не відносні контейнера картки.
       left: Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8)),
       top: openUp ? r.top - 6 : r.bottom + 6,
       openUp,
@@ -217,7 +215,7 @@
 <div class="pss">
   <div class="pss-head">
     <span class="pss-title"><i class="ti ti-pin"></i> {t('pinnedServers.title')} <span class="pss-count">{servers.length}</span></span>
-    <button class="pss-refresh" onclick={() => onPingAll()} title={t('pack.servers.pingAll')}>
+    <button class="pss-refresh" onclick={() => onPingAll()} use:launcherTip={t('pack.servers.pingAll')}>
       <i class="ti {pinging ? 'ti-loader spin' : 'ti-refresh'}"></i>
     </button>
   </div>
@@ -246,7 +244,7 @@
         ondragover={(e) => pssDragOverCard(e, key)}
         ondrop={pssDrop}
         ondragend={pssDragEnd}
-        title={compact ? (ps.name || ps.address) + (servers.length > 1 ? '\n' + t('pinnedServers.dragHint') : '') : (servers.length > 1 ? t('pinnedServers.dragHint') : undefined)}
+        use:launcherTip={compact ? (ps.name || ps.address) + (servers.length > 1 ? '\n' + t('pinnedServers.dragHint') : '') : (servers.length > 1 ? t('pinnedServers.dragHint') : undefined)}
         animate:flip={{ duration: 220 }}
       >
         {#if compact}
@@ -269,7 +267,7 @@
             {:else if pr}
               <span class="pss-c-dot dot-off"></span>
             {/if}
-            <button class="pss-c-pack" title={ps.packName} onclick={(e: any) => { e.stopPropagation(); onOpenPack(ps.packId) }}>
+            <button class="pss-c-pack" use:launcherTip={ps.packName} onclick={(e: any) => { e.stopPropagation(); onOpenPack(ps.packId) }}>
               {#if packIconSrc}
                 <img src={packIconSrc} alt="" />
               {:else}
@@ -284,7 +282,7 @@
               <span class="pss-c-state"><i class="ti ti-loader spin"></i></span>
             {/if}
           </div>
-          <button class="pss-c-menu-btn" onclick={(e: any) => toggleMenu(e, ps.address)} title={t('pinnedServers.menu')}>
+          <button class="pss-c-menu-btn" onclick={(e: any) => toggleMenu(e, ps.address)} use:launcherTip={t('pinnedServers.menu')}>
             <i class="ti ti-dots-vertical"></i>
           </button>
           {#if openMenu === ps.address && menuPos}
@@ -336,19 +334,19 @@
             {#if pr === null}
               <span class="pss-dot dot-load"></span>
             {:else if pr?.online}
-              <span class="pss-dot dot-on" title="{pr.players ?? 0}/{pr.maxPlayers ?? 0}"></span>
+              <span class="pss-dot dot-on" use:launcherTip={(pr.players ?? 0) + "/" + (pr.maxPlayers ?? 0)}></span>
             {:else if pr}
               <span class="pss-dot dot-off"></span>
             {/if}
           </div>
           <div class="pss-addr">{ps.address}</div>
           {#if pr?.online && pr.motd}
-            <div class="pss-motd" title={stripMotdCodes(pr.motd)}>{#each parseMotdSegments(pr.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
+            <div class="pss-motd" use:launcherTip={stripMotdCodes(pr.motd)}>{#each parseMotdSegments(pr.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
           {/if}
         </div>
 
         <!-- Бейдж збірки -->
-        <div class="pss-pack" title={t('pinnedServers.fromPack')} onclick={() => onOpenPack(ps.packId)}>
+        <div class="pss-pack" use:launcherTip={t('pinnedServers.fromPack')} onclick={() => onOpenPack(ps.packId)}>
           {#if packIconSrc}
             <img src={packIconSrc} alt="" />
           {:else}
@@ -359,34 +357,34 @@
 
         <!-- Стан (запуск / гра / оновлення / кнопка) -->
         {#if lp && !lp.done && !lp.error}
-          <span class="pss-state pss-state-launching" title={t('pinnedServers.launching')}>
+          <span class="pss-state pss-state-launching" use:launcherTip={t('pinnedServers.launching')}>
             <i class="ti ti-loader spin"></i>
             {t('pinnedServers.launching')}
             <span class="pss-state-stage">{launchStageLabel(lp.stage)}</span>
           </span>
         {:else if st === 'running'}
-          <span class="pss-state pss-state-running" title={t('pinnedServers.inGame')}>
+          <span class="pss-state pss-state-running" use:launcherTip={t('pinnedServers.inGame')}>
             <i class="ti ti-player-play"></i> {t('pinnedServers.inGame')}
           </span>
         {:else if st === 'downloading' || st === 'updating'}
-          <span class="pss-state pss-state-updating" title={t('pinnedServers.updating')}>
+          <span class="pss-state pss-state-updating" use:launcherTip={t('pinnedServers.updating')}>
             <i class="ti ti-loader spin"></i>
             {t('pinnedServers.updating')}
             {#if prog != null}<span class="pss-state-pct">{Math.round(prog)}%</span>{/if}
           </span>
         {:else if st === 'needs-update'}
-          <button class="btn btn-secondary btn-sm" onclick={(e: any) => { e.stopPropagation(); onOpenPack(ps.packId) }} title={t('pinnedServers.needsUpdate')}>
+          <button class="btn btn-secondary btn-sm" onclick={(e: any) => { e.stopPropagation(); onOpenPack(ps.packId) }} use:launcherTip={t('pinnedServers.needsUpdate')}>
             <i class="ti ti-refresh"></i> {t('pinnedServers.needsUpdate')}
           </button>
         {:else}
-          <button class="btn btn-primary btn-sm pss-join-btn" onclick={(e: any) => { e.stopPropagation(); onJoin(ps.packId, ps.address) }} title={t('pack.servers.join')}>
+          <button class="btn btn-primary btn-sm pss-join-btn" onclick={(e: any) => { e.stopPropagation(); onJoin(ps.packId, ps.address) }} use:launcherTip={t('pack.servers.join')}>
             <i class="ti ti-player-play"></i> {t('pack.servers.join')}
           </button>
         {/if}
 
         <!-- Меню ⋯ -->
         <div class="pss-menu-wrap">
-          <button class="pss-btn" onclick={(e: any) => toggleMenu(e, ps.address)} title={t('pinnedServers.menu')}>
+          <button class="pss-btn" onclick={(e: any) => toggleMenu(e, ps.address)} use:launcherTip={t('pinnedServers.menu')}>
             <i class="ti ti-dots-vertical"></i>
           </button>
           {#if openMenu === ps.address && menuPos}

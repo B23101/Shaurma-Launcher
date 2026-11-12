@@ -1,6 +1,12 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
+  import PagedConsole from './PagedConsole.svelte'
+  import type { ConsolePage } from './consolePage'
   import { onMount, onDestroy } from 'svelte'
   import { t, setLanguage } from './i18n.svelte'
+  import RichT from './RichT.svelte'
+  import { tp } from './settings/nav'
   import { syncAppearance, loadConsoleFonts, consoleFontValues, consoleFontStack as consoleFontStackShared, fontFamilyFromPath, registerBundledFonts } from './theme.svelte'
   import { App, on, Window, Application } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
@@ -9,7 +15,7 @@
   import { packAsset } from './packAssets.svelte'
   import steveHead from '../assets/images/steve-head.png'
   import type {
-    Settings, ConsoleLine, ConsoleContext, AIDiagnosis, AIFixResult, AIRecommendedAction,
+    Settings, ConsoleContext, AIDiagnosis, AIFixResult, AIRecommendedAction,
     LaunchProgress, SyncProgress, BuildProgress, ConsoleAIEvent
   } from './types'
 
@@ -47,7 +53,10 @@
     cleanupAfterPackDelete: false
   })
 
-  let lines = $state<ConsoleLine[]>([])
+  let pageStats = $state({ count: 0, errors: 0 })
+  let consoleRevision = $state(0)
+  const loadPage = (offset: number, limit: number, level: string, query: string, after: number) =>
+    App.GetConsolePage(packID || '', offset, limit, level, query, after)
   let ctx = $state<ConsoleContext>({ instanceId: '', name: '', mcVersion: '', loader: '', running: false, ramMb: 4096 })
   // Іконка збірки в шапці панелі запуску — 1:1 як sidebar (.sp-ic):
   // PNG через packAsset, інакше шрифт-іконка pack.icon на кольоровому фоні.
@@ -70,7 +79,6 @@
   let search = $state('')
   // Автоскрол БЕЗ кнопки (як у Prism): скрол донизу відбувається лише
   // коли користувач уже внизу — onScroll оновлює цей прапорець.
-  let autoscroll = $state(true)
   let maximized = $state(false)
   let loaded = $state(false)
 
@@ -126,7 +134,7 @@
   // Висота рядка ЗАЛЕЖИТЬ від налаштованого розміру шрифту консолі
   // (consoleFontSize): LINE_H = шрифт + 10px вертикального дихания, щоб
   // математика віртуалізації (startIdx * LINE_H) збігалася з реальною
-  // висотою рядків у DOM. Дефолт 12px → LINE_H 22px (як раніше).
+  // висотою рядків у DOM. Дефолт 12px → LINE_H 22px.
   const consoleFontSize = $derived(Math.max(9, Math.min(24, settings.consoleFontSize || 12)))
   const LINE_H = $derived(consoleFontSize + 10)
   const consoleFontStack = $derived(consoleFontStackShared(settings.consoleFontFamily || 'mono'))
@@ -134,12 +142,7 @@
   // Шрифт РЯДКА: у режимі 'perType' (налаштування → Консоль → «Окремо для
   // кожного типу») INFO/WARN/ERROR рендеряться РІЗНИМИ шрифтами
   // (consoleInfoFont/WarnFont/ErrorFont); у режимі 'all' — спільним
-  // (consoleFontFamily). Делегує в consoleFontStack() з theme.svelte.ts
-  // (БАГ, виправлено: тут раніше була ОКРЕМА локальна копія цієї логіки
-  // без гілки для вбудованих шрифтів (FONTS[f]) — Minecraft/Marker Felt
-  // коректно показувались у списку вибору, але візуально нічого не
-  // змінювали: consoleFontStackFor()/lineFont() падали на дефолтний
-  // var(--font-mono) для будь-якого значення, якого явно не очікували).
+  // (consoleFontFamily).
   function lineFont(lvl: string): string {
     // Банер запуску — завжди чистий моноширинний шрифт (інакше ASCII-арт з «█» пливе).
     if (lvl === 'banner') return "ui-monospace, 'JetBrains Mono', 'Cascadia Mono', Consolas, Menlo, 'DejaVu Sans Mono', monospace"
@@ -148,62 +151,9 @@
       : settings.consoleFontFamily || 'mono'
     return consoleFontStackShared(f)
   }
-  const OVERSCAN = 30
-  let termEl: HTMLDivElement | undefined = $state()
-  let scrollTop = $state(0)
-  let viewportH = $state(600)
-
-  let nextLocalId = 1_000_000
-
-  function now(): string {
-    return new Date().toTimeString().slice(0, 8)
-  }
-
-  // Визначення рівня рядка на клієнті (для живого потоку console:line;
-  // рядки зі знімка вже мають рівень з бекенду).
-  function detectLevel(text: string): string {
-    if (/error|exception|fatal|crash|failed|unable to|outofmemory|severe|\[stderr\]|\[error\]|throwable/i.test(text)) return 'error'
-    if (/warn|warning|can't keep up/i.test(text)) return 'warn'
-    return 'info'
-  }
-
-  // Додає рядок у буфер з обрізанням за consoleMaxLines (рядків).
-  //
-  // ВАЖЛИВО (фікс «підвисає при флуді логів»): при швидкому потоці (Forge/
-  // Fabric під час завантаження великої збірки чи краш-дампу видає сотні
-  // рядків/сек) кожен push у $state-масив раніше тригерив ПОВНИЙ
-  // перерахунок filtered/errorCount ($derived — Array.filter по всьому
-  // lines, до consoleMaxLines елементів) і DOM-мутацію автоскролу
-  // ($effect) ОКРЕМО на кожен рядок. Сотні таких перерахунків за секунду —
-  // і UI-потік вкладки (рендер, скрол, інші реактивні ефекти) захлинався.
-  // Тепер вхідні рядки складаються в pendingLines і скидаються в lines
-  // ОДНІЄЮ пачкою раз на кадр (requestAnimationFrame) — Svelte тоді робить
-  // один прохід filtered/errorCount/автоскролу на кадр незалежно від того,
-  // скільки рядків прийшло за цей час, замість одного проходу на рядок.
-  let pendingLines: ConsoleLine[] = []
-  let flushScheduled = false
-
-  let flushRafHandle = 0
-
-  function flushPendingLines() {
-    flushScheduled = false
-    if (pendingLines.length === 0) return
-    lines.push(...pendingLines)
-    pendingLines = []
-    const max = Math.max(100, settings.consoleMaxLines || 10000)
-    if (lines.length > max) lines.splice(0, lines.length - max)
-  }
-
-  function addLine(level: string, text: string) {
-    pendingLines.push({ id: nextLocalId++, time: now(), level, text })
-    if (!flushScheduled) {
-      flushScheduled = true
-      flushRafHandle = requestAnimationFrame(flushPendingLines)
-    }
-  }
-
   // ── Підписки на події бекенду ──
   let unsubs: (() => void)[] = []
+  let disposed = false
 
   // Перечит знімка буфера + контексту (після фокусу на збірку або
   // перемикання акаунта в консолі). Стан краху та AI-діагноз відновлюємо
@@ -221,12 +171,7 @@
     aiActionResult = null
     accMenuOpen = false
     try {
-      const snap = await App.GetConsoleSnapshot(targetID ?? '')
-      lines = snap?.length ? snap : [] // порожній буфер → очищаємо, а не лишаємо старі рядки
-      // Той самий ризик "ожилих" рядків, що в console:cleared/clearLog —
-      // pendingLines міг накопичити рядки старого контексту (інша збірка/
-      // акаунт) до перечитування знімка.
-      pendingLines = []
+      consoleRevision++
       // Запам'ятовуємо ПОПЕРЕДНЮ збірку ДО перезапису ctx: за нею
       // визначаємо, чи це «та сама консоль» (повторний фокус — зберігаємо
       // AI-панель) чи інша збірка/акаунт (старий діагноз прибираємо).
@@ -395,18 +340,17 @@
       // ВИГЛЯД (тема/акцент/шрифт) чіпаємо ЛИШЕ в окремому вікні
       // (standalone): там свій <html>, і його треба налаштувати самому.
       // Коли консоль — вкладка сторінки збірки, вона живе в ГОЛОВНОМУ
-      // вікні, чиїм виглядом володіє App.svelte. Раніше тут теж викликався
-      // applyTheme(s.theme) без кольорів користувача — для власної теми це
-      // ЗНІМАЛО inline-змінні (--bg-app/--text/...) з <html> головного
-      // вікна, і власний стиль скидався щойно відкриєш розділ «Консоль».
+      // вікні, чиїм виглядом володіє App.svelte.
       let s: Awaited<ReturnType<typeof App.GetSettings>> | null
       if (standalone) {
         const r = await syncAppearance()
+        if (disposed) { r.off(); return }
         unsubs.push(r.off)
         s = r.settings
       } else {
         s = await App.GetSettings()
       }
+      if (disposed) return
       if (!s) throw new Error('no settings')
       settings = s
       setLanguage(s.language)
@@ -421,52 +365,12 @@
     // закрита (гра активна — запис іде незалежно від вікна). Вкладка
     // прив'язується до СВОЄЇ збірки (packID), вікно — до останньої
     // запущеної (порожній packID).
+    if (disposed) return
     await reloadConsole(packID || undefined)
+    if (disposed) return
     loaded = true
 
     unsubs.push(
-      // Живий потік рядків: окреме вікно (packID не задано) читає
-      // console:lines — бекенд шле його ПАЧКАМИ (console_batch.go: раз на
-      // 40 мс або коли пачка виросла до 500 рядків). Одиночних console:line
-      // бекенд БІЛЬШЕ не надсилає (зроблено навмисно — див. коментар у
-      // wireSessionLauncher: поодинокі CGo-виклики на рядок зависали UI).
-      // Тому підписка ЛИШЕ на одиночні (як було до батчування) означала,
-      // що відкрита вкладка консолі не отримувала ЖОДНОГО живого рядка:
-      // контент з'являвся лише при перечитуванні знімка (onMount при
-      // поверненні в розділ) — звідси і симптом «консоль мертва, доки не
-      // перейдеш на інший розділ і назад». Вкладка (packID задано) читає
-      // buildConsole:lines і фільтрує рядки СВОЄЇ збірки — запуск іншої
-      // збірки не домішує чужі логи у вкладку.
-      // Одиночні console:line/buildConsole:line лишаємо на випадок збірок
-      // з бекендом, що ще шле їх поодинці (shaurma-linux-bridge).
-      on('console:line', (line: string) => {
-        if (packID) return
-        addLine(detectLevel(line), String(line))
-      }),
-      on('console:lines', (batch: unknown) => {
-        if (packID) return
-        if (!Array.isArray(batch)) return
-        for (const line of batch) {
-          if (line == null) continue
-          addLine(detectLevel(String(line)), String(line))
-        }
-      }),
-      on('buildConsole:line', (e: { buildId: string; accountId: string; line: string }) => {
-        if (!packID || e.buildId !== packID) return
-        // Консоль показує лог ОДНОГО акаунта (перемикач): рядки сесій інших
-        // акаунтів тієї самої збірки не домішуємо в буфер на екрані.
-        if (ctx.accountId && e.accountId && e.accountId !== ctx.accountId) return
-        addLine(detectLevel(e.line), String(e.line))
-      }),
-      on('buildConsole:lines', (batch: unknown) => {
-        if (!packID || !Array.isArray(batch)) return
-        for (const e of batch as Array<{ buildId: string; accountId: string; line: string } | null>) {
-          if (!e || e.buildId !== packID) continue
-          // Той самий фільтр акаунта, що й в одиночному buildConsole:line.
-          if (ctx.accountId && e.accountId && e.accountId !== ctx.accountId) continue
-          addLine(detectLevel(e.line), String(e.line))
-        }
-      }),
       on('game:exit', async (code: number) => {
         if (packID) return // вкладка реагує на build:exit своєї збірки
         lastExitCode = code
@@ -523,8 +427,7 @@
         aiActionState = 'idle'
         aiActionResult = null
         // Окреме вікно СЛІДУЄ за збіркою, що запустилась: якщо воно було
-        // прив'язане до ІНШОЇ (напр. останньої запущеної раніше) —
-        // переприв'язуємось. Інакше після запуску нової збірки консоль
+        // прив'язане до ІНШОЇ. Інакше після запуску нової збірки консоль
         // показувала б старий лог «чужої» збірки, і користувач думав би,
         // що запустилась не та.
         if (packIDArg && packIDArg !== ctx.instanceId) {
@@ -647,11 +550,7 @@
         if (packID && buildId && buildId !== packID) return
         if (!packID && ctx.instanceId && buildId && buildId !== ctx.instanceId) return
         if (buildId === '' && (packID || ctx.instanceId)) return
-        lines = []
-        // Рядки, що встигли накопичитись у pendingLines до цього
-        // requestAnimationFrame, інакше "ожили" б наступного кадру вже
-        // ПІСЛЯ очищення — старі рядки знову з'явились би у списку.
-        pendingLines = []
+        consoleRevision++
         aiDiag = null
         aiState = 'idle'
         consoleTab = 'console'
@@ -663,58 +562,15 @@
       })
     )
 
-    // Висота в'юпорта для віртуалізації.
-    requestAnimationFrame(() => {
-      if (termEl) {
-        viewportH = termEl.clientHeight
-        termEl.scrollTop = termEl.scrollHeight
-      }
-    })
   })
 
   onDestroy(() => {
+    disposed = true
     unsubs.forEach((u) => { try { u?.() } catch { /* ок */ } })
-    if (flushScheduled) cancelAnimationFrame(flushRafHandle)
+    unsubs = []
   })
 
-  // ── Фільтр + пошук ──
-  const filtered = $derived(
-    lines.filter((l) => {
-      if (filter !== 'all' && l.level !== filter) return false
-      if (search && !l.text.toLowerCase().includes(search.toLowerCase())) return false
-      return true
-    })
-  )
-
-  const errorCount = $derived(lines.filter((l) => l.level === 'error').length)
-
-  // Видимий діапазон рядків (віртуалізація).
-  const startIdx = $derived(Math.max(0, Math.floor(scrollTop / LINE_H) - OVERSCAN))
-  const endIdx = $derived(Math.min(filtered.length, Math.ceil((scrollTop + viewportH) / LINE_H) + OVERSCAN))
-  const visible = $derived(filtered.slice(startIdx, endIdx))
-
-  function onScroll() {
-    if (!termEl) return
-    scrollTop = termEl.scrollTop
-    viewportH = termEl.clientHeight
-    // Біля дна → автопрокрутка; інакше користувач переглядає історію.
-    autoscroll = termEl.scrollTop + termEl.clientHeight >= termEl.scrollHeight - 4
-  }
-
-  // Сигнал «з'явився новий рядок» за id ОСТАНЬОГО рядка, а не за
-  // filtered.length: коли буфер упирався в consoleMaxLines, length більше
-  // не змінюється (нові рядки приходять разом з обрізкою старих) — ефект
-  // нижче мав би тоді залежати лише від нього і зупинявся б на довгому
-  // потоці логів. id монотонний, тож змінюється на кожен новий рядок.
-  const lastLineId = $derived(filtered.length ? filtered[filtered.length - 1].id : -1)
-
-  // Після додавання рядків, якщо автоскрол — донизу. Під час пошуку не
-  // скролимо (користувач переглядає результати, а не стежить за потоком).
-  $effect(() => {
-    void lastLineId
-    if (!autoscroll || !termEl || search) return
-    if (filtered.length) termEl.scrollTop = termEl.scrollHeight
-  })
+  const errorCount = $derived(pageStats.errors)
 
   function setFilter(f: 'all' | 'info' | 'warn' | 'error') { filter = f }
 
@@ -733,20 +589,21 @@
   }
 
   // Підсвітка пошуку у видимому рядку (без ламання кольорового рівня).
+  // Пошук іде по СИРОМУ тексті, а кожен шматок екранується окремо.
   function highlight(text: string): string {
-    const esc = escapeHtml(text)
-    if (!search) return esc
+    if (!search) return escapeHtml(text)
     const q = search.toLowerCase()
-    const lower = esc.toLowerCase()
+    const lower = text.toLowerCase()
+    if (lower.length !== text.length) return escapeHtml(text)
     let out = ''
     let i = 0
     let idx = lower.indexOf(q)
     while (idx !== -1) {
-      out += esc.slice(i, idx) + '<mark>' + esc.slice(idx, idx + q.length) + '</mark>'
+      out += escapeHtml(text.slice(i, idx)) + '<mark>' + escapeHtml(text.slice(idx, idx + q.length)) + '</mark>'
       i = idx + q.length
       idx = lower.indexOf(q, i)
     }
-    return out + esc.slice(i)
+    return out + escapeHtml(text.slice(i))
   }
 
   function levelLabel(lvl: string): string {
@@ -771,14 +628,15 @@
   }
 
   // ── Дії з логом ──
-  function logText(): string {
-    return filtered.map((l) => `[${l.time}] [${l.level.toUpperCase()}] ${l.text}`).join('\n')
+  async function logText(): Promise<string> {
+    const snapshot = await App.GetConsoleSnapshot(packID || '')
+    return snapshot.filter(l => (filter === 'all' || l.level === filter) && (!search || l.text.toLowerCase().includes(search.toLowerCase()))).map((l) => `[${l.time}] [${l.level.toUpperCase()}] ${l.text}`).join('\n')
   }
 
   let copiedTick = $state(0)
   async function copyLog() {
     try {
-      await App.CopyToClipboard(logText())
+      await App.CopyToClipboard(await logText())
       copiedTick = Date.now()
       toast(t('console.copied'), 'success', 1600)
     } catch (e) {
@@ -790,7 +648,7 @@
     try {
       // SaveConsoleLog відкриває ДІАЛОГ збереження — юзер сам вибирає теку
       // і назву файлу. Скасування повертає '' — мовчки нічого не робимо.
-      const path = await App.SaveConsoleLog(logText())
+      const path = await App.SaveConsoleLog(await logText())
       if (!path) return
       toast(
         t('console.savedTo', { path }),
@@ -848,7 +706,7 @@
     if (!ok) return
     try {
       toast(t('console.shareUploading'), 'info', 0)
-      const url = await App.UploadConsoleLog(logText())
+      const url = await App.UploadConsoleLog(await logText())
       toast(t('console.shareDone'), 'success')
       App.OpenExternal(url)
     } catch (e) {
@@ -857,13 +715,10 @@
   }
 
   function clearLog() {
-    lines = []
-    // Див. коментар у console:cleared — той самий ризик "ожилих" рядків.
-    pendingLines = []
     aiDiag = null
     aiState = 'idle'
     consoleTab = 'console'
-    App.ClearConsoleBuffer(packID || '')
+    App.ClearConsoleBuffer(packID || '').then(() => { consoleRevision++ })
   }
 
   // ── Запуск/зупинка ──
@@ -892,11 +747,11 @@
 
   async function stopGame() {
     // Підтвердження перед зупинкою — та сама настройка, що й на сторінці
-    // збірки (Налаштування → Вікно гри → «Підтверджувати зупинку»).
+    // збірки (Налаштування → Гра → Підтвердження та попередження).
     if (settings.confirmOnStop) {
       const ok = await confirmDialog(
         t('pack.stopConfirm'),
-        t('pack.stopConfirmHint'),
+        tp('pack.stopConfirmHint'),
         { confirmLabel: t('pack.stop'), cancelLabel: t('cancel'), danger: true }
       )
       if (!ok) return
@@ -1093,13 +948,13 @@
 
     <div class="gc-actions">
       {#if standalone}
-        <button class="gbtn" title={t('win.minimize')} onclick={winMin}><i class="ti ti-minus"></i></button>
-        <button class="gbtn" title={t('win.maximize')} onclick={winMax}><i class="ti {maximized ? 'ti-copy' : 'ti-square'}"></i></button>
-        <button class="gbtn close" title={t('win.close')} onclick={winClose}><i class="ti ti-x"></i></button>
+        <button class="gbtn" use:launcherTip={t('win.minimize')} onclick={winMin}><i class="ti ti-minus"></i></button>
+        <button class="gbtn" use:launcherTip={t('win.maximize')} onclick={winMax}><i class="ti {maximized ? 'ti-copy' : 'ti-square'}"></i></button>
+        <button class="gbtn close" use:launcherTip={t('win.close')} onclick={winClose}><i class="ti ti-x"></i></button>
       {:else}
         <!-- Кнопка «відкрити вікно» у вкладці: перемикає вікно САМЕ ЦІЄЇ
              збірки (packID) — кілька збірок = кілька незалежних вікон. -->
-        <button class="gbtn" title={t('console.openWindow')} onclick={() => App.ToggleConsoleWindowFor(packID || '')}><i class="ti ti-arrows-maximize"></i></button>
+        <button class="gbtn" use:launcherTip={t('console.openWindow')} onclick={() => App.ToggleConsoleWindowFor(packID || '')}><i class="ti ti-arrows-maximize"></i></button>
       {/if}
     </div>
   </div>
@@ -1211,46 +1066,21 @@
     </div>
 
     <div class="gc-tool-right">
-      <button class="tbtn" title={t('console.copyLog')} onclick={copyLog}>
+      <button class="tbtn" use:launcherTip={t('console.copyLog')} onclick={copyLog}>
         {#if copiedTick > 0 && Date.now() - copiedTick < 1500}<i class="ti ti-check" style="color:var(--green)"></i>{:else}<i class="ti ti-copy"></i>{/if}
       </button>
-      <button class="tbtn" title={t('console.saveLog')} onclick={saveLog}><i class="ti ti-download"></i></button>
-      <button class="tbtn" title={t('console.shareLog')} onclick={shareLog}><i class="ti ti-cloud-upload"></i></button>
-      <button class="tbtn" title={t('console.clear')} onclick={clearLog}><i class="ti ti-trash"></i></button>
+      <button class="tbtn" use:launcherTip={t('console.saveLog')} onclick={saveLog}><i class="ti ti-download"></i></button>
+      <button class="tbtn" use:launcherTip={t('console.shareLog')} onclick={shareLog}><i class="ti ti-cloud-upload"></i></button>
+      <button class="tbtn" use:launcherTip={t('console.clear')} onclick={clearLog}><i class="ti ti-trash"></i></button>
     </div>
   </div>
 
   <!-- ═══ Термінал (віртуалізований; при увімкненому перенесенні рядків
        рендеримо всі рядки, бо висота стає змінною) ═══ -->
-  <div class="gc-term" bind:this={termEl} onscroll={onScroll} style="font-size:{consoleFontSize}px;font-family:{consoleFontStack};--cons-line:{LINE_H}px">
-    {#if filtered.length === 0}
-      <div class="gc-empty">
-        {search ? t('console.noResults', { q: search }) : t('console.hint')}
-      </div>
-    {:else if settings.consoleWrap}
-      {#each filtered as line (line.id)}
-        <div class="line {line.level}" style="color:{levelColor(line.level)};font-family:{lineFont(line.level)}">
-          {#if line.level !== 'banner'}
-            <span class="l-ts">{line.time}</span>
-            <span class="l-lvl">{levelLabel(line.level)}</span>
-          {/if}
-          <span class="l-msg">{@html highlight(line.text)}</span>
-  </div>
-      {/each}
-    {:else}
-      <div style="height:{startIdx * LINE_H}px;flex-shrink:0"></div>
-      {#each visible as line (line.id)}
-        <div class="line {line.level}" style="height:{LINE_H}px;color:{levelColor(line.level)};font-family:{lineFont(line.level)}">
-          {#if line.level !== 'banner'}
-            <span class="l-ts">{line.time}</span>
-            <span class="l-lvl">{levelLabel(line.level)}</span>
-          {/if}
-          <span class="l-msg">{@html highlight(line.text)}</span>
-  </div>
-      {/each}
-      <div style="height:{(filtered.length - endIdx) * LINE_H}px;flex-shrink:0"></div>
-    {/if}
-  </div>
+  <PagedConsole load={loadPage} {filter} {search} wrap={!!settings.consoleWrap}
+    fontSize={consoleFontSize} fontFamily={consoleFontStack}
+    colorInfo={settings.consoleInfoColor} colorWarn={settings.consoleWarnColor} colorError={settings.consoleErrorColor}
+    revision={consoleRevision} {lineFont} lineColor={levelColor} onStats={(p: ConsolePage) => { pageStats = { count: p.count, errors: p.errors } }} />
   {:else}
   <!-- ═══ Вкладка «Файл краху» — сирий текст у моноширинному стилі
        консолі: та сама якісна читаність, що звичайний термінал, але без
@@ -1266,10 +1096,10 @@
       {aiDiag?.crashReportFile ? t('console.crashFile.fromReport') : t('console.crashFile.fromLog')}
     </div>
     <div class="gc-tool-right">
-      <button class="tbtn" title={t('console.copyLog')} onclick={copyCrashLog}>
+      <button class="tbtn" use:launcherTip={t('console.copyLog')} onclick={copyCrashLog}>
         {#if crashCopiedTick > 0 && Date.now() - crashCopiedTick < 1500}<i class="ti ti-check" style="color:var(--green)"></i>{:else}<i class="ti ti-copy"></i>{/if}
       </button>
-      <button class="tbtn" title={t('console.saveLog')} onclick={saveCrashLog}><i class="ti ti-download"></i></button>
+      <button class="tbtn" use:launcherTip={t('console.saveLog')} onclick={saveCrashLog}><i class="ti ti-download"></i></button>
     </div>
   </div>
   <div class="gc-term gc-crashfile" style="font-size:{consoleFontSize}px;font-family:{consoleFontStack}">
@@ -1328,7 +1158,7 @@
         <div class="ai-title">{t('console.ai.title')}</div>
         <div class="ai-badge">beta</div>
         {#if aiState === 'done' || aiState === 'basic'}
-          <button class="ai-collapse" title={aiCollapsed ? t('console.ai.expand') : t('console.ai.collapse')}
+          <button class="ai-collapse" use:launcherTip={aiCollapsed ? t('console.ai.expand') : t('console.ai.collapse')}
                   aria-label={aiCollapsed ? t('console.ai.expand') : t('console.ai.collapse')}
                   onclick={(e: any) => { e.stopPropagation(); toggleAICollapse() }}>
             <i class="ti {aiCollapsed ? 'ti-chevron-down' : 'ti-chevron-up'}"></i>
@@ -1390,7 +1220,7 @@
       {:else}
         <div class="ai-hint">
           {#if !settings.consoleAI}
-            <div class="ai-disabled"><i class="ti ti-sparkles-off"></i> {t('console.ai.disabled')}</div>
+            <div class="ai-disabled"><i class="ti ti-sparkles-off"></i> <RichT key="console.ai.disabled" /></div>
           {:else}
             {t('console.ai.hint')}
             <button class="btn btn-violet btn-sm" onclick={analyzeCrash} disabled={aiBusy || !ctx.instanceId}>
@@ -1405,8 +1235,8 @@
   <!-- ═══ Футер ═══ -->
   <div class="gc-footer">
     <div class="gc-stats">
-      <span><i class="ti ti-file-text"></i> {lines.length} {t('console.lines')}</span>
-      <span><i class="ti ti-ruler-2"></i> {lines.length} / {Math.max(100, settings.consoleMaxLines || 10000)}</span>
+      <span><i class="ti ti-file-text"></i> {pageStats.count} {t('console.lines')}</span>
+      <span><i class="ti ti-ruler-2"></i> {pageStats.count} / {Math.max(100, settings.consoleMaxLines || 10000)}</span>
       <span class={errorCount > 0 ? 'err' : ''}><i class="ti ti-alert-triangle"></i> {errorCount} {t('console.errors')}</span>
     </div>
     {#if gameRunning && standalone}

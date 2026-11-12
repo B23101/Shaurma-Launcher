@@ -114,6 +114,13 @@ type Callbacks struct {
 	// треба завантажити (для UI "Нова версія X.Y.Z, завантажити N МБ").
 	OnUpdateAvailable func(version string, bytesTotal int64, fileCount int)
 	Lang              string // "uk" | "en" — мова статус-повідомлень (з settings.json)
+	// Quick — швидкий старт для запуску з ярлика збірки (shell передає
+	// "shortcut":true). Користувач клікнув ярлик заради гри, а не заради
+	// екрана оновлення, тому «порожні» сценарії (немає оновлення, CDN
+	// недоступний, автооновлення вимкнене) проходять МИТТЄВО: без
+	// мінімального часу показу splash (minSplashShow). Справжнє
+	// завантаження/встановлення це не чіпає — воно йде як звичайно.
+	Quick bool
 }
 
 // launchPause — пауза між повідомленням "Запуск лаунчера..." і реальним
@@ -122,14 +129,8 @@ type Callbacks struct {
 // вікно лаунчера.
 const launchPause = 900 * time.Millisecond
 
-// minSplashShow — мінімальний час показу splash-екрана у "порожніх"
-// сценаріях (немає оновлень / автооновлення вимкнене / CDN недоступний):
-// раніше там була лише launchPause (900мс) — splash миготів як спалах і
-// користувач не встигав зрозуміти, що відбулось. Тепер екран тримається
-// щонайменше 3 секунди від старту перевірки (запити до CDN теж ідуть у
-// цей час), потім phase_complete → backend. При РЕАЛЬНОМУ оновленні
-// (качка/встановлення) splash і так висить довше — ця константа не чіпає
-// той шлях.
+// При РЕАЛЬНОМУ оновленні (качка/встановлення) splash і так висить довше
+// — ця константа не чіпає той шлях.
 const minSplashShow = 3 * time.Second
 
 // holdSplash — тримає splash на екрані щонайменше min від моменту start
@@ -142,6 +143,15 @@ func holdSplash(start time.Time, min time.Duration) {
 	if elapsed < min {
 		time.Sleep(min - elapsed)
 	}
+}
+
+// hold — те саме, що holdSplash(start, minSplashShow), але у швидкому
+// режимі (запуск з ярлика) не робить жодної паузи: див. Callbacks.Quick.
+func (cb Callbacks) hold(start time.Time) {
+	if cb.Quick {
+		return
+	}
+	holdSplash(start, minSplashShow)
 }
 
 // tr повертає статус-повідомлення потрібною мовою. Якщо мова не en —
@@ -265,7 +275,7 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 		if errors.Is(err, ErrStaleCDNManifest) {
 			if exeExists(installDir, edition) {
 				notify(cb, StatusUpToDate, cb.tr("На CDN застарілий маніфест лаунчера — запускаємо поточну версію", "Stale launcher manifest on CDN — launching the current version"))
-				holdSplash(start, minSplashShow)
+				cb.hold(start)
 				return nil
 			}
 			return fmt.Errorf("%s: %w", cb.tr("на CDN застарілий маніфест лаунчера", "the CDN has a stale launcher manifest"), err)
@@ -278,7 +288,7 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 		// помилку.
 		if exeExists(installDir, edition) {
 			notify(cb, StatusUpToDate, cb.tr("CDN недоступний, запускаємо поточну версію", "CDN unreachable, launching the current version"))
-			holdSplash(start, minSplashShow)
+			cb.hold(start)
 			// У DLL-моделі «запуск лаунчера» = phase_complete → shell
 			// підвантажує backend.dll. Повертаємо nil, викликач (App)
 			// сам перейде до backend.
@@ -324,7 +334,7 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 	if len(toDownload) > 0 && !installUpdates && launcherInstalled {
 		notify(cb, StatusUpdateAvailable, cb.tr("Доступне оновлення: %s (автооновлення вимкнено)", "Update available: %s (auto-update disabled)", remote.Version))
 		notify(cb, StatusLaunching, cb.meme(StatusLaunching, 0))
-		holdSplash(start, minSplashShow)
+		cb.hold(start)
 		return nil
 	}
 
@@ -342,7 +352,7 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 		// (користувач бачить «Лаунчер актуальний» + бар до 100%), перш ніж
 		// shell перейде до backend.dll. Це було launchPause (900мс) — замало:
 		// splash миготів як спалах при кожному запуску.
-		holdSplash(start, minSplashShow)
+		cb.hold(start)
 		return nil
 	}
 
@@ -387,7 +397,7 @@ func Run(ctx context.Context, installDir string, edition Channel, updateChannel 
 				"Не вдалося завантажити оновлення (немає мережі) — запускаємо поточну версію",
 				"Couldn't download the update (no network) — launching the current version",
 			))
-			holdSplash(start, minSplashShow)
+			cb.hold(start)
 			return nil
 		}
 		notify(cb, StatusError, err.Error())
@@ -499,12 +509,8 @@ var ErrStaleCDNManifest = errors.New("маніфест CDN застарілої/
 // ламаючи її (реальний інцидент серпня 2026 — застарілий деплой на CDN
 // перетворив оновлення на завантаження чужого launcher.exe).
 //
-// ВАЖЛИВО (виправлено разом з підтримкою Linux): required-список раніше
-// був захардкожений на "backend.dll"/"updater.dll" — Linux-маніфест
-// (backend.so/updater.so, шлях /launcher/linux/...) НІКОЛИ не мав жодного
-// шансу пройти цю перевірку, кожен коректний Linux-деплой відхилявся б
-// як "неповний". Список тепер будується з runtime.GOOS через
-// manifest.UpdaterLibraryName і backendLibraryName нижче.
+// Список тепер будується з runtime.GOOS через manifest.UpdaterLibraryName
+// і backendLibraryName нижче.
 func (cb Callbacks) validateRemoteArchitecture(m *manifest.Manifest) error {
 	seen := make(map[string]bool, len(m.Components))
 	for _, c := range m.Components {

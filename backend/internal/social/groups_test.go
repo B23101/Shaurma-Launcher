@@ -74,8 +74,7 @@ func TestGroupResultResolvesRequest(t *testing.T) {
 	p.handleGroupFrame("group_result", []byte(`{"type":"group_result","reqId":"nope"}`))
 }
 
-// Регресія: group_message несе "message" ОБ'ЄКТОМ. Колись inEvent.Message був string, Unmarshal падав,
-// і readLoop мовчки відкидав кожне групове повідомлення (чат групи оновлювався лише після перезаходу).
+// Регресія: group_message несе "message" ОБ'ЄКТОМ.
 func TestGroupMessageFrameParsesIntoInEvent(t *testing.T) {
 	frame := []byte(`{"type":"group_message","message":{"id":7,"groupId":"g` + strings.Repeat("a", 32) + `","from":"x","kind":"text","body":"hi","ts":1}}`)
 	var ev inEvent

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // Вікно однієї передачі збірки/сервера — для відправника (стан кожного друга) і для
   // одержувача (прогрес, швидкість, ETA, пауза/зупинка, підсумок). Відкривається з віджета
   // передач, картки в чаті, тосту або одразу після «Надіслати». Уся логіка — у бекенді
@@ -165,11 +167,11 @@
               <div><span>{t('share.stat.eta')}</span><b>{inEta || '—'}</b></div>
             {/if}
             {#if (inc.progress.cdnBytes ?? 0) > 0}
-              <div title={t('share.contents.cdnTip')}><span>{t('share.stat.cdn')}</span><b class="st-cdn"><i class="ti ti-bolt"></i> {fmtBytes(inc.progress.cdnBytes ?? 0)}</b></div>
+              <div use:launcherTip={t('share.contents.cdnTip')}><span>{t('share.stat.cdn')}</span><b class="st-cdn"><i class="ti ti-bolt"></i> {fmtBytes(inc.progress.cdnBytes ?? 0)}</b></div>
             {/if}
           </div>
           {#if inc.progress.current && inc.phase === 'downloading'}
-            <div class="st-cur" title={inc.progress.current}>{inc.progress.current}</div>
+            <div class="st-cur" use:launcherTip={inc.progress.current}>{inc.progress.current}</div>
           {/if}
         {/if}
         {#if inc.phase === 'error' && inc.error && inc.reason !== 'error'}
@@ -193,7 +195,7 @@
             {#if outTotals.n > 1}<span><i class="ti ti-users"></i> {t('share.out.groupDone', { ok: outTotals.ok, n: outTotals.n })}</span>{/if}
           </div>
           {#if (out.cdnFiles ?? 0) > 0}
-            <div class="st-cdnchip" title={t('share.contents.cdnTip')}>
+            <div class="st-cdnchip" use:launcherTip={t('share.contents.cdnTip')}>
               <i class="ti ti-bolt"></i>
               <b>{t('share.out.cdn', { n: out.cdnFiles ?? 0, size: fmtBytes(out.cdnBytes ?? 0) })}</b>
               <span>{t('share.out.cdnHint')}</span>
@@ -211,7 +213,7 @@
                 <div class="st-rmain">
                   <div class="st-rtop">
                     <span class="st-who">
-                      <b title={who} style="color:{friendColor(fr?.color ?? '', 'var(--text)')}">{who}</b>
+                      <b use:launcherTip={who} style="color:{friendColor(fr?.color ?? '', 'var(--text)')}">{who}</b>
                       <span class="st-pres {pst}">{t('friendPicker.status.' + pst)}{#if pst === 'in_game' && fr?.presence?.packName} · {fr.presence.packName}{/if}</span>
                     </span>
                     <span class="st-badge {rs.tone}"><i class="ti {rs.icon}"></i> {rs.text}</span>
@@ -231,12 +233,12 @@
                   <div class="st-racts">
                     {#if r.state === 'transferring' || (r.state === 'paused' && r.pausedBy === 'sender')}
                       <button class="st-ic" disabled={busy} aria-label={r.state === 'transferring' ? t('share.pause') : t('share.resume')}
-                        title={r.state === 'transferring' ? t('share.pause') : t('share.resume')}
+                        use:launcherTip={r.state === 'transferring' ? t('share.pause') : t('share.resume')}
                         onclick={() => act(() => App.ShareSenderPause(out.id, r.id, r.state === 'transferring'))}>
                         <i class="ti {r.state === 'transferring' ? 'ti-player-pause' : 'ti-player-play'}"></i>
                       </button>
                     {/if}
-                    <button class="st-ic bad" disabled={busy} aria-label={t('share.out.cancelFor')} title={t('share.out.cancelFor')}
+                    <button class="st-ic bad" disabled={busy} aria-label={t('share.out.cancelFor')} use:launcherTip={t('share.out.cancelFor')}
                       onclick={() => act(() => App.ShareRevokeRecipient(out.id, r.id))}><i class="ti ti-x"></i></button>
                   </div>
                 {/if}
@@ -282,7 +284,7 @@
         {#if outActive}
           {#if out.phase === 'ready'}
             <button class="btn btn-ghost" disabled={busy || !canAdd} onclick={() => (addOpen = true)}
-              title={canAdd ? t('share.out.addFriendTip', { n: slotsLeft }) : t('share.out.addFull', { max: MAX_RECIPIENTS })}>
+              use:launcherTip={canAdd ? t('share.out.addFriendTip', { n: slotsLeft }) : t('share.out.addFull', { max: MAX_RECIPIENTS })}>
               <i class="ti ti-user-plus"></i> {t('share.out.addFriend')}
             </button>
           {/if}

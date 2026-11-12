@@ -32,20 +32,11 @@ func SettingsSchema() []model.SettingDef {
 				{Value: "stable", Label: "settings.channel.stable"},
 				{Value: "beta", Label: "settings.channel.beta"},
 			}},
-		// ПРИМІТКА: поведінка вікна лаунчера (запуск із системою, кнопки ×/–,
-		// вікно під час гри) раніше була трьома незв'язаними булами
-		// (openOnStartup/closeOnLaunch/exitOnGameClose) + «привидом»
-		// hideOnGameOpen. Тепер це окремий розділ «Запуск і вікно» (групи
-		// startup / windowClose / windowGame нижче): один параметр на етап.
 		{Key: "saveLogs", Type: "bool", Group: "general", Label: "settings.saveLogs", Desc: "settings.saveLogsDesc", Default: true},
 		// Одразу після створення/імпорту збірки завантажити всі необхідні
 		// компоненти (Java, лоадер, клієнт, бібліотеки, асети) у фоні —
 		// перший запуск стає миттєвим (як Prism). УВІМКНЕНО за замовчуванням.
 		{Key: "autoDownloadAfterCreate", Type: "bool", Group: "general", Label: "settings.autoDownloadAfterCreate", Desc: "settings.autoDownloadAfterCreateDesc", Default: true},
-		// Відправка журналу помилок на сервер (worker POST /errors) для
-		// діагностики. ВИМКНЕНО ЗА ЗАМОВЧУВАННЯМ: вмикається лише явною
-		// згодою користувача (дехто не хоче, щоб його помилки передавались
-		// назовні). Опис попереджає, ЩО саме надсилається і навіщо.
 		// ── Вимкнення підсистем ──
 		// Скіни офлайн-акаунтів (authlib-injector + Yggdrasil-API на worker'і)
 		// та P2P («LAN через інтернет», Headscale/tsnet). Обидва параметри
@@ -54,12 +45,6 @@ func SettingsSchema() []model.SettingDef {
 		{Key: "disableSkins", Type: "bool", Group: "general", Label: "settings.disableSkins", Desc: "settings.disableSkinsDesc", Default: false},
 		{Key: "disableMojangSkinFallback", Type: "bool", Group: "general", Label: "settings.disableMojangSkinFallback", Desc: "settings.disableMojangSkinFallbackDesc", Default: false},
 		{Key: "disableP2P", Type: "bool", Group: "general", Label: "settings.disableP2P", Desc: "settings.disableP2PDesc", Default: false},
-		// Згода на анонімну статистику використання (opt-in!). Default: false —
-		// жодних мережевих запитів, поки користувач сам не увімкне. Питання
-		// ставиться модалкою при першому запуску (App.svelte), після чого
-		// факт «питали» зберігається в meta shaurma.json, а не тут.
-		{Key: "analyticsEnabled", Type: "bool", Group: "general", Label: "settings.analyticsEnabled", Desc: "settings.analyticsEnabledDesc", Default: false},
-
 		// ── Вигляд ──
 		{Key: "language", Type: "language", Group: "appearance", Label: "settings.language", Desc: "settings.languageDesc", Default: "uk",
 			Options: []model.SettingOption{
@@ -118,9 +103,6 @@ func SettingsSchema() []model.SettingDef {
 		// pop/деактивація пунктів меню, перехід між вкладками налаштувань
 		// тощо). За замовчуванням true; вимикається в «Вигляд» для тих, кому
 		// анімації заважають (data-animations="off" обнуляє всі keyframes).
-		// Раніше ключ існував лише в Settings/дефолтах, але НЕ в схемі —
-		// перемикач не рендерився у «Вигляді» (картка «Анімації» була
-		// закоментована/не підключена).
 		{Key: "animationsEnabled", Type: "bool", Group: "appearance", Label: "settings.animationsEnabled", Desc: "settings.animationsEnabledDesc", Default: true},
 		// Анімувати іконки збірок у sidebar ЗАВЖДИ (не лише для вибраної
 		// збірки). Слабким ПК краще лишати вимкненим — GIF-іконки у sidebar

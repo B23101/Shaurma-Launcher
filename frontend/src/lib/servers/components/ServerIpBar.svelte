@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── IP-рядок під банером ──────────────────────────────────────────────
   // ЛИШЕ локальна адреса сервера (або адреса проксі, коли є Velocity).
   // Публічний доступ до сервера з інтернету — це власна P2P-система
@@ -35,7 +37,7 @@
       <i class="ti ti-router"></i>
       <span class="sip-lbl">{t('servers.ip.proxy')}</span>
       <span class="sip-addr">localhost:{port}</span>
-      <button class="sip-copy" onclick={() => copy(`localhost:${port}`)} title={t('servers.ip.copyAddr')} aria-label={t('servers.ip.copyAddr')}><i class="ti ti-copy"></i></button>
+      <button class="sip-copy" onclick={() => copy(`localhost:${port}`)} use:launcherTip={t('servers.ip.copyAddr')} aria-label={t('servers.ip.copyAddr')}><i class="ti ti-copy"></i></button>
     </div>
   {:else if velocityProxyRunning && isRunning}
     <div class="sip-chip velocity">
@@ -49,7 +51,7 @@
       <i class="ti ti-world"></i>
       <span class="sip-lbl">{t('servers.ip.local')}</span>
       <span class="sip-addr">localhost:{port}</span>
-      <button class="sip-copy" onclick={() => copy(`localhost:${port}`)} title={t('servers.ip.copyAddr')} aria-label={t('servers.ip.copyAddr')}><i class="ti ti-copy"></i></button>
+      <button class="sip-copy" onclick={() => copy(`localhost:${port}`)} use:launcherTip={t('servers.ip.copyAddr')} aria-label={t('servers.ip.copyAddr')}><i class="ti ti-copy"></i></button>
       {#if !isRunning}<span class="sip-note">{t('servers.ip.notRunning')}</span>{/if}
     </div>
   {/if}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Розумний аналізатор запуску сервера ───────────────────────────────
   // Модалка, яка зʼявляється ПЕРЕД стартом, якщо бекенд знайшов проблеми
   // (порт/RAM/Java/EULA/диск/ядро/минулий краш). Той самий патерн, що й
@@ -13,6 +15,7 @@
   import { App } from '../../wails'
   import { toast } from '../../toast.svelte'
   import { t } from '../../i18n.svelte'
+  import { tp } from '../../settings/nav'
   import UiModal from '../../UiModal.svelte'
   import type { ServerPreflight } from '../../types'
 
@@ -73,11 +76,11 @@
         {#if w.hint}<div class="smp-w-hint">{w.hint}</div>{/if}
       </div>
       {#if w.ignorable && KIND_TO_SETTING[w.kind]}
-        <button class="btn btn-ghost btn-sm" onclick={() => ignoreKind(w.kind)} title={t('servers.preflight.ignoreHint')}>
+        <button class="btn btn-ghost btn-sm" onclick={() => ignoreKind(w.kind)} use:launcherTip={tp('servers.preflight.ignoreHint')}>
           <i class="ti ti-eye-off"></i> {t('servers.preflight.ignore')}
         </button>
       {:else if w.kind === 'port'}
-        <span class="smp-lock" title={t('servers.preflight.portLock')}><i class="ti ti-lock"></i></span>
+        <span class="smp-lock" use:launcherTip={t('servers.preflight.portLock')}><i class="ti ti-lock"></i></span>
       {/if}
     </div>
   {/each}

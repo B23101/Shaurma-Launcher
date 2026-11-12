@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // AnimatedIcon — <img>, що може анімуватись (GIF/WebP), з підтримкою
   // паузи «на поточному кадрі». Правило «вікно неактивне → анімації на
   // паузу»: замість підміни src на ПЕРШИЙ кадр (статичний PNG, який
@@ -101,7 +103,7 @@
   src={paused && frozen ? frozen : src}
   class={cls}
   alt={alt}
-  title={title}
+  use:launcherTip={title}
   loading="eager"
   draggable="false"
   data-anim-managed="1"

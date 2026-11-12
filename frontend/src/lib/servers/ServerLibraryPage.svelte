@@ -1,28 +1,68 @@
+<script module lang="ts">
+  import { App as ServersApi } from '../wails'
+  // Keep only the latest list, not mounted page trees or polling timers.
+  let cachedServers: import('../types').ServerView[] | null = null
+
+  // Прогрів кешу: викликається один раз після старту (App.svelte), щоб перший
+  // вхід на сторінку «Сервери» одразу малював картки, а не спінер.
+  export function warmServerList() {
+    if (cachedServers !== null) return
+    ServersApi.ListServers()
+      .then((list: import('../types').ServerView[] | null) => { if (cachedServers === null) cachedServers = list ?? [] })
+      .catch(() => {})
+  }
+
+  // Злиття нового списку у ПОТОЧНИЙ реактивний: об'єкти з тим самим id
+  // оновлюються на місці й лише змінені поля, тож картки не перемальовуються
+  // цілком кожні 2 с. Якщо нічого не змінилось — повертаємо той самий масив,
+  // і Svelte не будить жодного залежного $derived/{#each}.
+  export function mergeServers(
+    prev: import('../types').ServerView[],
+    next: import('../types').ServerView[],
+  ): import('../types').ServerView[] {
+    const byId = new Map(prev.map((s) => [s.id, s]))
+    let changed = prev.length !== next.length
+    const out = next.map((n, i) => {
+      const old = byId.get(n.id)
+      if (!old) { changed = true; return n }
+      const o = old as unknown as Record<string, unknown>
+      const nn = n as unknown as Record<string, unknown>
+      for (const k of Object.keys(nn)) {
+        const a = o[k], b = nn[k]
+        if (a === b) continue
+        if (typeof b === 'object' && b !== null && JSON.stringify(a) === JSON.stringify(b)) continue
+        o[k] = b
+      }
+      if (prev[i] !== old) changed = true
+      return old
+    })
+    return changed ? out : prev
+  }
+</script>
+
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // ── Бібліотека серверів ────────────────────────────────────────────────
   // Редизайн за скаргою «сухо, не красиво, лише існує, а не аналізує».
   //
-  // Що змінилось:
-  //   • ПАНЕЛЬ АНАЛІТИКИ тепер реально працює. Раніше: (1) перше опитування
-  //     приходило лише через 3 с після старту, до того показувались нулі;
-  //     (2) «Пам'ять» складала RSS процесів (java.exe), тож показувала 5.2 ГБ
-  //     там, де на сторінці сервера — 2.7/4.5 ГБ (це купа JVM); (3) жодної
-  //     історії — лише поточне число. Тепер: опитування стартує одразу й при
-  //     кожній зміні набору запущених серверів, RAM — купа JVM / виділено /
-  //     системна, CPU і RAM мають міні-графіки (останні ~90 с).
+  // Склад сторінки:
+  //   • ПАНЕЛЬ АНАЛІТИКИ: опитування стартує одразу й при кожній зміні набору
+  //     запущених серверів; RAM — купа JVM / виділено / системна, CPU і RAM
+  //     мають міні-графіки (останні ~90 с).
   //   • БЛОК «АНАЛІЗ»: перевіряє ВСІ сервери й показує, що не так — краші,
   //     відсутня Java/ядро, конфлікти портів, перевиділення пам'яті, купа
   //     майже повна, перевантажений CPU, довгі паузи GC, сервер, що не
   //     відповідає на порту, вимкнений автобекап. Клік — відкриває сервер.
   //   • Картки — ServerCard із живими смужками CPU/RAM/гравців.
-  //   • Усі тексти — через i18n (раніше жорстко українською).
+  //   • Усі тексти — через i18n.
   //
   // ЖИВИЙ СТАН: підписка на server:status / server:install-progress +
   // тихе перечитування списку, поки щось запущене.
-  import { untrack } from 'svelte'
+  import { untrack, onDestroy } from 'svelte'
   import { App, on } from '../wails'
   import { toast } from '../toast.svelte'
-  import { t } from '../i18n.svelte'
+  import { t, getLanguage } from '../i18n.svelte'
   import type { ServerView, ServerInstallProgress, ServerLiveStats, SystemInfo, ServerFolder, ServerPreflight, RemoteServer } from '../types'
   import { CORE_META, ONLINE_STATUSES } from './constants'
   import SelectField from '../SelectField.svelte'
@@ -36,6 +76,7 @@
   import { safeFolderIcon } from '../folderMeta'
   import { serverIcon } from './utils'
   import { remote as rs, remoteKey, remoteAsView, remoteAct, startRemote } from './remoteServers.svelte'
+  import EmptyState from '../EmptyState.svelte'
 
   let {
     onOpenServer = () => {},
@@ -48,8 +89,12 @@
     onOpenRemote?: (ownerId: string, serverId: string) => void
   } = $props()
 
-  let servers = $state<ServerView[]>([])
-  let loading = $state(true)
+  let servers = $state<ServerView[]>(cachedServers ?? [])
+  let loading = $state(cachedServers === null)
+  let disposed = false
+  let listBusy = false
+  let refreshTimer: ReturnType<typeof setTimeout> | undefined
+  onDestroy(() => { disposed = true; clearTimeout(refreshTimer) })
   let search = $state('')
   let filterCore = $state('all')
   // Фільтр стану — групами «онлайн / офлайн» (взаємовиключні).
@@ -61,13 +106,19 @@
   let installProgress = $state<Record<string, ServerInstallProgress>>({})
 
   async function loadServers(silent = false) {
+    if (disposed || listBusy) return
+    listBusy = true
     if (!silent) loading = true
     try {
-      servers = (await App.ListServers()) ?? []
+      const next = (await App.ListServers()) ?? []
+      if (disposed) return
+      cachedServers = next
+      servers = mergeServers(servers, next)
     } catch (e) {
       console.error(e)
       if (!silent) servers = []
     } finally {
+      listBusy = false
       if (!silent) loading = false
     }
   }
@@ -78,6 +129,15 @@
   // «Усі / Онлайн / Офлайн» і не дають показати «серверів ще немає».
   const remoteOn = (r: RemoteServer) => r.ownerOnline && ONLINE_STATUSES.has(r.state)
   const totalCount = $derived(servers.length + rs.servers.length)
+  // «1 сервер», «2 сервери», «5 серверів»: слово відмінюється за числом
+  // (ключі folder.servers.count.one/few/many/other; без них — старий фіксований підпис).
+  function serversWord(n: number): string {
+    let cat = 'other'
+    try { cat = new Intl.PluralRules(getLanguage()).select(n) } catch { /* невідома мова */ }
+    const key = `folder.servers.count.${cat}`
+    const s = t(key)
+    return s === key ? t('folder.servers.count') : s
+  }
   const onlineCount = $derived(servers.filter(s => ONLINE_STATUSES.has(s.status)).length + rs.servers.filter(remoteOn).length)
   const offlineCount = $derived(totalCount - onlineCount)
   const busyCount = $derived(servers.filter(s => ['running', 'starting', 'stopping', 'installing'].includes(s.status)).length)
@@ -98,7 +158,7 @@
   let analyticsBusy = false
 
   async function refreshAnalytics() {
-    if (analyticsBusy) return
+    if (disposed || document.hidden || analyticsBusy) return
     const running = servers.filter(s => s.status === 'running')
     if (running.length === 0) {
       statsById = {}; pingById = {}; netStats = null; cpuHist = []; ramHist = []
@@ -125,6 +185,7 @@
         return { s, stats, rtt }
       }))
 
+      if (disposed) return
       const nextStats: Record<string, ServerLiveStats> = {}
       const nextPing: Record<string, number> = {}
       let cpu = 0, ram = 0, loss = 0
@@ -198,7 +259,8 @@
       // Ядро могло щойно довантажитись/змінитись loaderVer — після переходу
       // в stopped тихо перечитаємо список (без спінера).
       if (prev !== 'stopped' && data.status === 'stopped') {
-        setTimeout(() => loadServers(true), 400)
+        clearTimeout(refreshTimer)
+        refreshTimer = setTimeout(() => loadServers(true), 400)
       }
     })
     const offInstall = on('server:install-progress', (data: any) => {
@@ -217,7 +279,7 @@
   // сервер ще не має статистики, а запущений не потребує частого списку.
   $effect(() => {
     if (busyCount === 0) return
-    const id = setInterval(() => loadServers(true), 2000)
+    const id = setInterval(() => { if (!document.hidden) void loadServers(true) }, 2000)
     return () => clearInterval(id)
   })
   $effect(() => {
@@ -226,7 +288,7 @@
     return () => clearInterval(id)
   })
 
-  $effect(() => { loadServers() })
+  $effect(() => { untrack(() => { void loadServers(cachedServers !== null) }) })
 
   // ── Фільтри + сортування ──
   const statusRank: Record<string, number> = { running: 0, starting: 1, stopping: 2, installing: 3, crashed: 4, error: 5, stopped: 6 }
@@ -390,13 +452,10 @@
   const INS_LIMIT = 4
   const shownInsights = $derived(insightsOpen ? insights : insights.slice(0, INS_LIMIT))
 
-  // ── Дії ──
-  // Старт ПРЯМО З БІБЛІОТЕКИ — без переходу на сторінку сервера (раніше тут
-  // був onOpenServer(id, true): відкривалась сторінка з консоллю, яка і
-  // стартувала сервер). Той самий шлях, що в консолі/банері сторінки сервера:
-  // спершу розумний аналізатор (порт/RAM/Java/EULA/диск — модалка лише якщо
-  // є що показати), потім App.StartServer. Статус приїздить подією
-  // server:status (див. підписку нижче).
+  // Той самий шлях, що в консолі/банері сторінки сервера: спершу розумний
+  // аналізатор (порт/RAM/Java/EULA/диск — модалка лише якщо є що показати),
+  // потім App.StartServer. Статус приїздить подією server:status (див.
+  // підписку нижче).
   let pfResult = $state<ServerPreflight | null>(null)
   let pfServerName = $state('')
   let pfResolve: ((ok: boolean) => void) | null = null
@@ -768,7 +827,7 @@
        Назву розділу й іконку вже показує верхня панель — окремий заголовок
        «Сервери» під нею дублював її. Тут лише дії, як на сторінці збірок. -->
   <div class="page-actions sl-actions">
-    <button class="btn btn-ghost" onclick={() => loadServers()} title={t('servers.lib.refresh')} aria-label={t('servers.lib.refresh')}><i class="ti ti-refresh"></i></button>
+    <button class="btn btn-ghost" onclick={() => loadServers()} use:launcherTip={t('servers.lib.refresh')} aria-label={t('servers.lib.refresh')}><i class="ti ti-refresh"></i></button>
     <button class="btn btn-ghost" onclick={() => openCreateFolder()}><i class="ti ti-folder-plus"></i> {t('folder.servers.create')}</button>
     <button class="btn btn-primary" onclick={onCreateServer}><i class="ti ti-plus"></i> {t('servers.lib.create')}</button>
   </div>
@@ -777,7 +836,7 @@
     <!-- ═══ ЖИВА АНАЛІТИКА ═══ -->
     {#if servers.length > 0}
       <section class="sl-stats">
-        <div class="sls" title={t('servers.lib.stat.serversTip')}>
+        <div class="sls" use:launcherTip={t('servers.lib.stat.serversTip')}>
           <div class="sls-h"><i class="ti ti-server"></i> {t('servers.lib.stat.servers')}</div>
           <div class="sls-v"><b>{servers.length}</b>{#if runningCount > 0}<span class="ok">{t('servers.lib.stat.working', { n: runningCount })}</span>{/if}</div>
           <div class="sls-f">
@@ -787,13 +846,13 @@
           </div>
         </div>
 
-        <div class="sls" title={t('servers.lib.stat.cpuTip')}>
+        <div class="sls" use:launcherTip={t('servers.lib.stat.cpuTip')}>
           <div class="sls-h"><i class="ti ti-cpu"></i> {t('servers.lib.stat.cpu')}</div>
           <div class="sls-v"><b class:warn={totalCpu > 60} class:bad={totalCpu > 85}>{runningCount ? totalCpu.toFixed(totalCpu >= 10 ? 0 : 1) : '0'}%</b></div>
           <div class="sls-f"><svg viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true">{#if cpuSpark}<path d="{cpuSpark} L100,28 L0,28 Z" class="area" /><path d={cpuSpark} class="line" />{:else}<path d="M0,26 L100,26" class="line dim" />{/if}</svg></div>
         </div>
 
-        <div class="sls" title={t('servers.lib.stat.ramTip')}>
+        <div class="sls" use:launcherTip={t('servers.lib.stat.ramTip')}>
           <div class="sls-h"><i class="ti ti-device-sd-card"></i> {t('servers.lib.stat.ram')}</div>
           <div class="sls-v">
             <b>{runningCount ? gb(totalRamUsed) : '0.0'}</b><span>{t('servers.lib.stat.ramOf', { a: runningCount ? gb(allocRam) : '0' })}</span>
@@ -802,13 +861,13 @@
           {#if hostRamMB > 0 && runningCount > 0}<div class="sls-sub" class:bad={allocRam / hostRamMB >= 0.85}>{t('servers.lib.stat.hostRam', { a: gb(allocRam), h: gb(hostRamMB) })}</div>{/if}
         </div>
 
-        <div class="sls" title={t('servers.lib.stat.playersTip')}>
+        <div class="sls" use:launcherTip={t('servers.lib.stat.playersTip')}>
           <div class="sls-h"><i class="ti ti-users"></i> {t('servers.lib.stat.players')}</div>
           <div class="sls-v"><b>{playersNow}</b><span>/ {playersMax}</span></div>
           <div class="sls-f"><div class="sls-bar"><div style="width:{playersMax ? Math.min(100, Math.round((playersNow / playersMax) * 100)) : 0}%"></div></div></div>
         </div>
 
-        <div class="sls" title={t('servers.lib.stat.netTip')}>
+        <div class="sls" use:launcherTip={t('servers.lib.stat.netTip')}>
           <div class="sls-h"><i class="ti ti-wifi"></i> {t('servers.lib.stat.network')}</div>
           <div class="sls-v">
             {#if !netStats}
@@ -881,7 +940,7 @@
           <i class="ti ti-search"></i>
           <input placeholder={t('servers.lib.search')} bind:value={search} />
           {#if search}
-            <button class="sl-x" onclick={() => search = ''} title={t('servers.lib.clear')} aria-label={t('servers.lib.clear')}><i class="ti ti-x"></i></button>
+            <button class="sl-x" onclick={() => search = ''} use:launcherTip={t('servers.lib.clear')} aria-label={t('servers.lib.clear')}><i class="ti ti-x"></i></button>
           {/if}
         </label>
         <SelectField value={filterCore} options={coreOptions} onchange={(v) => filterCore = v} ariaLabel={t('servers.lib.coreAria')} minWidth="160px" />
@@ -898,19 +957,20 @@
     {#if loading}
       <div class="sl-loading"><i class="ti ti-loader spin"></i> {t('servers.lib.loading')}</div>
     {:else if filtered.length === 0 && remoteVisible.length === 0}
-      <div class="sl-empty">
-        <div class="sl-empty-ic"><i class="ti ti-server-2"></i></div>
-        <div class="sl-empty-t">{totalCount === 0 ? t('servers.lib.empty') : noneOnline ? t('servers.lib.noneOnline') : t('servers.lib.nothing')}</div>
-        {#if totalCount === 0}
-          <div class="sl-empty-s">{t('servers.lib.emptySub')}</div>
-          <button class="btn btn-primary" onclick={onCreateServer}><i class="ti ti-plus"></i> {t('servers.lib.create')}</button>
-        {:else if filtersActive}
-          <!-- Фільтр нічого не лишив — не порожнеча, а підказка і вихід. -->
-          <button class="btn" onclick={() => { search = ''; filterCore = 'all'; filterStatus = 'all' }}>
-            <i class="ti ti-filter-off"></i> {noneOnline ? t('servers.lib.showAll') : t('servers.lib.resetFilters')}
-          </button>
-        {/if}
-      </div>
+      <EmptyState icon="ti-server-2"
+                  title={totalCount === 0 ? t('servers.lib.empty') : noneOnline ? t('servers.lib.noneOnline') : t('servers.lib.nothing')}
+                  hint={totalCount === 0 ? t('servers.lib.emptySub') : ''}>
+        {#snippet actions()}
+          {#if totalCount === 0}
+            <button class="btn btn-primary" onclick={onCreateServer}><i class="ti ti-plus"></i> {t('servers.lib.create')}</button>
+          {:else if filtersActive}
+            <!-- Фільтр нічого не лишив — не порожнеча, а підказка і вихід. -->
+            <button class="btn" onclick={() => { search = ''; filterCore = 'all'; filterStatus = 'all' }}>
+              <i class="ti ti-filter-off"></i> {noneOnline ? t('servers.lib.showAll') : t('servers.lib.resetFilters')}
+            </button>
+          {/if}
+        {/snippet}
+      </EmptyState>
     {:else}
       {#if !filtersActive && folderViews.length > 0}
         <div class="fm-grid sl-folders">
@@ -926,7 +986,7 @@
                         onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openFolderId = f.id } }}
                         oncontextmenu={(e: MouseEvent) => openFolderCtx(e, f.id)}>
               {#snippet sub()}
-                {fv.servers.length} {t('folder.servers.count')}{#if live > 0}<span class="ft-live"> · <i class="ti ti-circle-filled"></i> {live}</span>{/if}
+                {fv.servers.length} {serversWord(fv.servers.length)}{#if live > 0}{' · '}<span class="ft-live"><i class="ti ti-circle-filled"></i> {t('servers.lib.online', { n: live })}</span>{/if}
               {/snippet}
             </FolderTile>
           {/each}
@@ -974,7 +1034,7 @@
     color={of.color || '#ff8a00'}
     icon={of.icon}
     count={openView.servers.length}
-    countLabel={t('folder.servers.count')}
+    countLabel={serversWord(openView.servers.length)}
     emptyText={t('folder.servers.empty')}
     footHint={t('folder.servers.rightClickHint')}
     actions={[
@@ -999,7 +1059,7 @@
     bind:color={fe.color}
     bind:icon={fe.icon}
     count={fe.selected.size}
-    countLabel={t('folder.servers.count')}
+    countLabel={serversWord(fe.selected.size)}
     pickerLabel={t('folder.servers.addServers')}
     showPicker={true}
     onsave={saveFolderEditor}
@@ -1199,10 +1259,6 @@
   .sl-newtile-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 20px; color: var(--orange); background: rgba(var(--orange-rgb), .1); }
   .sl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 14px; align-content: start; }
   .sl-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 60px 0; color: var(--text-mute); font-size: 13px; }
-  .sl-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 56px 20px; text-align: center; }
-  .sl-empty-ic { width: 64px; height: 64px; border-radius: 20px; display: grid; place-items: center; font-size: 30px; color: var(--orange); background: rgba(var(--orange-rgb), .1); border: 1px dashed rgba(var(--orange-rgb), .35); }
-  .sl-empty-t { font: 700 15px/1.2 var(--font-ui); color: var(--text); }
-  .sl-empty-s { font: 400 12px/1.5 var(--font-ui); color: var(--text-mute); max-width: 360px; margin-bottom: 6px; }
 
   /* ── Папки серверів: плитка, міні-іконки, вибір у редакторі ── */
   .sl-cardwrap { min-width: 0; border-radius: 16px; }
@@ -1220,7 +1276,7 @@
   .sl-ghost-n { font-size: 13px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   :global(body.sl-dragging), :global(body.sl-dragging *) { cursor: grabbing !important; user-select: none !important; }
 
-  .sl-pick { display: flex; flex-direction: column; gap: 4px; max-height: min(34vh, 280px); overflow-y: auto; padding: 4px; margin: 0 -4px; scrollbar-width: thin; }
+  .sl-pick { display: flex; flex-direction: column; gap: 4px; max-height: min(34vh, 280px); overflow-y: auto; padding: 4px; margin: 0 -4px; }
   .sl-pick-empty { padding: 14px; text-align: center; font-size: 12px; color: var(--text-dim); border: 1px dashed var(--border-hi); border-radius: 10px; }
   .sl-pick-row {
     all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 10px; cursor: pointer;

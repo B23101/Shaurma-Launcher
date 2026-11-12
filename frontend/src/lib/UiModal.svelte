@@ -1,10 +1,11 @@
 <script module lang="ts">
-  // Стек відкритих модалок: Esc закриває лише ВЕРХНЮ (раніше одним Esc
-  // закривались і модалка, і та, що під нею).
+  // Стек відкритих модалок: Esc закриває лише ВЕРХНЮ.
   const stack: symbol[] = []
 </script>
 
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // UiModal — СПІЛЬНА модалка лаунчера. Замінює 1000 копій
   // `.modal-overlay + .modal` з різними шапками в різних компонентах.
   //
@@ -205,7 +206,7 @@
               <div class="ui-acts">{@render actions()}</div>
             {/if}
             {#if dismissible}
-              <button class="md-close ui-x" onclick={requestClose} disabled={locked} title={t('win.close')}>
+              <button class="md-close ui-x" onclick={requestClose} disabled={locked} use:launcherTip={t('win.close')}>
                 <i class="ti ti-x"></i>
               </button>
             {/if}

@@ -1,16 +1,15 @@
 <script lang="ts" module>
   // ── Термінал-логи сервера ─────────────────────────────────────────────
-  // Той самий візуальний словник, що в GameConsole (сторінка збірки):
-  // рядок = .line з .l-ts (час) + .l-lvl (INFO/WARN/ERR/SYS) + .l-msg,
-  // підсвітка знайденого через <mark>, шрифт/кольори/перенос рядків — з
-  // налаштувань консолі (consoleFontSize/consoleInfoColor/.../consoleWrap).
-  // Раніше це був власний стиль (.cv-*) з часом у рядку і без підсвітки
-  // пошуку — саме через це консоль сервера «не відповідала стилю консолі
-  // збірок».
+  // Той самий візуальний словник, що в GameConsole (сторінка збірки): рядок
+  // = .line з .l-ts (час) + .l-lvl (INFO/WARN/ERR/SYS) + .l-msg, підсвітка
+  // знайденого через <mark>, шрифт/кольори/перенос рядків — з налаштувань
+  // консолі (consoleFontSize/consoleInfoColor/.../consoleWrap).
   export type LogLine = { id: number; time: string; level: string; text: string }
 </script>
 
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   import { App } from '../../wails'
   import { t } from '../../i18n.svelte'
   import type { Settings } from '../../types'
@@ -57,21 +56,22 @@
   }
 
   // Підсвітка збігів пошуку — та сама реалізація, що в GameConsole
-  // (регістронезалежний пошук по вже екранованому тексту).
+  // (регістронезалежний пошук по вже екранованому тексту). Пошук іде по
+  // СИРОМУ тексті, а кожен шматок екранується окремо.
   function highlight(text: string): string {
-    const esc = escapeHtml(text)
-    if (!search) return esc
+    if (!search) return escapeHtml(text)
     const q = search.toLowerCase()
-    const lower = esc.toLowerCase()
+    const lower = text.toLowerCase()
+    if (lower.length !== text.length) return escapeHtml(text)
     let out = ''
     let i = 0
     let idx = lower.indexOf(q)
     while (idx !== -1) {
-      out += esc.slice(i, idx) + '<mark>' + esc.slice(idx, idx + q.length) + '</mark>'
+      out += escapeHtml(text.slice(i, idx)) + '<mark>' + escapeHtml(text.slice(idx, idx + q.length)) + '</mark>'
       i = idx + q.length
       idx = lower.indexOf(q, i)
     }
-    return out + esc.slice(i)
+    return out + escapeHtml(text.slice(i))
   }
 
   function levelLabel(lvl: string): string {
@@ -103,11 +103,8 @@
   })
 
   // ── Віртуалізація ──────────────────────────────────────────────────────
-  // Раніше у DOM лежали ВСІ рядки буфера (до 8000) з {@html} — відкриття вкладки
-  // з великим логом «вішало» інтерфейс. Тепер рендериться лише видиме вікно
-  // (висота рядка фіксована — 22px), а решту заміщають відступи.
-  // У режимі переносу рядків висота змінна, тож там рендеримо «хвіст» буфера
-  // з кнопкою «показати раніше».
+  // Рендериться лише видиме вікно (висота рядка фіксована — 22px), а решту
+  // заміщають відступи. У режимі переносу рядків висота змінна.
   const ROW = 22
   const VIRT_MIN = 150
   const OVERSCAN = 40
@@ -149,10 +146,9 @@
   // ── «Ми внизу» (sticky bottom) ─────────────────────────────────────────
   // Скрол-подія сама по собі НЕ означає «користувач пішов угору»: таку ж
   // подію викликає наш автоскрол і scroll-anchoring браузера (коли на капі
-  // буфера зверху відсікаються старі рядки). Раніше така подія переводила
-  // atBottom у false — і при ДУЖЕ великому потоці логів консоль раптово
-  // «відклеювалась» від дна (автоскрол зупинявся), доки користувач не
-  // натисне «До кінця». Тому:
+  // буфера зверху відсікаються старі рядки). Якби така подія
+  // переводила atBottom у false, при ДУЖЕ великому потоці логів консоль
+  // «відклеювалась» б від дна. Тому:
   //   • явні дії користувача (wheel/touch/клавіші/повзунок) фіксуємо
   //     окремо — ЛИШЕ вони можуть поставити паузу;
   //   • скролі у вікні після оновлення логу вважаємо наслідком контенту
@@ -198,9 +194,7 @@
   const lastLineId = $derived(filtered.length ? filtered[filtered.length - 1].id : -1)
 
   // Автоскрол — ТУТ, а не в батьківському компоненті: рішення «ми внизу»
-  // і сама прокрутка живуть в одному місці. Скролимо СИНХРОННО (без RAF):
-  // вікно до наступного кадру давало скрол-події від anchoring встигнути
-  // «відчепити» консоль від дна раніше, ніж ми до неї доїхали б.
+  // і сама прокрутка живуть в одному місці.
   $effect(() => {
     void lastLineId
     void filter
@@ -255,7 +249,7 @@
   <!-- Повернення до кінця логу: показуємо лише коли користувач пішов
        вгору (тоді автоскрол навмисно на паузі). -->
   {#if !atBottom}
-    <button class="cv-tobottom" onclick={scrollToBottom} title={t('servers.console.toBottom')}>
+    <button class="cv-tobottom" onclick={scrollToBottom} use:launcherTip={t('servers.console.toBottom')}>
       <i class="ti ti-arrow-down"></i> {t('servers.console.toBottomShort')}
     </button>
   {/if}

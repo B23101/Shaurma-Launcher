@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // Крок «Файли»: де лежать збірки (папка даних) і перенесення збірок з
   // інших лаунчерів (Prism, Modrinth App). Сканування — лише стандартні теки
   // тих лаунчерів (бекенд MigrateScan), без обходу дисків.
@@ -37,7 +39,9 @@
     offs.push(on('migrate:progress', (p: MigrateImportProgress) => { if (p?.packId) progress = { ...progress, [p.packId]: p } }))
     try {
       const r = await App.MigrateScan()
-      launchers = (r?.launchers ?? []).filter(l => l.found && l.packs.length > 0)
+      launchers = (r?.launchers ?? [])
+        .map(l => ({ ...l, packs: l.packs ?? [] }))
+        .filter(l => l.found && l.packs.length > 0)
       const s = new Set<string>()
       for (const l of launchers) for (const p of l.packs) if (!p.alreadyImported) s.add(l.kind + '|' + p.id)
       selected = s
@@ -95,7 +99,7 @@
       {#if editPath}
         <input class="input mono" bind:value={pathDraft} onkeydown={(e: any) => { if (e.key === 'Enter') { onPathInput?.(pathDraft.trim()); editPath = false } if (e.key === 'Escape') editPath = false }} aria-label={t('wz.files.where')} />
       {:else}
-        <b class="mono" title={appDir}>{appDir || '…'}</b>
+        <b class="mono" use:launcherTip={appDir}>{appDir || '…'}</b>
         <small>{freeGB > 0 ? t('wz.files.free', { n: freeGB }) : t('wz.files.whereD')}</small>
       {/if}
     </div>
@@ -103,7 +107,7 @@
       {#if editPath}
         <button class="btn btn-primary btn-sm" onclick={() => { onPathInput?.(pathDraft.trim()); editPath = false }}><i class="ti ti-check"></i></button>
       {:else}
-        <button class="btn btn-ghost btn-sm" onclick={() => { pathDraft = appDir; editPath = true }} title={t('wz.files.type')} aria-label={t('wz.files.type')}><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-ghost btn-sm" onclick={() => { pathDraft = appDir; editPath = true }} use:launcherTip={t('wz.files.type')} aria-label={t('wz.files.type')}><i class="ti ti-pencil"></i></button>
         <button class="btn btn-ghost btn-sm" onclick={() => onBrowse?.()}><i class="ti ti-folder-open"></i> {t('wz.game.change')}</button>
       {/if}
     </div>

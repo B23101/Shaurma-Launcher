@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // ── Міграція модів між збірками ─────────────────────────────────────────
   // Модалка з тим самим сценарієм, що ModMigrationScreen у старому
@@ -284,9 +286,9 @@
                 {#if it.iconUrl}<img src={it.iconUrl} alt="" loading="lazy" />
                 {:else}<i class="ti ti-puzzle"></i>{/if}
                 {#if it.source === 'modrinth'}
-                  <span class="mig-src" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                  <span class="mig-src" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                 {:else if it.source === 'curseforge'}
-                  <span class="mig-src" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                  <span class="mig-src" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                 {/if}
               </div>
               <div class="mig-info">
@@ -309,9 +311,9 @@
                     {#if it.willReplace}<span class="mig-tag rep">{t('mods.migrateReplace')}</span>{/if}
                     {#if it.side}
                       {#if it.side === 'server'}<span class="mig-tag side-srv">{t('mods.port.sideServer')}</span>
-                      {:else if it.side === 'client'}<span class="mig-tag side-cl" title={t('mods.port.clientHint')}>{t('mods.port.sideClient')}</span>
-                      {:else}<span class="mig-tag side-unk" title={t('mods.port.unknownHint')}>{t('mods.port.sideUnknown')}</span>{/if}
-                    {:else if it.localCopy}<span class="mig-tag local" title={t('mods.migrateLocalCopyHint')}>{t('mods.migrateLocalCopy')}</span>{/if}
+                      {:else if it.side === 'client'}<span class="mig-tag side-cl" use:launcherTip={t('mods.port.clientHint')}>{t('mods.port.sideClient')}</span>
+                      {:else}<span class="mig-tag side-unk" use:launcherTip={t('mods.port.unknownHint')}>{t('mods.port.sideUnknown')}</span>{/if}
+                    {:else if it.localCopy}<span class="mig-tag local" use:launcherTip={t('mods.migrateLocalCopyHint')}>{t('mods.migrateLocalCopy')}</span>{/if}
                   {/if}
                 </div>
               </div>

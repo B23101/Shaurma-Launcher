@@ -39,11 +39,6 @@ type BackupInfo struct {
 }
 
 // BackupProgress — стан створення бекапу для UI (прогрес-бар).
-//
-// Раніше створення бекапу було «чорною скринькою»: кнопка натиснута — і
-// тиша, поки zip великого світу пишеться десятки секунд. Тепер бекенд шле
-// цю структуру на кожному кроці (server:backup-progress), тож і ручний, і
-// авто-бекап видно в інтерфейсі.
 type BackupProgress struct {
 	World string `json:"world"`
 	// Stage: preparing (рахуємо файли) | packing (пишемо zip) | done | error.
@@ -114,9 +109,6 @@ func ListWorlds(serverDir string) []WorldInfo {
 }
 
 // backupsDirFor — єдина точка правди для теки бекапів: <serverDir>/.shaurma/backups.
-// Раніше різні виклики обчислювали її по-різному (а DeleteWorldBackup взагалі
-// брав глобальну теку даних лаунчера) — через це «видалений» бекап лишався
-// на місці, а відновлення шукало файл не там. Тепер шлях один для всіх.
 func backupsDirFor(serverDir, backupsDir string) string {
 	if strings.TrimSpace(backupsDir) != "" {
 		return backupsDir
@@ -346,9 +338,7 @@ func DeleteBackup(backupsDir, backupID string) error {
 	return err
 }
 
-// DeleteBackupForServer — видалення бекапу КОНКРЕТНОГО сервера. Існує
-// окремо, бо раніше API передавало сюди глобальну теку даних лаунчера
-// замість теки сервера — і «видалений» бекап лишався на диску.
+// DeleteBackupForServer — видалення бекапу КОНКРЕТНОГО сервера.
 func DeleteBackupForServer(serverDir, backupID string) error {
 	backupID = filepath.Base(strings.TrimSpace(backupID))
 	if backupID == "" || backupID == "." {
@@ -363,12 +353,6 @@ func DeleteBackupForServer(serverDir, backupID string) error {
 }
 
 // RestoreBackup відновлює світ з бекапу.
-//
-// Раніше тут була та сама помилка, що в DeleteWorldBackup: за порожнього
-// backupsDir шлях склеювався у «<id>.zip» ВІДНОСНО робочої теки лаунчера,
-// тож кнопка «Відновити» завжди відповідала «бекап не знайдено», хоча
-// архів лежав у <serverDir>/.shaurma/backups. Тепер тека обчислюється
-// єдиною функцією backupsDirFor.
 func RestoreBackup(serverDir, worldName, backupsDir, backupID string) error {
 	backupID = filepath.Base(strings.TrimSpace(backupID))
 	if backupID == "" || backupID == "." {

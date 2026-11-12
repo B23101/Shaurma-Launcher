@@ -75,3 +75,13 @@ func (a *App) GetProfileVisibility() (string, error) {
 func (a *App) SetProfileVisibility(v string) error {
 	return a.socialService().SetProfileVisibility(v)
 }
+
+// GetMutualVisibility — кому я показую імена спільних друзів і назви спільних груп: "everyone" | "friends" | "nobody".
+func (a *App) GetMutualVisibility() (string, error) {
+	return a.socialService().MutualVisibility()
+}
+
+// SetMutualVisibility — змінити, кому я показую спільних друзів і групи. Діє на сервері.
+func (a *App) SetMutualVisibility(v string) error {
+	return a.socialService().SetMutualVisibility(v)
+}

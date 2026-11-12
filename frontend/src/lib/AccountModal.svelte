@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // AccountModal — повне вікно акаунта: 3D-модель гравця, статистика з анімованими
   // лічильниками, редагування біо/кольору, ПРИВАТНІСТЬ (діє на сервері) та ВИГЛЯД
   // (локальна персоналізація: що показувати у власному профілі, ефекти).
@@ -270,7 +272,7 @@
           <span class="am-badge st" style="--c:{STATUS_COLOR[statusKind] ?? '#6b7280'}"><i class="am-dot"></i> {statusText}</span>
         </div>
         {#if profile?.handle}
-          <button class="am-handle" onclick={() => copy('handle', '@' + profile!.handle)} title={t('acc.modal.copy')}>
+          <button class="am-handle" onclick={() => copy('handle', '@' + profile!.handle)} use:launcherTip={t('acc.modal.copy')}>
             <span>@{profile.handle}</span>
             <i class="ti {copied === 'handle' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
@@ -311,7 +313,7 @@
                 {/if}
                 {#if accountPrefs.showSince}
                   <div class="am-stat stg" style="--i:5" transition:scale={{ duration: dur(220), start: 0.9 }}>
-                    <i class="ti ti-calendar-heart"></i><b class="sm" title={sinceText}>{sinceText}</b><small>{t('acc.modal.stat.since')}</small>
+                    <i class="ti ti-calendar-heart"></i><b class="sm" use:launcherTip={sinceText}>{sinceText}</b><small>{t('acc.modal.stat.since')}</small>
                   </div>
                 {/if}
               </div>
@@ -338,7 +340,7 @@
               <div class="am-block">
                 <div class="am-lbl"><i class="ti ti-palette"></i> {t('acc.modal.color')}</div>
                 <div class="am-colors">
-                  <button class="am-sw none" class:sel={colorDraft === ''} onclick={() => (colorDraft = '')} title={t('acc.modal.colorNone')} aria-label={t('acc.modal.colorNone')}>
+                  <button class="am-sw none" class:sel={colorDraft === ''} onclick={() => (colorDraft = '')} use:launcherTip={t('acc.modal.colorNone')} aria-label={t('acc.modal.colorNone')}>
                     <i class="ti ti-ban"></i>
                   </button>
                   {#each PROFILE_COLORS as c (c)}

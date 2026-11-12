@@ -1,4 +1,7 @@
 <script lang="ts">
+  import NumberInput from '../NumberInput.svelte'
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // Setting.svelte — один рядок налаштування. Тип контрола береться зі схеми
   // бекенду (def.type), тексти — з i18n `st.k.<ключ>` (назва) і `st.k.<ключ>.d`
   // (коротка підказка). Корінь рядка — РЕАЛЬНИЙ блок з data-setting-key:
@@ -157,7 +160,7 @@
       </div>
 
     {:else if def.type === 'int'}
-      <input class="st-input num mono" type="number" value={value ?? def.default ?? iMin}
+      <NumberInput style="width:92px" class="st-input num mono" value={value ?? def.default ?? iMin}
              min={iMin} max={iMax} step={iStep} {disabled} aria-label={title}
              onchange={(e) => commitInt((e.currentTarget as HTMLInputElement).value)} />
       {#if unit}<span class="st-unit">{unit}</span>{/if}
@@ -167,7 +170,7 @@
         <input type="range" min={rMin} max={rMax} step={rStep} value={ramMB} aria-label={title}
                oninput={(e) => onchange(clampRam(Number((e.currentTarget as HTMLInputElement).value)))} />
         <span class="st-slider-val">{fmtGB(ramMB)}</span>
-        <input class="st-input num mono" type="number" min={rMin} max={rMax} step={rStep} value={ramMB}
+        <NumberInput style="width:92px" class="st-input num mono" min={rMin} max={rMax} step={rStep} value={ramMB}
                aria-label="{title} ({t('st.unit.mb')})"
                onchange={(e) => onchange(clampRam(Number((e.currentTarget as HTMLInputElement).value)))} />
         <span class="st-unit">{t('st.unit.mb')}</span>
@@ -175,7 +178,7 @@
 
     {:else if def.type === 'color'}
       <div class="st-color">
-        <label class="st-color-dot" style="background:{isHex(value) ? value : '#ffffff'}" title={t('st.pickColor')}>
+        <label class="st-color-dot" style="background:{isHex(value) ? value : '#ffffff'}" use:launcherTip={t('st.pickColor')}>
           <input type="color" value={isHex(value) ? value : '#ffffff'} aria-label={title}
                  oninput={(e) => onchange((e.currentTarget as HTMLInputElement).value)} />
         </label>
@@ -208,7 +211,7 @@
              autocomplete="off" spellcheck="false" value={value ?? ''} placeholder={def.placeholder} {disabled}
              aria-label={title} onchange={(e) => onchange((e.currentTarget as HTMLInputElement).value)} />
       {#if def.action}
-        <button type="button" class="st-iconbtn" onclick={runAction} aria-label={t('st.browse')} title={t('st.browse')}>
+        <button type="button" class="st-iconbtn" onclick={runAction} aria-label={t('st.browse')} use:launcherTip={t('st.browse')}>
           <i class="ti {def.action === 'detectJava' ? 'ti-search' : def.action === 'fontFile' ? 'ti-file-typography' : 'ti-folder'}"></i>
         </button>
       {/if}

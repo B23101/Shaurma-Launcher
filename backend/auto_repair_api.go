@@ -214,26 +214,15 @@ const autoRepairTemporarilyOff = false
 // частіше означає закрите через диспетчер задач вікно, ніж зламану збірку.
 const repairGenericWindow = 5 * time.Minute
 
-// Те саме вікно доктора для тієї самої збірки з тими самими проблемами не
-// показуємо частіше, ніж раз на repairRepeatCooldown, — щоб не дратувати
-// гравця, який свідомо запускає збірку попри попередження.
-const repairRepeatCooldown = 10 * time.Minute
-
-var (
-	repairShownMu sync.Mutex
-	repairShown   = map[string]time.Time{}
-)
-
 // repairWorthShowing вирішує, чи відкривати доктора: конкретні причини —
-// завжди, загальні — лише для крашу на старті; і не частіше за кулдаун.
-func repairWorthShowing(packID string, report autorepair.Report, ranFor time.Duration) bool {
+// завжди, загальні — лише для крашу на старті. Кулдауну немає: кожен краш
+// з проблемами знову показує вікно.
+func repairWorthShowing(report autorepair.Report, ranFor time.Duration) bool {
 	if len(report.Issues) == 0 {
 		return false
 	}
 	concrete := false
-	ids := make([]string, 0, len(report.Issues))
 	for _, is := range report.Issues {
-		ids = append(ids, is.ID)
 		switch is.ID {
 		case "unknown_crash", "recent_mods":
 		default:
@@ -243,38 +232,44 @@ func repairWorthShowing(packID string, report autorepair.Report, ranFor time.Dur
 	if !concrete && ranFor > repairGenericWindow {
 		return false
 	}
-	key := packID + "|" + strings.Join(ids, ",")
-	repairShownMu.Lock()
-	defer repairShownMu.Unlock()
-	if at, ok := repairShown[key]; ok && time.Since(at) < repairRepeatCooldown {
-		return false
-	}
-	repairShown[key] = time.Now()
 	return true
 }
 
 // onGameExitRepair викликається з exit-хендлера: фіксує успішний запуск,
-// а після краху (не зупинки користувачем) у фоні діагностує й шле repair:report.
+// а після краху (не зупинки користувачем) у фоні діагностує й вирішує, що
+// показати. Це ЄДИНЕ місце рішення про реакцію лаунчера на краш — рівно одна
+// з трьох речей (замість кількох вікон одночасно):
+//   - доктор (repair:report) — коли діагностика знайшла проблеми;
+//   - просте повідомлення про краш (game:crashed) — коли доктор нічого не
+//     знайшов/вимкнений І консоль не відкриється сама й не відкрита зараз;
+//   - нічого зайвого — консоль уже перед очима користувача.
 func (a *App) onGameExitRepair(build *launchBuild, account model.Account, buf *console.Buffer, code int, wasUserStop bool, startedAt time.Time) {
 	if code == 0 {
 		autorepair.RecordLaunchResult(a.repairStateDir(), build.ID, 0)
 		return
 	}
-	// АВТО-ПОЧИНКА ТИМЧАСОВО ВИМКНЕНА (вікно діагностики не відкривається).
-	if autoRepairTemporarilyOff || wasUserStop || a.cfg.GetSettings().DisableAutoRepair {
+	if wasUserStop {
 		return
 	}
+	// Консоль уже видна: відкрите вікно або воно саме відкриється після краху
+	// (maybeAutoShowConsole викликається одразу після цього хендлера).
+	consoleVisible := a.cfg.GetSettings().ShowConsoleOnCrash || a.IsConsoleWindowOpen(build.ID)
+	doctorOn := !autoRepairTemporarilyOff && !a.cfg.GetSettings().DisableAutoRepair
 	lines := bufferLines(buf, 1500)
 	go func() {
 		defer crashguard.Recover("a.onGameExitRepair")
-		exit := code
-		in, _, err := a.buildRepairInput(build.ID, lines, "", &exit, startedAt.Add(-time.Minute), account.ID)
-		if err != nil {
-			return
+		if doctorOn {
+			exit := code
+			if in, _, err := a.buildRepairInput(build.ID, lines, "", &exit, startedAt.Add(-time.Minute), account.ID); err == nil {
+				report := autorepair.Diagnose(in)
+				if repairWorthShowing(report, time.Since(startedAt)) {
+					a.emit("repair:report", RepairReportEvent{PackID: build.ID, Report: report})
+					return
+				}
+			}
 		}
-		report := autorepair.Diagnose(in)
-		if repairWorthShowing(build.ID, report, time.Since(startedAt)) {
-			a.emit("repair:report", RepairReportEvent{PackID: build.ID, Report: report})
+		if !consoleVisible {
+			a.emit("game:crashed", map[string]any{"packId": build.ID, "accountId": account.ID, "code": code})
 		}
 	}()
 }
@@ -303,7 +298,7 @@ func (a *App) repairOnLaunchError(packID string, launchErr error) {
 			kept = append(kept, is)
 		}
 		report.Issues = kept
-		if repairWorthShowing(packID, report, 0) {
+		if repairWorthShowing(report, 0) {
 			a.emit("repair:report", RepairReportEvent{PackID: packID, Report: report})
 		}
 	}()

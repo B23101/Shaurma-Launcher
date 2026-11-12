@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // Людський текст помилки: без префікса "Error: " і без технічного хвоста
   // "[429 Too Many Requests: {...}]", який бекенд дописує для логів.
   function friendlyErr(e: unknown): string {
@@ -28,6 +30,7 @@
   // ══════════════════════════════════════════════════════════════════════
 
   import { onMount, onDestroy } from 'svelte'
+  import SettingPath from './settings/SettingPath.svelte'
   import { fade, fly, scale } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import { flip } from 'svelte/animate'
@@ -66,8 +69,7 @@
     // непорожній), але її нік не збігається з ніком поточного Шаурма-
     // акаунта лаунчера: сервер роздає скін за ніком, тому пресет із
     // гардероба цьому конкретному акаунту в грі НЕ застосується, доки
-    // ніки не зійдуться. Раніше в цьому випадку сторінку просто не
-    // показували — тепер показуємо банер з поясненням замість сітки.
+    // ніки не зійдуться.
     nickMismatch?: boolean
     skinAuthNick?: string
   } = $props()
@@ -81,10 +83,10 @@
   let loading = $state(true)
   let applying = $state(false)
 
+  let anim = $state<'idle' | 'run' | 'sit'>('idle')
+
   let defaultPresetIds = $state<Record<string, string>>({})
   let defaultBusy = $state('')
-
-  let anim = $state<'idle' | 'sit' | 'look'>('idle')
 
   // ── Drag&drop переставляння пресетів з ghost-slide ───────────────────
   // dragOverPresetId + dragOverPos визначають куди саме (before/after) впаде
@@ -115,11 +117,9 @@
   }
 
   // ── Drop у ПРОМІЖКУ між картками сітки ────────────────────────────────
-  // Раніше dragover ловився лише на самій картці: наведення в зазор між
-  // картками нічого не показувало і пресет неможливо було поставити точно
-  // між двома. Тепер контейнер .wr2-grid теж ловить dragover/drop: шукаємо
-  // рядок, у якому курсор (за Y), і всередині рядка — слот за X. Так видно
-  // КУДИ саме впаде картка (лінія в зазорі), а не лише підсвітка цілі.
+  // Контейнер .wr2-grid теж ловить dragover/drop: шукаємо рядок, у якому
+  // курсор (за Y), і всередині рядка — слот за X. Так видно КУДИ саме
+  // впаде картка (лінія в зазорі), а не лише підсвітка цілі.
   function onGridDragOver(e: DragEvent) {
     if (!dragPresetId) return
     const t = e.target as HTMLElement
@@ -234,9 +234,7 @@
   }
 
   // Важкий 3D-переглядач (WebGL-контекст, PMREM-env, glTF-модель) створюємо
-  // ПІСЛЯ першого кадру сторінки. Раніше onMount запускав його одразу:
-  // браузер ще малював сітку пресетів, а в тому ж кадрі стартувала
-  // компіляція шейдерів — звідси секундний «залип» при відкритті гардероба.
+  // ПІСЛЯ першого кадру сторінки.
   onMount(() => {
     let idleId: number | undefined
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -289,30 +287,34 @@
     setTimeout(() => (sceneFade = false), 320)
   }
 
+  // Що показує 3D-сцена: вибраний пресет, а якщо його немає — актуальний вигляд акаунта.
+  // Вигляд (модель + скін + плащ) завжди ставиться ЦІЛКОМ через setLook, лише коли дані вже
+  // завантажені: так при зміні акаунта/пресету немає проміжного кадру зі скіном попереднього
+  // персонажа, а повторне застосування того самого вигляду нічого не робить.
   $effect(() => {
     const p = selectedPreset()
     const v = viewer
     if (!v) return
-    pulseSceneFade()
+    // Пресети нового акаунта ще вантажаться: не показуємо проміжний стан (інакше модель
+    // перемикалась би двічі — спершу за виглядом акаунта, потім за його активним пресетом).
+    if (!p && loading) return
+    let alive = true
+    const show = (look: { skin: string | null; cape: string | null; slim: boolean }) => {
+      if (alive && v.setLook(look)) pulseSceneFade()
+    }
     if (p) {
-      v.setSlim(p.slimArms)
-      let alive = true
-      App.GetWardrobeTextureDataURL(p.skinPath).then((d) => alive && v.setTexture(d)).catch(() => {})
-      if (p.capePath) {
-        App.GetWardrobeTextureDataURL(p.capePath).then((d) => alive && v.setCapeTexture(d)).catch(() => alive && v.setCapeTexture(null))
-      } else {
-        v.setCapeTexture(null)
-      }
+      Promise.all([
+        App.GetWardrobeTextureDataURL(p.skinPath),
+        p.capePath ? App.GetWardrobeTextureDataURL(p.capePath).catch(() => null) : Promise.resolve(null),
+      ]).then(([skin, cape]) => show({ skin, cape, slim: p.slimArms })).catch(() => {})
       return () => { alive = false }
     }
     const acc = activeAccount
     if (!acc?.id) return
-    let alive = true
     App.GetWardrobeActiveLook(acc.id).then((look) => {
-      if (!alive || !look) return
-      v.setSlim(look.slimArms)
-      v.setTexture(look.skinDataUrl)
-      v.setCapeTexture(look.capeDataUrl ?? null)
+      // Немає скіна (новий/офлайн-акаунт) — показуємо стандартного Steve, а не лишаємо персонажа
+      // попереднього акаунта.
+      show({ skin: look?.skinDataUrl || null, cape: look?.capeDataUrl ?? null, slim: !!look?.slimArms })
     }).catch(() => {})
     return () => { alive = false }
   })
@@ -542,20 +544,34 @@
     { name: 'Efe', slim: true, tex: efeSkin },
   ]
 
+  // Лічильник завантажень: якщо акаунт перемкнули, поки йшла попередня відповідь, її дані застарілі
+  // й не мають потрапити в стан.
+  let presetsSeq = 0
+  // Чиї пресети зараз у стані: при зміні акаунта старі прибираємо одразу, щоб не світились чужі.
+  let presetsOwner: string | null = null
   async function loadPresets(accountID: string) {
+    const seq = ++presetsSeq
+    if (presetsOwner !== null && presetsOwner !== accountID) {
+      presets = []
+      defaultPresetIds = {}
+      activePresetId = null
+    }
+    presetsOwner = accountID
     loading = true
     try {
-      presets = await App.GetWardrobePresets(accountID)
+      const list = await App.GetWardrobePresets(accountID)
+      let matchedId = ''
+      if (accountID) {
+        try { matchedId = await App.GetWardrobeActivePresetID(accountID) } catch {}
+      }
+      if (seq !== presetsSeq) return
+      presets = list
       const dmap: Record<string, string> = {}
       for (const d of DEFAULT_SKINS) {
         const m = presets.find((p) => p.name === d.name && p.slimArms === d.slim)
         if (m) dmap[d.name] = m.id
       }
       defaultPresetIds = dmap
-      let matchedId = ''
-      if (accountID) {
-        try { matchedId = await App.GetWardrobeActivePresetID(accountID) } catch {}
-      }
       selectedPresetId = matchedId && presets.some((p) => p.id === matchedId) ? matchedId : null
       activePresetId = matchedId || null
       // Пресет з глобального пошуку: вибираємо після завантаження списку.
@@ -564,9 +580,10 @@
         pendingSelectId = ''
       }
     } catch (e) {
-      toast(String(e), 'error')
+      if (seq === presetsSeq) toast(String(e), 'error')
     } finally {
-      loading = false
+      // Прапорець знімає лише найновіше завантаження: застаріле не має «відкривати» сітку раніше за час.
+      if (seq === presetsSeq) loading = false
     }
   }
 
@@ -582,11 +599,9 @@
   // Клік по картці пресета = лише ВИБІР (як у Modrinth App): виділяємо
   // пресет у 3D-сцені й показуємо кнопку «Застосувати», якщо він
   // відрізняється від активного. Реальне застосування на акаунт (мережевий
-  // запит до Mojang) відбувається тільки за явним підтвердженням —
-  // кнопкою «Застосувати» (applyToAccount) або з редактора.
-  // Раніше клік одразу викликав applyToAccount(): вибір пресету миттєво
-  // «комітив» скін на Mojang ще до того, як його встигали відредагувати
-  // (баг: «вибрав скін — і вже не можна редагувати»).
+  // запит до Mojang) відбувається тільки за явним підтвердженням — кнопкою
+  // «Застосувати» (applyToAccount) або з редактора. «вибрав скін — і вже
+  // не можна редагувати»).
   function selectPreset(id: string) {
     if (applying) return
     selectedPresetId = id
@@ -845,7 +860,7 @@
       presets = [updated, ...presets.filter((x) => x.id !== savedBase.id && x.id !== updated.id)]
       selectedPresetId = updated.id
       // Застосовуємо на акаунт лише коли справді змінився вигляд наявного
-      // пресету (як і раніше); створення нового пресету — без мережі.
+      // пресету; створення нового пресету — без мережі.
       const lookChanged = !!origin?.id && (pending != null || editorSlim !== origin!.slimArms || capeUrl !== (origin!.capeUrl ?? ''))
       if (lookChanged) {
         try { await App.ApplyWardrobePreset(accId, updated.id); activePresetId = updated.id }
@@ -891,7 +906,7 @@
     <div class="wr2-mismatch-text">
       <b>Скін-акаунт увійшов під ніком «{skinAuthNick}»</b>, а поточний акаунт лаунчера — «{activeAccount?.username ?? ''}».
       Скін застосовується за ніком скін-акаунта, тож обраний тут пресет не з'явиться в грі, поки ніки не збігатимуться.
-      Перейменуйте акаунт лаунчера в налаштуваннях або увійдіть у «Скін-акаунт» під потрібним ніком (Налаштування → Основне → Скін-акаунт).
+      Перейменуйте акаунт лаунчера в налаштуваннях або увійдіть у «Скін-акаунт» під потрібним ніком (<SettingPath ref="card:account/profile" />).
     </div>
     <button class="wr2-btn wr2-btn-ghost" onclick={() => window.dispatchEvent(new CustomEvent('open-settings-skin-account'))}>
       <i class="ti ti-settings"></i> Відкрити в налаштуваннях
@@ -916,17 +931,17 @@
         <i class="ti ti-hand-move"></i> {t('wardrobe.dragHint')}
       </div>
 
-      <!-- Anim toggle overlay -->
+      <!-- Перемикач анімацій -->
       <div class="wr2-anim">
         {#each [
           { id: 'idle', label: t('wardrobe.animIdle'), icon: 'ti-user' },
+          { id: 'run',  label: t('wardrobe.animRun'),  icon: 'ti-run' },
           { id: 'sit',  label: t('wardrobe.animSit'),  icon: 'ti-armchair' },
-          { id: 'look', label: t('wardrobe.animLook'), icon: 'ti-eye' },
         ] as a}
           <button
             class="wr2-anim-btn {anim === a.id ? 'active' : ''}"
-            onclick={() => (anim = a.id as 'idle' | 'sit' | 'look')}
-            title={a.label}
+            onclick={() => (anim = a.id as 'idle' | 'run' | 'sit')}
+            use:launcherTip={a.label}
           >
             <i class="ti {a.icon}"></i>
             <span>{a.label}</span>
@@ -964,7 +979,7 @@
         <h3>{t('nav.wardrobe')}</h3>
         <p>{skinsCount} {t('wardrobe.skins').toLowerCase()}</p>
       </div>
-      <button class="wr2-btn wr2-btn-ghost wr2-btn-sm wr2-copy-btn" onclick={openCopyModal} title={t('wardrobe.copySkin')}>
+      <button class="wr2-btn wr2-btn-ghost wr2-btn-sm wr2-copy-btn" onclick={openCopyModal} use:launcherTip={t('wardrobe.copySkin')}>
         <i class="ti ti-user-search"></i>
         <span class="wr2-copy-label">{t('wardrobe.copySkin')}</span>
       </button>
@@ -1033,10 +1048,10 @@
               </div>
 
               <div class="wr2-card-actions">
-                <button class="wr2-icon-btn" onclick={(e) => { e.stopPropagation(); openEditor(p) }} title={t('wardrobe.editor.editShort')}>
+                <button class="wr2-icon-btn" onclick={(e) => { e.stopPropagation(); openEditor(p) }} use:launcherTip={t('wardrobe.editor.editShort')}>
                   <i class="ti ti-edit"></i>
                 </button>
-                <button class="wr2-icon-btn wr2-icon-danger" onclick={(e) => deletePreset(p, e)} title={t('wardrobe.editor.delete')}>
+                <button class="wr2-icon-btn wr2-icon-danger" onclick={(e) => deletePreset(p, e)} use:launcherTip={t('wardrobe.editor.delete')}>
                   <i class="ti ti-trash"></i>
                 </button>
               </div>
@@ -1248,7 +1263,7 @@
             <button
               class="wm-cape wm-cape-none {editorSelectedCapeId === '' ? 'sel' : ''}"
               onclick={() => { editorSelectedCapeId = ''; editorPreviewCapeUrl = null; editorCapeTouched = true }}
-              title={t('wardrobe.editor.noCape')}
+              use:launcherTip={t('wardrobe.editor.noCape')}
             >
               <div class="wm-cape-swatch wm-cape-swatch-none"><i class="ti ti-ban"></i></div>
               <div class="wm-cape-check"><i class="ti ti-check"></i></div>
@@ -1257,7 +1272,7 @@
               <button
                 class="wm-cape {editorSelectedCapeId === cape.id ? 'sel' : ''}"
                 onclick={() => { editorSelectedCapeId = cape.id; editorPreviewCapeUrl = cape.url; editorCapeTouched = true }}
-                title={cape.alias || cape.id}
+                use:launcherTip={cape.alias || cape.id}
               >
                 <div class="wm-cape-swatch" style="background-image:url('{editorCapeThumbs[cape.id] ?? ''}');"></div>
                 <div class="wm-cape-check"><i class="ti ti-check"></i></div>
@@ -1486,8 +1501,7 @@
     flex: 1; min-height: 0;
     overflow-y: auto;
     padding: 16px 20px 22px;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--wr2-white) 10%, transparent) transparent;
+   
   }
   .wr2-grid-scroll::-webkit-scrollbar { width: 8px; }
   .wr2-grid-scroll::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--wr2-white) 8%, transparent); border-radius: 4px; }
@@ -1927,8 +1941,7 @@
     /* Налаштування скроляться САМІ, незалежно від 3D-картки. */
     overflow-y: auto;
     padding-right: 4px;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--wr2-white) 10%, transparent) transparent;
+   
   }
   .wm-editor-right::-webkit-scrollbar { width: 6px; }
   .wm-editor-right::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--wr2-white) 10%, transparent); border-radius: 3px; }

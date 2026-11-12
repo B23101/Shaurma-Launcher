@@ -34,8 +34,7 @@ type FileRecord struct {
 	// ("mods/foo.jar", "config/options.txt"...). Потрібен для видалення
 	// осиротілих файлів: сам Path — це R2-ключ (для bundled-модів він
 	// виглядає як "packs/<id>/mods/x.jar"), який НЕ співпадає зі шляхом на
-	// диску гравця. Раніше removeOrphans видаляв за R2-ключем — файл
-	// лишався на диску (РЕГРЕСІЯ 2026-08-09).
+	// диску гравця.
 	LocalPath string `json:"localPath,omitempty"`
 	SHA       string `json:"sha"`       // sha1/sha256 залежно від категорії
 	UpdatedAt string `json:"updatedAt"` // останній відомий updatedAt з маніфесту

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // FoldersSection.svelte — «Теки та ярлики»: де лаунчер зберігає файли і які
   // ярлики збірок створено на робочому столі / в меню «Пуск».
   import { untrack } from 'svelte'
@@ -55,13 +57,13 @@
         <div class="st-row-text">
           <div class="st-row-name">{f.name} {#if f.custom}<span class="st-tag on" style="margin-left:6px">{t('st.folders.custom')}</span>{/if}</div>
           <div class="st-row-hint">{f.desc}</div>
-          <div class="st-path" title={f.path}>{f.path}</div>
+          <div class="st-path" use:launcherTip={f.path}>{f.path}</div>
         </div>
         <div class="st-row-ctl">
           {#if !f.fixed}
             {#if f.reset}
               <button class="st-iconbtn" disabled={folderPaths.baseDir === folderPaths.defaultBaseDir} onclick={resetBaseDir}
-                      title={t('st.folders.reset')} aria-label={t('st.folders.reset')}><i class="ti ti-rotate"></i></button>
+                      use:launcherTip={t('st.folders.reset')} aria-label={t('st.folders.reset')}><i class="ti ti-rotate"></i></button>
             {/if}
             <button class="btn btn-ghost btn-sm" onclick={() => setFolder(f.kind)}><i class="ti ti-folder"></i> {t('st.folders.change')}</button>
           {:else}
@@ -77,7 +79,7 @@
 
 <SCard id="x:shortcuts" icon="ti-external-link" tone="violet" title={t('st.c.shortcuts')} desc={t('st.c.shortcuts.d')}>
   {#snippet actions()}
-    <button class="st-iconbtn" onclick={load} disabled={loading} title={t('st.refresh')} aria-label={t('st.refresh')}>
+    <button class="st-iconbtn" onclick={load} disabled={loading} use:launcherTip={t('st.refresh')} aria-label={t('st.refresh')}>
       <i class="ti {loading ? 'ti-loader-2 spin' : 'ti-refresh'}"></i>
     </button>
   {/snippet}
@@ -96,12 +98,12 @@
             {#if sc.autoJoinServer}<span class="st-tag"><i class="ti ti-server"></i> {sc.autoJoinServer}</span>{/if}
             {#if !sc.exists}<span class="st-tag bad">{t('st.shortcuts.missing')}</span>{/if}
           </div>
-          <div class="st-item-sub" title={sc.path}>{sc.path}</div>
+          <div class="st-item-sub" use:launcherTip={sc.path}>{sc.path}</div>
         </div>
         <div class="st-item-act">
-          <button class="st-iconbtn" onclick={() => openFolder(sc.path)} title={t('st.shortcuts.openFolder')} aria-label={t('st.shortcuts.openFolder')}><i class="ti ti-folder-open"></i></button>
-          <button class="st-iconbtn" onclick={() => (editing = sc)} title={t('st.shortcuts.edit')} aria-label={t('st.shortcuts.edit')}><i class="ti ti-pencil"></i></button>
-          <button class="st-iconbtn danger" onclick={() => remove(sc)} title={t('st.delete')} aria-label={t('st.delete')}><i class="ti ti-trash"></i></button>
+          <button class="st-iconbtn" onclick={() => openFolder(sc.path)} use:launcherTip={t('st.shortcuts.openFolder')} aria-label={t('st.shortcuts.openFolder')}><i class="ti ti-folder-open"></i></button>
+          <button class="st-iconbtn" onclick={() => (editing = sc)} use:launcherTip={t('st.shortcuts.edit')} aria-label={t('st.shortcuts.edit')}><i class="ti ti-pencil"></i></button>
+          <button class="st-iconbtn danger" onclick={() => remove(sc)} use:launcherTip={t('st.delete')} aria-label={t('st.delete')}><i class="ti ti-trash"></i></button>
         </div>
       </div>
     {/each}

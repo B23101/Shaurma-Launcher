@@ -4,10 +4,7 @@ package main
 //
 // РЕГРЕСІЙНИЙ ТЕСТ: головне вікно лаунчера запитує "index.html", а splash
 // апдейтера — "updater-splash.html". Обидві теки (frontend/ і
-// updater-frontend/) містять index.html. Раніше обробник шукав
-// updater-frontend ПЕРШИМ для всіх шляхів — головне вікно отримувало
-// splash замість фронтенду лаунчера, і користувач бачив «екран оновлення
-// на 90%» замість головного екрана.
+// updater-frontend/) містять index.html.
 
 import (
 	"net/http"

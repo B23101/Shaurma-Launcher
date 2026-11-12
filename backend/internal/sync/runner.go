@@ -370,11 +370,7 @@ func (r *Runner) Run(ctx context.Context, manifest *PackManifest, maxConcurrentD
 	errCh := make(chan error, 2)
 
 	// Кожна черга має свій семафор (max(1, N/2) одночасно) і ділить СПІЛЬНИЙ
-	// пул Engine (Submitter) зі стелею N. Раніше тут були прапорці
-	// hashDone/workerDone, які нібито мали "перетікати" вільні потоки між
-	// чергами, але вони записувались і НІКОЛИ не читались — семафор кожної
-	// черги фіксований на своєму conc, тож мертвий код жодного перетікання
-	// не давав. Прибрано; реальний паралелізм обмежений спільним пулом.
+	// пул Engine (Submitter) зі стелею N.
 	runQueue := func(tasks []Task, conc int) error {
 		defer wg.Done()
 		if len(tasks) == 0 {
@@ -528,8 +524,7 @@ func (r *Runner) Run(ctx context.Context, manifest *PackManifest, maxConcurrentD
 	// Розпаковка override-folder архівів (StageExtracting) — Cancel і тут
 	// має сенс (розпаковка на повільному диску може тривати), Pause після
 	// цього кроку вже не потрібен: залишок роботи дешевий. Показуємо
-	// користувачу, ЩО саме розпаковується (currentFile) — раніше розпаковка
-	// йшла «мовчки», і прогрес-бар на 99% виглядав завислим.
+	// користувачу, ЩО саме розпаковується (currentFile).
 	r.setStage(StageExtracting)
 	r.StateStore.Save(r.State)
 	for _, t := range plan.WorkerTasks {
@@ -616,18 +611,13 @@ var errTaskPaused = fmt.Errorf("перервано (pause/cancel)")
 
 // syncStallTimeout — скільки часу sync-завантаження може мовчати (жодного
 // байта) перед тим, як downloadTask вважає з'єднання завислим і перезапускає
-// файл з місця зупинки (Range + .part). Раніше завмерлий CDN тримав
-// заблокований Read ВІЧНО (client без Timeout), і пауза/скасування не могли
-// його розірвати — «швидкість 0.0 МБ/с, кнопки не працюють». var (не const):
-// тест зменшує для швидкої перевірки.
+// файл з місця зупинки (Range + .part).
 var syncStallTimeout = 15 * time.Second
 
 // pauseStallReader — обгортка resp.Body: закриває тіло, коли байти не йдуть
 // syncStallTimeout (стіл з'єднання), АБО коли stopped() вертає true
 // (запитано паузу/скасування). Закриття тіла розблоковує завислий Read —
-// саме це робить паузу/скасування робочими навіть на завмерлому CDN
-// (раніше прапорець перевірявся лише МІЖ читаннями і не міг розірвати
-// блокований Read).
+// саме це робить паузу/скасування робочими навіть на завмерлому CDN.
 type pauseStallReader struct {
 	r       io.ReadCloser
 	mu      sync.Mutex
@@ -758,13 +748,10 @@ func (r *Runner) downloadTask(ctx context.Context, t Task) error {
 	httpClient := clientWithSafeRedirects(r.Client)
 
 	// Resume/повторний запуск: файл уже ПОВНІСТЮ на диску (destPath існує і
-	// збігається за хешем з маніфестом) — НЕ качаємо знову. Раніше
-	// пауза→продовження (і крах між завершенням качки і записом у State)
-	// ПЕРЕкачувало вже готові файли з нуля: .part немає (перейменований у
-	// destPath), тож перша ж спроба стартувала з Range=0. Для архівів
+	// збігається за хешем з маніфестом) — НЕ качаємо знову. Для архівів
 	// (.override-archives/*.zip) це ще й рятує від повторного качання zip-а,
-	// якщо розпаковка перервалась — архів лишається на диску до успіху
-	// (див. extractOverrideFolder), і downloadTask пропускає його за хешем.
+	// якщо розпаковка перервалась — архів лишається на диску до успіху (див.
+	// extractOverrideFolder), і downloadTask пропускає його за хешем.
 	if fi, err := fs.Stat(destPath); err == nil && !fi.IsDir() && fi.Size() > 0 {
 		if (t.SHA256 != "" && fileMatchesSHA256(destPath, t.SHA256)) ||
 			(t.SHA256 == "" && t.SHA1 != "" && fileMatchesSHA1(destPath, t.SHA1)) {
@@ -900,10 +887,9 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 	if resp.StatusCode == http.StatusOK && existingBytes > 0 {
 		// Windows: f.Truncate(0) через відкритий O_APPEND-хендл падає з
 		// "Access is denied" — append-хендл має лише FILE_APPEND_DATA, без
-		// права SetEndOfFile, тож truncate неможливий. Раніше докачка файлу
-		// після стілу (сервер відповів 200 замість 206) вмирала саме тут на
-		// Windows: «завантаження не вдалось після N спроб: truncate ...
-		// Access is denied» — і виглядало як зависання на одному моді.
+		// права SetEndOfFile, тож truncate неможливий. «завантаження не
+		// вдалось після N спроб: truncate ... Access is denied» — і
+		// виглядало як зависання на одному моді.
 		f.Close()
 		if err := fs.Truncate(tmpPath, 0); err != nil {
 			return err
@@ -1019,8 +1005,7 @@ func (r *Runner) writeDownloadedBody(ctx context.Context, resp *http.Response, t
 
 // extractOverrideFolder розпаковує завантажений .zip override-теки
 // (розділ 3.3 V2 — "bubble mod") у DestRelPath, ПОВНІСТЮ замінюючи вміст
-// теки (аналог force_archive зі старої схеми). Якщо теки не було раніше —
-// вона трекається як partial, щоб Cancel міг прибрати саме її.
+// теки (аналог force_archive зі старої схеми).
 func (r *Runner) extractOverrideFolder(t Task) error {
 	fs, err := openInstallFS(r.InstallDir)
 	if err != nil {
@@ -1036,14 +1021,9 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 		return err
 	}
 
-	// Архів видаляємо ЛИШЕ при успішній розпаковці. Раніше `defer os.Remove`
-	// (реєструвався одразу) стирав zip навіть коли розпаковка падала — тоді
-	// resume був змушений КАЧАТИ архів знову (стан не записаний, файла немає).
-	// Тепер при помилці/перериванні zip лишається у .override-archives:
-	// наступний запуск пропустить качку (downloadTask: destPath збігається за
-	// хешем) і просто розпакує заново. Deferred-видалення виконується ПІСЛЯ
-	// zr.Close() (LIFO: zr.Close реєструється пізніше) — на Windows відкритий
-	// файл не можна видалити, тож порядок обов'язковий.
+	// Архів видаляємо ЛИШЕ при успішній розпаковці. Deferred-видалення
+	// виконується ПІСЛЯ zr.Close() (LIFO: zr.Close реєструється пізніше) — на
+	// Windows відкритий файл не можна видалити, тож порядок обов'язковий.
 	ok := false
 	defer func() {
 		if ok {
@@ -1074,9 +1054,7 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 	}
 
 	// Resume: чи цей архів УЖЕ розпакований повністю (всі записи є на диску
-	// з тим самим розміром)? Раніше повторна розпаковка (пауза→продовження,
-	// крах між розпаковкою і записом у State) СТИРАЛА destDir і робила все
-	// заново — «повертає до розпакування, хоча все вже розпаковано».
+	// з тим самим розміром)?
 	alreadyComplete := true
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -1105,15 +1083,14 @@ func (r *Runner) extractOverrideFolder(t Task) error {
 
 	// ПРИСКОРЕННЯ: розпаковка файлів архіву ПАРАЛЕЛЬНО замість одного
 	// файлу за раз. Override-архіви (config/, resourcepacks/ тощо) часто
-	// містять сотні дрібних файлів — послідовний io.Copy файл-за-файлом
-	// не використовує паралелізм диска/CPU (кожен io.Copy — окремий
+	// містять сотні дрібних файлів — послідовний io.Copy файл-за-файлом не
+	// використовує паралелізм диска/CPU (кожен io.Copy — окремий
 	// syscall-по-syscall цикл, чекаємо його завершення, і лише тоді
 	// відкриваємо наступний файл). Розпаковка одного архіву — окрема,
 	// самодостатня дія (див. коментар вище про DEFER-порядок і "ok"): тут
 	// НЕ чіпаємо семафор/пул Engine (той призначений для мережевих
 	// завантажень), а заводимо власний невеликий пул горутин, обмежений
-	// runtime.NumCPU() — розпаковка вперлася б у диск/CPU куди раніше, ніж
-	// у мережевий ліміт maxConcurrentDownloads.
+	// runtime.NumCPU().
 	extractConc := runtime.NumCPU()
 	if extractConc < 2 {
 		extractConc = 2
@@ -1266,9 +1243,7 @@ func (r *Runner) markTaskComplete(t Task) {
 // markArchiveComplete записує FileRecord для override-folder архіву ПІСЛЯ
 // успішної розпаковки. Ключ — той самий wf.Path (ManifestKey), за яким
 // BuildPlan шукає hasRec: наступний запуск синку бачить запис і не качає
-// архів знову (раніше markTaskComplete повертав рано для IsArchive, тож
-// State.Files не мав запису, і архів перекачувався при КОЖНОМУ запуску
-// гри — а .override-archives лишав zip-файли).
+// архів знову.
 func (r *Runner) markArchiveComplete(t Task) {
 	r.markStateFile(t.ManifestKey, t.DestRelPath, t.SHA256, t.SHA1, t.UpdatedAt)
 }
@@ -1309,10 +1284,6 @@ func (r *Runner) removeOrphans(paths []string) {
 
 	for _, p := range paths {
 		// p — ЛОКАЛЬНИЙ шлях відносно кореня установки ("mods/foo.jar").
-		// Раніше сюди потрапляв R2-ключ ("packs/<id>/mods/x.jar") або
-		// FileName без префікса mods/ — os.Remove по такому шляху нічого
-		// не знаходив, і моди, що зникли з маніфесту, назавжди лишались на
-		// диску (РЕГРЕСІЯ 2026-08-09).
 		full, jerr := SafeJoin(r.InstallDir, p)
 		if jerr != nil {
 			continue // шлях зі стану/маніфесту виходить за теку збірки — не чіпаємо
@@ -1422,9 +1393,7 @@ func (r *Runner) localHashMatches(destRelPath, expectedHash string) bool {
 				return cachedSHA256 == expectedHash
 			}
 			// У кеші є запис для цього (розмір, mtime), але саме потрібного
-			// алгоритму хешу там ще нема (напр. раніше рахували лише sha1,
-			// а зараз маніфест просить sha256) — рахуємо з диска нижче і
-			// довповнюємо запис, не втрачаючи вже наявну половину.
+			// алгоритму хешу там ще нема.
 		}
 	}
 

@@ -194,6 +194,8 @@ DisableDirPage=no
 AlwaysShowDirOnReadyPage=yes
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
+; Оновити іконки/асоціації Провідника після встановлення (.mrpack/.shaurmpack/.shaurmbundle).
+ChangesAssociations=yes
 PrivilegesRequired=admin
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir={#OutputDir}
@@ -352,6 +354,18 @@ Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Shaurmpack\DefaultIcon";   
 Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Shaurbundle\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyShellExeName},0"; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Shaurmpack\shell\open\command";   ValueType: string; ValueName: ""; ValueData: """{app}\{#MyShellExeName}"" ""%1""";   Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Shaurbundle\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyShellExeName}"" ""%1"""; Flags: uninsdeletevalue
+
+; ── Асоціація файлів .mrpack (Modrinth-модпаки) ─────────────────────────────
+; Двічі клік по .mrpack у Провіднику запускає shell.exe зі шляхом як аргументом —
+; лаунчер одразу імпортує збірку у фоні (як .shaurmpack). Крім дефолтного
+; значення ключа розширення додаємо ProgID у OpenWithProgids: навіть якщо
+; Windows тримає UserChoice іншої програми (Modrinth App/Prism), «Відкрити за
+; допомогою → {#MyAppName}» завжди присутній у списку. Деінсталяція прибирає ключі.
+Root: HKCU; Subkey: "Software\Classes\.mrpack"; ValueType: string; ValueName: ""; ValueData: "ShaurmLauncher.Mrpack"; Flags: uninsdeletekeyifempty
+Root: HKCU; Subkey: "Software\Classes\.mrpack\OpenWithProgids"; ValueType: string; ValueName: "ShaurmLauncher.Mrpack"; ValueData: ""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Mrpack"; ValueType: string; ValueName: ""; ValueData: "Modrinth збірка (.mrpack)"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Mrpack\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#MyShellExeName},0"; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\ShaurmLauncher.Mrpack\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#MyShellExeName}"" ""%1"""; Flags: uninsdeletevalue
 
 ; ── Схема shaurma:// (запрошення в друзі з сайту) ──────────────────────────
 ; Сторінка https://shaurma-launcher.org/friend/@handle запускає

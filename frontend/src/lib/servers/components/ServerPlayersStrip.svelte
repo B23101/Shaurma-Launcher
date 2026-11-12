@@ -1,14 +1,11 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── «Гравці» — жива смуга над консоллю сервера ─────────────────────────
   // Реєстр веде бекенд (internal/servers/players.go): читає рядки логу java
   // («Steve joined the game» / «left the game» / «lost connection») і тримає
   // список з ніками. Сюди приходить і початковий знімок (GetServerPlayers),
   // і кожна подія входу/виходу (server:player).
-  //
-  // «Реальний час»: список міняється миттєво по події, «час на сервері» тікає
-  // сам (раніше рахувався один раз при рендері і застигав), а тиха фонова
-  // синхронізація зі знімком бекенду підстраховує пропущену подію — окрема
-  // кнопка «оновити» більше не потрібна.
   //
   // Тости з ніком показує App.svelte (глобально, з будь-якої сторінки) —
   // тут лише список, щоб не було подвійних повідомлень.
@@ -18,7 +15,9 @@
   import FriendAvatar from '../../friends/FriendAvatar.svelte'
   import type { ServerPlayer, ServerPlayerPlaytime } from '../../types'
 
-  let { serverId = '', running = false }: { serverId?: string; running?: boolean } = $props()
+  // page — режим окремої вкладки «Гравці»: «Час гри» завжди розгорнуто на сторінці,
+  // без випадаючої панелі поверх консолі.
+  let { serverId = '', running = false, page = false }: { serverId?: string; running?: boolean; page?: boolean } = $props()
 
   const RESYNC_MS = 15000
   const TICK_MS = 10000
@@ -32,6 +31,7 @@
   // події leave перечитуємо з невеликою затримкою.
   const PLAYTIME_MS = 30000
   let showTime = $state(false)
+  $effect(() => { if (page) showTime = true })
   let playtimes = $state<ServerPlayerPlaytime[]>([])
   let timeLoaded = $state(false)
   let timeSeq = 0
@@ -138,25 +138,27 @@
   // Панель «Час гри» — випадаюча: закривається кліком поза смугою та Esc.
   let root = $state<HTMLElement | null>(null)
   function onWindowPointer(e: PointerEvent) {
-    if (showTime && root && !root.contains(e.target as Node)) showTime = false
+    if (!page && showTime && root && !root.contains(e.target as Node)) showTime = false
   }
   function onWindowKey(e: KeyboardEvent) {
-    if (showTime && e.key === 'Escape') showTime = false
+    if (!page && showTime && e.key === 'Escape') showTime = false
   }
 </script>
 
 <svelte:window onpointerdown={onWindowPointer} onkeydown={onWindowKey} />
 
-<div class="sps" bind:this={root}>
+<div class="sps" class:page bind:this={root}>
   <div class="sps-head">
     <i class="ti ti-users"></i>
     <span class="sps-title">Гравці</span>
     <span class="sps-n">{players.length}</span>
   </div>
-  <button class="sps-toggle" class:on={showTime} onclick={() => (showTime = !showTime)}
-          title="Скільки кожен гравець награв на сервері за весь час" aria-expanded={showTime}>
-    <i class="ti ti-clock-hour-4"></i> Час гри
-  </button>
+  {#if !page}
+    <button class="sps-toggle" class:on={showTime} onclick={() => (showTime = !showTime)}
+            use:launcherTip={"Скільки кожен гравець награв на сервері за весь час"} aria-expanded={showTime}>
+      <i class="ti ti-clock-hour-4"></i> Час гри
+    </button>
+  {/if}
   {#if !loaded}
     <span class="sps-hint"><i class="ti ti-loader spin"></i> завантаження…</span>
   {:else if players.length === 0}
@@ -169,7 +171,7 @@
     <div class="sps-list">
       {#each players as p (p.name)}
         <span class="sps-chip"
-              title={p.joinedAt ? `На сервері: ${fmtSince(p.joinedAt, now)}` : 'Час входу невідомий'}
+              use:launcherTip={p.joinedAt ? `На сервері: ${fmtSince(p.joinedAt, now)}` : 'Час входу невідомий'}
               in:scale={{ duration: 180, start: 0.85 }} out:fade={{ duration: 120 }}
               animate:flip={{ duration: 200 }}>
           <FriendAvatar nickname={p.name} status="online" size={22} />
@@ -181,12 +183,12 @@
   {/if}
 
   {#if showTime}
-    <div class="sps-pop" role="dialog" aria-label="Час гри" transition:fly={{ y: -6, duration: 140 }}>
+    <div class="sps-pop" class:inline={page} role="dialog" aria-label="Час гри" transition:fly={{ y: page ? 0 : -6, duration: page ? 0 : 140 }}>
       <div class="sps-pop-head">
         <i class="ti ti-clock-hour-4"></i>
         <b>Час гри</b>
         <span class="sps-pop-sub">за весь час на цьому сервері</span>
-        <button class="sps-pop-x" onclick={() => (showTime = false)} aria-label="Закрити"><i class="ti ti-x"></i></button>
+        {#if !page}<button class="sps-pop-x" onclick={() => (showTime = false)} aria-label="Закрити"><i class="ti ti-x"></i></button>{/if}
       </div>
       <div class="sps-pop-body">
         {#if !timeLoaded}
@@ -200,7 +202,7 @@
                 <FriendAvatar nickname={p.name} status={p.online ? 'online' : 'offline'} size={34} />
                 <div class="sps-card-main">
                   <div class="sps-card-top">
-                    <span class="sps-tname" title={p.name}>{p.name}</span>
+                    <span class="sps-tname" use:launcherTip={p.name}>{p.name}</span>
                     <span class="sps-ttotal">{p.seconds > 0 ? fmtTotal(p.seconds) : '—'}</span>
                   </div>
                   <span class="sps-bar"><span style:width="{Math.max(3, Math.round((p.seconds / maxSeconds) * 100))}%"></span></span>
@@ -262,6 +264,9 @@
     background: var(--bg-panel); border: 1px solid var(--border-hi); border-radius: 14px;
     box-shadow: 0 18px 48px rgba(0, 0, 0, .55);
   }
+  /* Вкладка «Гравці»: панель — звичайний блок сторінки, а не випадайка. */
+  .sps.page { flex: 1; min-height: 0; overflow-y: auto; align-content: flex-start; border-bottom: none; padding: 14px 18px; }
+  .sps-pop.inline { position: static; flex: 1 1 100%; max-height: none; box-shadow: none; border-color: var(--border); }
   .sps-pop-head {
     display: flex; align-items: center; gap: 8px; padding: 11px 14px; flex-shrink: 0;
     border-bottom: 1px solid var(--border);

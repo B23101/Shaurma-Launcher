@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Pack Doctor: перевірка здоров'я збірки ──────────────────────────────
   // Показує список перевірок (Java / диск / дублікати / RAM) з кнопками
   // авто-виправлення. Використовується:
@@ -154,7 +156,7 @@
         <div class="hc-subtitle">{packName}</div>
       {/if}
     </div>
-    <button class="icon-btn hc-refresh" onclick={runCheck} disabled={loading} title={t('health.recheck')}>
+    <button class="icon-btn hc-refresh" onclick={runCheck} disabled={loading} use:launcherTip={t('health.recheck')}>
       <i class="ti {loading ? 'ti-loader spin' : 'ti-refresh'}"></i>
     </button>
   </div>
@@ -212,7 +214,7 @@
     {#if okItems.length > 0}
       <div class="hc-oks">
         {#each okItems as item (item.id)}
-          <span class="hc-ok" title={item.detail || item.title}><i class="ti ti-circle-check"></i>{item.title}</span>
+          <span class="hc-ok" use:launcherTip={item.detail || item.title}><i class="ti ti-circle-check"></i>{item.title}</span>
         {/each}
       </div>
     {/if}

@@ -14,9 +14,7 @@ import (
 // window_behavior.go — застосування рішень internal/winbehavior до
 // реального вікна/процесу лаунчера. САМІ рішення («що робити») — у чистому
 // пакеті winbehavior (з тестами); тут лише виконання: bridgeWindowOp,
-// трей, вихід. Єдине місце, де вікно ховається/повертається через
-// налаштування, — раніше це було розкидано між App.svelte (hide на
-// запуску гри, quit/restore на виході) і кількома Go-файлами.
+// трей, вихід.
 
 // startBackground — лаунчер запущено з прапорцем --background (автозапуск
 // «у фоні»): головне вікно НЕ показується, поки користувач сам його не
@@ -95,6 +93,7 @@ func (a *App) notifyRestartedAfterCrash() {
 // Скидає прапорець фонового старту, щоб запізнілий UIReady не сховав вікно.
 func (a *App) revealMainWindow() {
 	startBackground.Store(false)
+	webviewMemoryRestore()
 	bridgeWindowOp("main", "show")
 	bridgeWindowOp("main", "unminimise")
 }

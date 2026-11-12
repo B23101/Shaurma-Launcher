@@ -1,4 +1,7 @@
 <script lang="ts">
+  import NumberInput from '../../NumberInput.svelte'
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Вкладка «Мережа серверів» проксі Velocity ──────────────────────────
   // Проксі — не «ще один сервер», а система серверів: учасники з іменами в
   // мережі, вхід гравців, ланцюги запуску (проксі ↔ сервери), налаштування
@@ -322,43 +325,43 @@
       {@const v = visualOf(m)}
       <div class="px-member" class:busy>
         <div class="px-head">
-          <span class="px-dot" class:on={m.running} class:mid={m.status === 'starting'} title={m.status}></span>
+          <span class="px-dot" class:on={m.running} class:mid={m.status === 'starting'} use:launcherTip={m.status}></span>
           <span class="px-ic" style="--c:{v.color}">{#if v.src}<img src={v.src} alt="" />{:else}<i class="ti {v.ti}"></i>{/if}</span>
           <div class="px-name">
             <div class="px-title">{m.name}</div>
             <div class="px-sub mono">{coreName(m.core)} {m.mcVersion} · :{m.port} · {fwdLabel(m.forwarding)}</div>
           </div>
-          <label class="px-alias" title={t('proxy.aliasHint')}>
+          <label class="px-alias" use:launcherTip={t('proxy.aliasHint')}>
             <span>/server</span>
             <input class="st-input mono" value={m.alias} maxlength="32" spellcheck="false"
                    onchange={(e) => setText(m, 'alias', (e.target as HTMLInputElement).value)} aria-label={t('proxy.alias')} />
           </label>
           <div class="px-tools">
-            <button type="button" class="st-iconbtn" onclick={() => move(m, -1)} disabled={busy || i === 0} title={t('proxy.up')} aria-label={t('proxy.up')}><i class="ti ti-arrow-up"></i></button>
-            <button type="button" class="st-iconbtn" onclick={() => move(m, 1)} disabled={busy || i === members.length - 1} title={t('proxy.down')} aria-label={t('proxy.down')}><i class="ti ti-arrow-down"></i></button>
+            <button type="button" class="st-iconbtn" onclick={() => move(m, -1)} disabled={busy || i === 0} use:launcherTip={t('proxy.up')} aria-label={t('proxy.up')}><i class="ti ti-arrow-up"></i></button>
+            <button type="button" class="st-iconbtn" onclick={() => move(m, 1)} disabled={busy || i === members.length - 1} use:launcherTip={t('proxy.down')} aria-label={t('proxy.down')}><i class="ti ti-arrow-down"></i></button>
             {#if onOpenServer}
-              <button type="button" class="st-iconbtn" onclick={() => onOpenServer?.(m.serverId)} title={t('proxy.open')} aria-label={t('proxy.open')}><i class="ti ti-external-link"></i></button>
+              <button type="button" class="st-iconbtn" onclick={() => onOpenServer?.(m.serverId)} use:launcherTip={t('proxy.open')} aria-label={t('proxy.open')}><i class="ti ti-external-link"></i></button>
             {/if}
-            <button type="button" class="st-iconbtn danger" onclick={() => remove(m)} disabled={busy} title={t('proxy.remove')} aria-label={t('proxy.remove')}><i class="ti ti-unlink"></i></button>
+            <button type="button" class="st-iconbtn danger" onclick={() => remove(m)} disabled={busy} use:launcherTip={t('proxy.remove')} aria-label={t('proxy.remove')}><i class="ti ti-unlink"></i></button>
           </div>
         </div>
         <div class="px-opts">
-          <button type="button" class="st-pill" class:sel={m.inTry} onclick={() => setFlag(m, 'inTry')} title={t('proxy.inTryHint')} aria-pressed={m.inTry}>
+          <button type="button" class="st-pill" class:sel={m.inTry} onclick={() => setFlag(m, 'inTry')} use:launcherTip={t('proxy.inTryHint')} aria-pressed={m.inTry}>
             <i class="ti ti-door-enter"></i> {t('proxy.inTry')}
           </button>
-          <button type="button" class="st-pill" class:sel={m.autoStart} onclick={() => setFlag(m, 'autoStart')} title={t('proxy.autoStartHint')} aria-pressed={m.autoStart}>
+          <button type="button" class="st-pill" class:sel={m.autoStart} onclick={() => setFlag(m, 'autoStart')} use:launcherTip={t('proxy.autoStartHint')} aria-pressed={m.autoStart}>
             <i class="ti ti-player-play"></i> {t('proxy.autoStart')}
           </button>
-          <button type="button" class="st-pill" class:sel={m.startsNetwork} onclick={() => setFlag(m, 'startsNetwork')} title={t('proxy.startsNetworkHint')} aria-pressed={m.startsNetwork}>
+          <button type="button" class="st-pill" class:sel={m.startsNetwork} onclick={() => setFlag(m, 'startsNetwork')} use:launcherTip={t('proxy.startsNetworkHint')} aria-pressed={m.startsNetwork}>
             <i class="ti ti-bolt"></i> {t('proxy.startsNetwork')}
           </button>
-          <label class="px-field" title={t('proxy.delayHint')}>
+          <label class="px-field" use:launcherTip={t('proxy.delayHint')}>
             <i class="ti ti-clock"></i>
-            <input class="st-input num mono" type="number" min="0" max="600" value={m.delaySec}
+            <NumberInput style="width:92px" class="st-input num mono" min="0" max="600" value={m.delaySec}
                    onchange={(e) => setDelay(m, (e.target as HTMLInputElement).value)} aria-label={t('proxy.delay')} />
             <span>{t('proxy.sec')}</span>
           </label>
-          <label class="px-field grow" title={t('proxy.forcedHostHint')}>
+          <label class="px-field grow" use:launcherTip={t('proxy.forcedHostHint')}>
             <i class="ti ti-world-www"></i>
             <input class="st-input mono" value={m.forcedHost} placeholder={t('proxy.forcedHostPlaceholder')} spellcheck="false"
                    onchange={(e) => setText(m, 'forcedHost', (e.target as HTMLInputElement).value)} aria-label={t('proxy.forcedHost')} />
@@ -374,11 +377,11 @@
             <div class="px-title">{ex.alias}</div>
             <div class="px-sub mono">{ex.address} · {t('proxy.external')}</div>
           </div>
-          <button type="button" class="st-pill" class:sel={ex.inTry} onclick={() => toggleExternalTry(i)} disabled={busy} aria-pressed={ex.inTry} title={t('proxy.inTryHint')}>
+          <button type="button" class="st-pill" class:sel={ex.inTry} onclick={() => toggleExternalTry(i)} disabled={busy} aria-pressed={ex.inTry} use:launcherTip={t('proxy.inTryHint')}>
             <i class="ti ti-door-enter"></i> {t('proxy.inTry')}
           </button>
           <div class="px-tools">
-            <button type="button" class="st-iconbtn danger" onclick={() => removeExternal(i)} disabled={busy} title={t('proxy.remove')} aria-label={t('proxy.remove')}><i class="ti ti-unlink"></i></button>
+            <button type="button" class="st-iconbtn danger" onclick={() => removeExternal(i)} disabled={busy} use:launcherTip={t('proxy.remove')} aria-label={t('proxy.remove')}><i class="ti ti-unlink"></i></button>
           </div>
         </div>
       </div>
@@ -391,7 +394,7 @@
       <div class="st-row-ctl wrap">
         <input class="st-input mono" style="width:130px" placeholder={t('proxy.alias')} bind:value={extAlias} maxlength="32" spellcheck="false" aria-label={t('proxy.alias')} />
         <input class="st-input mono" style="width:170px" placeholder="192.168.1.10:25565" bind:value={extAddr} spellcheck="false" aria-label={t('proxy.externalAddr')} />
-        <button type="button" class="st-iconbtn" onclick={addExternal} disabled={busy || !extAlias.trim() || !extAddr.trim()} title={t('proxy.addExternal')} aria-label={t('proxy.addExternal')}><i class="ti ti-plus"></i></button>
+        <button type="button" class="st-iconbtn" onclick={addExternal} disabled={busy || !extAlias.trim() || !extAddr.trim()} use:launcherTip={t('proxy.addExternal')} aria-label={t('proxy.addExternal')}><i class="ti ti-plus"></i></button>
       </div>
     </div>
     <div class="st-row">
@@ -453,7 +456,7 @@
       {/snippet}
       <div class="st-row">
         <div class="st-row-text"><div class="st-row-name">{t('proxy.port')}</div><div class="st-row-hint">{t('proxy.portHint')}</div></div>
-        <div class="st-row-ctl"><input class="st-input num mono" type="number" min="1" max="65535" bind:value={settings.proxyPort} oninput={touch} aria-label={t('proxy.port')} /></div>
+        <div class="st-row-ctl"><NumberInput style="width:92px" class="st-input num mono" min="1" max="65535" bind:value={settings.proxyPort} oninput={touch} aria-label={t('proxy.port')} /></div>
       </div>
       <div class="st-row">
         <div class="st-row-text"><div class="st-row-name">MOTD</div><div class="st-row-hint">{t('proxy.motdHint')}</div></div>
@@ -461,7 +464,7 @@
       </div>
       <div class="st-row">
         <div class="st-row-text"><div class="st-row-name">{t('proxy.k.showMaxPlayers')}</div></div>
-        <div class="st-row-ctl"><input class="st-input num mono" type="number" min="0" bind:value={settings.proxy.showMaxPlayers} oninput={touch} aria-label={t('proxy.k.showMaxPlayers')} /></div>
+        <div class="st-row-ctl"><NumberInput style="width:92px" class="st-input num mono" min="0" bind:value={settings.proxy.showMaxPlayers} oninput={touch} aria-label={t('proxy.k.showMaxPlayers')} /></div>
       </div>
       <div class="st-row">
         <div class="st-row-text"><div class="st-row-name">{t('proxy.forwarding')}</div><div class="st-row-hint">{t('proxy.forwardingHint')}</div></div>
@@ -498,7 +501,7 @@
         {#each advNumbers as k (k)}
           <div class="st-row sub">
             <div class="st-row-text"><div class="st-row-name">{t('proxy.k.' + k)}</div><div class="st-row-hint">{t('proxy.h.' + k)}</div></div>
-            <div class="st-row-ctl"><input class="st-input num mono" type="number" bind:value={settings.proxy[k]} oninput={touch} aria-label={t('proxy.k.' + k)} /></div>
+            <div class="st-row-ctl"><NumberInput style="width:92px" class="st-input num mono" bind:value={settings.proxy[k]} oninput={touch} aria-label={t('proxy.k.' + k)} /></div>
           </div>
         {/each}
         {#each advSwitches as k (k)}

@@ -198,14 +198,10 @@ func TestPlanImportCurseForgeOverridesPrefix(t *testing.T) {
 	}
 }
 
-// TestExtractOverridesUpdateProtectsPlayerFiles — БАГ: «Оновити з джерела»
-// (UpdatePackFromSource, isUpdate=true) раніше перезаписувало config/ і
-// options.txt БЕЗУМОВНО при кожному оновленні кастомної (Modrinth/
-// CurseForge) збірки — гравець втрачав налаштування, змінені поверх
-// дефолтів між оновленнями. Перевіряємо: якщо config/foo.cfg і
-// options.txt вже на диску (гравець їх змінив) — при isUpdate=true вони
-// НЕ перезаписуються новим вмістом з архіву, а звичайний mods/ файл
-// оновлюється як завжди.
+// TestExtractOverridesUpdateProtectsPlayerFiles — БАГ: Перевіряємо: якщо
+// config/foo.cfg і options.txt вже на диску (гравець їх змінив) — при
+// isUpdate=true вони НЕ перезаписуються новим вмістом з архіву, а
+// звичайний mods/ файл оновлюється як завжди.
 func TestExtractOverridesUpdateProtectsPlayerFiles(t *testing.T) {
 	path := buildTestZip(t, map[string]string{
 		"overrides/config/foo.cfg": "NEW-from-archive",

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ══════════════════════════════════════════════════════════════════════
   // «Пристрої» — де відкрито акаунт Шаурми (обидві редакції).
   //
@@ -171,8 +173,8 @@
             <div class="dv-chips">
               <span class="dv-chip"><i class="ti ti-app-window"></i>{kindLabel(d)}</span>
               {#if d.os}<span class="dv-chip"><i class="ti ti-brand-windows"></i>{d.os}</span>{/if}
-              {#if d.lastIp}<span class="dv-chip mono" title={t('dev.ip')}><i class="ti ti-network"></i>{d.lastIp}</span>{/if}
-              {#if d.lastCountry}<span class="dv-chip" title={t('dev.country')}><i class="ti ti-map-pin"></i>{d.lastCountry}</span>{/if}
+              {#if d.lastIp}<span class="dv-chip mono" use:launcherTip={t('dev.ip')}><i class="ti ti-network"></i>{d.lastIp}</span>{/if}
+              {#if d.lastCountry}<span class="dv-chip" use:launcherTip={t('dev.country')}><i class="ti ti-map-pin"></i>{d.lastCountry}</span>{/if}
             </div>
 
             <div class="dv-foot">
@@ -182,7 +184,7 @@
           </div>
 
           <div class="dv-acts">
-            <button class="dv-ib" disabled={!!busy} onclick={() => startRename(d)} title={t('dev.rename')} aria-label={t('dev.rename')}><i class="ti ti-pencil"></i></button>
+            <button class="dv-ib" disabled={!!busy} onclick={() => startRename(d)} use:launcherTip={t('dev.rename')} aria-label={t('dev.rename')}><i class="ti ti-pencil"></i></button>
             {#if !d.current}
               <button class="btn btn-ghost btn-sm" disabled={!!busy} onclick={() => notMe(d)}><i class="ti ti-alert-octagon"></i> {t('dev.notMe')}</button>
             {/if}

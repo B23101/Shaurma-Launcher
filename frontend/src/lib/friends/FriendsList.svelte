@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // ── Ліва панель: «Чати» / «Запити» ───────────────────────────────────────
   // Єдиний список приватних і групових чатів за часом останнього повідомлення.
   // Вкладки — той самий ковзний таббар, що на сторінках збірки й сервера, пошук, фільтр за
@@ -110,7 +112,7 @@
   {#if !compact && !s.narrow}
     <div class="sb-resize" class:dragging={s.listResizing} onmousedown={startResize} onkeydown={resizeKey}
          role="separator" aria-orientation="vertical" aria-valuemin={LIST_W_MIN} aria-valuemax={LIST_W_MAX} aria-valuenow={s.listW}
-         tabindex="0" title={t('sidebar.resize')}></div>
+         tabindex="0" use:launcherTip={t('sidebar.resize')}></div>
   {/if}
   <div class="fl-top">
     {#if !compact}
@@ -179,7 +181,7 @@
         <div class="fl-row" data-chat-key={row.key}>
         {#if row.group}
           {@const gr = row.group}
-          <button class="fl-group" class:active={gs.activeId === gr.id} class:compact onclick={() => gs.open(gr.id)} title={gr.title}
+          <button class="fl-group" class:active={gs.activeId === gr.id} class:compact onclick={() => gs.open(gr.id)} use:launcherTip={gr.title}
                   onpointerenter={() => hoverGroup(gr.id)} onpointerleave={leaveGroup} onfocus={() => hoverGroup(gr.id)} onpointerdown={() => gs.prefetch(gr.id)}>
             <GroupAvatar title={gr.title} icon={gr.settings.icon} color={gr.settings.color} />
             {#if !compact}<span><b>{gr.title}{#if s.isMuted(gr.id)} <i class="ti ti-bell-off" aria-label={t('groups.mute')}></i>{/if}</b><small>{t('groups.members', { n: gr.members.length })}</small></span>{/if}
@@ -264,7 +266,7 @@
   .fl-chip.on b { color: var(--orange); }
   .fl-chip:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
 
-  .fl-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 4px 16px 0; scrollbar-width: thin; }
+  .fl-scroll { flex: 1 1 0; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; padding: 0 4px 16px 0; }
   .fl.compact .fl-scroll { padding-top: 4px; scrollbar-width: none; }
   .fl.compact .fl-scroll::-webkit-scrollbar { display: none; }
   .fl-sec + .fl-sec { margin-top: 12px; }

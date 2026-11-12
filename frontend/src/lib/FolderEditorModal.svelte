@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── FolderEditorModal — створення / редагування папки ────────────────────
   // Спільний для збірок і серверів. Шапка UiModal — ЖИВЕ ПРЕВ'Ю папки (змінюєш
   // назву/колір/іконку — вона оновлюється одразу), нижче поля, а вибір
@@ -69,7 +71,7 @@
     <div class="fe2-field">
       <span class="fe2-label">{t('packs.folderColor')}</span>
       <div class="fe2-colors">
-        <label class="fe2-cpick" title={t('duplicate.customColor')}>
+        <label class="fe2-cpick" use:launcherTip={t('duplicate.customColor')}>
           <input type="color" value={color} oninput={(e) => (color = e.currentTarget.value)} />
           <i class="ti ti-color-picker"></i>
         </label>

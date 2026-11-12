@@ -8,8 +8,7 @@ import (
 )
 
 // Paper після першого старту сам пише proxies.velocity з enabled: false і
-// secret: ”. Раніше glue бачив «secret: » і вважав, що все налаштовано, —
-// forwarding так і лишався вимкненим. Ключі мають ставати на своє місце.
+// secret: ”. Ключі мають ставати на своє місце.
 func TestGlueFixesPaperGeneratedConfig(t *testing.T) {
 	api, proxy, backend := newTestNetworkEnv(t)
 	generated := `_version: 29

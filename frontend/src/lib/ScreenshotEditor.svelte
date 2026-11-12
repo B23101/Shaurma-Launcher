@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Фоторедактор скріншоту (повноекранний) ────────────────────────────
   // Малювання (пензлик/маркер), фігури (прямокутник/овал/лінія/стрілка),
   // обрізання з фіксацією пропорцій. Малювання ведеться векторним
@@ -108,16 +110,8 @@
   // щоб destination-out під час малювання не «прорізав» базове зображення.
   let scratchCanvas: HTMLCanvasElement | null = null
   // ВАЖЛИВО: baseCanvasDirty має бути $state, а не звичайною let-змінною.
-  // Раніше render() викликався ефектом, що стежив лише за draftAction/
-  // canvasEl/baseImg — жоден з них не змінюється під час undo/redo/
-  // resetAll (там міняється тільки actions, який рахує ОКРЕМИЙ ефект,
-  // що просто виставляв прапорець і сам render() не кликав). Через це
-  // після Ctrl+Z / стрілки назад canvas фізично НЕ перемальовувався, і
-  // стара картинка «висіла» на екрані аж доки користувач не починав нове
-  // малювання — onPointerMove викликає render() явно, і тоді нарешті
-  // підхоплювався вже виставлений раніше прапорець. Зробивши прапорець
-  // реактивним $state, другий ефект (render()) сам перезапускається
-  // щоразу, коли перший ефект його виставляє.
+  // Зробивши прапорець реактивним $state, другий ефект (render()) сам
+  // перезапускається щоразу, коли перший ефект його виставляє.
   let baseCanvasDirty = $state(true)
 
   function markBaseDirty() { baseCanvasDirty = true }
@@ -312,9 +306,6 @@
 
   function enterCrop() {
     tool = 'crop'
-    // За замовчуванням рамка обрізання охоплює ВСЕ зображення — користувач
-    // сам зменшує її до потрібного фрагмента (раніше було 80% по центру,
-    // тобто «нарізка» стартувала вже з урізаною областю).
     cropRect = { x: 0, y: 0, w: naturalW, h: naturalH }
   }
 
@@ -414,7 +405,7 @@
     } else {
       // Вільна пропорція: кути тягнуть дві сторони одразу, середини
       // сторін — лише одну (саме це й дає змогу рухати одну сторону
-      // окремо, чого не було раніше).
+      // окремо.
       if (cropDragMode === 'se') { r.w = cropRectStart.w + dx; r.h = cropRectStart.h + dy }
       else if (cropDragMode === 'sw') { r.x = cropRectStart.x + dx; r.w = cropRectStart.w - dx; r.h = cropRectStart.h + dy }
       else if (cropDragMode === 'ne') { r.y = cropRectStart.y + dy; r.w = cropRectStart.w + dx; r.h = cropRectStart.h - dy }
@@ -679,31 +670,31 @@
 
 <div class="editor-overlay">
   <div class="editor-topbar">
-    <div class="editor-file" title={entry.fileName}><i class="ti ti-photo"></i> {entry.title || entry.fileName}</div>
+    <div class="editor-file" use:launcherTip={entry.fileName}><i class="ti ti-photo"></i> {entry.title || entry.fileName}</div>
     <div style="flex:1"></div>
-    <button class="btn btn-ghost btn-sm" onclick={undo} disabled={actions.length === 0} title={t('editor.undo')}><i class="ti ti-arrow-back-up"></i></button>
-    <button class="btn btn-ghost btn-sm" onclick={redo} disabled={redoStack.length === 0} title={t('editor.redo')}><i class="ti ti-arrow-forward-up"></i></button>
-    <button class="btn btn-ghost btn-sm" onclick={resetAll} disabled={actions.length === 0} title={t('editor.reset')}><i class="ti ti-trash-x"></i></button>
-    <button class="btn btn-ghost btn-sm" onclick={copyToClipboard} title={t('editor.copyToClipboard')}><i class="ti ti-copy"></i></button>
+    <button class="btn btn-ghost btn-sm" onclick={undo} disabled={actions.length === 0} use:launcherTip={t('editor.undo')}><i class="ti ti-arrow-back-up"></i></button>
+    <button class="btn btn-ghost btn-sm" onclick={redo} disabled={redoStack.length === 0} use:launcherTip={t('editor.redo')}><i class="ti ti-arrow-forward-up"></i></button>
+    <button class="btn btn-ghost btn-sm" onclick={resetAll} disabled={actions.length === 0} use:launcherTip={t('editor.reset')}><i class="ti ti-trash-x"></i></button>
+    <button class="btn btn-ghost btn-sm" onclick={copyToClipboard} use:launcherTip={t('editor.copyToClipboard')}><i class="ti ti-copy"></i></button>
     <button class="btn btn-ghost btn-sm" onclick={saveAsCopy} disabled={saving}><i class="ti ti-copy-plus"></i> {t('editor.saveAsCopy')}</button>
     <button class="btn btn-primary btn-sm" onclick={saveOverwrite} disabled={saving}>
       {#if saving}<i class="ti ti-loader spin"></i> {t('editor.saving')}{:else}<i class="ti ti-device-floppy"></i> {t('editor.save')}{/if}
     </button>
-    <button class="btn btn-ghost btn-sm" onclick={requestClose} title={t('gallery.close')}><i class="ti ti-x"></i></button>
+    <button class="btn btn-ghost btn-sm" onclick={requestClose} use:launcherTip={t('gallery.close')}><i class="ti ti-x"></i></button>
   </div>
 
   <div class="editor-body">
     {#if tool !== 'crop'}
       <div class="editor-toolside">
-        <button class="etool" class:active={tool === 'brush'} onclick={() => tool = 'brush'} title={t('editor.tool.brush')}><i class="ti ti-brush"></i></button>
-        <button class="etool" class:active={tool === 'marker'} onclick={() => tool = 'marker'} title={t('editor.tool.marker')}><i class="ti ti-highlight"></i></button>
-        <button class="etool" class:active={tool === 'eraser'} onclick={() => tool = 'eraser'} title={t('editor.tool.eraser')}><i class="ti ti-eraser"></i></button>
-        <button class="etool" class:active={tool === 'line'} onclick={() => tool = 'line'} title={t('editor.tool.line')}><i class="ti ti-slash"></i></button>
-        <button class="etool" class:active={tool === 'arrow'} onclick={() => tool = 'arrow'} title={t('editor.tool.arrow')}><i class="ti ti-arrow-up-right"></i></button>
-        <button class="etool" class:active={tool === 'rect'} onclick={() => tool = 'rect'} title={t('editor.tool.rect')}><i class="ti ti-square"></i></button>
-        <button class="etool" class:active={tool === 'ellipse'} onclick={() => tool = 'ellipse'} title={t('editor.tool.ellipse')}><i class="ti ti-circle"></i></button>
+        <button class="etool" class:active={tool === 'brush'} onclick={() => tool = 'brush'} use:launcherTip={t('editor.tool.brush')}><i class="ti ti-brush"></i></button>
+        <button class="etool" class:active={tool === 'marker'} onclick={() => tool = 'marker'} use:launcherTip={t('editor.tool.marker')}><i class="ti ti-highlight"></i></button>
+        <button class="etool" class:active={tool === 'eraser'} onclick={() => tool = 'eraser'} use:launcherTip={t('editor.tool.eraser')}><i class="ti ti-eraser"></i></button>
+        <button class="etool" class:active={tool === 'line'} onclick={() => tool = 'line'} use:launcherTip={t('editor.tool.line')}><i class="ti ti-slash"></i></button>
+        <button class="etool" class:active={tool === 'arrow'} onclick={() => tool = 'arrow'} use:launcherTip={t('editor.tool.arrow')}><i class="ti ti-arrow-up-right"></i></button>
+        <button class="etool" class:active={tool === 'rect'} onclick={() => tool = 'rect'} use:launcherTip={t('editor.tool.rect')}><i class="ti ti-square"></i></button>
+        <button class="etool" class:active={tool === 'ellipse'} onclick={() => tool = 'ellipse'} use:launcherTip={t('editor.tool.ellipse')}><i class="ti ti-circle"></i></button>
         <div class="etool-sep"></div>
-        <button class="etool" onclick={enterCrop} title={t('editor.tool.crop')}><i class="ti ti-crop"></i></button>
+        <button class="etool" onclick={enterCrop} use:launcherTip={t('editor.tool.crop')}><i class="ti ti-crop"></i></button>
         <div class="etool-sep"></div>
         <div class="etool-label">{t('editor.color')}</div>
         <div class="etool-colors">
@@ -711,7 +702,7 @@
             <button class="ecolor" class:active={color === c} style="background:{c}" onclick={() => color = c}></button>
           {/each}
         </div>
-        <input class="ecolor-custom" type="color" bind:value={color} title={t('editor.color')} />
+        <input class="ecolor-custom" type="color" bind:value={color} use:launcherTip={t('editor.color')} />
         {#if tool !== 'eraser'}
           <div class="etool-label">{t('editor.thickness')}</div>
           <input class="ethickness" type="range" min="1" max="24" bind:value={thickness} />

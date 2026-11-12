@@ -17,9 +17,7 @@ import (
 const deviceIDFileName = "device-id.txt"
 
 // deviceIDMetaKey — ключ солі DeviceID у shaurma.json (Store.GetMeta/
-// SetMeta). РЕГРЕСІЯ (виправлено): раніше сіль жила в окремому
-// device-id.txt поруч із settings.json — усупереч задокументованій
-// архітектурі («жодних дрібних файлів-міток поза shaurma.json»).
+// SetMeta).
 const deviceIDMetaKey = "deviceIdSalt"
 
 // legacyDeviceIDPath — шлях до старого файла сі́лі (для міграції).

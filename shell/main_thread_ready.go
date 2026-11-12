@@ -15,11 +15,9 @@ package main
 // Канал закривається (рівно один раз, sync.Once) з місця, де ми ТОЧНО
 // знаємо, що головний потік живий: із самого початку showUpdaterSplash()/
 // loadBackendAndShowMain() ці функції викликаються вже з тіла
-// initModule-послідовності, тому маркер ставимо трохи раніше — одразу
-// після успішного першого windowCreate("main"/"updater-splash", ...),
-// яке саме і є першою операцією, що реально торкається UI-потоку. Якщо
-// windowCreate ще не викликаний жодного разу — колбеки чекають (з
-// таймаутом, щоб не зависнути назавжди при аварійному сценарії).
+// initModule-послідовності. Якщо windowCreate ще не викликаний жодного
+// разу — колбеки чекають (з таймаутом, щоб не зависнути назавжди при
+// аварійному сценарії).
 import (
 	"sync"
 	"time"
@@ -43,9 +41,8 @@ func markMainThreadReady() {
 
 // awaitMainThreadReady блокує виклик, поки головний потік не стане
 // готовим, або поки не мине timeout (запобіжник від вічного зависання,
-// якщо markMainThreadReady з якоїсь причини ніколи не викликано —
-// тоді ми просто ризикуємо тим самим падінням, що й раніше, а не тихо
-// висимо назавжди).
+// якщо markMainThreadReady з якоїсь причини ніколи не викликано — тоді
+// ми просто ризикуємо тим самим падінням.
 func awaitMainThreadReady(timeout time.Duration) {
 	select {
 	case <-mainThreadReadyCh:
@@ -61,9 +58,7 @@ func awaitMainThreadReady(timeout time.Duration) {
 const mainThreadReadyTimeout = 5 * time.Second
 
 // safeInvokeAsync — application.InvokeAsync з бар'єром готовності
-// головного потоку (див. коментар вище файлу). Усі колбеки DLL/so->shell,
-// які раніше викликали application.InvokeAsync напряму, тепер ідуть
-// через цю обгортку.
+// головного потоку (див. коментар вище файлу).
 func safeInvokeAsync(fn func()) {
 	awaitMainThreadReady(mainThreadReadyTimeout)
 	application.InvokeAsync(fn)

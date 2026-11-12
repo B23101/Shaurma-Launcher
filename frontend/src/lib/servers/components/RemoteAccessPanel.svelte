@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Доступ друзів до цього сервера (віддалене керування) ───────────────
   // Власник тут вирішує, що саме може кожен друг: запуск, зупинка, перегляд консолі, команди.
   // Перевіряє ВСЕ це VPS (дружба + права) і ще раз сам лаунчер: без підпису VPS команда не виконується.
@@ -121,7 +123,7 @@
           <div class="rap-who">
             <FriendAvatar nickname={f.nickname} color={f.color ?? ''} status={f.presence?.status} size={38} />
             <div class="rap-id">
-              <div class="rap-nick" title={f.nickname}>{f.nickname}</div>
+              <div class="rap-nick" use:launcherTip={f.nickname}>{f.nickname}</div>
               <div class="rap-sub">{has ? 'Має доступ' : 'Без доступу'}</div>
             </div>
           </div>
@@ -130,7 +132,7 @@
               {@const on = !!g?.[p.k]}
               {@const dis = busy || (p.k === 'exec' && !g?.console) || (p.k === 'network' && !g?.start && !g?.stop)}
               <button class="rap-perm" class:on aria-pressed={on} disabled={dis}
-                      title={p.k === 'exec' && !g?.console ? 'Спершу дозвольте перегляд консолі'
+                      use:launcherTip={p.k === 'exec' && !g?.console ? 'Спершу дозвольте перегляд консолі'
                         : p.k === 'network' ? 'Запуск і зупинка (як позначено ліворуч) діють і на кожен сервер мережі проксі. Консоль серверів мережі — окремо на кожному сервері.' : ''}
                       onclick={() => setGrant(f.accountId, { [p.k]: !on })}>
                 <i class="ti {p.icon}"></i> {p.label}
@@ -167,7 +169,7 @@
           <span class="rap-a-t">{fmt(a.ts)}</span>
           <b>{a.nick || a.friend.slice(0, 8)}</b>
           <span>{OPS[a.op] ?? a.op}</span>
-          <span class="rap-a-r" class:bad={a.result !== 'ok' && a.result !== 'accepted'} title={a.result}>{REMOTE_CODES[a.result] ?? a.result}</span>
+          <span class="rap-a-r" class:bad={a.result !== 'ok' && a.result !== 'accepted'} use:launcherTip={a.result}>{REMOTE_CODES[a.result] ?? a.result}</span>
           {#if a.cmd}<code>{a.cmd}</code>{/if}
         </div>
       {:else}

@@ -78,8 +78,7 @@ func computeContentMarker() string {
 
 // migrateLegacyLocalAppDataProfile — одноразовий перенос старого
 // WebView2-профілю з %LOCALAPPDATA%\<InstallDir>\webview2 у теку біля exe
-// (новий дім профілю). Раніше профіль жив у %LOCALAPPDATA%, тепер — поруч
-// з exe (webviewUserDataPath). Якщо в новому місці профілю ще немає, а в
+// (новий дім профілю). Якщо в новому місці профілю ще немає, а в
 // LOCALAPPDATA є — переносимо цілком (логіни/cookies не губляться при
 // оновленні на версію з новим розташуванням). Викликається до створення
 // будь-якого вікна WebView2, поки профіль ніхто не відкрив.

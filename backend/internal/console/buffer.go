@@ -17,6 +17,7 @@ package console
 
 import (
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -57,10 +58,12 @@ func DetectLevel(text string) string {
 // кількості рядків. Append — O(1) у середньому (amortized), без жодного
 // блокування поза м'ютексом.
 type Buffer struct {
-	mu       sync.Mutex
-	lines    []model.ConsoleLine
-	maxLines int // consoleMaxLines з налаштувань
-	nextID   uint64
+	mu        sync.Mutex
+	lines     []model.ConsoleLine
+	maxLines  int // consoleMaxLines з налаштувань
+	nextID    uint64
+	textPool  map[string]string
+	textOrder []string
 }
 
 // NewBuffer створює порожній буфер з лімітом рядків.
@@ -107,7 +110,7 @@ func (b *Buffer) appendLocked(level, text string) model.ConsoleLine {
 		ID:    b.nextID,
 		Time:  time.Now().Format("15:04:05"),
 		Level: level,
-		Text:  text,
+		Text:  b.shareTextLocked(text),
 	}
 	b.lines = append(b.lines, line)
 	b.trimLocked()
@@ -133,7 +136,9 @@ func (b *Buffer) trimLocked() {
 		return
 	}
 	if len(b.lines) > b.maxLines {
-		b.lines = b.lines[len(b.lines)-b.maxLines:]
+		drop := len(b.lines) - b.maxLines
+		clear(b.lines[:drop]) // release strings held by the discarded backing-array prefix
+		b.lines = b.lines[drop:]
 	}
 }
 
@@ -143,6 +148,7 @@ func (b *Buffer) trimLocked() {
 func (b *Buffer) AppendRaw(line model.ConsoleLine) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	line.Text = b.shareTextLocked(line.Text)
 	b.lines = append(b.lines, line)
 	b.trimLocked()
 }
@@ -180,4 +186,99 @@ func (b *Buffer) Clear() {
 	defer b.mu.Unlock()
 	b.lines = nil
 	b.nextID = 0
+	b.textPool = nil
+	b.textOrder = nil
+}
+
+// Page contains only the requested window; counts describe the complete buffer.
+type Page struct {
+	Lines    []model.ConsoleLine `json:"lines"`
+	Offset   int                 `json:"offset"`
+	Total    int                 `json:"total"`
+	Count    int                 `json:"count"`
+	Errors   int                 `json:"errors"`
+	Warnings int                 `json:"warnings"`
+	LastID   uint64              `json:"lastId"`
+}
+
+// Page filters on the backend without copying the full log into the WebView.
+// A negative offset requests the tail. after hides rows cleared in a view.
+func (b *Buffer) Page(offset, limit int, level, query string, after uint64) Page {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if limit < 1 {
+		limit = 200
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	p := Page{Lines: make([]model.ConsoleLine, 0, limit)}
+	query = strings.ToLower(query)
+	matches := func(l model.ConsoleLine) bool {
+		return l.ID > after && (level == "" || level == "all" || l.Level == level) && (query == "" || strings.Contains(strings.ToLower(l.Text), query))
+	}
+	for _, l := range b.lines {
+		if l.ID > p.LastID {
+			p.LastID = l.ID
+		}
+		if l.ID <= after {
+			continue
+		}
+		p.Count++
+		if l.Level == "error" {
+			p.Errors++
+		}
+		if l.Level == "warn" {
+			p.Warnings++
+		}
+		if matches(l) {
+			p.Total++
+		}
+	}
+	if offset < 0 {
+		offset = p.Total - limit
+	}
+	if offset > p.Total-limit {
+		offset = p.Total - limit
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	p.Offset = offset
+	n := 0
+	for _, l := range b.lines {
+		if !matches(l) {
+			continue
+		}
+		if n >= offset && len(p.Lines) < limit {
+			p.Lines = append(p.Lines, l)
+		}
+		n++
+		if len(p.Lines) == limit {
+			break
+		}
+	}
+	return p
+}
+
+// Share repeated recent messages by reference, with a small bounded dictionary.
+// Arbitrarily long or unique logs cannot grow this cache without limit.
+func (b *Buffer) shareTextLocked(text string) string {
+	if len(text) > 4096 {
+		return text
+	}
+	if v, ok := b.textPool[text]; ok {
+		return v
+	}
+	if b.textPool == nil {
+		b.textPool = make(map[string]string)
+	}
+	if len(b.textOrder) == 32 {
+		delete(b.textPool, b.textOrder[0])
+		copy(b.textOrder, b.textOrder[1:])
+		b.textOrder = b.textOrder[:31]
+	}
+	b.textPool[text] = text
+	b.textOrder = append(b.textOrder, text)
+	return text
 }

@@ -16,8 +16,8 @@ package main
 //     "detail": "full stack / raw error"  // опціонально
 //   }
 //
-// Журнал ЛИШЕ локальний: нічого не надсилається в мережу (ні на worker, ні на
-// VPS). Користувач сам вирішує, чи ділитися файлом (ExportLauncherErrors).
+// Журнал лише локальний. Користувач сам вирішує, чи ділитися файлом
+// (ExportLauncherErrors).
 
 import (
 	"encoding/json"

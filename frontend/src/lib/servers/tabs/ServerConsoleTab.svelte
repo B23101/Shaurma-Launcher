@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Вкладка "Консоль" сторінки сервера ───────────────────────────────
   // Обгортка навколо ConsoleView + ConsoleInput. Буфер логів і підписка
   // на server:line/server:status/server:install-progress живуть у хуку
@@ -11,9 +13,10 @@
   import { App } from '../../wails'
   import { toast } from '../../toast.svelte'
   import { t } from '../../i18n.svelte'
+  import PagedConsole from '../../PagedConsole.svelte'
+  import type { ConsolePage } from '../../consolePage'
   import ConsoleView from '../components/ConsoleView.svelte'
   import ConsoleInput from '../components/ConsoleInput.svelte'
-  import ServerPlayersStrip from '../components/ServerPlayersStrip.svelte'
   import { useServerConsole } from '../hooks/useServerConsole.svelte'
   import { onDestroy, untrack } from 'svelte'
   import { remote, remoteOpenConsole, remoteCloseConsole, remoteSend } from '../remoteServers.svelte'
@@ -63,6 +66,12 @@
   })
   onDestroy(() => { if (isRemote) void remoteCloseConsole() })
 
+  let pageStats = $state({ count: 0, errors: 0, warnings: 0, lastId: 0 })
+  let clearedAfter = $state(0)
+  let consoleSettings = $state({ consoleWrap: false, consoleFontSize: 12, consoleInfoColor: '#8fd3ff', consoleWarnColor: '#ffd166', consoleErrorColor: '#ff6b6b' })
+  $effect(() => { App.GetSettings().then(s => { consoleSettings = s }).catch(() => {}) })
+  const loadPage = (offset: number, limit: number, level: string, query: string, after: number) =>
+    App.GetServerConsolePage(serverId, offset, limit, level, query, after)
   const lines = $derived(isRemote ? remoteLines : console_!.lines)
   const status = $derived(isRemote ? (remoteServer?.state || 'stopped') : console_!.status)
   const installProgress = $derived(console_?.installProgress ?? null)
@@ -70,7 +79,7 @@
   function addLine(level: string, text: string) { console_?.addLine(level, text) }
   function clearLines() {
     if (isRemote) remoteCleared = remote.lines.length
-    else console_!.clear()
+    else { clearedAfter = pageStats.lastId; console_!.clear() }
   }
 
   let filter = $state<'all' | 'info' | 'warn' | 'error'>('all')
@@ -81,8 +90,8 @@
 
   const installing = $derived(status === 'installing')
   const running = $derived(status === 'running')
-  const errorCount = $derived(lines.filter(l => l.level === 'error').length)
-  const warnCount = $derived(lines.filter(l => l.level === 'warn').length)
+  const errorCount = $derived(isRemote ? lines.filter(l => l.level === 'error').length : pageStats.errors)
+  const warnCount = $derived(isRemote ? lines.filter(l => l.level === 'warn').length : pageStats.warnings)
 
   // Автоскрол живе всередині ConsoleView (він сам знає, чи користувач
   // унизу, і сам тримає «прилипання» до дна). Тут лише передаємо розмір
@@ -162,8 +171,9 @@
     } catch (e: any) { aiState = 'idle'; toast(String(e), 'error') }
   }
 
-  function copyAll() {
-    const text = lines.map(l => `[${l.time}] [${l.level.toUpperCase()}] ${l.text}`).join('\n')
+  async function copyAll() {
+    const all = isRemote ? lines : (await App.GetServerConsoleSnapshot(serverId)).filter(l => l.id > clearedAfter)
+    const text = all.map(l => `[${l.time}] [${l.level.toUpperCase()}] ${l.text}`).join('\n')
     navigator.clipboard.writeText(text).catch(() => {})
     toast(t('servers.console.copied'), 'success')
   }
@@ -183,7 +193,7 @@
   <div class="sct-tools">
     <!-- Фільтри-пігулки як .fchip у GameConsole: нейтральні, без кольорових точок (OLED). -->
     <div class="gc-seg" role="tablist">
-      <button class="fchip" class:active={filter === 'all'} onclick={() => filter = 'all'}>{t('servers.console.all')} <span class="fchip-n">{lines.length}</span></button>
+      <button class="fchip" class:active={filter === 'all'} onclick={() => filter = 'all'}>{t('servers.console.all')} <span class="fchip-n">{isRemote ? lines.length : pageStats.count}</span></button>
       <button class="fchip" class:active={filter === 'info'} onclick={() => filter = 'info'}>Info</button>
       <button class="fchip fc-warn" class:active={filter === 'warn'} onclick={() => filter = 'warn'}>Warn <span class="fchip-n">{warnCount}</span></button>
       <button class="fchip fc-err" class:active={filter === 'error'} onclick={() => filter = 'error'}>Errors <span class="fchip-n">{errorCount}</span></button>
@@ -206,24 +216,24 @@
           <button class="btn btn-primary btn-sm" onclick={startServer}><i class="ti ti-player-play"></i> {t('servers.console.start')}</button>
         {/if}
         {#if running || installing || status === 'starting'}
-          <button class="btn btn-ghost btn-sm sct-danger" onclick={killServer} title={t('servers.console.kill')}><i class="ti ti-x"></i> Kill</button>
+          <button class="btn btn-ghost btn-sm sct-danger" onclick={killServer} use:launcherTip={t('servers.console.kill')}><i class="ti ti-x"></i> Kill</button>
         {/if}
       {:else if isRemote}
         {#if remote.secure === true}
-          <span class="st-tag ok" title={t('servers.remote.encryptedTip')}><i class="ti ti-lock"></i> {t('servers.remote.encrypted')}</span>
+          <span class="st-tag ok" use:launcherTip={t('servers.remote.encryptedTip')}><i class="ti ti-lock"></i> {t('servers.remote.encrypted')}</span>
         {:else if remote.secure === false}
-          <span class="st-tag" title={t('servers.remote.viaVpsTip')}><i class="ti ti-lock-open"></i> {t('servers.remote.viaVps')}</span>
+          <span class="st-tag" use:launcherTip={t('servers.remote.viaVpsTip')}><i class="ti ti-lock-open"></i> {t('servers.remote.viaVps')}</span>
         {/if}
         {#if remote.ended && remoteServer}
-          <button class="tbtn" onclick={() => remoteServer && remoteOpenConsole(remoteServer)} title={t('servers.remote.reconnect')} aria-label={t('servers.remote.reconnect')}><i class="ti ti-refresh"></i></button>
+          <button class="tbtn" onclick={() => remoteServer && remoteOpenConsole(remoteServer)} use:launcherTip={t('servers.remote.reconnect')} aria-label={t('servers.remote.reconnect')}><i class="ti ti-refresh"></i></button>
         {/if}
       {:else}
-        <button class="tbtn" onclick={toggleWindow} title={t('servers.console.separateWindow')} aria-label={t('servers.console.separateWindow')}>
+        <button class="tbtn" onclick={toggleWindow} use:launcherTip={t('servers.console.separateWindow')} aria-label={t('servers.console.separateWindow')}>
           <i class="ti ti-arrows-maximize"></i>
         </button>
       {/if}
-      <button class="tbtn" onclick={copyAll} title={t('servers.console.copyLogs')} aria-label={t('servers.console.copyLogs')}><i class="ti ti-copy"></i></button>
-      <button class="tbtn" onclick={clearLog} title={t('servers.console.clearView')} aria-label={t('servers.console.clearView')}><i class="ti ti-trash"></i></button>
+      <button class="tbtn" onclick={copyAll} use:launcherTip={t('servers.console.copyLogs')} aria-label={t('servers.console.copyLogs')}><i class="ti ti-copy"></i></button>
+      <button class="tbtn" onclick={clearLog} use:launcherTip={t('servers.console.clearView')} aria-label={t('servers.console.clearView')}><i class="ti ti-trash"></i></button>
       {#if status === 'crashed' && !isRemote}
         <button class="btn btn-ghost btn-sm" onclick={analyzeCrash} disabled={aiState === 'thinking'}>
           {#if aiState === 'thinking'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-sparkles"></i>{/if}
@@ -232,10 +242,6 @@
       {/if}
     </div>
   </div>
-
-  <!-- Хто зараз на сервері (ніки). Сповіщення про вхід/вихід показує
-       App.svelte глобально — тут лише живий список. -->
-  {#if !isRemote}<ServerPlayersStrip {serverId} running={running} />{/if}
 
   {#if installing && installProgress}
     <div class="sct-install">
@@ -255,6 +261,7 @@
     </div>
   {/if}
 
+  {#if isRemote}
   <ConsoleView
     {lines}
     {filter}
@@ -262,6 +269,24 @@
     emptyIcon={running ? 'ti-terminal' : 'ti-server-off'}
     {emptyText}
   />
+  {:else}
+    <PagedConsole load={loadPage} {filter} {search} after={clearedAfter}
+      wrap={consoleSettings.consoleWrap} fontSize={consoleSettings.consoleFontSize}
+      colorInfo={consoleSettings.consoleInfoColor} colorWarn={consoleSettings.consoleWarnColor} colorError={consoleSettings.consoleErrorColor}
+      onStats={(p: ConsolePage) => { pageStats = { count: p.count, errors: p.errors, warnings: p.warnings, lastId: p.lastId } }} />
+    <!-- Локальні рядки (команди, «Запуск сервера…», помилки старту): їх нема в
+         буфері бекенду, тож PagedConsole їх не показує — малюємо окремо, у стилі консолі. -->
+    {#if lines.length > 0}
+      <div class="sct-local" style="font-size:{consoleSettings.consoleFontSize}px">
+        {#each lines as line (line.id)}
+          <div class="sct-local-line"
+               style="color:{line.level === 'error' ? consoleSettings.consoleErrorColor : line.level === 'warn' ? consoleSettings.consoleWarnColor : line.level === 'system' ? 'var(--text-dim)' : consoleSettings.consoleInfoColor}">
+            <span class="sct-local-ts">{line.time}</span><span class="sct-local-msg">{line.text}</span>
+          </div>
+        {/each}
+      </div>
+    {/if}
+  {/if}
 
   {#if aiState !== 'idle' && aiText}
     <div class="sct-ai">
@@ -354,6 +379,14 @@
   .sct-install-fill { height: 100%; border-radius: 2px; background: var(--pcol, var(--orange)); transition: width .3s ease; }
   .sct-install-fill.sct-install-indet { width: 40%; animation: sct-install-slide 1.8s ease-in-out infinite; }
   @keyframes sct-install-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(350%); } }
+
+  .sct-local {
+    max-height: 96px; overflow: auto; flex-shrink: 0; padding: 6px 14px;
+    border-top: 1px solid var(--border); font-family: var(--font-mono);
+    user-select: text; -webkit-user-select: text;
+  }
+  .sct-local-line { display: flex; gap: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .sct-local-ts { opacity: .5; flex-shrink: 0; user-select: none; -webkit-user-select: none; }
 
   .sct-ai {
     border-top: 1px solid var(--border); padding: 10px 12px;

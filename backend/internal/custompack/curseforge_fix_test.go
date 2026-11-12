@@ -63,8 +63,7 @@ func TestCurseForgeGetProjectDetailPrefersFullDescription(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/mods/123":
-			// Короткий, але НЕ порожній inline-опис — саме той випадок, який
-			// раніше показував 2 речення замість статті.
+			// Короткий, але НЕ порожній inline-опис — саме той випадок.
 			fmt.Fprint(w, `{"data":{"id":123,"name":"Create - Forge Frontier","summary":"short","description":"<p>Короткий анонс у 2 речення.</p>"}}`)
 		case "/mods/123/description":
 			descHits++

@@ -25,11 +25,8 @@ type ExportOptions struct {
 	// збірки, поруч з .minecraft/, напр. <instances>/<id>/icon.png).
 	// Опційний: якщо вказаний і файл читається — кладеться в архів під
 	// фіксованим іменем icon.png у КОРЕНІ (та сама конвенція, що mrpack
-	// та .shaurmbundle з packs/<id>/icon.png), і імпортер відновлює її
-	// як іконку збірки. Раніше .shaurmpack-експорт іконку НЕ зберігав
-	// взагалі (вона живе поза .minecraft/, який сканується в overrides/),
-	// через що при імпорті лаунчер ставив пресет-іконку за замовчуванням
-	// і оригінальна персоналізація збірки губилась.
+	// та .shaurmbundle з packs/<id>/icon.png), і імпортер відновлює її як
+	// іконку збірки.
 	IconFile string
 
 	// Pack metadata
@@ -152,10 +149,7 @@ func Export(opts ExportOptions) (*ExportResult, error) {
 	//
 	// Вибір користувача (IncludePaths/ExcludePaths) обробляємо ТИМ САМИМ
 	// деревом правил, що й mrpack-експорт (export.PathFilter: найглибше
-	// правило перемагає, папка покриває вміст). Раніше тут була точна
-	// рівність рядків, через що вибір у модалці не діяв узагалі: у списку
-	// вибраного лежать і папки («mods»), і файли, тож «вибрав лише mods,
-	// а запакувалась уся тека».
+	// правило перемагає, папка покриває вміст).
 	filter := export.NewPathFilter(opts.IncludePaths, opts.ExcludePaths)
 
 	var manifest Manifest
@@ -285,7 +279,7 @@ func Export(opts ExportOptions) (*ExportResult, error) {
 	// 8. Іконка збірки — у КОРІНЬ архіву під фіксованим іменем icon.png
 	// (поза overrides/bundled — це не ігровий файл .minecraft/, а
 	// персоналізація збірки). Тиха поведінка: немає/не читається/завелика
-	// → просто без іконки в паку, як і було раніше.
+	// → просто без іконки в паку.
 	if opts.IconFile != "" {
 		if st, err := os.Stat(opts.IconFile); err == nil && !st.IsDir() && st.Size() > 0 && st.Size() <= 2*1024*1024 {
 			if data, rerr := os.ReadFile(opts.IconFile); rerr == nil {

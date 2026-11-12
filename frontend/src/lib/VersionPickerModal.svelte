@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── VersionPickerModal ───────────────────────────────────────────────────
   // Спільне модульне вікно вибору ВЕРСІЇ (гри Minecraft, лоадера, ядра
   // сервера — будь-якого списку версій) замість нативного <select> і
@@ -113,7 +115,7 @@
   onclick={openModal}
   disabled={disabled}
   aria-label={ariaLabel || title || placeholder}
-  title={current?.label || placeholder}
+  use:launcherTip={current?.label || placeholder}
 >
   <span class="vpm-trigger-label">{current?.label ?? placeholder}</span>
   <i class="ti ti-chevron-down vpm-trigger-arrow"></i>
@@ -150,7 +152,7 @@
           <span class="vpm-item-label">{opt.label}</span>
           {#if opt.sub}<span class="vpm-item-sub">{opt.sub}</span>{/if}
           {#if opt.badgeIcon}
-            <i class="ti {opt.badgeIcon} vpm-item-badge" title={opt.badgeTitle || ''}></i>
+            <i class="ti {opt.badgeIcon} vpm-item-badge" use:launcherTip={opt.badgeTitle || ''}></i>
           {/if}
           {#if opt.value === value}<i class="ti ti-check vpm-item-check"></i>{/if}
         </button>

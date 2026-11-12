@@ -7,6 +7,7 @@
   import { App } from './wails'
   import { t } from './i18n.svelte'
   import { pirateNicknameError, sanitizeNick } from './validation'
+  import Callout from './Callout.svelte'
 
   let {
     open = false,
@@ -81,9 +82,7 @@
 <!-- Клік поза вікном НЕ закриває його: щоб випадково не втратити крок
      входу. Вийти можна лише кнопкою «Скасувати». -->
 <UiModal {open} dismissible={false} size="sm" icon="ti-user-edit" title={t('skinNickModalTitle')}>
-  <div class="nick-hint"><i class="ti ti-brand-google"></i>
-    <span>{t(identity === 'microsoft' ? 'skinNickModalHintMs' : 'skinNickModalHint')}{#if email} <b>{email}</b>{/if}</span>
-  </div>
+  <Callout icon="ti-brand-google">{t(identity === 'microsoft' ? 'skinNickModalHintMs' : 'skinNickModalHint')}{#if email} <b>{email}</b>{/if}</Callout>
   <div class="wiz-field-row" style="margin-top:12px">
     <!-- svelte-ignore a11y_autofocus -->
     <input class="st-input mono grow {(nickErr && touched) || check === 'taken' ? 'input-err' : ''}"
@@ -115,13 +114,6 @@
 </UiModal>
 
 <style>
-  .nick-hint {
-    display:flex; align-items:flex-start; gap:8px;
-    font-size:12.5px; color:var(--text-mute); line-height:1.5;
-    background:rgba(var(--orange-rgb),.07); border:1px solid rgba(var(--orange-rgb),.2);
-    border-radius:10px; padding:10px 14px;
-  }
-  .nick-hint i { color:var(--orange); font-size:16px; flex-shrink:0; margin-top:1px; }
   .nick-note { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--text-mute); margin-top:6px; }
   .nick-ok { display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--green, #4caf50); margin-top:6px; }
   .nick-warn {

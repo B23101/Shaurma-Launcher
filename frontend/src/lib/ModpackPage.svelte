@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import ShareToFriend from './friends/ShareToFriend.svelte'
   import UiModal from './UiModal.svelte'
   // ── Сторінка проєкту (модпак / мод / ресурспак / шейдер / датапак) ────
@@ -42,6 +44,8 @@
   import { marked } from 'marked'
   import { sanitizeHtml, normalizeYouTubeEmbed } from './sanitizeHtml'
   import { smartImage } from './smartImage'
+  import EmptyState from './EmptyState.svelte'
+  import SearchField from './SearchField.svelte'
 
   let {
     source,
@@ -114,6 +118,14 @@
 
   let detail = $state<BrowserProjectDetail | null>(null)
   let versions = $state<BrowserVersionView[]>([])
+  // Для крихт верхньої панелі: назва/іконка/тип відкритого проєкту.
+  $effect(() => {
+    const d = detail
+    window.dispatchEvent(new CustomEvent('browser:project', { detail: d
+      ? { source, projectId, name: d.name, iconUrl: d.iconUrl || '', projectType: d.projectType }
+      : null }))
+  })
+  $effect(() => () => { window.dispatchEvent(new CustomEvent('browser:project', { detail: null })) })
   let loading = $state(true)
   let loadingVersions = $state(false)
   let loadError = $state('')
@@ -143,24 +155,17 @@
   let installedInPacksExpanded = $state(false)
 
   // ── Закладка («зірочка») на сторінці проєкту ──────────────────────────
-  // Раніше кнопка збереження існувала ЛИШЕ на картках у ContentBrowser
-  // (грід результатів пошуку/«Збережено») — на самій сторінці проєкту
-  // (сюди веде і клік по картці, і клік по моду з менеджера модів
-  // ВСЕРЕДИНІ сторінки збірки, openModPageFromPack у App.svelte) зірочки
-  // не було взагалі: «зберегти» можна було лише повернувшись у грід і
-  // знайшовши ту саму картку ще раз. Той самий бекенд-метод ToggleBookmark
-  // (backend/browser_bookmarks_api.go), той самий візуальний стан
-  // (жовтий #f5c542, коли закладено), просто інший виклик — тут не
-  // потрібен bmKey-Set на купу карток, досить одного bool на сторінку.
+  // «зберегти» можна було лише повернувшись у грід і знайшовши ту саму
+  // картку ще раз. Той самий бекенд-метод ToggleBookmark
+  // (backend/browser_bookmarks_api.go), той самий візуальний стан (жовтий
+  // #f5c542, коли закладено), просто інший виклик — тут не потрібен
+  // bmKey-Set на купу карток, досить одного bool на сторінку.
   let bookmarked = $state(false)
   let bookmarkBusy = $state(false)
 
-  // OPTIMISTIC UPDATE (той самий підхід, що ContentBrowser.svelte): раніше
-  // `bookmarked` мінявся лише ПІСЛЯ await App.ToggleBookmark — на
-  // повільнішому диску клік по зірочці міг на мить (а при затримці —
-  // помітно) лишати її «невидимою»/незміненою, виглядаючи так, ніби
-  // закладка не зберіглась. Тепер перемикаємо одразу на клік і
-  // відкочуємо назад лише якщо бекенд справді повернув помилку.
+  // OPTIMISTIC UPDATE (той самий підхід, що ContentBrowser.svelte). Тепер
+  // перемикаємо одразу на клік і відкочуємо назад лише якщо бекенд справді
+  // повернув помилку.
   async function toggleBookmark() {
     if (!detail || bookmarkBusy) return
     const wasBookmarked = bookmarked
@@ -280,8 +285,7 @@
   // Збірка-фільтр НЕ підтримує цей контент (бекенд не знайшов жодної
   // версії під (mc, loader) збірки). Тоді замість порожнечі показуємо
   // «не підтримується» у віджеті встановлення і «немає сумісних версій»
-  // у вкладці Версії — раніше список підмінявся УСІМА версіями, і юзер
-  // бачив порожній список + незрозумілу поведінку кнопки.
+  // у вкладці Версії.
   let packUnsupported = $state(false)
   // «Показати всі версії» (як checkbox у DownloadProject.vue Modrinth app):
   // за замовчуванням у селекторі версії Minecraft показуються лише
@@ -448,11 +452,6 @@
     quilt: 'Quilt',
     vanilla: 'Vanilla',
   }
-  // Платформи для селекта: лише ті лоадери, для яких у джерела реально є
-  // хоч одна версія (звужено ще й під обрану MC-версію, якщо вона задана) —
-  // раніше тут був статичний список усіх чотирьох лоадерів, через що в
-  // селекті можна було обрати платформу, для якої джерело не мало жодної
-  // збірки («Немає доступних версій з джерела»).
   const platformOptions = $derived.by(() => {
     const pool = mcFilter ? versions.filter(v => (v.gameVersions ?? []).includes(mcFilter)) : versions
     const order = ['fabric', 'forge', 'neoforge', 'quilt', 'vanilla']
@@ -482,9 +481,6 @@
   // Кожен тип контенту (модпак/мод/ресурспак/шейдер/датапак) отримує свою
   // іконку + акцентний колір — так сторінка ОДРАЗУ читається з першого
   // погляду («це шейдер», «це датапак»), а не лише по дрібному тексту.
-  // Раніше акцент банера — випадковий hash-колір (dominantColor) без жодного
-  // зв'язку з типом ресурсу; тепер колір типу — головний акцент сторінки,
-  // а dominantColor лишається як тонка добавка у фон банера.
   const typeAccent: Record<string, { icon: string; color: string; rgb: string }> = {
     modpack:      { icon: 'ti-box',          color: '#ff8a00', rgb: '255, 138, 0' },   // orange — фірмовий колір лаунчера
     mod:          { icon: 'ti-puzzle',       color: '#7b4dff', rgb: '123, 77, 255' },  // violet
@@ -521,8 +517,6 @@
   }
 
   // ── Фільтрація версій по селекторах (Modrinth-стиль) ─────────────────
-  // Раніше список версій просто вантажився весь і користувач гортав усе —
-  // тепер «Версія Minecraft»/«Платформа» звужують, як у DownloadProject.
   const filteredVersions = $derived.by(() => {
     // Модпаки: збірка-фільтр не застосовується (версія модпака — це версія
     // НОВОЇ збірки, а не контекст існуючої).
@@ -621,9 +615,7 @@
     const loadId = ++loadSeq
     loading = true
     loadError = ''
-    // Скидаємо і сам проєкт. Раніше detail не обнулявся: після невдалого
-    // завантаження на екрані лишався ПОПЕРЕДНІЙ проєкт (ані помилки, ані
-    // ознак того, що запит провалився) — користувач бачив чужі дані як свої.
+    // Скидаємо і сам проєкт.
     detail = null
     versions = []
     selectedVersionId = ''
@@ -650,9 +642,7 @@
       // Головне для сторінки вже є — знімаємо спінер ЗАРАЗ. Версії та
       // статус «вже встановлено» довантажуються далі в цій же функції, але
       // сторінку вони вже не тримають: у кожної секції свій індикатор
-      // (loadingVersions / installedInPacksLoading). Раніше спінер зникав
-      // аж після них усіх, і на повільній мережі це виглядало як «сторінка
-      // не завантажується».
+      // (loadingVersions / installedInPacksLoading).
       loading = false
       // Початковий стан зірочки — окремий легкий виклик (лише набір
       // ключів, не повні записи), не блокує решту завантаження сторінки.
@@ -661,9 +651,7 @@
       }).catch(() => {})
       selectedVersionId = ''
       autoMatched = false
-      // Версії. ВАЖЛИВО: помилка версій НЕ повинна вбивати всю сторінку
-      // (опис/галерея вже завантажені) — ловимо її окремо і показуємо
-      // «немає версій», як раніше робила окрема loadVersions().
+      // Версії.
       loadingVersions = true
       try {
         // ВАЖЛИВО (запит «модпаки мають вибір версії»): модпак НЕ
@@ -800,13 +788,9 @@
   // normalizeYouTubeEmbed імпортується з lib/sanitizeHtml: той самий хелпер
   // використовує і санітайзер опису, і вкладка «Відео», і вікі збірок.
 
-  // Детект YouTube-посилань в описі проєкту → вкладка «Відео».
-  // ВАЖЛИВО («Помилка 153»): усі формати НОРМАЛІЗУЮТЬСЯ у вбудовуваний
-  // youtube-nocookie.com/embed/<id> — shorts/ раніше лишався як є
-  // (youtube.com/shorts/ID вбудувати не можна, YouTube віддає помилку
-  // конфігурації відеопрогравача), а звичайний youtube.com у WebView2
-  // часто відхиляє embed через referrer/куки. Параметри ?/& (si=, list=,
-  // feature=…) обрізаються — вони ламали embed і тригерили 153.
+  // Детект YouTube-посилань в описі проєкту → вкладка «Відео». Параметри
+  // ?/& (si=, list=, feature=…) обрізаються — вони ламали embed і
+  // тригерили 153.
   function videoLinks(): string[] {
     if (!detail) return []
     const out: string[] = []
@@ -1024,7 +1008,7 @@
       const created = await App.CreateBrowserModpack(source, detail!.projectId, v.id, force)
       await App.DownloadBrowserModpack(created.id)
       // Одразу на сторінку новоствореної збірки — там видно живий прогрес
-      // качання (раніше повертались у браузер і доводилось шукати картку).
+      // качання.
       onOpenPack(created.id)
       toast(t('browser.project.installedAs', { name: detail!.name }), 'success')
     } catch (e: any) {
@@ -1151,9 +1135,7 @@
     try {
       // Версії НЕ завантажуємо: вибір версії прибрано з модалки — завжди
       // «авто» (''), лаунчер підбирає версію під (mc, loader) обраної збірки
-      // при встановленні. Раніше спершу йшов запит версій, і лише потім —
-      // сумісних збірок: модалка «спочатку показувала немає збірки, а потім
-      // список». Тепер одразу запит збірок.
+      // при встановленні.
       const sel = initialVersion?.id ?? ''
       packDialog.selectedVersionId = sel
       const packsList = (await App.GetBrowserCompatiblePacks(source, detail.projectId, detail.projectType, contentDirFor(detail.projectType), sel)) ?? []
@@ -1201,9 +1183,8 @@
       : null
     // Датапак: збірку обрано — тепер обираємо світ цієї збірки. Для «авто»
     // (версії в діалозі не обирали) резолвимо рекомендовану під збірку.
-    // БАГ «вікно вибору світів не відкривається»: помилки резолву версії
-    // (збій API тощо) раніше губилися без try/catch — клік мовчки нічого
-    // не показував. Тепер помилка видима тостом.
+    // БАГ «вікно вибору світів не відкривається»: помилки резолву версії.
+    // Тепер помилка видима тостом.
     if (detail.projectType === 'datapack') {
       packDialog = null
       const p = dialog.packs.find(x => x.packId === packId)
@@ -1447,14 +1428,12 @@
     <!-- Помилка завантаження: показуємо ПРИЧИНУ (її формує load()) і даємо
          повторити запит — раніше був лише текст «Не вдалося завантажити
          проєкт» без пояснень і без жодної дії, крім «Назад». -->
-    <div class="mp-empty">
-      <i class="ti ti-alert-triangle"></i>
-      <div>{loadError || t('browser.project.notFound')}</div>
-      <div class="mp-empty-acts">
+    <EmptyState icon="ti-alert-triangle" color="var(--red)" title={loadError || t('browser.project.notFound')}>
+      {#snippet actions()}
         <button class="btn btn-primary btn-sm" onclick={() => load()}><i class="ti ti-refresh"></i> {t('browser.retry')}</button>
         <button class="btn btn-ghost btn-sm" onclick={onBack}><i class="ti ti-arrow-left"></i> {t('browser.project.back')}</button>
-      </div>
-    </div>
+      {/snippet}
+    </EmptyState>
   {:else}
     {@const acc = accentFor(detail.projectType)}
     <!-- Кнопка назад + компактна sticky-панель: прикріплена зверху під час
@@ -1463,7 +1442,7 @@
          в Modrinth/CurseForge». -->
     <div class="mp-topbar" class:scrolled={topbarScrolled} class:collapsed={heroVisible} style="--tacc:{acc.color}; --tacc-rgb:{acc.rgb}">
       <div class="mp-tb-left">
-        <button class="mp-tb-back" onclick={onBack} title={t('browser.project.back')}>
+        <button class="mp-tb-back" onclick={onBack} use:launcherTip={t('browser.project.back')}>
           <i class="ti ti-arrow-left"></i>
         </button>
         {#if detail.iconUrl}
@@ -1482,7 +1461,7 @@
           class:on={bookmarked}
           disabled={bookmarkBusy}
           onclick={toggleBookmark}
-          title={bookmarked ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
+          use:launcherTip={bookmarked ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
         >
           <i class="ti {bookmarked ? 'ti-star-filled' : 'ti-star'}"></i>
         </button>
@@ -1490,7 +1469,7 @@
           <button
             class="mp-bookmark-btn"
             onclick={(e) => { e.stopPropagation(); openCollectionsMenu() }}
-            title={t('browser.saved.addToCollection')}
+            use:launcherTip={t('browser.saved.addToCollection')}
           >
             <i class="ti ti-folder-plus"></i>
           </button>
@@ -1518,7 +1497,7 @@
         {#if canShare && detail.projectUrl}
           <ShareToFriend {detail} {onGoFriends} />
         {/if}
-        <a class="mp-external" href={detail.projectUrl} target="_blank" rel="noreferrer" title={t('browser.project.openSource')}>
+        <a class="mp-external" href={detail.projectUrl} target="_blank" rel="noreferrer" use:launcherTip={t('browser.project.openSource')}>
           <i class="ti ti-external-link"></i> <span class="mp-external-txt">{detail.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}</span>
         </a>
       </div>
@@ -1571,14 +1550,14 @@
           </div>
         </div>
         <div class="mp-stats">
-          <span title={t('browser.sort.downloads')}><i class="ti ti-download"></i> {fmtCount(d.downloads)}</span>
-          <span title={t('browser.sort.follows')}><i class="ti ti-heart"></i> {fmtCount(d.followers)}</span>
+          <span use:launcherTip={t('browser.sort.downloads')}><i class="ti ti-download"></i> {fmtCount(d.downloads)}</span>
+          <span use:launcherTip={t('browser.sort.follows')}><i class="ti ti-heart"></i> {fmtCount(d.followers)}</span>
           <button
             class="mp-bookmark-btn mp-bookmark-btn-hero"
             class:on={bookmarked}
             disabled={bookmarkBusy}
             onclick={toggleBookmark}
-            title={bookmarked ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
+            use:launcherTip={bookmarked ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
           >
             <i class="ti {bookmarked ? 'ti-star-filled' : 'ti-star'}"></i>
             <span>{bookmarked ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}</span>
@@ -1705,7 +1684,7 @@
                     {#if ytId && playingVideo === ytId}
                       <iframe
                         src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0`}
-                        title="YouTube"
+                        use:launcherTip={"YouTube"}
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                         allowfullscreen
                       ></iframe>
@@ -1714,7 +1693,7 @@
                         class="mp-video-poster"
                         onclick={() => playingVideo = ytId}
                         aria-label={t('browser.project.playVideo')}
-                        title={t('browser.project.playVideo')}
+                        use:launcherTip={t('browser.project.playVideo')}
                       >
                         <img src={thumb} alt="" loading="lazy"
                              use:smartImage
@@ -1833,7 +1812,7 @@
                     />
                   </div>
                   {#if showVersionsCheckbox}
-                    <label class="mp-v-all" title={t('browser.project.showAllVersions')}>
+                    <label class="mp-v-all" use:launcherTip={t('browser.project.showAllVersions')}>
                       <input type="checkbox" bind:checked={showAllVersions} />
                       <span>{t('browser.project.showAllVersions')}</span>
                     </label>
@@ -1897,10 +1876,10 @@
               {:else}
                 <i class="ti ti-sparkles"></i>
               {/if}
-              <span class="mp-auto-badge-txt" title={t('browser.project.autoMatched', { mc: packContext.mcVersion, loader: packContext.loader })}>{t('browser.project.matchForPack', { pack: packContext.name })}</span>
+              <span class="mp-auto-badge-txt" use:launcherTip={t('browser.project.autoMatched', { mc: packContext.mcVersion, loader: packContext.loader })}>{t('browser.project.matchForPack', { pack: packContext.name })}</span>
               {#if onChangePackContext}
-                <button class="mp-badge-action" onclick={openPackSwitcher} title={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
-                <button class="mp-badge-action" onclick={clearPackContext} title={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
+                <button class="mp-badge-action" onclick={openPackSwitcher} use:launcherTip={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
+                <button class="mp-badge-action" onclick={clearPackContext} use:launcherTip={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
               {/if}
             </div>
           {:else if packContext}
@@ -1913,8 +1892,8 @@
               <span>{packContext.name}</span>
               <span class="mp-target-sub">{packContext.mcVersion} · {loaderNames[packContext.loader] ?? packContext.loader}</span>
               {#if onChangePackContext}
-                <button class="mp-badge-action" onclick={openPackSwitcher} title={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
-                <button class="mp-badge-action" onclick={clearPackContext} title={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
+                <button class="mp-badge-action" onclick={openPackSwitcher} use:launcherTip={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
+                <button class="mp-badge-action" onclick={clearPackContext} use:launcherTip={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
               {/if}
             </div>
           {:else if onChangePackContext && (packs.length > 0 || canPickServer) && detail.projectType !== 'modpack'}
@@ -1966,7 +1945,7 @@
                 {@const ipPack = packs.find((p: { id: string; name: string; mcVersion: string; loader: string; iconUrl?: string; color?: string }) => p.id === ip.packId)}
                 {@const ipPcol = ipPack?.color || 'var(--orange)'}
                 {@const ipIcon = packAsset(ipPack?.iconUrl)}
-                <button class="mp-installed-row" style="--pcol:{ipPcol}" onclick={() => onOpenPack?.(ip.packId)} title={ip.packName}>
+                <button class="mp-installed-row" style="--pcol:{ipPcol}" onclick={() => onOpenPack?.(ip.packId)} use:launcherTip={ip.packName}>
                   <span class="mp-installed-ic" class:has-icon={!!ipIcon}>
                     {#if ipIcon}<img src={ipIcon} alt="" loading="lazy" />{:else}<i class="ti ti-puzzle"></i>{/if}
                   </span>
@@ -2047,7 +2026,7 @@
                 <span class="mp-author-text">
                   <span class="mp-author-name">
                     <span class="mp-author-nm">{c.name}</span>
-                    {#if c.isOwner}<i class="ti ti-crown mp-author-crown" title={t('browser.project.sidebar.owner')}></i>{/if}
+                    {#if c.isOwner}<i class="ti ti-crown mp-author-crown" use:launcherTip={t('browser.project.sidebar.owner')}></i>{/if}
                   </span>
                   {#if c.isOrg}
                     <span class="mp-author-role"><i class="ti ti-building"></i> {t('browser.author.organization')}</span>
@@ -2124,14 +2103,14 @@
     <div class="lb-toolbar">
       <span class="lb-count">{t('browser.gallery.of', { current: lightboxIndex! + 1, total: detail.gallery.length })}</span>
       <div class="lb-tools">
-        <button class="lb-btn" title={t('browser.gallery.zoomOut')} onclick={() => lightboxZoom = Math.max(0.5, lightboxZoom - 0.25)}><i class="ti ti-zoom-out"></i></button>
-        <button class="lb-btn" title={t('browser.gallery.resetZoom')} onclick={resetLightboxZoom}><i class="ti ti-zoom-reset"></i></button>
-        <button class="lb-btn" title={t('browser.gallery.zoomIn')} onclick={() => lightboxZoom = Math.min(4, lightboxZoom + 0.25)}><i class="ti ti-zoom-in"></i></button>
-        <button class="lb-btn" title={t('browser.gallery.close')} onclick={closeLightbox}><i class="ti ti-x"></i></button>
+        <button class="lb-btn" use:launcherTip={t('browser.gallery.zoomOut')} onclick={() => lightboxZoom = Math.max(0.5, lightboxZoom - 0.25)}><i class="ti ti-zoom-out"></i></button>
+        <button class="lb-btn" use:launcherTip={t('browser.gallery.resetZoom')} onclick={resetLightboxZoom}><i class="ti ti-zoom-reset"></i></button>
+        <button class="lb-btn" use:launcherTip={t('browser.gallery.zoomIn')} onclick={() => lightboxZoom = Math.min(4, lightboxZoom + 0.25)}><i class="ti ti-zoom-in"></i></button>
+        <button class="lb-btn" use:launcherTip={t('browser.gallery.close')} onclick={closeLightbox}><i class="ti ti-x"></i></button>
       </div>
     </div>
 
-    <button class="lb-nav lb-prev" title={t('browser.gallery.prev')} onclick={prevLightbox}><i class="ti ti-chevron-left"></i></button>
+    <button class="lb-nav lb-prev" use:launcherTip={t('browser.gallery.prev')} onclick={prevLightbox}><i class="ti ti-chevron-left"></i></button>
 
     <div class="lb-stage" onwheel={onLightboxWheel}>
       <img
@@ -2147,7 +2126,7 @@
       />
     </div>
 
-    <button class="lb-nav lb-next" title={t('browser.gallery.next')} onclick={nextLightbox}><i class="ti ti-chevron-right"></i></button>
+    <button class="lb-nav lb-next" use:launcherTip={t('browser.gallery.next')} onclick={nextLightbox}><i class="ti ti-chevron-right"></i></button>
 
     {#if currentGalleryImage()!.title || lightboxIndex !== null}
       <div class="lb-caption">
@@ -2222,10 +2201,7 @@
         <div class="mp-side-note"><i class="ti ti-server"></i> {t('browser.target.serverOnlyMod')}</div>
       {/if}
       {#if !packDialog.loading && packDialog.packs.length > 0}
-        <div class="cb-modal-search">
-          <i class="ti ti-search"></i>
-          <input placeholder={t('browser.searchPack')} bind:value={packDialogFilter} />
-        </div>
+        <SearchField variant="strip" placeholder={t('browser.searchPack')} bind:value={packDialogFilter} />
       {/if}
         {#if packDialog.loading}
           <div class="cb-loading sm"><i class="ti ti-loader spin"></i> {t('browser.compatChecking')}</div>
@@ -2316,10 +2292,7 @@
       />
     {:else}
       {#if packs.length > 4}
-        <div class="cb-modal-search">
-          <i class="ti ti-search"></i>
-          <input placeholder={t('browser.searchPack')} bind:value={packSwitcherFilter} />
-        </div>
+        <SearchField variant="strip" placeholder={t('browser.searchPack')} bind:value={packSwitcherFilter} />
       {/if}
       {#if packPicker && packPicker.items.length > 0}
         <PackPicker
@@ -3034,7 +3007,7 @@
   }
   .mp-body :global(a:hover) { border-bottom-color: var(--orange); }
   .mp-body :global(img) {
-    max-width: 100%; border-radius: var(--mp-radius-md);
+    max-width: 100%; height: auto; border-radius: var(--mp-radius-md);
     margin: 10px 0;
     box-shadow: 0 6px 20px -8px rgba(0, 0, 0, .5);
   }
@@ -3764,20 +3737,6 @@
     from { opacity: 0; }
     to   { opacity: 1; }
   }
-  .cb-modal-search {
-    display: flex; align-items: center; gap: 9px;
-    margin: -16px -20px 14px;
-    padding: 10px 20px;
-    border-bottom: 1px solid var(--border);
-    background: color-mix(in srgb, var(--bg-input) 40%, transparent);
-  }
-  .cb-modal-search > i { color: var(--text-mute); font-size: 15px; }
-  .cb-modal-search input {
-    flex: 1; background: transparent; border: none; outline: none;
-    color: var(--text); font: 500 12.5px var(--font-ui);
-  }
-  .cb-modal-search input::placeholder { color: var(--text-dim); }
-
   .cb-pack-list { display: flex; flex-direction: column; gap: 8px; }
   .cb-pack-row {
     display: flex; align-items: center; justify-content: space-between;

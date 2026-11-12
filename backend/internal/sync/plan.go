@@ -195,12 +195,9 @@ func buildPlanWithModsAndWhitelist(manifest *PackManifest, state *InstallState, 
 	for _, omf := range manifest.OnMissingFiles {
 		// ВАЖЛИВО: єдина умова пропуску — файл ЗАРАЗ є на диску (перше
 		// встановлення чи гравець сам його поклав/налаштував). Прапорець
-		// state.InstalledOnMissing НЕ використовується як блокування:
-		// раніше він назавжди зупиняв повторне відновлення файлу навіть
-		// якщо гравець (чи зламана збірка, чи видалення лаунчера) пізніше
-		// втратив файл — options.txt тощо переставали відновлюватись
-		// після першого встановлення. Тепер файл довстановлюється щоразу,
-		// коли його фактично немає на диску, незалежно від історії.
+		// state.InstalledOnMissing НЕ використовується як блокування.
+		// Тепер файл довстановлюється щоразу, коли його фактично немає на
+		// диску, незалежно від історії.
 		if localExists(omf.LocalPath) {
 			continue // файл уже на диску — не чіпаємо (могли налаштувати)
 		}
@@ -269,10 +266,7 @@ func buildPlanWithModsAndWhitelist(manifest *PackManifest, state *InstallState, 
 	}
 
 	// Осиротілі файли: були в попередньому стані, але зникли з маніфесту
-	// (мод прибрали зі збірки чи перенесли hash<->bundled). Видаляємо за
-	// ЛОКАЛЬНИМ шляхом (rec.LocalPath): раніше тут був rec.Path — R2-ключ
-	// ("packs/<id>/mods/x.jar") чи FileName без префікса "mods/", по якому
-	// os.Remove нічого не знаходив і моди лишались на диску назавжди.
+	// (мод прибрали зі збірки чи перенесли hash<->bundled).
 	for key, rec := range state.Files {
 		if seenKeys[key] {
 			continue
@@ -361,9 +355,7 @@ func isNewer(remote, local string) bool {
 	return rt.After(lt)
 }
 
-// userDataFiles — файли, які створює/редагує сама гра чи гравець. Лаунчер
-// НІКОЛИ не видаляє їх як «осиротілі», навіть якщо вони колись були в
-// маніфесті (напр. збірка раніше віддавала servers.dat як workerFile).
+// userDataFiles — файли, які створює/редагує сама гра чи гравець.
 var userDataFiles = map[string]bool{
 	"servers.dat":        true,
 	"servers.dat_old":    true,

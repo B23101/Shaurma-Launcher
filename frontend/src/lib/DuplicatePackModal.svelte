@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // ── Дублювання збірки (повністю переписано) ─────────────────────────────
   // Сучасна модалка копії збірки: дві панелі — дерево вибору файлів (як в
@@ -103,13 +105,10 @@
   // restoreSelection — параметри дублювання зберігаються ОКРЕМО для
   // КОЖНОЇ збірки-джерела (packId тут — та збірка, з чиєї картки
   // відкрили «Дублювати», не нова копія): duplicate_settings у SQLite,
-  // ключ pack_id. Раніше цей вибір НІКОЛИ не запам'ятовувався — щоразу
-  // дефолтний набір файлів, навіть для тієї самої збірки. name/id/
-  // iconSrcPath СВІДОМО не відновлюються: "<Назва> (2)" — завжди
-  // актуальний дефолт, збережений id майже напевно вже зайнятий
-  // попередньою копією (checkID() однаково перевіряє наново), а
-  // iconSrcPath — шлях до тимчасового файлу вибору, який міг зникнути
-  // між сесіями лаунчера.
+  // ключ pack_id. "<Назва> (2)" — завжди актуальний дефолт, збережений
+  // id майже напевно вже зайнятий попередньою копією (checkID()
+  // однаково перевіряє наново), а iconSrcPath — шлях до тимчасового
+  // файлу вибору, який міг зникнути між сесіями лаунчера.
   async function restoreSelection() {
     let saved: SavedDuplicateSelection | null = null
     try {
@@ -266,13 +265,11 @@
 
   // syncChecks — ОДИН прохід дерева знизу вгору (post-order), Set замість
   // Array.includes() для included/excluded. Той самий фікс, що й у
-  // ExportPackModal.svelte (ідентичний код був скопійований звідти) —
-  // раніше nodeState рекурсивно перераховувала ціле піддерево на КОЖЕН
-  // виклик, а syncChecks викликала її ще раз на кожному вузлі під час
-  // власного обходу: O(вузли × глибина) замість O(вузли), плюс
-  // Array.includes() в кожному виклику додавав O(вузли × елементи). На
-  // великих збірках (тисячі файлів у mods/config/resourcepacks) це й
-  // було причиною лагу на кожен клік по чекбоксу дерева дублювання.
+  // ExportPackModal.svelte (ідентичний код був скопійований звідти).
+  // O(вузли × глибина) замість O(вузли), плюс Array.includes() в кожному
+  // виклику додавав O(вузли × елементи). На великих збірках (тисячі
+  // файлів у mods/config/resourcepacks) це й було причиною лагу на кожен
+  // клік по чекбоксу дерева дублювання.
   function syncChecks() {
     const includedSet = new Set(included)
     const excludedSet = new Set(excluded)
@@ -419,7 +416,7 @@
       {#each recentFiles as f}
         <div class="dup-prog-file">
           <i class="ti ti-file"></i>
-          <span title={f}>{f.split('/').pop()}</span>
+          <span use:launcherTip={f}>{f.split('/').pop()}</span>
         </div>
       {/each}
       {#if recentFiles.length === 0}
@@ -460,7 +457,7 @@
               spellcheck="false"
             />
             {#if treeFilter}
-              <button class="dup-search-clear" onclick={() => (treeFilter = '')} title={t('export.clearAll')}>
+              <button class="dup-search-clear" onclick={() => (treeFilter = '')} use:launcherTip={t('export.clearAll')}>
                 <i class="ti ti-x"></i>
               </button>
             {/if}
@@ -564,9 +561,9 @@
               </div>
               <div class="dup-colorbar">
                 {#each colorPresets as c (c)}
-                  <button class="dup-cdot" class:sel={color === c} style="background:{c}" onclick={() => color = c} title={c}></button>
+                  <button class="dup-cdot" class:sel={color === c} style="background:{c}" onclick={() => color = c} use:launcherTip={c}></button>
                 {/each}
-                <label class="dup-ccustom" title={t('duplicate.customColor')}>
+                <label class="dup-ccustom" use:launcherTip={t('duplicate.customColor')}>
                   <input type="color" bind:value={color} />
                   <i class="ti ti-color-picker"></i>
                 </label>

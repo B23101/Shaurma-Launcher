@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // Майстер першого запуску. Велика картка: зліва — анімована векторна
   // сцена кроку (wizard/WizArt), справа — налаштування. Вхід в акаунт робить
   // App.svelte (той самий шлях, що й модалка входу: нік, ліміт пристроїв),
@@ -7,6 +9,7 @@
   import { fly, fade } from 'svelte/transition'
   import { quintOut } from 'svelte/easing'
   import { t, setLanguage } from './i18n.svelte'
+  import { tp } from './settings/nav'
   import { pirateNicknameError, sanitizeNick } from './validation'
   import { ACCENTS, applyAccent, applyTheme, applyFont, applyAnimations, applyPerformanceMode } from './theme.svelte'
   import { App, Application, Window, on } from './wails'
@@ -95,7 +98,17 @@
   let skinPreview = $state<{ texture: string; slim: boolean } | null>(null)
   let migrated = $state(0)
   let headsTick = $state(0)
+  // Чи є акаунт Шаурми: від нього залежать «Гра через інтернет» і «Ігровий час
+  // в акаунті» (без нього ці перемикачі нічого не роблять, тож їх не показуємо).
+  let hasShaurma = $state(false)
+  async function refreshShaurma() {
+    if (!skingate) { hasShaurma = false; return }
+    try { hasShaurma = !!(await App.GetShaurmaProfile())?.hasAccount } catch { hasShaurma = false }
+  }
   const cur = $derived(STEPS[step - 1])
+  $effect(() => {
+    if (cur.id === 'notify' || cur.id === 'done') { void accounts.length; void nickAsk; refreshShaurma() }
+  })
   const ramGB = $derived(Math.max(1, Math.round(wiz.maxRAM / 1024)))
   const totalGB = $derived(Math.round(sysInfo.totalRAMMB / 1024))
   const recGB = $derived(totalGB <= 0 ? 4 : totalGB <= 4 ? 2 : totalGB <= 8 ? 4 : totalGB <= 16 ? 6 : 8)
@@ -279,6 +292,9 @@
     if (finishing) return
     finishing = true
     try {
+      // Міграцію збірок візард уже запропонував на кроці «Файли» — повторно
+      // автоматичне вікно після візарда не показуємо.
+      await App.MigrateDismiss().catch(() => {})
       const s = (await App.GetSettings()) as any
       s.instanceDir = wiz.instanceDir
       s.javaPath = wiz.javaPath
@@ -331,7 +347,7 @@
     { icon: 'ti-player-play', label: t('wz.sum.inGame'), value: t('wz.launch.' + opt.gameLaunchAction), to: 5 },
     { icon: 'ti-bell', label: t('wz.sum.notify'), value: opt.notifyEnabled ? (opt.notifyDnd ? t('wz.notify.dnd') : onOff(true)) : onOff(false), to: 6 },
     { icon: 'ti-brand-discord', label: t('wz.sum.discord'), value: onOff(opt.discord), to: 6 },
-    { icon: 'ti-world-share', label: t('wz.sum.p2p'), value: onOff(opt.p2p), to: 6 },
+    ...(hasShaurma ? [{ icon: 'ti-world-share', label: t('wz.sum.p2p'), value: onOff(opt.p2p), to: 6 }] : []),
     { icon: 'ti-power', label: t('wz.sum.startup'), value: t('wz.startup.' + opt.startupMode), to: 7 },
     { icon: 'ti-x', label: t('wz.sum.close'), value: t('wz.close.' + opt.closeAction), to: 7 },
     { icon: 'ti-refresh', label: t('wz.sum.update'), value: onOff(opt.autoUpdate), to: 7 },
@@ -370,8 +386,8 @@
   <div class="topbar">
     <div class="brand"><img class="brand-ico" src={appIcon} alt="" />{t('brand.title')}</div>
     <div class="ctrls">
-      <button class="ctrl" title={t('win.minimize')} onclick={() => Window.Minimise()}><i class="ti ti-minus"></i></button>
-      <button class="ctrl close" title={t('wiz.closeTitle')} onclick={closeWizard}><i class="ti ti-x"></i></button>
+      <button class="ctrl" use:launcherTip={t('win.minimize')} onclick={() => Window.Minimise()}><i class="ti ti-minus"></i></button>
+      <button class="ctrl close" use:launcherTip={t('wiz.closeTitle')} onclick={closeWizard}><i class="ti ti-x"></i></button>
     </div>
   </div>
 
@@ -400,7 +416,7 @@
         <div class="pr-fill"></div>
         {#each STEPS as s, i}
           <button class="pr-step" class:act={i + 1 === step} class:done={i + 1 < step}
-                  disabled={i + 1 > step && step !== LAST} title={t('wz.step.' + s.id)} onclick={() => goto(i + 1)}>
+                  disabled={i + 1 > step && step !== LAST} use:launcherTip={t('wz.step.' + s.id)} onclick={() => goto(i + 1)}>
             <i class="ti {i + 1 < step ? 'ti-check' : s.icon}"></i>
           </button>
         {/each}
@@ -466,7 +482,7 @@
               <div class="accents">
                 {#each Object.entries(ACCENTS) as [key, a], i}
                   {@const sw = a.gradient ? `linear-gradient(135deg, ${a.main}, ${a.deep})` : a.main}
-                  <button class="acc" class:sel={wiz.accent === key} style="background:{sw};--i:{i}" title={t(a.name)} aria-label={t(a.name)} onclick={() => pickAccent(key)}>
+                  <button class="acc" class:sel={wiz.accent === key} style="background:{sw};--i:{i}" use:launcherTip={t(a.name)} aria-label={t(a.name)} onclick={() => pickAccent(key)}>
                     <i class="ti ti-check"></i>
                   </button>
                 {/each}
@@ -509,7 +525,7 @@
                      else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') { ramKey(1); e.preventDefault() }
                    }}>
                 <div class="ram-rail"><div class="ram-fill" class:warn={ramWarn} style="width:{ramPct}%"></div></div>
-                <div class="ram-rec" style="left:{recPct}%" title={t('wz.game.rec', { n: recGB })}></div>
+                <div class="ram-rec" style="left:{recPct}%" use:launcherTip={t('wz.game.rec', { n: recGB })}></div>
                 <div class="ram-knob" class:drag={ramDragging} style="left:{ramPct}%"></div>
               </div>
               <div class="ram-foot">
@@ -547,8 +563,8 @@
               {/if}
 
             {:else if cur.id === 'notify'}
-              <h1>{t('wz.notify.title')}</h1>
-              <p class="sub">{t('wz.notify.sub')}</p>
+              <h1>{t(hasShaurma ? 'wz.notify.title' : 'wz.notify.titleLocal')}</h1>
+              <p class="sub">{t(hasShaurma ? 'wz.notify.sub' : 'wz.notify.subLocal')}</p>
               <div class="rows">
                 {@render row('ti-bell', t('wz.notify.on'), t('wz.notify.onD'), opt.notifyEnabled, () => set('notifyEnabled', !opt.notifyEnabled))}
                 {@render row('ti-moon-stars', t('wz.notify.dnd'), t('wz.notify.dndD'), opt.notifyDnd, () => set('notifyDnd', !opt.notifyDnd), !opt.notifyEnabled)}
@@ -561,18 +577,25 @@
                   { value: 15, label: t('wz.notify.sec', { n: 15 }) },
                 ], opt.notifyDurationSec, (v) => set('notifyDurationSec', v), t('wz.notify.dur'))}
               </div>
-              <div class="label">{t('wz.notify.friends')}</div>
+              <div class="label">{t('wz.notify.discordHead')}</div>
               <div class="rows">
                 {@render row('ti-brand-discord', t('wz.notify.discord'), t('wz.notify.discordD'), opt.discord, () => set('discord', !opt.discord))}
-                {@render row('ti-world-share', t('wz.notify.p2p'), t('wz.notify.p2pD'), opt.p2p, () => set('p2p', !opt.p2p))}
-                {#if !opt.p2p}
-                  <div class="warn-box" transition:fly={{ y: -6, duration: 240 }}>
-                    <i class="ti ti-alert-triangle"></i>
-                    <div><b>{t('wz.p2pOff.title')}</b><small>{t('wz.p2pOff.text')}</small></div>
-                  </div>
-                {/if}
-                {@render row('ti-cloud-check', t('wz.notify.cloud'), t('wz.notify.cloudD'), opt.cloudTime, () => set('cloudTime', !opt.cloudTime))}
               </div>
+              {#if hasShaurma}
+                <div class="label">{t('wz.notify.friends')}</div>
+                <div class="rows">
+                  {@render row('ti-world-share', t('wz.notify.p2p'), t('wz.notify.p2pD'), opt.p2p, () => set('p2p', !opt.p2p))}
+                  {#if !opt.p2p}
+                    <div class="warn-box" transition:fly={{ y: -6, duration: 240 }}>
+                      <i class="ti ti-alert-triangle"></i>
+                      <div><b>{t('wz.p2pOff.title')}</b><small>{t('wz.p2pOff.text')}</small></div>
+                    </div>
+                  {/if}
+                  {@render row('ti-cloud-check', t('wz.notify.cloud'), t('wz.notify.cloudD'), opt.cloudTime, () => set('cloudTime', !opt.cloudTime))}
+                </div>
+              {:else}
+                <div class="note-box"><i class="ti ti-info-circle"></i> {tp('wz.notify.noAccount')}</div>
+              {/if}
 
             {:else if cur.id === 'behavior'}
               <h1>{t('wz.beh.title')}</h1>
@@ -823,11 +846,12 @@
   .seg {
     position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); padding: 4px; gap: 0;
     border-radius: 13px; background: var(--bg-input, var(--bg-card)); border: 1px solid var(--border);
+    overflow: hidden; /* підсвітка активного пункту не виходить за межі перемикача */
   }
   .seg-pill {
     position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / var(--n));
     transform: translateX(calc(100% * var(--i))); border-radius: 10px; background: var(--orange);
-    box-shadow: 0 6px 18px rgba(var(--orange-rgb), .35); transition: transform .4s cubic-bezier(.34, 1.3, .64, 1);
+    box-shadow: 0 2px 8px rgba(var(--orange-rgb), .3); transition: transform .4s cubic-bezier(.34, 1.3, .64, 1);
   }
   .seg button {
     position: relative; z-index: 1; border: none; background: none; font: inherit; color: var(--text-mute); cursor: pointer;
@@ -864,9 +888,12 @@
   .ram-knob {
     position: absolute; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%;
     background: #fff; box-shadow: 0 0 0 4px rgba(var(--orange-rgb), .35), 0 4px 12px rgba(0, 0, 0, .35);
+    /* глобальний .ram-knob (style.css) додає translate(-50%,-50%) — разом із margin
+       це зсувало кружок вгору-вліво на 11px і «стрибало» під час перетягування */
+    transform: none; cursor: grab;
     transition: left .15s, transform .2s cubic-bezier(.34, 1.56, .64, 1);
   }
-  .ram-knob.drag { transform: scale(1.18); transition: transform .2s; }
+  .ram-knob.drag { transform: scale(1.18); transition: transform .2s; cursor: grabbing; }
   .ram-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 11.5px; color: var(--text-mute); min-height: 26px; }
   .warn-t { color: var(--red); display: inline-flex; gap: 6px; align-items: center; }
   .disclose { margin-top: 14px; border: none; background: none; color: var(--text-mute); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; }
@@ -940,4 +967,10 @@
   @media (prefers-reduced-motion: reduce) {
     .wz :global(*) { animation-duration: .01ms !important; animation-delay: 0s !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   }
+  .note-box {
+    display: flex; align-items: flex-start; gap: 9px; margin-top: 10px; padding: 11px 13px;
+    border-radius: 12px; border: 1px dashed var(--border-hi); background: var(--hover);
+    color: var(--text-mute); font-size: 12.5px; line-height: 1.45;
+  }
+  .note-box i { color: var(--orange); font-size: 16px; margin-top: 1px; }
 </style>

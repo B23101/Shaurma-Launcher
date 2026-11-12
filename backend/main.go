@@ -57,6 +57,10 @@ type initConfig struct {
 	// Background — shell запущено з --background (автозапуск «у фоні»):
 	// головне вікно не показується, див. ui_ready.go.
 	Background bool `json:"background"`
+	// Shortcut — лаунчер стартує заради запуску збірки з ярлика (--launch):
+	// головне вікно не показується, замість нього — вікно запуску ярлика
+	// (shortcut_window.go).
+	Shortcut bool `json:"shortcut"`
 }
 
 // backendInitConfig — збережений конфіг старту (потрібен пізніше,
@@ -91,7 +95,9 @@ func backend_init(configJSON *C.char, callbacks unsafe.Pointer) (result C.int) {
 	}()
 
 	_ = json.Unmarshal([]byte(C.GoString(configJSON)), &backendInitConfig)
-	if backendInitConfig.Background {
+	if backendInitConfig.Shortcut {
+		markShortcutStart()
+	} else if backendInitConfig.Background {
 		markBackgroundStart()
 	}
 
@@ -99,8 +105,6 @@ func backend_init(configJSON *C.char, callbacks unsafe.Pointer) (result C.int) {
 	// BridgeCallbacks, що живе в його пам'яті на весь час роботи процесу.
 	setBridgeCallbacks(callbacks)
 
-	// Створюємо App і виконуємо ServiceStartup (логіка, що раніше була
-	// в Wails-сервісі launcher/main.go).
 	appInstance = NewApp()
 	appValue = reflect.ValueOf(appInstance)
 	if err := appInstance.ServiceStartup(); err != nil {
@@ -135,15 +139,14 @@ func backend_free(s *C.char) {
 
 // invokeResult — формат відповіді backend_invoke (дзеркало bridge.h).
 //
-// ВАЖЛИВО (виправлення «фронт отримує undefined замість значення»): поле
-// Result БЕЗ omitempty. Раніше порожнє значення ("", [], false, nil)
-// зникало з JSON — фронт отримував {ok:true} БЕЗ result, тобто undefined
-// замість ""/[]/null. Це ламало:
+// ВАЖЛИВО: поле Result БЕЗ omitempty. Інакше порожнє значення ("", [], false,
+// nil) зникало б з JSON — фронт отримував би {ok:true} БЕЗ result, тобто
+// undefined замість ""/[]/null. Це ламало б:
 //   - StartMSLogin → фронт бачив undefined → OpenExternal(null) → Провідник C:;
 //   - методи, що повертають порожні списки → undefined.map(...) падав;
 //   - GetPackAsset при порожньому результаті → undefined замість "".
 //
-// Тепер result присутній завжди (nil → null) — фронт сам вирішує, як
+// Result присутній завжди (nil → null) — фронт сам вирішує, як
 // трактувати null/undefined (всюди є ?? [] / ?? null).
 type invokeResult struct {
 	OK     bool   `json:"ok"`
@@ -306,6 +309,13 @@ func (a *App) handleShellEvent(event, dataJSON string) string {
 			}
 		}
 		if p.PackID != "" {
+			// Яким буде запуск: окреме вікно запуску ярлика (лаунчер не був
+			// відкритий) чи звичайний «як кнопка Грати» (головний екран уже
+			// відкритий). Рішення приймає backend, фронтенд лише виконує.
+			p.Mode = a.decideShortcutMode()
+			if p.Mode == shortcutModeWindow {
+				a.openShortcutWindow(p.PackID)
+			}
 			setPendingShortcutLaunch(p)
 			a.emit("shortcut:launch", p)
 		}

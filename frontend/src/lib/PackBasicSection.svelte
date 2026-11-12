@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Розділ «Основне» на сторінці збірки ────────────────────────────────
   // Офіційні збірки Shaurma: фіксована інформація (назва, версія гри,
   // лоадер, опис, дата оновлення) — значення приходять з маніфесту і на
@@ -76,15 +78,7 @@
 
   // Авто-збірки (Vanilla Release / Snapshot, керовані з налаштувань) —
   // версію гри й лоадер їм виставляє ЛИШЕ фонова синхронізація за
-  // останньою версією Mojang. Раніше цю форму це не хвилювало: юзер міг
-  // тут-таки поставити довільну MCVersion/Loader, і бекенд це приймав —
-  // наступна фонова перевірка version або мовчки повертала все як було
-  // (плутанина «зберіг, а не змінилось»), або, навпаки, нова версія Mojang
-  // просто не підхоплювалась при запуску, бо збережене значення вже не
-  // збігалось із тим, що очікував трекер. Тому тут відповідні контроли
-  // лише READ-ONLY — щоб зайвий раз не блокувати всю форму запитом,
-  // перевіряємо ЛОКАЛЬНО по вже завантаженому списку авто-збірок
-  // (App.GetAutoPacks кешується AutoPacksSettings/сайдбаром теж).
+  // останньою версією Mojang.
   let isAutoPack = $state(false)
   async function checkAutoPack() {
     try {
@@ -249,10 +243,7 @@
     description !== origText.description
   )
   // Об'єднаний прапорець для кнопки «Зберегти» — показуємо, якщо є
-  // незбережені зміни (текст, версії і/або ID). Раніше ID мав окрему
-  // кнопку «Зберегти ID» поруч із полем — дві незалежні точки збереження
-  // в одній формі означали, що натискання лише однієї з двох кнопок
-  // застосовувало ЛИШЕ ту частину форми (баг: «змінив назву й ID, а
+  // незбережені зміни (текст, версії і/або ID). «змінив назву й ID, а
   // застосувалось тільки щось одне»). Тепер ID — рівноправне поле форми:
   // та сама кнопка «Зберегти» застосовує назву/опис/версії/ID разом.
   const dirtyAny = $derived(dirtyVersions || dirtyText || dirtyPackId)
@@ -273,13 +264,7 @@
   async function saveAppearance() {
     if (saving || !cp) return
     saving = true
-    // ЗНІМОК того, що реально відправляємо. Раніше після await у
-    // lastSavedAppearance/cp потрапляли ПОТОЧНІ значення полів: якщо під час
-    // збереження користувач обирав іншу іконку, форма вважала нову іконку
-    // «вже збереженою» (changed=false), бекенд мав стару, і після перезапуску
-    // пресет «злітав». Тепер фіксуємо надіслане, а все, що змінилось за час
-    // збереження, лишається «незбереженим» і ефект нижче збереже його одразу
-    // після завершення (saving → false перезапускає ефект).
+    // ЗНІМОК того, що реально відправляємо.
     const snap = {
       color, iconName, iconSrcPath, backgroundSrcPath,
       bgRemove: backgroundRemovePending,
@@ -352,10 +337,7 @@
   // ID (назва теки) зберігається ПЕРШИМ окремим викликом
   // (ChangeCustomPackID — фізичне перейменування теки на диску, інша
   // семантика помилок і побічних мігрцій, ніж звичайний Update), а решта
-  // полів — після нього, вже під актуальним ID. Раніше це були дві
-  // окремі кнопки в одній формі, і натискання лише однієї з них залишало
-  // другу частину незбереженою непомітно для користувача — тепер обидва
-  // кроки виконує один клік і одна кнопка.
+  // полів — після нього, вже під актуальним ID.
   async function saveText() {
     if (!dirtyAny || saving) return
     if (!name.trim()) { toast(t('createPack.error.nameRequired'), 'error'); return }
@@ -375,8 +357,7 @@
         const renamed = await App.ChangeCustomPackID(pack.id, editPackId)
         currentId = renamed.id || editPackId
         // Сторінка/сайдбар мають синхронно перейти на новий ID до того, як
-        // прийде подія builds:changed (та сама причина, що й у savePackId
-        // раніше) — інакше збірка на мить «губиться» зі своєї папки.
+        // прийде подія builds:changed (та сама причина.
         onPackRenamed(pack.id, currentId)
       }
       await App.UpdateCustomPack(currentId, {
@@ -577,7 +558,7 @@
 
           <div class="row" style="border-bottom:none;padding-top:6px">
             <div style="flex:1"></div>
-            <button class="btn btn-ghost" onclick={openEdit} disabled={saving} title={t('pack.basic.reset')}><i class="ti ti-refresh"></i> {t('pack.basic.reset')}</button>
+            <button class="btn btn-ghost" onclick={openEdit} disabled={saving} use:launcherTip={t('pack.basic.reset')}><i class="ti ti-refresh"></i> {t('pack.basic.reset')}</button>
             <button class="btn btn-primary" onclick={saveText} disabled={saving || !dirtyAny || !!(dirtyPackId && packIdCheck?.exists)}>
               <i class="ti {saving ? 'ti-loader spin' : 'ti-device-floppy'}"></i>
               {saving ? t('pack.basic.saving') : t('pack.basic.save')}

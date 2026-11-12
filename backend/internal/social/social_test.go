@@ -528,8 +528,7 @@ func TestPresencePrivacyMinimization(t *testing.T) {
 }
 
 // Зміна приватності в UI має дійти до хабу кадром set_privacy ЗРАЗУ (HTTP
-// лишає її в БД, а хаб тримає знімок у пам'яті й раніше оновлював його лише
-// при реконекті — тому «Приховати статус» здавалося, що не працює).
+// лишає її в БД.
 func TestPresenceSetPrivacyFrameOnPolicyChange(t *testing.T) {
 	h := newWSHarness(t)
 	pc, _ := newPC(h, func() (string, error) { return "t", nil })

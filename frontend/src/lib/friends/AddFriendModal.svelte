@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // ── Вікно «Додати цього друга?» ─────────────────────────────────────────
   // Відкривається після явного переходу за посиланням-запрошенням.
   // Показує іконку (голову скіна) та ім'я
@@ -126,7 +128,7 @@
         {:else if already}
           <span class="af-badge ok"><i class="ti ti-users"></i> {t('friends.invite.badgeFriend')}</span>
         {/if}
-        <button class="af-id" onclick={copyId} title={t('social.copyId')}>
+        <button class="af-id" onclick={copyId} use:launcherTip={t('social.copyId')}>
           <i class="ti ti-copy"></i> <code>{label}</code>
         </button>
       </div>

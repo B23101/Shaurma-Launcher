@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-// cdnBaseURL — той самий Worker, що обслуговує /packs, /java і
-// launcher/launcher-version.json (shrm-cdn-worker/worker.js), а не
-// сторонній api.shaurma.lol — раніше тут стояв інший, застарілий домен,
-// і перевірка версії лаунчера ходила не туди, куди сам апдейтер.
 const cdnBaseURL = "https://shaurma-proxy.shaurmaofficial2210.workers.dev"
 
 // token — токен CDN для ПОТОЧНОЇ редакції лаунчера, вшивається на етапі
@@ -48,11 +44,7 @@ type UpdateInfo struct {
 }
 
 // remoteManifest — ТОЙ САМИЙ контракт, що updater/internal/manifest.Manifest
-// (обидва читають той самий launcher-version.json з Worker'а). Раніше тут
-// був інший, вигаданий формат (latest/url/changelog/critical), який ніколи
-// не збігався з реальним файлом — Latest завжди виходив порожнім рядком,
-// і кнопка «Перевірити оновлення» в налаштуваннях завжди мовчки казала
-// "оновлень немає", навіть коли вони були.
+// (обидва читають той самий launcher-version.json з Worker'а).
 type remoteManifest struct {
 	Version      string `json:"version"`
 	ReleaseNotes string `json:"releaseNotes"`
@@ -161,10 +153,7 @@ func (c *Checker) SetUpdateURL(url string) {
 	if u, err := neturl.Parse(url); err == nil && u.Scheme != "" && u.Host != "" {
 		c.baseURL = u.Scheme + "://" + u.Host
 		// І beta-файл — на той самий origin (та сама схема шляху
-		// /launcher/launcher-version-beta.json). Раніше updateBetaURL
-		// лишався вшитим на продакшн-CDN, тож у тестах/діагностиці
-		// beta-маніфест запитувався не з того сервера, що stable —
-		// бета-канал у таких запусках «мовчазно» падав на stable.
+		// /launcher/launcher-version-beta.json).
 		c.updateBetaURL = c.baseURL + "/launcher/launcher-version-beta.json"
 	}
 }
@@ -174,13 +163,11 @@ func (c *Checker) SetUpdateURL(url string) {
 func (c *Checker) SetToken(t string) { c.token = t }
 
 // CDNBaseURL — публічний доступ до вшитого origin воркера (для суміжних
-// систем, що ходять на той самий CDN: відправка журналу помилок на
-// POST /errors у launcher_errors.go).
+// систем, що ходять на той самий CDN).
 func CDNBaseURL() string { return cdnBaseURL }
 
 // Token — публічний доступ до токена CDN поточної редакції (той самий,
-// що для перевірки оновлень). Воркер визначає редакцію по ньому і без
-// нього відмовив би запис журналу помилок (401/403).
+// що для перевірки оновлень). Воркер визначає редакцію по ньому.
 func Token() string { return token }
 
 func (c *Checker) CurrentVersion() string {

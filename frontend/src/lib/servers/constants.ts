@@ -1,8 +1,6 @@
 // ── Мета ядер серверів ────────────────────────────────────────────────
 // Спільна мапа CORE_META для всіх серверних компонентів (бібліотека,
-// сторінка сервера, іконки в картках). Раніше цей же обʼєкт був
-// продубльований у ServersLibraryPage і ServerInstancePage — тепер один
-// джерело правди.
+// сторінка сервера, іконки в картках).
 import vanillaIcon from '../../assets/images/vanilla_icon.png'
 import fabricIcon from '../../assets/images/fabric_icon.png'
 import forgeIcon from '../../assets/images/forge_icon.png'
@@ -34,11 +32,6 @@ export const PLUGIN_CORES = new Set(['paper', 'purpur', 'velocity'])
 // онлайну) — для фільтра "онлайн/офлайн" у бібліотеці й індикаторів.
 export const ONLINE_STATUSES = new Set(['running', 'starting', 'stopping'])
 
-// ── server.properties ──────────────────────────────────────────────────
-// Групи тепер визначає БЕКЕНД (properties_schema.go, поле group) — раніше тут
-// лежав окремий список ключів, який розходився зі схемою, і половина
-// параметрів потрапляла в «Інше» чи малювалась текстовим полем. Тут лишився
-// тільки порядок вкладок та їхні іконки; підписи — з i18n (props.group.<id>).
 export const PROP_GROUP_ORDER = ['players', 'world', 'gameplay', 'status', 'network', 'performance', 'remote', 'management', 'resources', 'logging', 'other', 'legacy']
 export const PROP_GROUP_ICON: Record<string, string> = {
   players: 'ti-users',

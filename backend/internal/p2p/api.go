@@ -746,9 +746,7 @@ func (a *API) GetP2PHostStatus(subdomain string) HostStatus {
 	count := len(a.hosts)
 	if !ok {
 		// Навіть коли хостинг не запущено, показуємо ПОВНУ адресу: гравець
-		// має бачити, яку саме адресу він роздаватиме, ще до старту (раніше
-		// адреса з'являлась лише після StartP2PHost — виглядало як «адреса
-		// загубилась»).
+		// має бачити, яку саме адресу він роздаватиме, ще до старту.
 		st := HostStatus{Active: false, Subdomain: subdomain, ActiveCount: count, MaxCount: MaxConcurrentRooms}
 		if subdomain != "" {
 			st.Address = subdomain + "." + PlaySuffix

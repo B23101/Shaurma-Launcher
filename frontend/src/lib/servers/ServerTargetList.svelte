@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // ── Список серверів як цілей встановлення ─────────────────────────────
   // Використовується ВСІМА місцями браузера контенту, де є вибір цілі
   // (сайдбар ContentBrowser, перемикач цілі на сторінці проєкту, діалог
@@ -92,7 +94,7 @@
   const off = (id: string) => blocked(id) || checking
 
   // Дані для PackPicker: рядок на сервер (іконка/колір з serverVisual — те
-  // саме джерело правди, що й раніше) + папки лише з показаних серверів.
+  // саме джерело правди.
   const picker = $derived.by(() => {
     const rowById = new Map<string, PackRow>()
     for (const s of shown) {
@@ -144,7 +146,7 @@
     <button class="btn btn-ghost btn-sm" disabled><i class="ti ti-check"></i> {t('browser.installed.short')}</button>
   {:else}
     {#if cs?.alreadyInstalled}
-      <span class="stl-installed-badge" title={t('browser.alreadyInstalled', { file: cs.installedFileName ?? '' })}>
+      <span class="stl-installed-badge" use:launcherTip={t('browser.alreadyInstalled', { file: cs.installedFileName ?? '' })}>
         <i class="ti ti-circle-check"></i>
       </span>
     {/if}

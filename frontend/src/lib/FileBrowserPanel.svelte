@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import Portal from './Portal.svelte'
   // ── Провідник файлів: узагальнений компонент ───────────────────────────
   // Параметризується через пропси rootId (packId/serverId) та api-об'єкт
@@ -315,12 +317,12 @@
 {#if viewer}
   <div class="fp-viewer">
     <div class="fp-viewer-head">
-      <button class="btn btn-ghost btn-sm" onclick={closeViewer} title={t('files.back')}>
+      <button class="btn btn-ghost btn-sm" onclick={closeViewer} use:launcherTip={t('files.back')}>
         <i class="ti ti-arrow-left"></i> {t('files.back')}
       </button>
       <div class="fp-viewer-title">
         <i class="ti {viewer.kind === 'image' ? 'ti-photo' : viewer.kind === 'binary' ? 'ti-file-unknown' : 'ti-file-text'}" style="color:var(--orange)"></i>
-        <span class="fp-viewer-name" title={viewer.entry.path}>{viewer.entry.name}</span>
+        <span class="fp-viewer-name" use:launcherTip={viewer.entry.path}>{viewer.entry.name}</span>
         {#if viewerLang}<span class="fp-viewer-lang">{viewerLang}</span>{/if}
         <span class="fp-viewer-path">{viewer.entry.path}</span>
       </div>
@@ -398,7 +400,7 @@
   <div class="fp-sticky" style={`--mt-top:${stickyTop}px`}>
     <div class="toolbar">
       <div class="breadcrumb">
-        <button class="crumb-btn" class:active={curPath === ''} onclick={() => navigate('')} title={t('files.navigateUp')}>
+        <button class="crumb-btn" class:active={curPath === ''} onclick={() => navigate('')} use:launcherTip={t('files.navigateUp')}>
           <i class="ti ti-home"></i>
         </button>
         {#each crumbs as crumb, i (crumb)}
@@ -432,9 +434,9 @@
         ariaLabel={t('files.sortName')}
       />
       <span class="fp-count">{visibleEntries.length}</span>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={goUp} disabled={!curPath} title={t('files.navigateUp')}><i class="ti ti-arrow-up"></i></button>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={reload} title={t('files.refresh')}><i class="ti ti-refresh"></i></button>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={openCreateFile} title={t('files.createFile')}><i class="ti ti-file-plus"></i></button>
+      <button class="btn btn-ghost btn-sm icon-tb" onclick={goUp} disabled={!curPath} use:launcherTip={t('files.navigateUp')}><i class="ti ti-arrow-up"></i></button>
+      <button class="btn btn-ghost btn-sm icon-tb" onclick={reload} use:launcherTip={t('files.refresh')}><i class="ti ti-refresh"></i></button>
+      <button class="btn btn-ghost btn-sm icon-tb" onclick={openCreateFile} use:launcherTip={t('files.createFile')}><i class="ti ti-file-plus"></i></button>
       <button class="btn btn-primary btn-sm" onclick={openCreateFolder}><i class="ti ti-folder-plus"></i> {t('files.createFolder')}</button>
     </div>
   </div>
@@ -461,16 +463,16 @@
                 <i class="ti ti-file"></i>
               {/if}
             </div>
-            <div class="fp-name-cell" title={entry.name}>
+            <div class="fp-name-cell" use:launcherTip={entry.name}>
               <div class="fp-ename">{entry.name}</div>
               <div class="fp-emeta">{entry.isDir ? t('files.open') : fmtSize(entry.size)} · {fmtModified(entry.modified)}</div>
             </div>
             <div class="fp-actions" onclick={(e: any) => e.stopPropagation()}>
               {#if !entry.isDir}
-                <button class="icon-btn" title={t('files.open')} onclick={() => openEntry(entry)}><i class="ti ti-eye"></i></button>
+                <button class="icon-btn" use:launcherTip={t('files.open')} onclick={() => openEntry(entry)}><i class="ti ti-eye"></i></button>
               {/if}
               <div class="row-menu-wrap">
-                <button class="icon-btn" onclick={(e: MouseEvent) => toggleRowMenu(entry.path, e)} title={t('files.moreActions')} aria-label={t('files.moreActions')} aria-expanded={menuFor === entry.path}>
+                <button class="icon-btn" onclick={(e: MouseEvent) => toggleRowMenu(entry.path, e)} use:launcherTip={t('files.moreActions')} aria-label={t('files.moreActions')} aria-expanded={menuFor === entry.path}>
                   <i class="ti ti-dots-vertical"></i>
                 </button>
                 {#if menuFor === entry.path}

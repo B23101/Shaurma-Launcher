@@ -938,6 +938,9 @@ func (m *Manager) normalize() {
 	if s.SidebarScale > 1.5 {
 		s.SidebarScale = 1.5
 	}
+	// Де ховати кнопку «Створити» / перемикач типів у sidebar: лише відомі режими.
+	s.SidebarHideCreate = normalizeSidebarHide(s.SidebarHideCreate)
+	s.SidebarHideSwitch = normalizeSidebarHide(s.SidebarHideSwitch)
 	// Кастомна тема: порожні кольори → дефолти темної теми.
 	if s.ThemeCustomBg == "" {
 		s.ThemeCustomBg = DefaultSettings.ThemeCustomBg
@@ -947,6 +950,11 @@ func (m *Manager) normalize() {
 	}
 	if s.ThemeCustomText == "" {
 		s.ThemeCustomText = DefaultSettings.ThemeCustomText
+	}
+	// Розширена тема — довільний JSON від UI: відсікаємо сміття/надвеликий рядок
+	// (фронтенд у будь-якому разі валідує кожен ключ сам).
+	if len(s.ThemeCustomExtra) > 2048 || (s.ThemeCustomExtra != "" && !json.Valid([]byte(s.ThemeCustomExtra))) {
+		s.ThemeCustomExtra = ""
 	}
 	if s.AccentCustom == "" {
 		s.AccentCustom = DefaultSettings.AccentCustom
@@ -1394,10 +1402,6 @@ func (m *Manager) CompactPlaytime() (int, error) {
 }
 
 // LoadAllPlaytimeSessions повертає ВСІ ігрові сесії (усі збірки, усі ніки).
-// Потрібно аналітиці ВИКОРИСТАННЯ (backend/analytics.go), яка рахує підсумки
-// для звіту на worker. GetAnalytics() тут не підходить: він віддає вже
-// згрупований знімок під графіки UI (бакети тижнів/місяців/років), а для
-// звіту потрібні саме сирі сесії — сума, кількість і «сьогодні».
 func (m *Manager) LoadAllPlaytimeSessions() ([]store.PlaytimeSession, error) {
 	if m.st == nil {
 		return nil, nil
@@ -1632,4 +1636,14 @@ func (m *Manager) RenameInstanceConfig(oldID, newID string) {
 	cfg.ID = newID
 	_ = m.SaveInstanceConfig(cfg)
 	_ = m.st.DeleteInstanceConfig(oldID)
+}
+
+// normalizeSidebarHide повертає дозволений режим приховування елемента sidebar
+// ("collapsed", "expanded", "all") або "" (показувати).
+func normalizeSidebarHide(v string) string {
+	switch v {
+	case "collapsed", "expanded", "all":
+		return v
+	}
+	return ""
 }

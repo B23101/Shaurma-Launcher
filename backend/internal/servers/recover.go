@@ -240,9 +240,7 @@ func (m *Manager) finalizeAdopted(serverID string, pi *processInfo) {
 	}
 	pi.mu.Lock()
 	// Фінальний статус — завжди «stopped» (штатно чи ні, код виходу чужого
-	// процесу ми не бачимо). Раніше при prev=="stopping" статус лишався
-	// «stopping» — UI після кнопки «Стоп» на відновленому сервері висів
-	// на «Зупиняється…» назавжди.
+	// процесу ми не бачимо).
 	pi.status.Status = "stopped"
 	pi.status.Recovered = false
 	s := pi.status

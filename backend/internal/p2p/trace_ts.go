@@ -37,8 +37,7 @@ var tsnetImportant = []string{
 }
 
 // tsnetLogf — Logf для tsnet.Server: усе (з редагуванням секретів) іде в
-// launcher.log, компонент p2p-tsnet, рівень debug. Раніше тут стояла заглушка,
-// тому при збої реєстрації ноди в лозі не було НІЧОГО від самого tsnet.
+// launcher.log, компонент p2p-tsnet, рівень debug.
 func tsnetLogf(role string) func(string, ...any) {
 	if os.Getenv("SHAURMA_P2P_TSNET_LOG") == "0" {
 		return func(string, ...any) {}

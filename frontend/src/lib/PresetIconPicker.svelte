@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // PresetIconPicker — спільний вибір пресет-іконки збірки.
   // Один компонент замість трьох дублікатів сітки іконок (PackBasicSection,
   // CreatePackPage ×2, DuplicatePackModal). Категорії перемикаються
@@ -109,7 +111,7 @@
     <i class="ti ti-search"></i>
     <input class="input" placeholder={t('iconPicker.search')} value={query} oninput={(e) => (query = e.currentTarget.value)} />
     {#if query}
-      <button class="icon-btn" title={t('win.close')} onclick={() => (query = '')}><i class="ti ti-x"></i></button>
+      <button class="icon-btn" use:launcherTip={t('win.close')} onclick={() => (query = '')}><i class="ti ti-x"></i></button>
     {/if}
   </div>
 
@@ -124,7 +126,7 @@
           type="button"
           role="tab"
           aria-selected={activeTab === cat.id}
-          title={cat.label}
+          use:launcherTip={cat.label}
         >
           <i class="ti {cat.icon}"></i>
           <span class="pip-tab-name">{cat.label}</span>
@@ -134,7 +136,7 @@
 
     <div class="pip-grid">
       {#each activeCategory.icons as ic (ic)}
-        <button class="icon-preset" class:sel={value === ic} onclick={() => onSelect(ic)} title={ic} style="--pcol:{color}" type="button">
+        <button class="icon-preset" class:sel={value === ic} onclick={() => onSelect(ic)} use:launcherTip={ic} style="--pcol:{color}" type="button">
           <i class="ti {ic}"></i>
         </button>
       {/each}
@@ -142,7 +144,7 @@
   {:else if searchResults.length > 0}
     <div class="pip-grid">
       {#each searchResults as r (r.id)}
-        <button class="icon-preset" class:sel={value === r.id} onclick={() => onSelect(r.id)} title="{r.id} · {r.catLabel}" style="--pcol:{color}" type="button">
+        <button class="icon-preset" class:sel={value === r.id} onclick={() => onSelect(r.id)} use:launcherTip={(r.id) + " · " + (r.catLabel)} style="--pcol:{color}" type="button">
           <i class="ti {r.id}"></i>
         </button>
       {/each}

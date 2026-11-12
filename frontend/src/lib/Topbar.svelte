@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // Верхня панель лаунчера: іконка/назва розділу, крихти вкладеності
   // (відкрита збірка / «Нова збірка» / аналітика), глобальний пошук і
   // віконні кнопки. Усі значення приходять пропсами від App.svelte.
@@ -9,12 +11,16 @@
   // Крихта: текст + режим «назад» (для аналітики — кнопка-повернення
   // в «Мої збірки»); null = крихт немає.
   type Crumb = null | { text: string; back: boolean; onback: (() => void) | null }
+  // Дерево-шлях (браузер контенту): [збірка] › Браузер › Розділ › Проєкт.
+  // Кожен елемент із onclick — клікабельний; останній — поточне місце.
+  type TrailItem = { key: string; label: string; icon?: string; img?: string; color?: string; onclick?: (() => void) | null }
 
   let {
     icon = '',
     title = '',
     minimized = false,
     crumb = null as Crumb,
+    trail = null as null | TrailItem[],
     isMaximized = false,
     onsearch = null as null | (() => void),
     onmin = null as null | (() => void),
@@ -26,6 +32,7 @@
     title?: string
     minimized?: boolean
     crumb?: Crumb
+    trail?: null | TrailItem[]
     isMaximized?: boolean
     onsearch?: null | (() => void)
     onmin?: null | (() => void)
@@ -36,6 +43,25 @@
 </script>
 
 <div class="topbar" class:minimized={minimized}>
+  {#if trail && trail.length}
+    <nav class="tb-trail" aria-label="breadcrumb">
+      {#each trail as it, i (it.key)}
+        {#if i > 0}<i class="ti ti-chevron-right tb-trail-sep"></i>{/if}
+        {@const last = i === trail.length - 1}
+        {#if it.onclick && !last}
+          <button type="button" class="tb-trail-item link" onclick={() => it.onclick?.()} title={it.label}>
+            {#if it.img}<img src={it.img} alt="" class="tb-trail-img" />{:else if it.icon}<i class="ti {it.icon} tb-trail-ic" style={it.color ? `color:${it.color}` : ''}></i>{/if}
+            <span>{it.label}</span>
+          </button>
+        {:else}
+          <span class="tb-trail-item" class:cur={last} title={it.label}>
+            {#if it.img}<img src={it.img} alt="" class="tb-trail-img" />{:else if it.icon}<i class="ti {it.icon} tb-trail-ic" style={it.color ? `color:${it.color}` : ''}></i>{/if}
+            <span>{it.label}</span>
+          </span>
+        {/if}
+      {/each}
+    </nav>
+  {:else}
   {#key icon}
     <div class="tb-icon"><i class="ti {icon}"></i></div>
   {/key}
@@ -57,6 +83,7 @@
       </div>
     {/if}
   {/key}
+  {/if}
   <div class="topbar-spacer"></div>
   <div class="search-top no-drag" onclick={onsearch} role="button" tabindex="0"
        onkeydown={(e: any) => (e.key === 'Enter' || e.key === ' ') && onsearch?.()}>
@@ -66,9 +93,9 @@
   </div>
   <TransferWidget onOpenMod={onopenmod} />
   <div class="ctrl-box">
-    <button class="ctrl-btn" title={t('win.minimize')} onclick={onmin}><i class="ti ti-minus"></i></button>
-    <button class="ctrl-btn" title={t('win.maximize')} onclick={onmax}><i class="ti {isMaximized ? 'ti-copy' : 'ti-square'}"></i></button>
-    <button class="ctrl-btn close" title={t('win.close')} onclick={onclose}><i class="ti ti-x"></i></button>
+    <button class="ctrl-btn" use:launcherTip={t('win.minimize')} onclick={onmin}><i class="ti ti-minus"></i></button>
+    <button class="ctrl-btn" use:launcherTip={t('win.maximize')} onclick={onmax}><i class="ti {isMaximized ? 'ti-copy' : 'ti-square'}"></i></button>
+    <button class="ctrl-btn close" use:launcherTip={t('win.close')} onclick={onclose}><i class="ti ti-x"></i></button>
   </div>
 </div>
 
@@ -115,6 +142,18 @@
     animation:tb-slide-in .22s ease both .1s;
   }
   .topbar-crumbs i { font-size:12px; }
+  .tb-trail { display:flex; align-items:center; gap:4px; min-width:0; flex:0 1 auto; overflow:hidden; --wails-draggable:no-drag; animation:tb-slide-in .22s ease both; }
+  .tb-trail-sep { font-size:14px; color:var(--text-dim); flex:none; }
+  .tb-trail-item {
+    display:inline-flex; align-items:center; gap:8px; min-width:0; max-width:300px; padding:6px 10px; border:0; border-radius:10px;
+    background:transparent; color:var(--text-mute); font:600 14px var(--font-ui); white-space:nowrap; flex:0 1 auto;
+  }
+  .tb-trail-item > span { overflow:hidden; text-overflow:ellipsis; }
+  .tb-trail-item.link { cursor:pointer; transition:background .15s, color .15s; }
+  .tb-trail-item.link:hover { background:var(--hover-strong); color:var(--text); }
+  .tb-trail-item.cur { color:var(--text); font-weight:700; font-size:16px; }
+  .tb-trail-ic { font-size:20px; color:var(--orange); flex:none; }
+  .tb-trail-img { width:22px; height:22px; border-radius:6px; object-fit:cover; flex:none; background:var(--bg-input); }
   .tb-sep { width:1px; height:26px; background:var(--border); margin:0 4px; }
 
   .ctrl-box {

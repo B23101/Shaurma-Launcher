@@ -1,9 +1,8 @@
 <script lang="ts">
+  import NumberInput from '../../NumberInput.svelte'
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Чесний стан P2P + голосовий чат ─────────────────────────────────────
-  // Раніше віджет показував «онлайн», навіть коли гості не могли зайти, і не казав чому.
-  // Тут усе береться з бекенду одним викликом (P2PGetVoiceState): чек-лист «що працює /
-  // що ні і чому», знайдений на сервері голосовий мод із його РЕАЛЬНИМ портом, і
-  // налаштування голосу, що зберігаються й застосовуються на ходу — без перезапуску тунелю.
   import { onMount } from 'svelte'
   import { App } from '../../wails'
   import { t } from '../../i18n.svelte'
@@ -27,7 +26,7 @@
   let customDraft = $state('')
   let customOpen = $state(false)
   // seq — відкидає запізнілі відповіді опитування, щоб вони не затирали щойно застосоване
-  // користувачем (саме така гонка раніше «забувала» налаштування UDP).
+  // користувачем.
   let seq = 0
 
   async function load(force = false) {
@@ -112,7 +111,7 @@
           </div>
         {/if}
       </div>
-      <button class="phc-btn" type="button" disabled={busy} onclick={() => load(true)} title={t('servers.p2p.health.recheck')}>
+      <button class="phc-btn" type="button" disabled={busy} onclick={() => load(true)} use:launcherTip={t('servers.p2p.health.recheck')}>
         <i class="ti ti-refresh"></i> {t('servers.p2p.health.recheck')}
       </button>
     </div>
@@ -168,7 +167,7 @@
             {t('servers.p2p.health.custom')}
           </button>
           {#if customOpen || st.customPort > 0}
-            <input class="input mono phc-input" type="number" min="1" max="65535" bind:value={customDraft}
+            <NumberInput style="width:88px" class="input mono phc-input" min="1" max="65535" bind:value={customDraft}
               onfocus={() => (customOpen = true)} onchange={applyCustom} aria-label={t('servers.p2p.udp.portLabel')} />
           {/if}
         </div>
@@ -217,7 +216,7 @@
   .phc-port { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .phc-chip { padding: 6px 11px; border-radius: 999px; cursor: pointer; background: var(--bg-input); border: 1px solid var(--border); color: var(--text-mute); font: 600 11.5px/1 var(--font-ui); }
   .phc-chip.on { background: color-mix(in srgb, var(--pcol, var(--orange)) 18%, transparent); border-color: var(--pcol, var(--orange)); color: var(--text); }
-  .phc-input { width: 88px; min-width: 0; font-size: 12px; padding: 6px 9px; text-align: center; }
+  :global(.phc-input) { width: 88px; min-width: 0; font-size: 12px; padding: 6px 9px; text-align: center; }
   .phc-exposure { display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 10px; font: 400 11px/1.5 var(--font-ui); color: color-mix(in srgb, #fb923c 80%, var(--text)); background: rgba(251, 146, 60, .06); border: 1px solid rgba(251, 146, 60, .18); }
   .phc-exposure i { color: #fb923c; font-size: 14px; flex-shrink: 0; margin-top: 1px; }
 </style>

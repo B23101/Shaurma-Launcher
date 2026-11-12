@@ -1,4 +1,7 @@
 <script lang="ts">
+  import NumberInput from '../../NumberInput.svelte'
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Налаштування сервера ────────────────────────────────────────────
   //
   // МАКЕТ (як просив користувач): шапка розділу зі станом сервера → картка
@@ -203,7 +206,7 @@
       </div>
       <div class="st-row-ctl">
         <button class="btn btn-ghost btn-sm" onclick={() => coreModalOpen = true} disabled={isRunning} data-testid="server-core-change-btn"
-                title={isRunning ? t('servers.core.running') : t('servers.settings.coreChange')}>
+                use:launcherTip={isRunning ? t('servers.core.running') : t('servers.settings.coreChange')}>
           <i class="ti ti-replace"></i> {t('servers.settings.coreChange')}
         </button>
       </div>
@@ -241,7 +244,7 @@
         </div>
       </div>
       <div class="st-row-ctl">
-        <input id="srv-port" class="st-input num mono" type="number" min="1" max="65534" bind:value={editPort} data-testid="server-port-input" />
+        <NumberInput id="srv-port" style="width:92px" class="st-input num mono" min="1" max="65534" bind:value={editPort} data-testid="server-port-input" />
       </div>
     </div>
 

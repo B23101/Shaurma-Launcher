@@ -38,3 +38,37 @@ export function slideTabs(bar: HTMLElement) {
     },
   }
 }
+
+// Плавна горизонтальна прокрутка таббара колесом миші: вертикальне колесо
+// гортає вкладки вбік з інерційним доганянням цілі (а не різкими стрибками).
+// Якщо бар не переповнений або досягнуто краю — подія йде далі (гортається
+// сторінка). Окрема дія: вішається на будь-який .tabbar.
+export function smoothTabsWheel(bar: HTMLElement) {
+  let target = 0
+  let raf = 0
+  function step() {
+    const diff = target - bar.scrollLeft
+    if (Math.abs(diff) < 0.5) { bar.scrollLeft = target; raf = 0; return }
+    bar.scrollLeft += diff * 0.2
+    raf = requestAnimationFrame(step)
+  }
+  function onWheel(e: WheelEvent) {
+    const max = bar.scrollWidth - bar.clientWidth
+    if (max <= 1) return
+    const delta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+    if (!delta) return
+    const base = raf ? target : bar.scrollLeft
+    const next = Math.min(max, Math.max(0, base + delta))
+    if (next === base) return // край — нехай гортається сторінка
+    e.preventDefault()
+    target = next
+    if (!raf) raf = requestAnimationFrame(step)
+  }
+  bar.addEventListener('wheel', onWheel, { passive: false })
+  return {
+    destroy() {
+      cancelAnimationFrame(raf)
+      bar.removeEventListener('wheel', onWheel)
+    },
+  }
+}

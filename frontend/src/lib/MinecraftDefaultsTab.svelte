@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // ── Вкладка «Гра за умовч.» у налаштуваннях лаунчера ──────────────────
   // Порт старої фічі «Налаштування гри за замовчуванням» (OptionsFileManager +
@@ -102,11 +104,9 @@
         if (cancelled || !Array.isArray(list)) return
         // Бекенд повертає [] (не помилку), коли версія гри ще не
         // встановлена локально й немає мережі, щоб узяти asset index
-        // (loadGameLanguages → os.IsNotExist). Раніше це затирало
-        // 17-мовний fallback ПОРОЖНІМ списком, і селект лишався майже
-        // пустим, поки гру не завантажать. Порожню відповідь ігноруємо
-        // і лишаємо fallback — оновлюємо лише коли бекенд реально
-        // прислав мови.
+        // (loadGameLanguages → os.IsNotExist). Порожню відповідь
+        // ігноруємо і лишаємо fallback — оновлюємо лише коли бекенд
+        // реально прислав мови.
         if (list.length === 0) return
         const mapped: [string, string][] = list.map(l => [l.code, l.name || l.code])
         if (d.language && !mapped.some(([c]) => c === d.language)) {
@@ -237,9 +237,7 @@
       ShiftLeft: 'key.keyboard.left.shift', ShiftRight: 'key.keyboard.right.shift',
       ControlLeft: 'key.keyboard.left.control', ControlRight: 'key.keyboard.right.control',
       AltLeft: 'key.keyboard.left.alt', AltRight: 'key.keyboard.right.alt',
-      // Клавіші пунктуації/символів — раніше відсутні в мапі, тож
-      // натискання «`» (Backquote) та сусідніх клавіш нічого не робило
-      // (map[code] ?? null повертав null, бінд просто не встановлювався).
+      // Клавіші пунктуації/символів.
       Backquote: 'key.keyboard.grave.accent',
       Minus: 'key.keyboard.minus', Equal: 'key.keyboard.equal',
       BracketLeft: 'key.keyboard.left.bracket', BracketRight: 'key.keyboard.right.bracket',
@@ -427,7 +425,7 @@
         <div class="field-hint" style="padding:4px 20px;color:var(--text-mute)"><i class="ti ti-info-circle"></i> {t('defaults.key.pressHint')}</div>
         <div class="kb-grid">
           {#each modBindKeys as bind}
-            <button class="kb-row {capturingKey === bind ? 'capturing' : ''}" onclick={() => startCapture(bind)} title={bind}>
+            <button class="kb-row {capturingKey === bind ? 'capturing' : ''}" onclick={() => startCapture(bind)} use:launcherTip={bind}>
               <span class="kb-label">{formatModBindLabel(bind)}</span>
               <span class="kb-key mono">{capturingKey === bind ? t('defaults.key.waiting') : formatKeyName(d.keyBindings[bind])}</span>
             </button>

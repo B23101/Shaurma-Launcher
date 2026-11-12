@@ -534,7 +534,7 @@ func (c *ChatCrypto) adoptFromRotation(rk *RemoteKeys) error {
 	if err != nil {
 		return err
 	}
-	// Поточні в пам'яті (раніше усиновлені) теж не губимо.
+	// Поточні в пам'яті теж не губимо.
 	c.mu.Lock()
 	extra := append([]ringKey(nil), c.keys...)
 	c.mu.Unlock()

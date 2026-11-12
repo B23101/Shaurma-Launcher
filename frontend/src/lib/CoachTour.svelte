@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // Покрокові підказки поверх сторінки: підсвічує елемент з data-tour="<id>"
   // і пояснює, що це за кнопка й навіщо вона. Перший запуск: створення
   // першої збірки після майстра. Кроки, чиїх елементів немає на сторінці,
@@ -96,7 +98,7 @@
           <div class="c-top">
             <span class="c-ico"><i class="ti {cur.icon}"></i></span>
             <span class="c-step">{t('tour.stepOf', { cur: idx + 1, total: live.length })}</span>
-            <button class="c-x" onclick={onDone} aria-label={t('tour.skip')} title={t('tour.skip')}><i class="ti ti-x"></i></button>
+            <button class="c-x" onclick={onDone} aria-label={t('tour.skip')} use:launcherTip={t('tour.skip')}><i class="ti ti-x"></i></button>
           </div>
           <b class="c-title">{cur.title}</b>
           <p class="c-text">{cur.text}</p>

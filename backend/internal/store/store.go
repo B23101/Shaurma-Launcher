@@ -25,6 +25,7 @@ import (
 
 	"shaurma-launcher-backend/internal/atomicfile"
 	"shaurma-launcher-backend/internal/model"
+	"shaurma-launcher-backend/internal/shaurmaid"
 )
 
 // FileName — ім'я головного JSON-файлу даних (поруч із DLL).
@@ -93,6 +94,9 @@ type BuildLayout struct {
 	PackFolders []model.PackFolder `json:"packFolders,omitempty"`
 	// ServerFolders — папки серверів (Бібліотека серверів).
 	ServerFolders []model.ServerFolder `json:"serverFolders,omitempty"`
+	// OpenFolders — ID папок збірок, розгорнутих у sidebar. Зберігається тут
+	// (а не лише в localStorage WebView), щоб стан переживав перезапуск.
+	OpenFolders []string `json:"openFolders,omitempty"`
 }
 
 // UIState — «останнє вікно»: де зупинився користувач (сторінка, вкладка
@@ -102,13 +106,10 @@ type BuildLayout struct {
 // shaurma.json (акаунти, buildsRegistry тощо) не мусить перезаписуватись
 // так часто заради цього.
 //
-// РЕГРЕСІЯ (виправлено): раніше весь цей стан жив ТІЛЬКИ в localStorage
-// браузерного профілю WebView2 (lib/uiState.ts, ключ "shaurma:uiState") —
-// усупереч задокументованій архітектурі («ніяких даних у localStorage»).
 // Наслідок: стан губився при очищенні профілю WebView2, не переживав
 // зміну теки даних (moveTreeWithProgress переносить лише
-// installations/skins, localStorage лишається у старому профілі), і
-// був єдиним місцем в усьому лаунчері, де дані НЕ доступні для бекапу/
+// installations/skins, localStorage лишається у старому профілі), і був
+// єдиним місцем в усьому лаунчері, де дані НЕ доступні для бекапу/
 // перенесення разом з рештою.
 type UIState struct {
 	Page        string                 `json:"page,omitempty"`
@@ -260,7 +261,10 @@ type Store struct {
 	shaurmaInstancesDir string // офіційні Shaurma-збірки: <shaurmaInstancesDir>/<id>/instance.json
 	health              DBHealth
 	data                globalData
-	knownShaurmaIDs     map[string]bool // кеш Shaurma ID з registry
+	knownShaurmaIDs     map[string]bool       // кеш Shaurma ID з registry
+	sealer              *shaurmaid.Sealer     // шифрування токенів акаунтів (nil = недоступне)
+	kept                map[string]keptTokens // нерозшифровані токени (див. account_secrets.go)
+	keptSettings        map[string]string     // нерозшифровані секрети налаштувань
 }
 
 // SetShaurmaInstancesDir підключає другу теку збірок (офіційні Shaurma,
@@ -269,18 +273,14 @@ type Store struct {
 // що зберігає зворотну сумісність для викликів Open() без цього кроку
 // (напр. у тестах).
 //
-// РЕГРЕСІЯ (виправлено): loadInstanceConfigs/saveInstanceConfig/
-// deleteInstanceConfig раніше ЗАВЖДИ читали й писали лише в instancesDir
-// (кастомні збірки), навіть коли ID належав офіційній Shaurma-збірці, що
-// фізично лежить у ShaurmaPacksDir(). RAM/Java/Fullscreen/AccountID
-// override для таких збірок писались у instance.json ЗА НЕПРАВИЛЬНОЮ
-// адресою — installations/<id>/instance.json (сирітський файл, там, де
-// реальних даних збірки взагалі немає), а не у власну теку збірки. Читання
-// й запис були симетрично неправильними, тож функціонально override
-// застосовувались (без видимого бага для користувача), але дані для
-// офіційних збірок опинялись НЕ там, де фізично лежить сама збірка —
-// пряме порушення принципу «вся дані ОДНІЄЇ збірки — в ОДНОМУ instance.json
-// у ЇЇ ВЛАСНІЙ папці».
+// RAM/Java/Fullscreen/AccountID override для таких збірок писались у
+// instance.json ЗА НЕПРАВИЛЬНОЮ адресою — installations/<id>/instance.json
+// (сирітський файл, там, де реальних даних збірки взагалі немає), а не у
+// власну теку збірки. Читання й запис були симетрично неправильними, тож
+// функціонально override застосовувались (без видимого бага для
+// користувача), але дані для офіційних збірок опинялись НЕ там, де фізично
+// лежить сама збірка — пряме порушення принципу «вся дані ОДНІЄЇ збірки — в
+// ОДНОМУ instance.json у ЇЇ ВЛАСНІЙ папці».
 func (s *Store) SetShaurmaInstancesDir(dir string) {
 	s.mu.Lock()
 	s.shaurmaInstancesDir = dir
@@ -326,6 +326,7 @@ func Open(dir, instancesDir string) (*Store, error) {
 		data:         globalData{},
 	}
 	s.loadFromDisk()
+	s.initAccountSecrets(dir)
 	s.knownShaurmaIDs = make(map[string]bool)
 	for _, e := range s.data.BuildsRegistry {
 		if e.Kind == "shaurma" {
@@ -380,6 +381,14 @@ func (s *Store) isEmptyData(d globalData) bool {
 		len(d.WardrobePresets) == 0
 }
 
+// marshalGlobal серіалізує дані для запису на диск: токени акаунтів — зашифровані.
+func (s *Store) marshalGlobal() ([]byte, error) {
+	d := s.data
+	d.Accounts = s.accountsForDisk()
+	d.Settings = s.settingsForDisk()
+	return json.Marshal(d)
+}
+
 // saveGlobal атомарно записує shaurma.json.
 func (s *Store) saveGlobal() error {
 	// Не бекапимо пусті дані
@@ -387,7 +396,7 @@ func (s *Store) saveGlobal() error {
 		s.backupBeforeWrite()
 	}
 
-	data, err := json.Marshal(s.data) // компактно: без відступів файл і тимчасові буфери менші
+	data, err := s.marshalGlobal() // компактно; токени акаунтів шифруються (account_secrets.go)
 	if err != nil {
 		return fmt.Errorf("store: marshal: %w", err)
 	}
@@ -415,7 +424,7 @@ func (s *Store) saveGlobal() error {
 
 // clearableInstanceKeys — omitempty-ключі InstanceConfig, відсутність яких у
 // збережуваному конфігу означає «значення скинуто», а не «поле не чіпали».
-var clearableInstanceKeys = []string{"skinPresetId", "skinRestoreOnExit", "fullscreenOverride"}
+var clearableInstanceKeys = []string{"skinPresetId", "skinRestoreOnExit", "fullscreenOverride", "skinSystemOverride"}
 
 // saveInstanceConfig атомарно записує instance.json у теці збірки —
 // resolveInstanceDir вибирає ПРАВИЛЬНУ теку (shaurma vs custom) за
@@ -1794,10 +1803,6 @@ func (s *Store) ScanAndRegisterInstances() int {
 				data, _ := json.MarshalIndent(cfg, "", "  ")
 				_ = os.WriteFile(cfgPath, data, 0644)
 			} else {
-				// Назву та loader (якщо порожні) доповнюємо у ФОНІ: раніше тут
-				// на кожному старті під s.mu читались і парсились усі
-				// instance.json — з десятками збірок це десятки зайвих
-				// файлових операцій у критичному шляху запуску.
 				toNormalize = append(toNormalize, cfgPath)
 			}
 
@@ -1810,17 +1815,6 @@ func (s *Store) ScanAndRegisterInstances() int {
 				// knownShaurmaIDs — лише fallback для нетипових шляхів
 				// (напр. якщо колись installationsDir сканується без
 				// підпапки shaurma_packs/).
-				//
-				// РЕГРЕСІЯ: раніше Kind визначався ВИКЛЮЧНО за
-				// knownShaurmaIDs — кешем, що наповнюється один раз при
-				// старті ДО запиту packs-index.json з CDN. Якщо на той
-				// момент id ще не був у кеші (нова Shaurma-збірка, перший
-				// запуск на новому ПК, повільна мережа) — збірка з
-				// shaurma_packs/ помилково і НАЗАВЖДИ (знайдений id більше
-				// не проходить !knownIDs[id]) реєструвалась як "custom",
-				// хоча фізично лежала в офіційній теці. Це і призводило до
-				// того, що sidebar показував офіційну Shaurma-збірку у
-				// вкладці "Кастомні".
 				kind := "custom"
 				if scanDir == shaurmaDir {
 					kind = "shaurma"
@@ -1839,9 +1833,6 @@ func (s *Store) ScanAndRegisterInstances() int {
 		}
 	}
 
-	// Самовиправлення старих неправильних записів: збірка, яку раніше
-	// (до фіксу вище) помилково зареєстрували як "custom", хоча вона
-	// фізично лежить у shaurma_packs/ — виправляємо Kind на "shaurma".
 	// Без цього кроку люди, хто вже зіткнувся з регресією, лишились би з
 	// невірним записом назавжди (гілка реєстрації нових ID більше не
 	// зачіпає вже наявні в registry).
@@ -1879,11 +1870,9 @@ func (s *Store) ScanAndRegisterInstances() int {
 	return registered
 }
 
-// normalizeInstanceFiles доповнює порожні name/loader в instance.json
-// (колись робилось синхронно в ScanAndRegisterInstances). Кожен файл
-// перечитується під s.mu — так само, як і решта записів instance.json,
-// тож паралельне збереження конфігу збірки не буде перезаписане застарілим
-// вмістом.
+// Кожен файл перечитується під s.mu — так само, як і решта записів
+// instance.json, тож паралельне збереження конфігу збірки не буде
+// перезаписане застарілим вмістом.
 func (s *Store) normalizeInstanceFiles(paths []string) {
 	defer func() { _ = recover() }()
 	for _, cfgPath := range paths {
@@ -2289,7 +2278,7 @@ func (s *Store) saveGlobalLocked() error {
 	if !s.isEmptyData(s.data) {
 		s.backupBeforeWrite()
 	}
-	data, err := json.Marshal(s.data) // компактно: без відступів файл і тимчасові буфери менші
+	data, err := s.marshalGlobal() // компактно; токени акаунтів шифруються (account_secrets.go)
 	if err != nil {
 		return err
 	}

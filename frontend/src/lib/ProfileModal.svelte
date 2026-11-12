@@ -12,6 +12,7 @@
   import { cubicOut } from 'svelte/easing'
   import { Tween } from 'svelte/motion'
   import UiModal from './UiModal.svelte'
+  import AccountPrivacy from './AccountPrivacy.svelte'
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
@@ -19,7 +20,12 @@
   import { PROFILE_COLORS, normalizeBio, bioLength, safeColor, hueOf, shortId } from './friends/profileStyle'
   import { lastSeenText } from './friends/lastSeen'
   import { tip } from './friends/tooltip'
+  import FAvatar from './friends/FAvatar.svelte'
+  import GroupAvatar from './groups/GroupAvatar.svelte'
   import { buildFriendLink } from './friends/friendLink'
+  import ProfileComments from './friends/ProfileComments.svelte'
+  import { friendHead } from './friends/friendHead'
+  import ProfileModal from './ProfileModal.svelte'
   import { accountPrefs, setAccountPref, resetAccountPrefs, type AccountToggleKey, type WidgetLine } from './accountPrefs.svelte'
   import type {
     Account, ShaurmaProfile, SocialPrivacy, SocialState, SocialFriend, SocialFriendProfile, SocialProfileVisibility,
@@ -41,9 +47,22 @@
     onblock = () => {},
     onmessage = () => {},
     onremove = () => {},
+    onadd = async () => false,
+    onopenfriend = () => {},
+    onopengroup = () => {},
+    isFriend = true,
+    requestSent = false,
+    backName = '',
+    onback = () => {},
+    onopenself = () => {},
+    viewOnly = false,
+    heads = {},
+    onwanthead = () => {},
+    groupLook = () => null,
     // ── спільне ──
     head = '',
     onclose = () => {},
+    initialTab = 'profile',
   }: {
     mode?: 'self' | 'friend'
     account?: Account
@@ -58,8 +77,30 @@
     onblock?: (f: SocialFriend) => void
     onmessage?: (f: SocialFriend) => void
     onremove?: (f: SocialFriend) => void
+    /** Запит у друзі з профілю не-друга; true — надіслано. */
+    onadd?: (f: SocialFriend) => Promise<boolean> | boolean
+    /** Клік по спільному другові / спільній групі в профілі. */
+    onopenfriend?: (id: string, nickname: string) => void
+    onopengroup?: (id: string) => void
+    /** false → профіль не-друга (учасник групи / вихідний запит): без «Видалити з друзів». */
+    isFriend?: boolean
+    /** Вихідний запит цьому гравцю вже висить (зі списку надісланих) — кнопка одразу «Надіслано». */
+    requestSent?: boolean
+    /** Нік профілю, з якого перейшли сюди (порожньо — кнопки «Назад» немає). */
+    backName?: string
+    onback?: () => void
+    /** Клік по власному коментарю в чужому профілі → відкрити «Мій акаунт». */
+    onopenself?: () => void
+    /** true → лише перегляд: без кнопок «Написати / Заблокувати / Видалити» (вкладений профіль з коментаря у «Моєму акаунті»). */
+    viewOnly?: boolean
+    /** Голови гравців за ніком (для спільних друзів). */
+    heads?: Record<string, string>
+    onwanthead?: (nickname: string) => void
+    /** Іконка/колір групи за id (для спільних груп); null — літера. */
+    groupLook?: (id: string) => { icon?: string; color?: string } | null | undefined
     head?: string
     onclose?: () => void
+    initialTab?: 'profile' | 'privacy' | 'look'
   } = $props()
 
   const isSelf = $derived(mode === 'self')
@@ -67,12 +108,17 @@
   const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g
   const clean = (s?: string) => (s ?? '').replace(HIDDEN, '').trim()
 
+  type Peer = { id: string; nickname: string }
+  let peerStack = $state<Peer[]>([])
+  const peer = $derived(peerStack.length ? peerStack[peerStack.length - 1] : null)
+
   // Лишаємо останнього друга: під час закриття/видалення `friend` уже null, а вікно
   // має домалюватись без стрибків.
   let shown = $state<SocialFriend | null>(null)
   $effect(() => { if (friend) shown = friend })
   const f = $derived(shown)
-  const open = $derived(isSelf ? true : !!friend && !!f)
+  // «Мій акаунт»: поки відкрито профіль коментатора, моє вікно ховається — той профіль займає його місце (як зі спільними друзями).
+  const open = $derived(isSelf ? !peer : !!friend && !!f)
   const friendId = $derived(isSelf ? '' : (f?.accountId ?? ''))
   const friendNick = $derived(isSelf ? '' : clean(f?.nickname))
 
@@ -82,7 +128,7 @@
     { id: 'privacy', icon: 'ti-shield-lock', key: 'acc.modal.tab.privacy' },
     { id: 'look', icon: 'ti-adjustments-horizontal', key: 'acc.modal.tab.look' },
   ]
-  let tab = $state<Tab>('profile')
+  let tab = $state<Tab>(initialTab)
   const tabIdx = $derived(TABS.findIndex((x) => x.id === tab))
 
   const dur = (ms: number) => ms
@@ -141,8 +187,37 @@
       .catch((e: any) => { if (!dead) { fpErr = String(e?.message ?? e); fpState = 'error' } })
     return () => { dead = true }
   })
+  let reqSent = $state(false)
+  let addBusy = $state(false)
+  $effect(() => { void friendId; reqSent = false })
+  async function addFriend() {
+    if (!f || addBusy) return
+    addBusy = true
+    try {
+      if (await onadd(f)) { reqSent = true; fpTick++ }
+    } finally { addBusy = false }
+  }
+  $effect(() => {
+    for (const mf of fp?.mutualFriends ?? []) if (mf.nickname) onwanthead(mf.nickname)
+  })
   const fpHidden = $derived(!isSelf && fpState === 'ok' && !!fp?.hidden)
   const fpErrText = $derived(/not_friends/.test(fpErr) ? t('acc.modal.friend.notFriend') : t('acc.modal.friend.loadFail'))
+
+  // ── «Мій акаунт»: клік по автору коментаря відкриває його профіль поверх цього вікна ──
+  let peerHead = $state('')
+  $effect(() => {
+    const n = peer?.nickname
+    peerHead = ''
+    if (n) friendHead(n).then((h) => { if (peer?.nickname === n) peerHead = h })
+  })
+  const peerFriend = $derived.by<SocialFriend | null>(() => {
+    if (!peer) return null
+    const known = social?.friends?.find((x) => x.accountId === peer.id)
+    return known ?? ({ accountId: peer.id, nickname: peer.nickname, since: 0, presence: { status: 'offline' } } as SocialFriend)
+  })
+  const peerIsFriend = $derived(!!peer && !!social?.friends?.some((x) => x.accountId === peer.id))
+  function openPeer(id: string, nick: string) { peerStack = [...peerStack.slice(-19), { id, nickname: nick }] }
+  function peerBack() { peerStack = peerStack.slice(0, -1) }
 
   async function copy(kind: string, text: string) {
     if (!text) return
@@ -169,8 +244,11 @@
   )
 
   // Статус: свій приходить пропсами, друга — з хаба (там його вже відфільтрував сервер).
-  const fStatus = $derived(f?.presence?.status ?? 'offline')
-  const packName = $derived(clean(f?.presence?.packName))
+  // Не-друг: статус береться з відповіді сервера і є лише якщо власник показує його всім.
+  const strPres = $derived(!isSelf && !isFriend ? (fp?.presence ?? null) : null)
+  const fStatus = $derived(strPres ? strPres.status : (f?.presence?.status ?? 'offline'))
+  const packName = $derived(clean(strPres ? strPres.packName : f?.presence?.packName))
+  const showStatusBadge = $derived(isSelf || isFriend || !!strPres)
   const fStatusText = $derived(
     fStatus === 'in_game' ? (packName ? t('social.profile.playingPack', { pack: packName }) : t('social.playing'))
     : fStatus === 'online' ? t('social.status.online')
@@ -197,7 +275,7 @@
   const showStats = $derived(
     isSelf
       ? accountPrefs.showPlaytime || accountPrefs.showBuilds || accountPrefs.showFriends || accountPrefs.showSince
-      : fpState === 'ok' && !fpHidden,
+      : fpState === 'ok' && !fpHidden && fp?.isFriend !== false,
   )
   const show3D = $derived(accountPrefs.show3D)
 
@@ -205,17 +283,25 @@
   const secs = new Tween(0, { duration: 900, easing: cubicOut })
   const builds = new Tween(0, { duration: 700, easing: cubicOut })
   const friendsN = new Tween(0, { duration: 700, easing: cubicOut })
+  let statsSeeded = false
   $effect(() => {
-    const d = dur(900)
-    secs.set(vSecs ?? 0, { duration: d })
-    builds.set(vBuilds ?? 0, { duration: d })
-    friendsN.set(vFriends ?? 0, { duration: d })
+    const a = vSecs ?? 0, b = vBuilds ?? 0, c = vFriends ?? 0
+    // Перше реальне значення — «count-up»; далі (живе оновлення часу в грі) — миттєво, без смикання.
+    const d = statsSeeded ? 0 : dur(900)
+    secs.set(a, { duration: d })
+    builds.set(b, { duration: d })
+    friendsN.set(c, { duration: d })
+    if (!statsSeeded && (isSelf ? !loading : fpState === 'ok')) statsSeeded = true
   })
   function fmtTime(total: number): string {
     const h = Math.floor(total / 3600)
     const m = Math.floor((total % 3600) / 60)
     if (h <= 0) return t('acc.modal.minutes', { m })
-    return t('acc.modal.hoursMin', { h, m })
+    // Від 100 год хвилини в плитці зайві — інакше значення обрізається «…» (повне є у підказці).
+    const full = t('acc.modal.hoursMin', { h, m })
+    if (h < 100) return full
+    const cut = full.indexOf(String(m), String(h).length)
+    return cut > 0 ? full.slice(0, cut).trim() : full
   }
   const sinceText = $derived.by(() => {
     const c = vCreated
@@ -229,6 +315,19 @@
       const y = parts.find(x => x.type === 'year')?.value ?? ''
       return `${m.replace(/\.$/, '')} ${y}`.trim() || '—'
     } catch { return '—' }
+  })
+
+  // Повні значення для підказок плиток (у самій плитці довге значення обрізається «…»).
+  const tipTime = $derived(vSecs === null ? '' : `${t('acc.modal.stat.time')}: ${fmtTime(Math.round(vSecs))}`)
+  const tipBuilds = $derived(vBuilds === null ? '' : `${t('acc.modal.stat.builds')}: ${vBuilds}`)
+  const tipFriends = $derived(vFriends === null ? '' : `${t('acc.modal.stat.friends')}: ${vFriends}`)
+  const tipSince = $derived.by(() => {
+    const c = vCreated
+    if (!c) return ''
+    try {
+      const d = new Date(c < 1e12 ? c * 1000 : c).toLocaleDateString(document.documentElement.lang || 'uk', { day: 'numeric', month: 'long', year: 'numeric' })
+      return `${t('acc.modal.stat.since')}: ${d}`
+    } catch { return '' }
   })
 
   // ── 3D-модель ─────────────────────────────────────────────────────────
@@ -309,64 +408,6 @@
     }
   })
 
-  // ── Приватність (діє на сервері; лише mode="self") ────────────────────
-  let privOverride = $state<SocialPrivacy | null>(null)
-  let privBusy = $state('')
-  $effect(() => { void social?.privacy; privOverride = null })
-  const priv = $derived<SocialPrivacy | undefined>(privOverride ?? social?.privacy)
-  const privOk = $derived(!!social?.loggedIn && !!priv)
-
-  // Приватність профілю лежить окремо від хабового знімка — читаємо з сервера напряму.
-  let profVis = $state<SocialProfileVisibility | ''>('')
-  $effect(() => {
-    if (!isSelf) return
-    let dead = false
-    App.GetProfileVisibility().then((v) => { if (!dead) profVis = v }).catch(() => { /* лишається вимкненим */ })
-    return () => { dead = true }
-  })
-
-  type PrivKey = 'showStatusTo' | 'showServerTo' | 'showProfileTo' | 'whoCanMessage' | 'friendRequests'
-  const PRIV_ROWS: { k: PrivKey; icon: string; title: string; hint: string; opts: [string, string][] }[] = [
-    { k: 'showStatusTo', icon: 'ti-circle-dot', title: 'acc.modal.priv.status', hint: 'acc.modal.priv.statusHint',
-      opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
-    { k: 'showServerTo', icon: 'ti-device-gamepad-2', title: 'acc.modal.priv.server', hint: 'acc.modal.priv.serverHint',
-      opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
-    { k: 'showProfileTo', icon: 'ti-id-badge-2', title: 'acc.modal.priv.profile', hint: 'acc.modal.priv.profileHint',
-      opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
-    { k: 'whoCanMessage', icon: 'ti-message-circle', title: 'acc.modal.priv.msg', hint: 'acc.modal.priv.msgHint',
-      opts: [['everyone', 'acc.modal.opt.everyone'], ['friends', 'acc.modal.opt.friends'], ['nobody', 'acc.modal.opt.nobody']] },
-    { k: 'friendRequests', icon: 'ti-user-plus', title: 'acc.modal.priv.req', hint: 'acc.modal.priv.reqHint',
-      opts: [['everyone', 'acc.modal.opt.everyone'], ['friends_of_friends', 'acc.modal.opt.fof'], ['nobody', 'acc.modal.opt.nobody']] },
-  ]
-  function privValue(k: PrivKey): string {
-    if (k === 'showProfileTo') return profVis
-    const v = (priv as any)?.[k]
-    return v ?? (k === 'whoCanMessage' ? 'friends' : '')
-  }
-  const rowOk = (k: PrivKey) => privOk && (k !== 'showProfileTo' || profVis !== '')
-
-  async function setPriv(k: PrivKey, v: string) {
-    if (privBusy || privValue(k) === v) return
-    privBusy = k
-    try {
-      if (k === 'showProfileTo') {
-        const prev = profVis
-        profVis = v as SocialProfileVisibility
-        try { await App.SetProfileVisibility(v as SocialProfileVisibility) }
-        catch (e) { profVis = prev; throw e }
-      } else {
-        if (!priv) return
-        const next = { ...priv, [k]: v } as SocialPrivacy
-        privOverride = next
-        try { await App.SetFriendsPrivacy(next) }
-        catch (e) { privOverride = null; throw e }
-      }
-      toast(t('acc.modal.priv.saved'), 'success')
-    } catch (e: any) {
-      toast(String(e?.message ?? e), 'error')
-    } finally { privBusy = '' }
-  }
-
   const WLINES: [WidgetLine, string][] = [['type', 'acc.modal.look.widget.type'], ['status', 'acc.modal.look.widget.status']]
   // ── Вигляд (локально) ─────────────────────────────────────────────────
   const LOOK_ROWS: { k: AccountToggleKey; icon: string; key: string }[] = [
@@ -398,13 +439,20 @@
   icon="ti-user-circle"
   color={aura}
   width="920px"
-  bodyClass="am-ui"
+  bodyClass="pm-ui"
+  zIndex={isSelf ? '1000000' : '1000010'}
   onclose={onclose}
 >
   <div class="am" style="--aura:{aura}" data-testid={isSelf ? 'account-modal' : 'friend-profile-modal'}>
     <!-- ── Ліва колонка: 3D / аватар ── -->
     <aside class="am-hero stg" style="--i:0">
       <div class="am-aura" aria-hidden="true"></div>
+      {#if !isSelf && backName}
+        <button class="am-back" onclick={onback} use:tip={t('acc.modal.friend.backTo', { name: backName })}
+                aria-label={t('acc.modal.friend.backTo', { name: backName })} data-testid="profile-back-btn">
+          <i class="ti ti-arrow-left"></i>
+        </button>
+      {/if}
       {#each [0, 1, 2, 3, 4, 5, 6] as n}
         <i class="am-spark" style="--n:{n}" aria-hidden="true"></i>
       {/each}
@@ -430,12 +478,18 @@
       {/if}
 
       <div class="am-id">
-        <div class="am-name">{nickname}</div>
+        <button class="am-name am-copyname" disabled={nickname === '—'} onclick={() => copy('nick', nickname)}
+                use:tip={t('acc.modal.copy')} aria-label={t('acc.modal.copy') + ': ' + nickname}>
+          <span class="am-nn">{nickname}</span>
+          <i class="ti {copied === 'nick' ? 'ti-check' : 'ti-copy'}" class:ok={copied === 'nick'} aria-hidden="true"></i>
+        </button>
         <div class="am-badges">
           {#if isSelf}
             <span class="am-badge"><i class="ti {accKindIcon}"></i> {accKind}</span>
           {/if}
-          <span class="am-badge st" style="--c:{STATUS_COLOR[stKind] ?? '#6b7280'}"><i class="am-dot"></i> {stText}</span>
+          {#if showStatusBadge}
+            <span class="am-badge st" style="--c:{STATUS_COLOR[stKind] ?? '#6b7280'}"><i class="am-dot"></i> {stText}</span>
+          {/if}
           {#if !isSelf && friendsSince}
             <span class="am-badge"><i class="ti ti-heart-handshake"></i> {t('acc.modal.friend.since', { date: friendsSince })}</span>
           {/if}
@@ -443,7 +497,7 @@
           {#if !isSelf && blocked}<span class="am-badge bad"><i class="ti ti-ban"></i> {t('social.profile.blocked')}</span>{/if}
         </div>
         {#if handle}
-          <button class="am-handle" onclick={() => copy('handle', '@' + handle)} title={t('acc.modal.copy')}>
+          <button class="am-handle" onclick={() => copy('handle', '@' + handle)} use:tip={t('acc.modal.copy')} aria-label={t('acc.modal.copy')}>
             <span>@{handle}</span>
             <i class="ti {copied === 'handle' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
@@ -451,15 +505,32 @@
 
         {#if !isSelf && f}
           <div class="am-acts">
-            <button class="am-btn pri" onclick={() => onmessage(f!)}>
-              <i class="ti ti-message-circle-2"></i> {t('social.profile.message')}
-            </button>
+            {#if !viewOnly && (isFriend || fp?.canMessage)}
+              <button class="am-btn pri" onclick={() => onmessage(f!)}>
+                <i class="ti ti-message-circle-2"></i> {t('social.profile.message')}
+              </button>
+            {/if}
+            {#if viewOnly}
+              <!-- лише перегляд -->
+            {:else if !isFriend && (fp?.requestPending || reqSent || requestSent)}
+              <button class="am-btn pri sent" disabled>
+                <i class="ti ti-user-check"></i> {t('acc.modal.friend.requestSent')}
+              </button>
+            {:else if !isFriend && fpState !== 'loading' && fpState !== 'idle' && (fp ? fp.canRequest !== false : true) && !fpHidden}
+              <button class="am-btn" class:pri={!fp?.canMessage} class:sec={!!fp?.canMessage} data-testid="profile-add-friend-btn"
+                      disabled={addBusy} onclick={addFriend}>
+                {#if addBusy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-user-plus"></i>{/if}
+                {t('acc.modal.friend.add')}
+              </button>
+            {/if}
+            {#if !viewOnly}
             <button class="am-btn ghost" class:on={muted} data-testid="profile-mute-btn"
                     onclick={() => onmute(f!)}
                     use:tip={muted ? t('social.profile.muteOff') : t('social.profile.muteOn')}
                     aria-label={muted ? t('social.profile.muteOff') : t('social.profile.muteOn')} aria-pressed={muted}>
               <i class="ti {muted ? 'ti-bell-off' : 'ti-bell'}"></i>
             </button>
+            {/if}
             <button class="am-btn ghost" onclick={() => copy('link', friendLink)}
                     use:tip={t('social.profile.copyLink')} aria-label={t('social.profile.copyLink')}>
               <i class="ti {copied === 'link' ? 'ti-check' : 'ti-link'}"></i>
@@ -469,6 +540,20 @@
               <i class="ti {copied === 'id' ? 'ti-check' : 'ti-fingerprint'}"></i>
             </button>
           </div>
+          {#if !viewOnly}
+            <!-- Блок/видалення — тут, у вузькій лівій колонці: коментарі праворуч його не розтягують. -->
+            <div class="am-mod">
+              <button class="am-dbtn" disabled={busy} data-testid="profile-block-btn" onclick={() => onblock(f!)}>
+                <i class="ti ti-ban"></i> {blocked ? t('social.profile.unblock') : t('social.profile.block')}
+              </button>
+              {#if isFriend}
+                <button class="am-dbtn" disabled={busy} onclick={() => onremove(f!)}>
+                  {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-user-minus"></i>{/if}
+                  {t('social.profile.remove')}
+                </button>
+              {/if}
+            </div>
+          {/if}
         {/if}
       </div>
     </aside>
@@ -492,23 +577,23 @@
             {#if showStats}
               <div class="am-stats">
                 {#if tileOn('showPlaytime')}
-                  <div class="am-stat stg" style="--i:2" transition:scale={{ duration: dur(220), start: 0.9 }}>
-                    <i class="ti ti-clock-hour-4"></i><b>{vSecs === null ? '—' : fmtTime(Math.round(secs.current))}</b><small>{t('acc.modal.stat.time')}</small>
+                  <div class="am-stat stg" style="--i:2" use:tip={tipTime} transition:scale={{ duration: dur(220), start: 0.9 }}>
+                    <i class="ti ti-clock-hour-4"></i><b class="nw">{vSecs === null ? '—' : fmtTime(Math.round(secs.current))}</b><small>{t('acc.modal.stat.time')}</small>
                   </div>
                 {/if}
                 {#if tileOn('showBuilds')}
-                  <div class="am-stat stg" style="--i:3" transition:scale={{ duration: dur(220), start: 0.9 }}>
+                  <div class="am-stat stg" style="--i:3" use:tip={tipBuilds} transition:scale={{ duration: dur(220), start: 0.9 }}>
                     <i class="ti ti-package"></i><b>{vBuilds === null ? '—' : Math.round(builds.current)}</b><small>{t('acc.modal.stat.builds')}</small>
                   </div>
                 {/if}
                 {#if tileOn('showFriends')}
-                  <div class="am-stat stg" style="--i:4" transition:scale={{ duration: dur(220), start: 0.9 }}>
+                  <div class="am-stat stg" style="--i:4" use:tip={tipFriends} transition:scale={{ duration: dur(220), start: 0.9 }}>
                     <i class="ti ti-users"></i><b>{vFriends === null ? '—' : Math.round(friendsN.current)}</b><small>{t('acc.modal.stat.friends')}</small>
                   </div>
                 {/if}
                 {#if tileOn('showSince')}
-                  <div class="am-stat stg" style="--i:5" transition:scale={{ duration: dur(220), start: 0.9 }}>
-                    <i class="ti ti-calendar-heart"></i><b class="sm" title={sinceText}>{sinceText}</b><small>{t('acc.modal.stat.since')}</small>
+                  <div class="am-stat stg" style="--i:5" use:tip={tipSince} transition:scale={{ duration: dur(220), start: 0.9 }}>
+                    <i class="ti ti-calendar-heart"></i><b class="sm">{sinceText}</b><small>{t('acc.modal.stat.since')}</small>
                   </div>
                 {/if}
               </div>
@@ -537,7 +622,7 @@
                 <div class="am-block">
                   <div class="am-lbl"><i class="ti ti-palette"></i> {t('acc.modal.color')}</div>
                   <div class="am-colors">
-                    <button class="am-sw none" class:sel={colorDraft === ''} onclick={() => (colorDraft = '')} title={t('acc.modal.colorNone')} aria-label={t('acc.modal.colorNone')}>
+                    <button class="am-sw none" class:sel={colorDraft === ''} onclick={() => (colorDraft = '')} use:tip={t('acc.modal.colorNone')} aria-label={t('acc.modal.colorNone')}>
                       <i class="ti ti-ban"></i>
                     </button>
                     {#each PROFILE_COLORS as c (c)}
@@ -554,6 +639,10 @@
                     </button>
                   </div>
                 {/if}
+
+                {#if accountId}
+                  <div class="am-block"><ProfileComments profileId={accountId} isOwner onopen={openPeer} /></div>
+                {/if}
               {/if}
 
             {:else}
@@ -565,6 +654,7 @@
                   <i class="ti ti-plug-off"></i>
                   <div>
                     <b>{fpErrText}</b>
+                    {#if /not_friends/.test(fpErr)}<small>{t('acc.modal.friend.notFriendHint')}</small>{/if}
                     {#if !/not_friends/.test(fpErr)}
                       <button class="btn btn-ghost btn-sm am-retry" onclick={() => fpTick++}><i class="ti ti-refresh"></i> {t('acc.modal.friend.retry')}</button>
                     {/if}
@@ -575,6 +665,11 @@
                   <i class="ti ti-lock"></i>
                   <div><b>{t('acc.modal.friend.hidden')}</b><small>{t('acc.modal.friend.hiddenHint')}</small></div>
                 </div>
+              {:else if fp?.isFriend === false}
+                <div class="am-empty lock">
+                  <i class="ti ti-lock"></i>
+                  <div><b>{t('acc.modal.friend.notFriend')}</b><small>{t('acc.modal.friend.notFriendHint')}</small></div>
+                </div>
               {:else}
                 <div class="am-block" in:fly={{ y: 8, duration: dur(220) }}>
                   <div class="am-lbl"><i class="ti ti-quote"></i> {t('acc.modal.bio')}</div>
@@ -582,43 +677,37 @@
                 </div>
               {/if}
 
-              {#if f}
-                <div class="am-danger">
-                  <div class="am-lbl"><i class="ti ti-shield-lock"></i> {t('social.priv.title')}</div>
-                  <div class="am-danger-row">
-                    <button class="am-dbtn" disabled={busy} data-testid="profile-block-btn" onclick={() => onblock(f!)}>
-                      <i class="ti ti-ban"></i> {blocked ? t('social.profile.unblock') : t('social.profile.block')}
-                    </button>
-                    <button class="am-dbtn" disabled={busy} onclick={() => onremove(f!)}>
-                      {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-user-minus"></i>{/if}
-                      {t('social.profile.remove')}
-                    </button>
-                  </div>
+              {#if fpState === 'ok' && fp && !fpHidden && ((fp.mutualCount ?? 0) > 0 || (fp.mutualGroupsCount ?? 0) > 0)}
+                <div class="am-block am-mutual" in:fly={{ y: 8, duration: dur(220) }}>
+                  {#if (fp.mutualCount ?? 0) > 0}
+                    <div class="am-lbl"><i class="ti ti-users"></i> {t('acc.modal.mutual.friends', { n: fp.mutualCount ?? 0 })}</div>
+                    {#if fp.mutualFriends?.length}
+                      <div class="am-chips">
+                        {#each fp.mutualFriends as mf (mf.accountId)}<button class="am-chip btn" onclick={() => onopenfriend(mf.accountId, mf.nickname)} use:tip={t('ff.profile.open')}><FAvatar head={heads[mf.nickname] ?? ''} initial={(mf.nickname.charAt(0) || '?').toUpperCase()} size={24} /><span class="am-cn">{mf.nickname}</span></button>{/each}
+                        {#if (fp.mutualCount ?? 0) > fp.mutualFriends.length}<span class="am-chip more">+{(fp.mutualCount ?? 0) - fp.mutualFriends.length}</span>{/if}
+                      </div>
+                    {:else}<small class="am-mhint">{t('acc.modal.mutual.namesHidden')}</small>{/if}
+                  {/if}
+                  {#if (fp.mutualGroupsCount ?? 0) > 0}
+                    <div class="am-lbl"><i class="ti ti-users-group"></i> {t('acc.modal.mutual.groups', { n: fp.mutualGroupsCount ?? 0 })}</div>
+                    {#if fp.mutualGroups?.length}
+                      <div class="am-chips">
+                        {#each fp.mutualGroups as mg (mg.id)}<button class="am-chip btn" onclick={() => onopengroup(mg.id)} use:tip={t('acc.modal.mutual.openGroup')}><GroupAvatar title={mg.title} icon={groupLook(mg.id)?.icon ?? 'users-group'} color={groupLook(mg.id)?.color ?? ''} size={24} /><span class="am-cn">{mg.title}</span></button>{/each}
+                        {#if (fp.mutualGroupsCount ?? 0) > fp.mutualGroups.length}<span class="am-chip more">+{(fp.mutualGroupsCount ?? 0) - fp.mutualGroups.length}</span>{/if}
+                      </div>
+                    {:else}<small class="am-mhint">{t('acc.modal.mutual.namesHidden')}</small>{/if}
+                  {/if}
                 </div>
               {/if}
+
+              {#if fpState === 'ok' && fp && !fpHidden && fp.isFriend !== false && friendId}
+                <div class="am-block" in:fly={{ y: 8, duration: dur(220) }}><ProfileComments profileId={friendId} onopen={(id, nick) => onopenfriend(id, nick)} onopenself={onopenself} /></div>
+              {/if}
+
             {/if}
 
           {:else if tab === 'privacy'}
-            <div class="am-note"><i class="ti ti-shield-check"></i> {t('acc.modal.priv.note')}</div>
-            {#if !privOk}
-              <div class="am-empty"><i class="ti ti-plug-off"></i><div><b>{t('acc.modal.priv.need')}</b></div></div>
-            {/if}
-            <div class="am-priv" class:off={!privOk}>
-              {#each PRIV_ROWS as r, i (r.k)}
-                {@const cur = privValue(r.k)}
-                {@const ci = Math.max(0, r.opts.findIndex((o) => o[0] === cur))}
-                <div class="am-prow stg" style="--i:{i + 2}">
-                  <span class="am-pico"><i class="ti {r.icon}"></i></span>
-                  <span class="am-ptxt"><b>{t(r.title)}</b><small>{t(r.hint)}</small></span>
-                  <div class="am-seg" style="--n:{r.opts.length}" role="radiogroup" aria-label={t(r.title)}>
-                    <span class="am-seg-pill" style="transform:translateX({ci * 100}%)" aria-hidden="true"></span>
-                    {#each r.opts as o (o[0])}
-                      <button role="radio" aria-checked={cur === o[0]} class:on={cur === o[0]} disabled={!rowOk(r.k) || !!privBusy} onclick={() => setPriv(r.k, o[0])}>{t(o[1])}</button>
-                    {/each}
-                  </div>
-                </div>
-              {/each}
-            </div>
+            <AccountPrivacy />
 
           {:else}
             <div class="am-note local"><i class="ti ti-device-desktop"></i> {t('acc.modal.look.note')}</div>
@@ -654,21 +743,36 @@
   </div>
 </UiModal>
 
+{#if isSelf && peerFriend}
+  <ProfileModal mode="friend" viewOnly friend={peerFriend} isFriend={peerIsFriend} head={peerHead}
+    backName={peerStack.length > 1 ? peerStack[peerStack.length - 2].nickname : (nickname !== '—' ? nickname : t('acc.modal.title'))} onback={peerBack}
+    onopenfriend={openPeer} onopenself={() => (peerStack = [])} onclose={() => { peerStack = []; onclose() }} />
+{/if}
+
 <style>
-  .am { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 20px; min-height: 480px; }
+  /* Вікно має СТАЛУ висоту: ліва колонка (3D + дії) нерухома й підлаштовується під неї,
+     скролиться лише права частина. Скрол тіла модалки вимкнено — керує .am-main. */
+  :global(.ui-body.pm-ui) { padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+  .am { flex: 1 1 auto; min-height: 0; box-sizing: border-box; display: grid; grid-template-columns: 290px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 20px; padding: 16px 20px;
+    height: clamp(440px, calc(100vh - 2 * var(--modal-gap, 30px) - 80px), 640px); }
   .stg { animation: am-rise .5s cubic-bezier(.22, 1, .36, 1) both; animation-delay: calc(var(--i, 0) * 55ms); }
   @keyframes am-rise { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) { .am, .am :global(*) { animation: none !important; } }
 
   /* ── Hero ── */
-  .am-hero { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 12px 16px; border-radius: 20px; overflow: hidden; isolation: isolate;
+  .am-hero { position: relative; min-height: 0; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 12px 14px; border-radius: 20px; overflow: hidden; isolation: isolate;
     background: linear-gradient(180deg, color-mix(in srgb, var(--aura) 14%, var(--bg-panel)) 0%, var(--bg-panel) 70%); border: 1px solid color-mix(in srgb, var(--aura) 30%, var(--border)); transition: background .4s, border-color .4s; }
+  .am-back { position: absolute; top: 10px; left: 10px; z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; cursor: pointer;
+    color: var(--text); background: color-mix(in srgb, var(--bg-panel) 70%, transparent); border: 1px solid var(--border-hi); backdrop-filter: blur(6px); transition: border-color .14s, background .14s, transform .12s; }
+  .am-back:hover { border-color: color-mix(in srgb, var(--aura) 60%, transparent); background: color-mix(in srgb, var(--aura) 16%, var(--bg-panel)); }
+  .am-back:active { transform: scale(.94); }
+  .am-back i { font-size: 17px; }
   .am-aura { position: absolute; inset: -30% -20% 20% -20%; z-index: -1; background: radial-gradient(closest-side, color-mix(in srgb, var(--aura) 45%, transparent), transparent 75%); filter: blur(14px); animation: am-breathe 5s ease-in-out infinite; }
   @keyframes am-breathe { 0%, 100% { opacity: .65; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
   .am-spark { position: absolute; z-index: -1; width: 4px; height: 4px; border-radius: 50%; background: var(--aura); opacity: 0; left: calc(10% + var(--n) * 12%); bottom: 22%; animation: am-float calc(4s + var(--n) * .6s) ease-in infinite; animation-delay: calc(var(--n) * -.9s); }
   @keyframes am-float { 0% { opacity: 0; transform: translateY(0) scale(.6); } 20% { opacity: .9; } 100% { opacity: 0; transform: translateY(-190px) scale(1.2) translateX(calc((var(--n) - 3) * 6px)); } }
 
-  .am-stage-wrap { position: relative; width: 100%; height: 330px; }
+  .am-stage-wrap { position: relative; width: 100%; flex: 1 1 0; min-height: 120px; }
   .am-stage { position: absolute; inset: 0; opacity: 0; transition: opacity .5s; cursor: grab; }
   .am-stage:active { cursor: grabbing; }
   .am-stage.ready { opacity: 1; }
@@ -677,12 +781,16 @@
   .am-flat { position: absolute; inset: 0; display: grid; place-items: center; }
   .am-flat img { width: 148px; height: 148px; border-radius: 28px; image-rendering: pixelated; box-shadow: 0 14px 40px color-mix(in srgb, var(--aura) 40%, transparent); animation: am-bob 4s ease-in-out infinite; }
   @keyframes am-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-  .am-floor { position: absolute; left: 50%; bottom: 6px; width: 70%; height: 22px; transform: translateX(-50%); border-radius: 50%; z-index: -1;
+  .am-floor { position: absolute; left: 50%; bottom: calc(9% - 11px); width: 62%; height: 22px; transform: translateX(-50%); border-radius: 50%; z-index: -1;
     background: radial-gradient(closest-side, color-mix(in srgb, var(--aura) 55%, transparent), transparent); animation: am-pulse 3.2s ease-in-out infinite; }
+  /* Тінь-«контакт» просто під ступнями: камера на рівні центру моделі, ноги стоять на ~9% від низу сцени. */
+  .am-floor::after { content: ''; position: absolute; left: 50%; top: 50%; width: 55%; height: 60%; transform: translate(-50%, -50%); border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(0, 0, 0, .55), transparent); }
   @keyframes am-pulse { 0%, 100% { opacity: .6; transform: translateX(-50%) scaleX(.9); } 50% { opacity: 1; transform: translateX(-50%) scaleX(1.05); } }
   .am-hint { font: 500 var(--fs-min)/1 var(--font-ui); color: var(--text-mute); display: inline-flex; gap: 5px; align-items: center; }
 
-  .am-id { display: grid; gap: 8px; justify-items: center; width: 100%; margin-top: 2px; }
+  .am-id { flex: 0 0 auto; display: grid; gap: 7px; justify-items: center; width: 100%; margin-top: 2px; }
+  .am-hint { flex: 0 0 auto; }
   .am-name { font: 800 19px/1.1 var(--font-ui); color: var(--text); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .am-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
   .am-badge { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: 999px; font: 650 var(--fs-min)/1 var(--font-ui); color: var(--text-dim); background: var(--hover); border: 1px solid var(--border); }
@@ -690,14 +798,22 @@
   .am-badge.st { color: var(--text); border-color: color-mix(in srgb, var(--c) 45%, var(--border)); background: color-mix(in srgb, var(--c) 12%, transparent); }
   .am-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 0 var(--c); animation: am-ping 2.2s ease-out infinite; }
   @keyframes am-ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--c) 60%, transparent); } 70%, 100% { box-shadow: 0 0 0 6px transparent; } }
+  .am-copyname { display: inline-flex; align-items: center; gap: 7px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
+  .am-copyname:disabled { cursor: default; }
+  .am-copyname .am-nn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .am-copyname i { flex: none; font-size: 15px; color: var(--text-dim); opacity: 0; transition: opacity .15s, color .15s; }
+  .am-copyname:hover:not(:disabled) i, .am-copyname:focus-visible i, .am-copyname i.ok { opacity: 1; }
+  .am-copyname:hover:not(:disabled) .am-nn { color: var(--aura); }
+  .am-copyname i.ok { color: var(--ff-ok, #22c55e); }
+  .am-copyname:focus-visible { outline: 2px solid var(--aura); outline-offset: 3px; border-radius: 6px; }
   .am-handle { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 10px; cursor: pointer; border: 1px dashed var(--border-hi); background: transparent; color: var(--text-dim); font: 600 12px/1 var(--font-ui); transition: all .15s; position: relative; overflow: hidden; }
   .am-handle::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--aura) 35%, transparent) 50%, transparent 70%); transform: translateX(-120%); animation: am-shine 4.5s ease-in-out infinite; }
   @keyframes am-shine { 0%, 60% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
   .am-handle:hover { color: var(--text); border-style: solid; border-color: var(--aura); }
 
   /* ── Праворуч ── */
-  .am-main { display: grid; align-content: start; gap: 14px; min-width: 0; }
-  .am-tabs { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 13px; background: var(--bg-input); border: 1px solid var(--border); }
+  .am-main { display: grid; align-content: start; gap: 14px; min-width: 0; min-height: 0; height: 100%; overflow-y: auto; overscroll-behavior: contain; padding: 0 6px 4px 0; scrollbar-gutter: stable; }
+  .am-tabs { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: repeat(3, 1fr); padding: 3px; border-radius: 13px; background: var(--bg-input); border: 1px solid var(--border); }
   .am-pill { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc((100% - 6px) / var(--n, 3)); border-radius: 10px; pointer-events: none;
     background: color-mix(in srgb, var(--aura) 18%, var(--bg-panel)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--aura) 45%, transparent); transition: transform .3s cubic-bezier(.34, 1.3, .64, 1), background .4s; }
   .am-tab { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 10px 6px; border: 0; background: transparent; cursor: pointer; color: var(--text-mute); font: 700 12.5px/1 var(--font-ui); border-radius: 10px; transition: color .18s; }
@@ -705,14 +821,26 @@
   .am-tab:hover, .am-tab.on { color: var(--text); }
   .am-pane { display: grid; gap: 14px; align-content: start; }
 
-  .am-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
+  .am-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 10px; }
   .am-stat { position: relative; display: grid; gap: 4px; padding: 13px 14px; border-radius: 15px; background: var(--bg-input); border: 1px solid var(--border); overflow: hidden; transition: transform .18s, border-color .18s; }
   .am-stat:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--aura) 55%, var(--border)); }
   /* Іконка — окремим рядком над значенням: раніше вона лежала absolute у
      правому куті й наїжджала на довге значення («20 год 58 хв», «жовт. 2026»). */
   .am-stat > i { display: grid; place-items: center; width: 28px; height: 28px; margin-bottom: 4px; border-radius: 9px; font-size: 15px;
     color: color-mix(in srgb, var(--aura) 80%, var(--text)); background: color-mix(in srgb, var(--aura) 14%, transparent); }
-  .am-stat b { min-width: 0; font: 800 17px/1.2 var(--font-ui); color: var(--text); font-variant-numeric: tabular-nums; text-wrap: balance; }
+  .am-stat b { min-width: 0; font: 800 18px/1.2 var(--font-ui); color: var(--text); font-variant-numeric: tabular-nums; }
+  .am-stat b.nw { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .am-stat { min-height: 88px; }
+  .am-mutual { display: grid; gap: 10px; }
+  .am-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .am-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 12px 4px 4px; border-radius: 999px; font: 600 12px/1.2 var(--font-ui); color: var(--text); background: var(--bg-input); border: 1px solid var(--border); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .am-cn { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .am-chip.more { padding: 4px 10px; }
+  .am-chip.btn { cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; transition: border-color .14s, background .14s; }
+  .am-chip.btn:hover { border-color: color-mix(in srgb, var(--aura) 60%, var(--border)); background: color-mix(in srgb, var(--aura) 10%, var(--bg-input)); }
+  .am-chip.btn:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+  .am-chip.more { color: var(--text-mute); }
+  .am-mhint { color: var(--text-mute); font-size: 11.5px; }
   .am-stat b.sm { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .am-stat small { color: var(--text-mute); font: 500 11px/1.2 var(--font-ui); }
 
@@ -771,13 +899,16 @@
   .am-letter { font: 800 56px/1 var(--font-ui); color: var(--text-mute); }
   .am-badge.bad { color: var(--red); border-color: color-mix(in srgb, var(--red) 32%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
 
-  .am-acts { display: flex; gap: 6px; width: 100%; margin-top: 4px; }
+  .am-acts { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; margin-top: 4px; }
   .am-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid transparent; cursor: pointer; font: 750 12px/1 var(--font-ui);
     transition: filter .14s, transform .12s, border-color .14s, color .14s, background .14s; }
   .am-btn:active { transform: scale(.96); }
   .am-btn i { font-size: 15px; }
-  .am-btn.pri { flex: 1; min-width: 0; color: #111; background: var(--aura); }
+  .am-btn.pri { flex: 1 1 110px; min-width: 0; color: #111; background: var(--aura); }
   .am-btn.pri:hover { filter: brightness(1.08); }
+  .am-btn.sec { flex: 1 1 110px; min-width: 0; color: var(--text); background: var(--bg-input); border-color: var(--border-hi); }
+  .am-btn.sec:hover:not(:disabled) { border-color: color-mix(in srgb, var(--aura) 55%, transparent); }
+  .am-btn.sent, .am-btn:disabled { opacity: .7; cursor: default; filter: none; }
   .am-btn.ghost { width: 34px; padding: 0; color: var(--text-mute); background: var(--bg-input); border-color: var(--border-hi); }
   .am-btn.ghost:hover { color: var(--text); border-color: color-mix(in srgb, var(--aura) 55%, transparent); }
   .am-btn.ghost.on { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
@@ -788,19 +919,25 @@
   .am-empty.lock > i { color: var(--text-dim); }
   .am-retry { margin-top: 8px; }
 
-  .am-danger { display: grid; gap: 8px; padding: 12px; border-radius: 14px; background: var(--bg-input); border: 1px solid color-mix(in srgb, var(--red) 24%, var(--border)); }
-  .am-danger .am-lbl i { color: var(--red); }
-  .am-danger-row { display: flex; flex-wrap: wrap; gap: 6px; }
-  .am-dbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 9px; cursor: pointer;
-    border: 1px solid color-mix(in srgb, var(--red) 32%, transparent); background: color-mix(in srgb, var(--red) 8%, transparent); color: var(--red); font: 700 11.5px/1 var(--font-ui); transition: background .14s, color .14s; }
+  .am-mod { display: grid; gap: 6px; width: 100%; margin-top: 4px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--aura) 22%, var(--border)); }
+  .am-dbtn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 32px; padding: 0 12px; border-radius: 9px; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--red) 32%, transparent); background: transparent; color: var(--red); font: 700 11.5px/1 var(--font-ui); transition: background .14s, color .14s; }
   .am-dbtn:hover:not(:disabled) { color: #fff; background: var(--red); }
   .am-dbtn:disabled { opacity: .55; cursor: default; }
   .am-dbtn i { font-size: 14px; }
 
-  @media (max-width: 860px) { .am { grid-template-columns: minmax(0, 1fr); } .am-looks { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 860px) {
+    :global(.ui-body.pm-ui) { overflow-y: auto; display: block; }
+    .am { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; }
+    .am-hero { height: auto; }
+    .am-stage-wrap { flex: none; height: 300px; }
+    .am-main { height: auto; overflow: visible; padding: 0; }
+    .am-looks { grid-template-columns: minmax(0, 1fr); }
+  }
   /* Низьке вікно ноутбука: модалка вміщається у висоту вікна без зайвого скролу. */
   @media (max-height: 760px) {
-    .am { min-height: 0; }
-    .am-stage-wrap { height: 260px; }
+    .am-stage-wrap { min-height: 90px; }
+    .am-hero { gap: 6px; padding: 10px; }
+    .am-dbtn { height: 28px; }
   }
 </style>

@@ -288,7 +288,7 @@ func attachLoaderCompat(mods []model.ModEntry, loader string, connectorPresent b
 // connectorPresent — коли в збірці стоїть Sinytra Connector, Forge та
 // NeoForge додатково приймають fabric/quilt-моди (Connector — саме
 // транслятор, що це вмикає). Без Connector ця пара лишається
-// несумісною, як і раніше.
+// несумісною.
 func loadersCompatible(buildLoader, modLoader string, connectorPresent bool) bool {
 	if buildLoader == modLoader {
 		return true
@@ -636,14 +636,13 @@ func (a *App) VerifyIncompatibleMods(packID, mcVersion, loader string) []model.M
 // attachMissingDeps рахує відсутні залежності ЛОКАЛЬНО (без мережі):
 // DependsOn мінус моди, що вже є в теці (увімкнені АБО вимкнені).
 //
-// Раніше рахувалось лише "мінус увімкнені моди" — тобто якщо гравець
-// свідомо вимкнув супутній мод (типовий кейс: Flywheel/Ponder — вони
-// mandatory=true в mods.toml у Create, бо технічно потрібні коду, але
-// частина збірок кладе їх у моди вимкненими навмисно, чи гравець сам
-// вирішує ставити їх окремо чи ні) — система все одно позначала їх як
-// "відсутню залежність" і пропонувала примусово довстановити. Тепер
-// "відсутньою" вважається лише те, чого в теці НЕМА ФІЗИЧНО взагалі —
-// рішення "вмикати чи ні" лишається за гравцем, лаунчер туди не лізе.
+// Flywheel/Ponder — вони mandatory=true в mods.toml у Create, бо
+// технічно потрібні коду, але частина збірок кладе їх у моди
+// вимкненими навмисно, чи гравець сам вирішує ставити їх окремо чи
+// ні) — система все одно позначала їх як "відсутню залежність" і
+// пропонувала примусово довстановити. Тепер "відсутньою" вважається
+// лише те, чого в теці НЕМА ФІЗИЧНО взагалі — рішення "вмикати чи ні"
+// лишається за гравцем, лаунчер туди не лізе.
 func (a *App) attachMissingDeps(mods []model.ModEntry) {
 	// present збирає не лише "головний" ID кожного jar, а й усі ID з
 	// його "provides" (fabric.mod.json). Критично для Fabric API: це
@@ -801,15 +800,12 @@ func (a *App) CheckModUpdates(packID, mcVersion, loader string) []model.ModEntry
 		d := done
 		mu.Unlock()
 		// emitModsUpdateProgress (mods_batch.go) — батчинг: цей цикл
-		// синхронний і для більшості модів (кеш валідний) миттєвий, тож
-		// прямий a.emit тут раніше давав сотні окремих CGo-викликів/подій
-		// підряд на збірках з великою кількістю модів — той самий клас
-		// «зависання UI», що console_batch.go вже виправляв для логів гри.
+		// синхронний і для більшості модів (кеш валідний) миттєвий.
 		a.emitModsUpdateProgress(map[string]any{"packId": packID, "done": d, "total": total})
 	}
 	// Жива подія на ОДИН мод: UI патчить рядок одразу після перевірки
 	// конкретного файлу (checking → done + hasUpdate), а не чекає, поки
-	// перевіряться ВСІ моди (раніше стан змінювався лише в кінці).
+	// перевіряться ВСІ моди.
 	emitOne := func(m *model.ModEntry) {
 		// Копія, а не вказівник: подію серіалізують пізніше (батчер), а
 		// горутини перевірки тим часом змінюють той самий ModEntry.
@@ -827,9 +823,7 @@ func (a *App) CheckModUpdates(packID, mcVersion, loader string) []model.ModEntry
 	for i := range mods {
 		m := &mods[i]
 		// ВИМКНЕНІ моди (.jar.disabled) перевіряємо так само, як увімкнені:
-		// SHA1 і метадані в них ті самі. Раніше такі моди пропускались —
-		// через це у вимкненого мода зникали іконка проєкту, посилання на
-		// сторінку Modrinth/CurseForge і позначка оновлення.
+		// SHA1 і метадані в них ті самі.
 		if hasPrev {
 			if idx, ok := prev.byFile[m.FileName]; ok {
 				c := prev.mods[idx]
@@ -861,10 +855,7 @@ func (a *App) CheckModUpdates(packID, mcVersion, loader string) []model.ModEntry
 	// ── Прохід 2: batch-resolve sha1 на Modrinth (ОДИН запит) ───────────
 	// POST /version_files/update — той самий endpoint, що використовує сам
 	// Modrinth App: для кожного sha1 повертає НАЙНОВІШУ версію проєкту під
-	// вказані loaders+game_versions. Раніше на кожен мод йшло до 3 окремих
-	// запитів (GetVersionByHash + GetProject + LatestVersionFor) — тепер
-	// один batch на всі моди, а поодинокі запити — лише як fallback для
-	// модів, не знайдених за хешем (curl/перейменовані jar тощо).
+	// вказані loaders+game_versions.
 	var hashes []string
 	seenHash := map[string]bool{}
 	for _, p := range pending {
@@ -876,8 +867,7 @@ func (a *App) CheckModUpdates(packID, mcVersion, loader string) []model.ModEntry
 	}
 	// latestByHash: sha1 → найновіша сумісна версія. Якщо batch впав
 	// (мережа), усі pending підуть у per-mod fallback нижче — той самий
-	// шлях, що був раніше, тож поведінка деградує не в «помилку», а в
-	// стару поодиноку перевірку.
+	// шлях.
 	latestByHash := map[string]*api.FullVersion{}
 	// batchOK — чи відповів Modrinth на пакетний запит. Якщо так, ця
 	// відповідь остаточна: хеш, якого немає в мапі, = «сумісного оновлення
@@ -1047,14 +1037,9 @@ func (a *App) CheckModUpdates(packID, mcVersion, loader string) []model.ModEntry
 	// Зберігаємо новий кеш з byFile-індексом і timestamp.
 	//
 	// ВАЖЛИВО (пам'ять): у кеш іде ЛЕГКА копія (updateCacheCopy), а не
-	// сам слайс mods. Раніше сюди клався той самий слайс, який щойно
-	// повернувся фронтенду — разом з IconData (base64-іконка КОЖНОГО
-	// мода), Description, DependsOn тощо. Тобто після кожної перевірки
-	// оновлень у пам'яті назавжди (до TTL) лишалась ПОВНА друга копія
-	// всього списку модів збірки, помножена на кількість збірок, які
-	// користувач відкривав за сесію. Кешу потрібні лише поля про
-	// оновлення (їх і читають mergeCachedUpdateInfo та smart-merge на
-	// початку цієї ж функції) — усе інше щоразу перечитується з диска.
+	// сам слайс mods. Кешу потрібні лише поля про оновлення (їх і
+	// читають mergeCachedUpdateInfo та smart-merge на початку цієї ж
+	// функції) — усе інше щоразу перечитується з диска.
 	cached := updateCacheCopy(mods)
 	byFile := make(map[string]int, len(cached))
 	for i, m := range cached {
@@ -1496,12 +1481,7 @@ func isSameModVersion(installedFile, installedVersion, remoteFile, remoteVersion
 // точне порівняння імен завжди хибне, і лаунчер вважає мод неоновленим
 // (пропонує «оновити» до тієї самої версії).
 //
-// Раніше розкодовувалось лише %2B і %20, тож будь-який інший токен (%5B,
-// %28, %2C, %C3%A9 …) ламав порівняння. Тепер розкодовуємо ПОСЛІДОВНОСТІ
-// валідних %XX, якщо вони складають коректний UTF-8; усе інше — одинокий
-// "%" ("100%.jar"), обрізаний "%2", випадкові байти — лишається як є, тож
-// легальний літерал "%" в іменах файлів не псується. Функція симетрична:
-// її застосовують до обох боків порівняння.
+// Функція симетрична: її застосовують до обох боків порівняння.
 var pctRunRe = regexp.MustCompile(`(?:%[0-9A-Fa-f]{2})+`)
 
 func decodeURLTokens(s string) string {
@@ -1599,14 +1579,13 @@ func (a *App) findCurseForgeProject(m *model.ModEntry, mcVersion, loader string)
 		return nil, fmt.Errorf("немає назви мода для пошуку на CurseForge")
 	}
 	// ── Порядок пошуку: СПОЧАТКУ ЗНАХОДИМО САМ МОД, ПОТІМ ВЕРСІЇ ──────
-	// Раніше першим ішов пошук З ФІЛЬТРАМИ версії гри/лоадера
-	// (gameVersion=1.20.1&modLoaderType=...). Проблема: CurseForge search
-	// з gameVersion-параметром повертає ЛИШЕ проєкти, що вже мають файл
-	// саме під цю версію — і тихо дає 0 результатів для легальних модів
-	// (неспівпадіння формату версії в їхній базі, відкладений реліз під
-	// нову MC тощо). Тому тепер навпаки: спершу шукаємо проєкт БЕЗ
-	// фільтрів (знайти мод), а сумісну версію визначаємо окремо серед
-	// файлів знайденого проєкту (findCurseForgeFile / GetModFiles).
+	// Проблема: CurseForge search з gameVersion-параметром повертає ЛИШЕ
+	// проєкти, що вже мають файл саме під цю версію — і тихо дає 0
+	// результатів для легальних модів (неспівпадіння формату версії в
+	// їхній базі, відкладений реліз під нову MC тощо). Тому тепер
+	// навпаки: спершу шукаємо проєкт БЕЗ фільтрів (знайти мод), а сумісну
+	// версію визначаємо окремо серед файлів знайденого проєкту
+	// (findCurseForgeFile / GetModFiles).
 	//
 	// Друга проблема: назва з jar-файлу часто містить суфікс версії
 	// (smoothchunk-1.20.1-4.1.jar → searchFilter "smoothchunk-1.20.1-4.1"
@@ -1705,11 +1684,7 @@ func (a *App) findCurseForgeFile(client *custompack.CurseForgeClient, projectID 
 		return nil, fmt.Errorf("немає файлів, сумісних з цією версією гри/лоадером")
 	}
 	// Останній ДОЗВОЛЕНИЙ файл за каналом релізу (release завжди; beta/
-	// alpha — лише з AllowAlphaBetaModUpdates). Раніше тут сліпо брався
-	// files[0] — найсвіжіший за датою, навіть якщо то beta/alpha, випущена
-	// після останнього стабільного релізу (напр. JEI: 3 свіжі beta над
-	// останнім release), і налаштування AllowAlphaBetaModUpdates взагалі
-	// не застосовувалось до CurseForge-шляху (лише Modrinth).
+	// alpha — лише з AllowAlphaBetaModUpdates).
 	settings := a.cfg.GetSettings()
 	if best := custompack.CFLatestFile(files, settings.AllowAlphaBetaModUpdates, settings.AllowAlphaBetaModUpdates); best != nil {
 		return best, nil
@@ -1807,11 +1782,9 @@ func (a *App) getModVersionsEx(packID, fileName, mcVersion, loader string) (opts
 // відповідають фактично встановленому файлу мода. Порядок перевірки:
 // 1) sha1 (найточніше — байт-у-байт той самий файл); 2) точна назва
 // файлу; 3) нормалізований номер версії (fallback, коли автор проєкту
-// перезалив той самий білд під новим іменем файлу). Раніше порівнювали
-// голий versionNumber з версією з mods.toml — і для Create це майже
-// завжди не збігалось через різне форматування ("6.0.8" на диску проти
-// "mc1.20.1-6.0.8" на Modrinth), тож поточна версія в списку не
-// підсвічувалась взагалі.
+// перезалив той самий білд під новим іменем файлу). Номер версії
+// нормалізується, бо формати різні ("6.0.8" на диску проти
+// "mc1.20.1-6.0.8" на Modrinth).
 func markCurrentModVersion(opts []model.ModVersionOption, mod *model.ModEntry) {
 	if mod == nil {
 		return
@@ -1864,9 +1837,8 @@ func (a *App) InstallModVersion(packID, fileName string, opt model.ModVersionOpt
 	_ = os.Remove(strings.TrimSuffix(fileName, ".disabled"))
 	newName := opt.Filename
 	if disabled {
-		// opt.Filename вже закінчується на ".jar" — просто додаємо
-		// ".disabled" (те саме, що робить ToggleMod). Раніше тут було
-		// opt.Filename + ".jar.disabled", що давало подвійне "mod.jar.jar.disabled".
+		// opt.Filename вже закінчується на ".jar" — просто додаємо ".disabled" (те
+		// саме, що робить ToggleMod).
 		newName = opt.Filename + ".disabled"
 	}
 	if err := os.Rename(tmp, filepath.Join(modsDir, newName)); err != nil {
@@ -2033,10 +2005,7 @@ func (a *App) UpdateAllMods(packID, mcVersion, loader string, backup bool) model
 		}
 	}
 	// Прибираємо СТАРІ файли тих самих модів (іноді автор змінює ім'я jar)
-	// одним проходом по вже відсканованому списку. Раніше це робив
-	// installModUpdate через повторний ScanModsFull на КОЖЕН мод — на
-	// «Оновити всі» збірка перечитувалась десятки разів, і оновлення
-	// тривало хвилинами.
+	// одним проходом по вже відсканованому списку.
 	for _, m := range toUpdate {
 		if m.ID == "" {
 			continue
@@ -2260,13 +2229,10 @@ func (a *App) RestoreModBackup(packID string, entry model.ModBackupEntry) error 
 		return err
 	}
 
-	// ── Баг 1: видаляємо запис з manifest після успішного відновлення ──
-	// Раніше запис залишався — в UI список резервних копій не зменшувався.
+	// ──
 	a.deleteBackupEntry(packID, entry.ID)
 
-	// ── Баг 2: smart invalidation — тільки відновлений файл ────────────
-	// Раніше invalidateModUpdateCache(packID) скидала ВСІ перевірки збірки,
-	// тому після відновлення зникали всі значки «оновлення є» у решти модів.
+	// ──
 	a.invalidateModUpdateCache(packID, entry.FileName)
 	return nil
 }
@@ -2370,12 +2336,9 @@ func (a *App) FindDuplicateMods(packID string) []model.DuplicateModGroup {
 }
 
 // CheckPreLaunchModIssues — перевірка дублікатів модів (без перевірки залежностей).
-// Фронтенд показує модалку зі швидкими діями перед запуском гри.
-// Сканування jar-файлів виконується РІВНО ОДИН РАЗ: його результат
-// перевикористовується для перевірки дублікатів. Раніше
-// FindDuplicateMods робила повний скан окремо, а потім ще один скан робився
-// тут — на великих збірках кожен клік «Грати» парсив усі jar двічі, і
-// кнопка без будь-якого індикатора «зависала» на час перевірки.
+// Фронтенд показує модалку зі швидкими діями перед запуском гри. Сканування
+// jar-файлів виконується РІВНО ОДИН РАЗ: його результат перевикористовується для
+// перевірки дублікатів.
 //
 // ВАЖЛИВО (2026-08-17): використовуємо ЛЕГКИЙ скан (ListMods), а не
 // ScanModsFull. Дублікати визначаються за modId, який читається з кешу
@@ -2432,7 +2395,7 @@ func (a *App) downloadModFile(url, dest string) error {
 		if err != nil {
 			return err
 		}
-		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (shaurmaofficial2210@gmail.com)")
+		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+https://github.com/B23101/Shaurma-Launcher)")
 		// CurseForge CDN (edge.forgecdn.net) вимагає x-api-key на прямих
 		// завантаженнях файлів — без нього запити повертають 401
 		// Unauthorized (обов'язкова автентифікація для CDN-завантажень).
@@ -2490,12 +2453,9 @@ func urlLastSegment(rawURL string) string {
 func sanitizeFileName(s string) string {
 	var b strings.Builder
 	for _, r := range s {
-		// Раніше дозволяли ЛИШЕ ASCII (a-z0-9-_.): українська назва збірки
-		// на кшталт "Моя збірка" перетворювалась на порожній рядок — і
-		// .lnk у меню «Пуск» називався просто ".lnk" (баг «там пише .lnk,
-		// а не назва ярлика»). Windows/NTFS повністю підтримують Unicode в
-		// іменах файлів — лишаємо літери/цифри будь-якої мови, а розділювачі
-		// і заборонені символи замінюємо на '-'
+		// Windows/NTFS повністю підтримують Unicode в іменах файлів —
+		// лишаємо літери/цифри будь-якої мови, а розділювачі і заборонені
+		// символи замінюємо на '-'
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' || r == '_' || r == '.' {
 			b.WriteRune(r)
 		} else {

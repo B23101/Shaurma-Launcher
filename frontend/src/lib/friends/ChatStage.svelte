@@ -57,9 +57,19 @@
       onMembers: () => (membersOpen = true),
       muted: s.isMuted(gr.id),
       toggleMute: () => { void s.toggleMutePeer({ accountId: gr.id, nickname: gr.title } as SocialFriend) },
+      // Курсори «прочитано до» інших учасників групи (сервер часу прочитання не віддає).
+      readCursors: async () => {
+        const result = await App.GroupRequest('history', { groupId: gr.id, limit: 1 })
+        return (result?.history?.reads ?? [])
+          .filter((r: { by: string; upTo: number }) => r?.by && r.by !== s.me && gr.members.some(m => m.accountId === r.by))
+          .map((r: { by: string; upTo: number }) => ({ by: r.by, upTo: Number(r.upTo) || 0 }))
+      },
+      // id учасників, які прочитали повідомлення (і всі новіші за нього).
       readers: async (messageId) => {
         const result = await App.GroupRequest('history', { groupId: gr.id, limit: 1 })
-        return (result?.history?.reads ?? []).filter((r: { by: string; upTo: number }) => r.by !== s.me && r.upTo >= messageId && gr.members.some(m => m.accountId === r.by)).map((r: { by: string }) => g.nameOf(r.by, gr))
+        return (result?.history?.reads ?? [])
+          .filter((r: { by: string; upTo: number }) => r?.by && r.by !== s.me && Number(r.upTo) >= messageId && gr.members.some(m => m.accountId === r.by))
+          .map((r: { by: string }) => r.by)
       },
       claim: (messageId, from) => { void g.claimBuild({ groupId: gr.id, id: messageId, from } as any) },
     }

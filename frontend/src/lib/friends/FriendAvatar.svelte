@@ -28,8 +28,6 @@
   })
 
   const ring = $derived(friendColor(color))
-  // in_game — скрізь той самий помаранчевий (--orange), що й крапка статусу в чаті
-  // та бейдж профілю: раніше тут був синій і колір розходився з рештою лаунчера.
   const statusRing = $derived(status === 'online' ? '#22c55e' : status === 'in_game' ? '#ff8a00' : status === 'away' ? '#f59e0b' : ring)
   const initial = $derived((nickname || '?').trim().charAt(0).toUpperCase() || '?')
 </script>

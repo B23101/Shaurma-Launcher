@@ -44,7 +44,7 @@ func packsBase() string {
 // Шаурма-збірок не завантажиться взагалі (див. worker.js: X-Shaurma-Token).
 var tokenShaurma string
 
-// ShaurmaClient V2 (DOWNLOAD_SYNC_DESIGN_V2.md) більше НЕ якає .mrpack
+// ShaurmaClient НЕ якає .mrpack
 // цілим файлом: список збірок читається з packs-index.json, повний опис
 // однієї збірки — з packs/<id>/manifest.json (обидва — легкі JSON,
 // самі файли якаються окремо новим двочерговим sync.Runner'ом).
@@ -213,13 +213,11 @@ func (c *ShaurmaClient) GetPackIndex() ([]PackIndexEntry, error) {
 }
 
 // packsIndexTTL — термін життя кешу packs-index.json на боці лаунчера.
-// Раніше 60с і без жодного способу примусово оновити раніше — саме тому
-// нова приватна збірка (щойно гравця додали в acl.json на сервері) не
-// з'являлась у списку без перезапуску лаунчера: GetBuilds викликається
-// при кожному відкритті вкладки, але сам він теж завжди бив у цей самий
-// кеш. 15с — достатньо коротко, щоб короткий поллінг фронтенду (App.svelte
-// refreshShaurmaCatalog, кожні ~20с) реально бачив зміну без рестарту, і
-// достатньо довго, щоб не бити CDN на кожен дрібний ререндер UI.
+// GetBuilds викликається при кожному відкритті вкладки, але сам він теж
+// завжди бив у цей самий кеш. 15с — достатньо коротко, щоб короткий
+// поллінг фронтенду (App.svelte refreshShaurmaCatalog, кожні ~20с) реально
+// бачив зміну без рестарту, і достатньо довго, щоб не бити CDN на кожен
+// дрібний ререндер UI.
 const packsIndexTTL = 15 * time.Second
 
 // InvalidatePackIndexCache скидає TTL-кеш негайно — викликається після дій,
@@ -329,7 +327,7 @@ func (c *ShaurmaClient) GetEffectiveWhitelist(packID string) (map[string]bool, e
 // посиланням на його сторінку Modrinth/CurseForge, коли ці поля
 // заповнені (запис додано за посиланням на проєкт у Pack Manager) —
 // для записів "jar"/"manual" без прив'язки до платформи UI показує
-// звичайну картку без іконки (fallback), як і раніше.
+// звичайну картку без іконки (fallback).
 //
 // Дедуплікація за ModID (case-insensitive): якщо той самий мод є і в
 // глобальному, і в per-pack списку — per-pack запис виграє (свіжіший

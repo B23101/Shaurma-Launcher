@@ -16,10 +16,10 @@ import (
 // Проблема, яку це виправляє: "вікно повністю біле" — сторінка фізично
 // не рендериться. У логах це супроводжується:
 //
-//	libEGL warning: failed to get driver name for fd -1
-//	libEGL warning: MESA-LOADER: failed to retrieve device information
-//	MESA: error: ZINK: failed to choose pdev
-//	libEGL warning: egl: failed to create dri2 screen
+// libEGL warning: failed to get driver name for fd -1
+// libEGL warning: MESA-LOADER: failed to retrieve device information
+// MESA: error: ZINK: failed to choose pdev
+// libEGL warning: egl: failed to create dri2 screen
 //
 // Це означає, що WebKitGTK намагається рендерити через апаратне
 // прискорення (DMA-BUF composited rendering через EGL/GL), а драйвер
@@ -29,17 +29,15 @@ import (
 // (без панічної помилки в застосунку) не малює композитний шар — звідси
 // суцільно біле вікно замість краху.
 //
-// ВАЖЛИВО (виправлення «лаунчер гальмує/фрізить на Linux»): раніше три
-// змінні нижче виставлялись БЕЗУМОВНО — тобто КОЖНОМУ користувачеві
-// Linux, включно з машинами, де GPU працює ідеально. Наслідок: увесь UI
-// лаунчера рендериться Cairo/llvmpipe на CPU — скрол списку модів,
-// анімації, блюр і будь-яка перемальовка стають ривками, а процес їсть
-// помітно більше CPU і пам'яті під софтверні буфери. Тепер софтверний
-// фолбек вмикається ЛИШЕ коли робочого GPU справді нема (hasWorkingGPU())
-// — тобто рівно в тих оточеннях, заради яких він і писався (WSL2,
-// headless, VNC). Для NVIDIA з пропрієтарним драйвером лишаємо вимкненим
-// тільки DMABUF-рендерер: це відома несумісність WebKitGTK саме з ним,
-// композитинг при цьому працює нормально.
+// ВАЖЛИВО (виправлення «лаунчер гальмує/фрізить на Linux»). Наслідок:
+// увесь UI лаунчера рендериться Cairo/llvmpipe на CPU — скрол списку
+// модів, анімації, блюр і будь-яка перемальовка стають ривками, а процес
+// їсть помітно більше CPU і пам'яті під софтверні буфери. Тепер
+// софтверний фолбек вмикається ЛИШЕ коли робочого GPU справді нема
+// (hasWorkingGPU()) — тобто рівно в тих оточеннях, заради яких він і
+// писався (WSL2, headless, VNC). Для NVIDIA з пропрієтарним драйвером
+// лишаємо вимкненим тільки DMABUF-рендерер: це відома несумісність
+// WebKitGTK саме з ним, композитинг при цьому працює нормально.
 //
 // Виставляється лише якщо змінна ще НЕ задана — не перебиває свідомий
 // вибір користувача/дистрибутива (напр. якщо хтось вже експортував
@@ -55,7 +53,7 @@ func applyLinuxWebViewCompatEnv() {
 	switch {
 	case !hasWorkingGPU():
 		// Нема робочого DRI-пристрою (WSL2 без GPU, headless, VNC) —
-		// повний софтверний шлях, як і було раніше.
+		// повний софтверний шлях.
 		compatSetIfUnset("WEBKIT_DISABLE_COMPOSITING_MODE", "1")
 		compatSetIfUnset("WEBKIT_DISABLE_DMABUF_RENDERER", "1")
 		compatSetIfUnset("LIBGL_ALWAYS_SOFTWARE", "1")

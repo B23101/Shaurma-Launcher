@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── MigrationPanel: віджет міграції модів у створенні збірки ────────────
   // Переписано з нуля (v2). Стара версія використовувала загальні класи
   // .mig-mini-* з style.css, які були визначені ДВІЧІ у різних місцях
@@ -7,10 +9,6 @@
   // назви мода, наявності бейджа джерела чи версії. Тут все локально
   // (scoped), на CSS grid з фіксованими колонками — нічого поза цим
   // компонентом більше не чіпає верстку.
-  //
-  // Публічний контракт (props) навмисно 1-в-1 повторює те, що раніше
-  // жило прямо в CreatePackPage.svelte, — увесь стан і мережеві виклики
-  // лишаються там, цей компонент лише малює.
 
   //
   // Стан і виклики — спільний ModMigrationFlow (той самий, що в діалозі
@@ -132,12 +130,12 @@
                 <div class="mp-item-icon">
                   {#if it.iconUrl}<img src={it.iconUrl} alt="" loading="lazy" />{:else}<i class="ti ti-puzzle"></i>{/if}
                   {#if it.source === 'modrinth'}
-                    <span class="mp-badge" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                    <span class="mp-badge" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                   {:else if it.source === 'curseforge'}
-                    <span class="mp-badge" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                    <span class="mp-badge" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                   {/if}
                 </div>
-                <span class="mp-item-name" title={it.resolvedName || it.sourceName}>{it.resolvedName || it.sourceName}</span>
+                <span class="mp-item-name" use:launcherTip={it.resolvedName || it.sourceName}>{it.resolvedName || it.sourceName}</span>
                 <span class="mp-item-ver"></span>
                 <span class="mp-item-status st-{it.status}">
                   <i class="ti {statusIcon(it.status)}"></i>
@@ -186,13 +184,13 @@
               <div class="mp-item-icon">
                 {#if it.iconUrl}<img src={it.iconUrl} alt="" loading="lazy" />{:else}<i class="ti ti-puzzle"></i>{/if}
                 {#if it.source === 'modrinth'}
-                  <span class="mp-badge" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                  <span class="mp-badge" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                 {:else if it.source === 'curseforge'}
-                  <span class="mp-badge" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                  <span class="mp-badge" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                 {/if}
               </div>
-              <span class="mp-item-name" title={it.resolvedName || it.sourceName}>{it.resolvedName || it.sourceName}</span>
-              <span class="mp-item-ver mono">{#if it.side === 'unknown'}<span class="mp-side" title={t('mods.port.unknownHint')}>{t('mods.port.sideUnknown')}</span>{:else}{it.resolvedVersion}{/if}</span>
+              <span class="mp-item-name" use:launcherTip={it.resolvedName || it.sourceName}>{it.resolvedName || it.sourceName}</span>
+              <span class="mp-item-ver mono">{#if it.side === 'unknown'}<span class="mp-side" use:launcherTip={t('mods.port.unknownHint')}>{t('mods.port.sideUnknown')}</span>{:else}{it.resolvedVersion}{/if}</span>
               <span class="mp-item-status st-{it.status}">
                 <i class="ti {it.status === 'found' ? 'ti-circle-check' : 'ti-refresh'}"></i>
               </span>

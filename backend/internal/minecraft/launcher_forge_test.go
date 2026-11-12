@@ -260,8 +260,7 @@ func TestRulesArgs(t *testing.T) {
 }
 
 // TestFabricEmuArg — для Fabric json містить -DFabricMcEmu=..., і цей аргумент
-// МАЄ потрапити у JVM (раніше json-аргументи збирались лише для forge).
-// Файл класшляху для не-forge лоадерів не пишемо.
+// МАЄ потрапити у JVM. Файл класшляху для не-forge лоадерів не пишемо.
 func TestFabricEmuArg(t *testing.T) {
 	vjson := &VersionJSON{ID: "fabric-loader-0.19.1-1.20.1"}
 	vjson.Arguments.JVM = []interface{}{

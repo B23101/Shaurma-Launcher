@@ -9,11 +9,7 @@ import (
 
 // ── Баг 4: іконка/знахідка CurseForge у міграції модів ────────────────
 // bestCurseForgeMatch — чиста функція відбору найкращого збігу пошуку CF
-// (викликається findModOnCurseForge → resolveMigrationByName). Раніше
-// CFSearchHit.Logo мав json:"logoUrl" — поле, якого CurseForge API v1
-// ніколи не віддає, тож LogoURL у результатах міграції був завжди
-// порожнім і CF-моди лишались без іконки. Тепер лого читається з
-// вкладеного logo:{url}.
+// (викликається findModOnCurseForge → resolveMigrationByName).
 
 func TestBestCurseForgeMatchExactAndPrefix(t *testing.T) {
 	hits := []custompack.CFSearchHit{

@@ -93,7 +93,7 @@ func recName(list []LoaderVersionEntry) string {
 }
 
 // TestGetAvailableLoaders1201 — для 1.20.1 мають бути доступні і Forge, і
-// NeoForge (раніше NeoForge зникав через префіксний баг).
+// NeoForge.
 func TestGetAvailableLoaders1201(t *testing.T) {
 	p := NewVersionsProvider()
 

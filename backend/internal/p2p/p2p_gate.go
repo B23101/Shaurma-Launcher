@@ -298,7 +298,7 @@ func (s *ticketStore) remember(address, ticket string, expiresAtMs int64) {
 	}
 	now := time.Now()
 	// Життя рахуємо від моменту отримання (годинники гостя й вузла можуть розходитись); ticketExpiresAt лише
-	// скорочує його, коли вузол каже, що квиток спливе раніше.
+	// скорочує його, коли вузол каже.
 	life := s.ttl
 	if expiresAtMs > 0 {
 		if d := time.UnixMilli(expiresAtMs).Sub(now); d > 0 && d < life {

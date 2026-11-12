@@ -1,16 +1,16 @@
-// migration.go — ОДНОРАЗОВА міграція даних зі старих JSON-файлів у SQLite.
+// migration.go — ОДНОРАЗОВА міграція даних зі старих JSON-файлів у shaurma.json.
 //
-// Історія: до версії з єдиною базою даних лаунчер тримав стан у розкиданих
+// Історія: до версії з єдиним сховищем лаунчер тримав стан у розкиданих
 // JSON-файлах (builds.json, custom-packs.json, gallery-meta.json,
 // shortcuts.json, browser-ai/, install-state/, skins/presets.json) у папці
-// даних .shaurm та теці конфігурації. Тепер джерело правди — shaurma.db
-// (таблиці builds_registry, custom_packs, gallery_meta, shortcuts,
+// даних .shaurm та теці конфігурації. Джерело правди — shaurma.json (поля
+// builds_registry, custom_packs, gallery_meta, shortcuts,
 // browser_ai_cache, install_state, wardrobe_presets).
 //
 // Міграція запускається рівно ОДИН раз (прапорець files_migrated у
-// app_meta): імпортує наявні JSON-файли в БД і ПОТІМ ВИДАЛЯЄ їх, щоб не
+// app_meta): імпортує наявні JSON-файли в shaurma.json і ПОТІМ ВИДАЛЯЄ їх, щоб не
 // лишалось дублів і старого сміття. Повторний запуск не відновлює
-// видалені файли — наступні запуски працюють лише з БД.
+// видалені файли — наступні запуски працюють лише з shaurma.json.
 //
 // Додатково прибирається мусор, який лаунчер більше не створює:
 //   - download-state/  — легасі стан качалок V1 (не використовується);
@@ -21,8 +21,8 @@
 //   - skins/ — ЛИШАЄТЬСЯ на місці (.shaurm/skins): текстури пресетів
 //     гардеробу — постійні дані, не кеш;
 //   - window-state.json — ЛИШАЄТЬСЯ на місці: його читає shell ДО старту
-//     бази даних (відновлення розміру/позиції вікна до відкриття webview),
-//     тому він фізично не може жити в SQLite.
+//     сховища (відновлення розміру/позиції вікна до відкриття webview),
+//     тому він фізично не може жити в shaurma.json.
 package main
 
 import (
@@ -45,12 +45,12 @@ import (
 const metaFilesMigrated = "files_migrated"
 
 // runFilesMigration виконує одноразове перенесення даних зі старих
-// JSON-файлів у SQLite (див. коментар пакета). Ідемпотентно: якщо прапорець
+// JSON-файлів у shaurma.json (див. коментар пакета). Ідемпотентно: якщо прапорець
 // вже стоїть — нічого не робить. Викликається з ServiceStartup після
-// cfg.Load() (БД вже відкрита) і до першого використання реєстрів.
+// cfg.Load() (сховище вже відкрите) і до першого використання реєстрів.
 func (a *App) runFilesMigration() {
 	// Тепер дані зберігаються в JSON (shaurma.json + instance.json).
-	// Конвертація з SQLite виконується в store.MigrateFromSQLiteIfAvailable().
+	// Конвертація зі старого формату сховища виконується в store.MigrateFromSQLiteIfAvailable().
 	// Цей метод лишається як no-op для сумісності.
 }
 
@@ -168,7 +168,7 @@ func (a *App) migrateGalleryMeta(_ *store.Store) {
 	log.Printf("migration: gallery-meta.json імпортовано в instance.json (%d записів), файл видалено", imported)
 }
 
-// migrateShortcuts переносить shortcuts.json → таблиця shortcuts.
+// migrateShortcuts переносить shortcuts.json → shaurma.json (поле shortcuts).
 func (a *App) migrateShortcuts(st *store.Store) {
 	path := a.shortcutsFile()
 	data, err := os.ReadFile(path)
@@ -182,7 +182,7 @@ func (a *App) migrateShortcuts(st *store.Store) {
 	}
 	if len(reg) > 0 {
 		if err := st.SaveShortcuts(reg); err != nil {
-			log.Printf("migration: shortcuts.json → БД: %v", err)
+			log.Printf("migration: shortcuts.json → shaurma.json: %v", err)
 			return
 		}
 	}
@@ -191,7 +191,7 @@ func (a *App) migrateShortcuts(st *store.Store) {
 }
 
 // migrateBrowserAICache переносить browser-ai/ (translations + reviews) у
-// таблицю browser_ai_cache. Текa видаляється цілком після імпорту.
+// поле browser_ai_cache. Текa видаляється цілком після імпорту.
 func (a *App) migrateBrowserAICache(st *store.Store) {
 	root := a.browserAIDir()
 	dirs := []struct {
@@ -223,7 +223,7 @@ func (a *App) migrateBrowserAICache(st *store.Store) {
 		}
 	}
 	if total > 0 {
-		log.Printf("migration: browser-ai імпортовано (%d записів) у SQLite", total)
+		log.Printf("migration: browser-ai імпортовано (%d записів) у shaurma.json", total)
 	}
 	// Теку прибираємо цілком — кеш тепер у БД.
 	_ = safedel.RemoveAll(root)
@@ -304,7 +304,7 @@ func (a *App) cleanupLegacyGarbage() {
 
 	// Легасі-кеш binpatch-файлів Forge/NeoForge у СИСТЕМНОМУ %TEMP%:
 	// старі версії лаунчера витягували їх у os.TempDir()/shaurma-forge.
-	// Тепер кеш живе у cache/forge (папка даних лаунчера, чиститься
+	// Кеш живе у cache/forge (папка даних лаунчера, чиститься
 	// ClearCache) — системний temp більше не використовується взагалі
 	// (він може бути на іншому диску і лишати сміття на C:). Прибираємо
 	// залишки один раз.

@@ -62,6 +62,18 @@
   let width = $state(0)
 
   const activePeer = $derived(activeId ? s.peerById(activeId) : null)
+  // Для крихт верхньої панелі: з ким відкрито чат (друг чи група) + закриття чату по кліку на «Друзі».
+  $effect(() => {
+    const grp = g.active
+    window.dispatchEvent(new CustomEvent('friends:meta', { detail: grp
+      ? { kind: 'group', id: grp.id, name: grp.title ?? '' }
+      : activePeer ? { kind: 'friend', id: activePeer.accountId, name: activePeer.nickname } : null }))
+  })
+  $effect(() => {
+    const close = () => { if (g.active) g.close(); activeId = '' }
+    window.addEventListener('friends:close', close)
+    return () => { window.removeEventListener('friends:close', close); window.dispatchEvent(new CustomEvent('friends:meta', { detail: null })) }
+  })
 
   onMount(() => { const offGroups = g.start(); const offFriends = s.start(); return () => { offGroups(); offFriends?.() } })
 
@@ -85,6 +97,14 @@
     void s.st.friends.length
     if (need) void s.loadSent()
   })
+
+  // Профіль не-друга: щоб кнопка одразу показала «Надіслано», потрібен актуальний список вихідних запитів.
+  $effect(() => {
+    if (s.st.loggedIn && s.profileId && !s.profileIsFriend) void s.loadSent()
+  })
+
+  // Профіль закрито → історія переходів між профілями більше не потрібна.
+  $effect(() => { if (!s.profileId && s.profileBack.length) s.profileBack = [] })
 
   // Вузьке вікно → по одній панелі (див. також @container нижче).
   $effect(() => { if (width > 0) s.narrow = width <= 720 })
@@ -142,14 +162,22 @@
 {/if}
 <PrivacyDialog open={privacyOpen} onclose={() => (privacyOpen = false)} />
 
-<ProfileModal mode="friend" friend={s.profilePeer} head={s.profilePeer ? (s.heads[s.profilePeer.nickname] ?? '') : ''}
+<ProfileModal mode="friend" friend={s.profilePeer} isFriend={s.profileIsFriend} requestSent={!!s.profileId && s.sent.some((i) => i.fromAccountId === s.profileId)}
+  heads={s.heads} onwanthead={(n) => s.wantHead(n)} groupLook={(id) => g.group(id)?.settings}
+  head={s.profilePeer ? (s.heads[s.profilePeer.nickname] ?? '') : ''}
   busy={!!s.profilePeer && s.busy === s.profilePeer.accountId}
   muted={!!s.profilePeer && s.isMuted(s.profilePeer.accountId)}
   blocked={!!s.profilePeer && s.blocked.some((b) => b.accountId === s.profilePeer?.accountId)}
+  onopenfriend={(id, nick) => s.openProfileFromProfile(id, nick)}
+  onopenself={() => { s.profileId = ''; s.profileBack = []; window.dispatchEvent(new CustomEvent('open-account-modal', { detail: { tab: 'profile' } })) }}
+  backName={s.profileBack.length ? s.profileBack[s.profileBack.length - 1].nickname : ''}
+  onback={() => s.profileGoBack()}
+  onopengroup={(gid) => { s.profileId = ''; void g.open(gid) }}
   onmute={(f) => s.toggleMutePeer(f)}
   onblock={(f) => s.blockPeer(f)}
   onclose={() => (s.profileId = '')}
   onmessage={(f) => { s.profileId = ''; s.openChat(f) }}
+  onadd={(f) => s.inviteFromProfile(f)}
   onremove={(f) => s.remove(f)} />
 
 {#if s.tempInviteFor}

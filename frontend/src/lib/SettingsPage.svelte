@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // SettingsPage.svelte — сторінка «Налаштування»: пошук, меню розділів
   // (згруповане, як у Prism) і вміст розділу. Уся логіка лишається в App.svelte —
   // сюди приходять значення й колбеки. Структура меню та індекс пошуку — у
@@ -9,10 +11,12 @@
   import { consoleFontStack } from './theme.svelte'
   import { App } from './wails'
   import LauncherAppearance from './LauncherAppearance.svelte'
+  import ThemeStudio from './ThemeStudio.svelte'
   import MinecraftDefaultsTab from './MinecraftDefaultsTab.svelte'
   import MigrationSettingsWidget from './MigrationSettingsWidget.svelte'
   import AccessSettingsWidget from './AccessSettingsWidget.svelte'
   import AccountProfilePanel from './AccountProfilePanel.svelte'
+  import AccountPrivacy from './AccountPrivacy.svelte'
   import SCard from './settings/SCard.svelte'
   import Setting from './settings/Setting.svelte'
   import AccountsCard from './settings/AccountsCard.svelte'
@@ -216,22 +220,6 @@
   const customLangs = $derived(Object.values(getCustomLanguages()))
 
   // ── Вигляд ─────────────────────────────────────────────────────────────
-  const THEME_PRESETS = [
-    { bg: '#0f0f0f', card: '#161616', text: '#ffffff' },
-    { bg: '#0b1020', card: '#151c36', text: '#e9edff' },
-    { bg: '#12101f', card: '#1d1933', text: '#f1eaff' },
-    { bg: '#0d1510', card: '#16251b', text: '#e9f5ec' },
-    { bg: '#16120d', card: '#241b11', text: '#f6ecd9' },
-    { bg: '#101418', card: '#1a212a', text: '#e6edf3' },
-    { bg: '#f5f5f2', card: '#ffffff', text: '#1d1d1d' },
-    { bg: '#f1eef7', card: '#ffffff', text: '#2b2536' },
-  ]
-  const activePreset = $derived(THEME_PRESETS.findIndex((p) =>
-    p.bg === settings.themeCustomBg && p.card === settings.themeCustomCard && p.text === settings.themeCustomText))
-  function applyPreset(p: { bg: string; card: string; text: string }) {
-    updateSetting('themeCustomBg', p.bg); updateSetting('themeCustomCard', p.card); updateSetting('themeCustomText', p.text)
-  }
-
   // Вигляд карток у каталозі модів — той самий перемикач, що в самому каталозі.
   type DisplayMode = 'detailed' | 'grid' | 'compact'
   const DISPLAY_KEY = 'shaurma.cbDisplayMode.v1'
@@ -253,6 +241,13 @@
     try { localStorage.setItem(DISPLAY_KEY, m) } catch { /* ignore */ }
     try { window.dispatchEvent(new CustomEvent('cb-display-mode:changed', { detail: m })) } catch { /* ignore */ }
   }
+  // Де ховати елементи sidebar (кнопка «Створити», перемикач типів).
+  const SB_HIDE_MODES: { id: string; label: string }[] = [
+    { id: '', label: 'st.x.sbHide.none' },
+    { id: 'collapsed', label: 'st.x.sbHide.collapsed' },
+    { id: 'expanded', label: 'st.x.sbHide.expanded' },
+    { id: 'all', label: 'st.x.sbHide.all' },
+  ]
   const DISPLAY_MODES: { id: DisplayMode; icon: string; label: string }[] = [
     { id: 'detailed', icon: 'ti-layout-list', label: 'browser.view.detailed' },
     { id: 'grid', icon: 'ti-layout-grid', label: 'browser.view.grid' },
@@ -350,7 +345,7 @@
                 <div class="st-pills">
                   {#each customLangs as cl (cl.code)}
                     <span class="st-pill sel">{cl.name}
-                      <button class="st-pill-x" aria-label={t('st.importLang.remove')} title={t('st.importLang.remove')}
+                      <button class="st-pill-x" aria-label={t('st.importLang.remove')} use:launcherTip={t('st.importLang.remove')}
                               onclick={() => { removeCustomLanguage(cl.code); setLanguage(settings.language) }}><i class="ti ti-x"></i></button>
                     </span>
                   {/each}
@@ -387,20 +382,13 @@
           </SCard>
 
           {#if settings.theme === 'custom'}
-            <SCard icon="ti-color-swatch" tone="violet" title={t('st.c.customTheme')} desc={t('st.c.customTheme.d')}>
+            <SCard id="x:customTheme" icon="ti-color-swatch" tone="violet" title={t('st.c.customTheme')} desc={t('st.c.customTheme.d')}>
               <div class="st-pad">
-                <div class="st-presets">
-                  {#each THEME_PRESETS as p, i}
-                    <button class="st-preset" class:sel={activePreset === i} onclick={() => applyPreset(p)}>
-                      <span class="st-preset-sw"><span style="background:{p.bg}"></span><span style="background:{p.card}"></span><span style="background:{p.text}"></span></span>
-                      {t('st.preset')} {i + 1}
-                    </button>
-                  {/each}
-                </div>
+                <ThemeStudio
+                  bg={settings.themeCustomBg} card={settings.themeCustomCard} text={settings.themeCustomText}
+                  extra={(settings as any).themeCustomExtra ?? ''}
+                  onchange={(k, v) => updateSetting(k, v)} />
               </div>
-              {@render row('themeCustomBg')}
-              {@render row('themeCustomCard')}
-              {@render row('themeCustomText')}
             </SCard>
           {/if}
 
@@ -443,6 +431,28 @@
                 </div>
               </div>
             </div>
+            <div class="st-row" data-setting-key="x:sidebarHideCreate">
+              <div class="st-row-text"><div class="st-row-name">{t('st.x.sidebarHideCreate')}</div><div class="st-row-hint">{t('st.x.sidebarHideCreate.d')}</div></div>
+              <div class="st-row-ctl">
+                <div class="st-seg labeled" role="radiogroup" aria-label={t('st.x.sidebarHideCreate')}>
+                  {#each SB_HIDE_MODES as m (m.id)}
+                    <button type="button" class:on={(settings.sidebarHideCreate ?? '') === m.id} role="radio" aria-checked={(settings.sidebarHideCreate ?? '') === m.id}
+                            onclick={() => updateSetting('sidebarHideCreate', m.id)}>{t(m.label)}</button>
+                  {/each}
+                </div>
+              </div>
+            </div>
+            <div class="st-row" data-setting-key="x:sidebarHideSwitch">
+              <div class="st-row-text"><div class="st-row-name">{t('st.x.sidebarHideSwitch')}</div><div class="st-row-hint">{t('st.x.sidebarHideSwitch.d')}</div></div>
+              <div class="st-row-ctl">
+                <div class="st-seg labeled" role="radiogroup" aria-label={t('st.x.sidebarHideSwitch')}>
+                  {#each SB_HIDE_MODES as m (m.id)}
+                    <button type="button" class:on={(settings.sidebarHideSwitch ?? '') === m.id} role="radio" aria-checked={(settings.sidebarHideSwitch ?? '') === m.id}
+                            onclick={() => updateSetting('sidebarHideSwitch', m.id)}>{t(m.label)}</button>
+                  {/each}
+                </div>
+              </div>
+            </div>
             {@render row('sidebarAnimAlways')}
             {@render row('pinnedServersCompact')}
           </SCard>
@@ -455,7 +465,7 @@
                 <div class="st-seg" role="radiogroup" aria-label={t('st.x.contentView')}>
                   {#each DISPLAY_MODES as m (m.id)}
                     <button type="button" class:on={displayMode === m.id} role="radio" aria-checked={displayMode === m.id}
-                            title={t(m.label)} aria-label={t(m.label)} onclick={() => setDisplayMode(m.id)}><i class="ti {m.icon}"></i></button>
+                            use:launcherTip={t(m.label)} aria-label={t(m.label)} onclick={() => setDisplayMode(m.id)}><i class="ti {m.icon}"></i></button>
                   {/each}
                 </div>
               </div>
@@ -486,6 +496,11 @@
             <AccountProfilePanel
               accountName={accounts.find((a) => a.id === activeAccountId)?.username || ''}
               head={headFor(accounts.find((a) => a.id === activeAccountId)?.uuid)} />
+          </div>
+          <div class="st-pad">
+            <button class="btn btn-ghost" onclick={() => window.dispatchEvent(new CustomEvent('open-account-modal', { detail: { tab: 'privacy' } }))}>
+              <i class="ti ti-shield-lock" aria-hidden="true"></i> {t('social.priv.title')}
+            </button>
           </div>
 
         <!-- ═══════════════ ГРА ═══════════════ -->
@@ -619,6 +634,7 @@
 
         <!-- ═══════════════ ПРИВАТНІСТЬ ТА СЕРВІСИ ═══════════════ -->
         {:else if settingsTab === 'privacy'}
+          <div id="settings-account-privacy" data-setting-key="x:privacy"><AccountPrivacy /></div>
           <SCard icon="ti-hanger" tone="blue" title={t('st.c.skins')}>
             {@render row('disableSkins', { invert: true })}
             {#if !settings.disableSkins}{@render row('disableMojangSkinFallback', { invert: true, sub: true })}{/if}

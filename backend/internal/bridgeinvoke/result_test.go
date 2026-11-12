@@ -19,8 +19,7 @@ func (tester) Void()                    {}
 func (tester) OnlyError() error         { return nil }
 
 // TestExtractResults — регресія на баг «(T, error) з nil error повертає
-// null»: раніше nil-error через type assertion провалювався в гілку
-// `result = v.Interface()` і ЗАТИРАВ справжній результат nil-ом.
+// null».
 func TestExtractResults(t *testing.T) {
 	bt := tester{}
 	v := reflect.ValueOf(bt)

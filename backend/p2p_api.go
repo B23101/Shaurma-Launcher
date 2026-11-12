@@ -139,8 +139,7 @@ func (a *App) StartP2PHost(minecraftPort string, subdomain string, udpPort int) 
 // StopP2PHost зупиняє конкретну хост-сесію за її subdomain (адреса
 // лишається застовбленою, і в lobby, і в локальній книзі).
 func (a *App) StopP2PHost(subdomain string) error {
-	// Зупинка НЕ заблокована ні вимикачем, ні акаунтом: якщо сесію підняли
-	// раніше, користувач все одно має мати змогу її коректно закрити.
+	// Зупинка НЕ заблокована ні вимикачем, ні акаунтом.
 	err := a.p2pAPI.StopP2PHost(subdomain)
 	a.remoteOnP2PChanged()
 	return err
@@ -286,10 +285,7 @@ func (a *App) P2PHostStartCohost(minecraftPort, address string, udpPort int) (p2
 // P2PHostStop — зупинка хостингу (віддає оренду). Те саме, що StopP2PHost.
 func (a *App) P2PHostStop(address string) error { return a.p2pAPI.StopP2PHost(address) }
 
-// P2PSetAccess міняє режим доступу кімнати. Працює і без запущеного сервера:
-// режим зберігається в самій кімнаті й застосується, коли хостинг
-// підніметься (раніше це було можливо лише під час активної сесії — те саме
-// «баг: доступ не можна редагувати, коли сервер не запущений»).
+// P2PSetAccess міняє режим доступу кімнати.
 func (a *App) P2PSetAccess(subdomain, access string) error {
 	if a.p2pAPI == nil {
 		return nil

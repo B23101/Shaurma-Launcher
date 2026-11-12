@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Дерево залежностей модів збірки ─────────────────────────────────────
   // Читає маніфести всіх jar у mods/ (Fabric/Quilt/Forge/NeoForge, вкладені
   // jar-in-jar, provides) і малює ДЕРЕВО (шарами): угорі — бібліотеки, від яких
@@ -211,9 +213,6 @@
     let y = PAD + R
     let maxCols = 1
     for (const l of layers) maxCols = Math.max(maxCols, Math.min(COLS, l.length))
-    // Ширина сцени — не менша за видиму ширину полотна: раніше сцена була
-    // вузькою (за кількістю іконок), а полотно ширшим, і дерево «липло» до
-    // лівого краю, виглядаючи криво.
     const W = Math.max(maxCols * PITCH + PAD * 2, canvasW)
     layers.forEach((l, li) => {
       if (li > 0) y += LAYER_GAP
@@ -485,7 +484,7 @@
         <div class="mg-bar">
           <h4><i class="ti ti-hierarchy-3"></i> {t('modgraph.treeTitle')}</h4>
           <div class="mg-bar-r">
-            <label class="mg-tgl" title={t('modgraph.showOptionalHint')}>
+            <label class="mg-tgl" use:launcherTip={t('modgraph.showOptionalHint')}>
               <input type="checkbox" bind:checked={showOptional} /> {t('modgraph.showOptional')}
             </label>
             {#if hasOffsets}
@@ -582,7 +581,7 @@
             <span class="mg-lbl">{t('modgraph.optionalTitle')}</span>
             <div class="mg-chips">
               {#each optional as m (m.id)}
-                <span class="mg-chip" title={(m.requiredByAll ?? [m.requiredBy]).join(', ')}>{m.id}</span>
+                <span class="mg-chip" use:launcherTip={(m.requiredByAll ?? [m.requiredBy]).join(', ')}>{m.id}</span>
               {/each}
             </div>
           </div>

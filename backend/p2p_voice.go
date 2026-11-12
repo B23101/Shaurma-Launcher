@@ -353,7 +353,6 @@ func (a *App) p2pAutoSync(serverID string) {
 	case "running":
 		want := a.p2pEffectiveUDP(srv)
 		if active {
-			// Тунель уже піднято (вручну чи раніше) — лише синхронізуємо голос, без перезапуску.
 			_, _ = a.p2pAPI.SetHostUDP(sub, want)
 			setP2PAutoErr(serverID, "")
 			return

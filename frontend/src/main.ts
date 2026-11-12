@@ -10,6 +10,8 @@ import { t } from './lib/i18n.svelte'
 // щоб було видно, що саме сталося, а не малювався пустий розділ.
 window.addEventListener('error', (e) => {
   if (!e?.message) return
+  // «ResizeObserver loop …» — безпечне повідомлення браузера (не збій): не показуємо тостом.
+  if (/^ResizeObserver loop/.test(e.message)) { e.stopImmediatePropagation(); return }
   // Локація помилки. Для помилок, перекинутих через Svelte runtime,
   // подія повідомляє лише місце rethrow у vendor-бандлі — це марно.
   // Тому беремо СТЕК помилки і шукаємо ПЕРШИЙ кадр НЕ з vendor (наш

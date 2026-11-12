@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // StorageSection.svelte — розділ «Сховище»: скільки місця займає лаунчер,
   // які збірки найважчі і що можна безпечно прибрати. Логіка (аналіз,
   // очищення) лишається в App.svelte — тут лише відображення й колбеки.
@@ -112,7 +114,7 @@
 <SCard id="x:storageUsage" icon="ti-database" tone="green" title={t('st.c.usage')} desc={t('st.c.usage.d')}>
   {#snippet actions()}
     <button class="st-iconbtn" onclick={() => loadStorageInfo(true)} disabled={storageLoading}
-            title={t('st.refresh')} aria-label={t('st.refresh')}>
+            use:launcherTip={t('st.refresh')} aria-label={t('st.refresh')}>
       <i class="ti {storageLoading ? 'ti-loader-2 spin' : 'ti-refresh'}"></i>
     </button>
     <button class="btn btn-danger btn-sm" onclick={clearCache}><i class="ti ti-eraser"></i> {t('st.storage.clearCache')}</button>
@@ -148,13 +150,13 @@
             <div class="sv-chip green"><i class="ti ti-device-floppy"></i><div><b>{(storageInfo.freeDiskMB / 1024).toFixed(1)} {t('st.unit.gb')}</b><span>{t('st.storage.free')}</span></div></div>
             <div class="sv-chip orange"><i class="ti ti-package"></i><div><b>{storagePacks.length}</b><span>{t('st.storage.packs')}</span></div></div>
           </div>
-          <div class="sv-disk" title={t('st.storage.diskShare', { pct: (usage.diskShare * 100).toFixed(1) })}>
+          <div class="sv-disk" use:launcherTip={t('st.storage.diskShare', { pct: (usage.diskShare * 100).toFixed(1) })}>
             <div class="sv-disk-bar"><div style="width:{drawn ? Math.max(1.5, usage.diskShare * 100) : 0}%"></div></div>
             <div class="sv-disk-tx">{t('st.storage.diskShare', { pct: (usage.diskShare * 100).toFixed(1) })}</div>
           </div>
           <div class="sv-legend" role="list" onmouseleave={() => (hoverSeg = -1)}>
             {#each usage.arcs as arc (arc.e.name)}
-              <div class="sv-leg" role="listitem" class:hot={hoverSeg === arc.i} style="--c:{arc.color}" onmouseenter={() => (hoverSeg = arc.i)} title={arc.e.path}>
+              <div class="sv-leg" role="listitem" class:hot={hoverSeg === arc.i} style="--c:{arc.color}" onmouseenter={() => (hoverSeg = arc.i)} use:launcherTip={arc.e.path}>
                 <span class="sv-leg-ic"><i class="ti {SEG_ICONS[arc.e.name] ?? 'ti-folder'}"></i></span>
                 <span class="sv-leg-name">{segName(arc.e.name)}</span>
                 <span class="sv-leg-bar"><i style="width:{drawn ? arc.frac * 100 : 0}%"></i></span>
@@ -188,14 +190,14 @@
       <div class="storage-packs">
         {#each storageSuggestions.filter((s) => s.recommended) as sp (sp.id)}
           {@const sic = packAsset(sp.iconUrl)}
-          <div class="sp-row" title={sp.name} style="--pcol:{sp.color || 'var(--orange)'}">
+          <div class="sp-row" use:launcherTip={sp.name} style="--pcol:{sp.color || 'var(--orange)'}">
             <span class="sp-ic" class:has-icon={!!sic} style="--pcol:{sp.color || 'var(--orange)'}">
               {#if sic}<img src={sic} alt="" />{:else}<i class="ti {sp.icon || 'ti-package'}"></i>{/if}
             </span>
             <span class="sp-name">{sp.name}</span>
             <span class="sp-size">{fmtBytes(sp.bytes)}</span>
             <span class="sp-badge">{t('st.storage.played', { t: fmtPlaytime(sp.playSeconds) })}</span>
-            <button class="icon-btn danger" title={t('st.delete')} onclick={() => deletePackFromStorage(sp.id)}><i class="ti ti-trash"></i></button>
+            <button class="icon-btn danger" use:launcherTip={t('st.delete')} onclick={() => deletePackFromStorage(sp.id)}><i class="ti ti-trash"></i></button>
           </div>
         {/each}
       </div>
@@ -215,7 +217,7 @@
       <div class="storage-packs sv-packs">
         {#each sortedPacks as sp, i (sp.id)}
           {@const sic = packAsset(sp.iconUrl)}
-          <div class="sp-row" title={sp.name} style="--pcol:{sp.color || 'var(--orange)'};--ri:{Math.min(i, 12)}">
+          <div class="sp-row" use:launcherTip={sp.name} style="--pcol:{sp.color || 'var(--orange)'};--ri:{Math.min(i, 12)}">
             <span class="sp-ic" class:has-icon={!!sic} style="--pcol:{sp.color || 'var(--orange)'}">
               {#if sic}<img src={sic} alt="" />{:else}<i class="ti {sp.icon || 'ti-package'}"></i>{/if}
             </span>
@@ -224,7 +226,7 @@
               <span class="sv-pack-bar"><i style="width:{(sp.bytes / maxPackBytes) * 100}%"></i></span>
             </span>
             <span class="sp-size">{fmtBytes(sp.bytes)}</span>
-            <button class="icon-btn danger" title={t('st.delete')} aria-label={t('st.delete')} onclick={() => deletePackFromStorage(sp.id)}><i class="ti ti-trash"></i></button>
+            <button class="icon-btn danger" use:launcherTip={t('st.delete')} aria-label={t('st.delete')} onclick={() => deletePackFromStorage(sp.id)}><i class="ti ti-trash"></i></button>
           </div>
         {/each}
       </div>

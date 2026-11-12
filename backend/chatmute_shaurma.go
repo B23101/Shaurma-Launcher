@@ -55,6 +55,7 @@ func (a *App) SetChatMuteAll(on bool) chatMuteState {
 	s := a.cfg.GetSettings()
 	s.ChatMuteAll = on
 	_ = a.cfg.UpdateSettings(s)
+	a.taskbarBadgeRefresh()
 	return a.GetChatMuteState()
 }
 
@@ -85,6 +86,7 @@ func (a *App) SetChatMuted(accountID string, muted bool) chatMuteState {
 	}
 	s.MutedChats = list
 	_ = a.cfg.UpdateSettings(s)
+	a.taskbarBadgeRefresh()
 	return a.GetChatMuteState()
 }
 

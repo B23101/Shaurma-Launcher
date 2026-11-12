@@ -173,8 +173,7 @@ func bootstrapUpdater() error {
 }
 
 // bootstrapLog — діагностичний лог bootstrap-качки (installDir/bootstrap.log):
-// пишемо мінімум — початок, кожен файл, помилки. Раніше всі помилки йшли
-// лише в println (невидимий у GUI), і «лаунчер зник без пояснень».
+// пишемо мінімум — початок, кожен файл, помилки.
 func bootstrapLog(installDir, format string, args ...interface{}) {
 	f, err := os.OpenFile(filepath.Join(installDir, "bootstrap.log"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
@@ -388,10 +387,9 @@ func downloadComponentRetry(url string, comp bootstrapComponent, installDir stri
 // байтах, що пишуться на диск, а розмір обмежено заявленим у маніфесті.
 // Файл, що не збігся, видаляється і НІКОЛИ не лишається в installDir —
 // інакше підміна на CDN/MitM давала б виконання чужого коду (updater.dll і
-// backend.dll завантажуються в процес). Раніше перевірка була «м'якою»
-// (лише лог) — це було дірою. Захист від зупинки качки через застарілий
-// деплой — на боці pack-manager: DeploySigned звіряє sha256 staging перед
-// заливкою, а підписаний маніфест публікується останнім.
+// backend.dll завантажуються в процес). Захист від зупинки качки через
+// застарілий деплой — на боці pack-manager: DeploySigned звіряє sha256
+// staging перед заливкою, а підписаний маніфест публікується останнім.
 func downloadComponent(url string, comp bootstrapComponent, installDir string) error {
 	fs, err := openInstallFS(installDir)
 	if err != nil {

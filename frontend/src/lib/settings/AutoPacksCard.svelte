@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // AutoPacksCard.svelte — «Автоматичні збірки» (auto-vanilla / auto-snapshot):
   // самі стежать за новою версією Minecraft. Тумблер на ще не створеній збірці
   // створює її, на створеній — вмикає/вимикає (вимкнена ховається зі списків,
@@ -50,8 +52,8 @@
         </div>
         <div class="st-item-act">
           {#if v.created && v.id}
-            <button class="st-iconbtn" onclick={() => onOpen(v.id!)} title={t('st.autopacks.open')} aria-label={t('st.autopacks.open')}><i class="ti ti-arrow-up-right"></i></button>
-            <button class="st-iconbtn danger" onclick={() => onDelete(v)} title={t('st.delete')} aria-label={t('st.delete')}><i class="ti ti-trash"></i></button>
+            <button class="st-iconbtn" onclick={() => onOpen(v.id!)} use:launcherTip={t('st.autopacks.open')} aria-label={t('st.autopacks.open')}><i class="ti ti-arrow-up-right"></i></button>
+            <button class="st-iconbtn danger" onclick={() => onDelete(v)} use:launcherTip={t('st.delete')} aria-label={t('st.delete')}><i class="ti ti-trash"></i></button>
           {/if}
           {#if busyKind === v.kind}
             <span class="st-unit"><i class="ti ti-loader-2 spin"></i> {t('st.autopacks.creating')}</span>

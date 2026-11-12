@@ -5,11 +5,10 @@ package main
 // lnk_com_windows.go — створення .lnk через COM (IShellLinkW + IPersistFile)
 // напряму з Go, без сторонніх процесів.
 //
-// Раніше createLNK запускав прихований `powershell.exe -WindowStyle Hidden`
-// зі скриптом WScript.Shell. Прихований PowerShell із GUI-застосунку — типова
-// поведінкова ознака дроппера/стилера для антивірусних ML-евристик, тому
-// ярлики створюються нативно: тільки стандартна бібліотека (syscall +
-// ole32.dll), нових залежностей немає.
+// Прихований PowerShell із GUI-застосунку — типова поведінкова ознака
+// дроппера/стилера для антивірусних ML-евристик, тому ярлики створюються
+// нативно: тільки стандартна бібліотека (syscall + ole32.dll), нових
+// залежностей немає.
 
 import (
 	"fmt"
@@ -53,6 +52,9 @@ const (
 const (
 	vtRelease            = 2
 	vtQueryInterface     = 0
+	vtShellGetPath       = 3  // IShellLinkW::GetPath
+	vtShellGetArgs       = 10 // IShellLinkW::GetArguments
+	vtPersistFileLoad    = 5  // IPersistFile::Load
 	vtShellSetDesc       = 7  // IShellLinkW::SetDescription
 	vtShellSetWorkDir    = 9  // IShellLinkW::SetWorkingDirectory
 	vtShellSetArgs       = 11 // IShellLinkW::SetArguments
@@ -171,4 +173,58 @@ func createShellLink(lnkPath, exePath, args, workingDir, iconLocation, descripti
 	defer comRelease(ppf)
 	// fRemember = TRUE: файл стає «поточним» для об'єкта (як WScript Save).
 	return check("IPersistFile.Save", comCall(ppf, vtPersistFileSave, uintptr(unsafe.Pointer(strs[4])), 1))
+}
+
+// readShellLink читає .lnk: повертає цільовий exe і аргументи. Потрібно, щоб
+// лаунчер міг САМ знайти свої ярлики (за --launch <packID>), навіть якщо
+// запис у реєстрі зник або користувач перемістив .lnk.
+func readShellLink(lnkPath string) (target, args string, err error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	hr, _, _ := procCoInitializeEx.Call(0, coinitApartmentThreaded)
+	switch {
+	case uint32(hr) == rpcEChangedMode:
+	case hrFailed(hr):
+		return "", "", fmt.Errorf("CoInitializeEx: 0x%08X", uint32(hr))
+	default:
+		defer procCoUninitialize.Call()
+	}
+
+	var psl uintptr
+	hr, _, _ = procCoCreateInstance.Call(
+		uintptr(unsafe.Pointer(&clsidShellLink)), 0, clsctxInprocServer,
+		uintptr(unsafe.Pointer(&iidIShellLinkW)), uintptr(unsafe.Pointer(&psl)))
+	if hrFailed(hr) || psl == 0 {
+		return "", "", fmt.Errorf("CoCreateInstance(ShellLink): 0x%08X", uint32(hr))
+	}
+	defer comRelease(psl)
+
+	var ppf uintptr
+	if hr := comCall(psl, vtQueryInterface, uintptr(unsafe.Pointer(&iidIPersistFile)), uintptr(unsafe.Pointer(&ppf))); hrFailed(hr) {
+		return "", "", fmt.Errorf("QueryInterface(IPersistFile): 0x%08X", uint32(hr))
+	}
+	defer comRelease(ppf)
+
+	pp, perr := syscall.UTF16PtrFromString(lnkPath)
+	if perr != nil {
+		return "", "", perr
+	}
+	// STGM_READ = 0
+	if hr := comCall(ppf, vtPersistFileLoad, uintptr(unsafe.Pointer(pp)), 0); hrFailed(hr) {
+		return "", "", fmt.Errorf("IPersistFile.Load: 0x%08X", uint32(hr))
+	}
+	runtime.KeepAlive(pp)
+
+	const bufLen = 32768
+	pathBuf := make([]uint16, bufLen)
+	// GetPath(pszFile, cch, pfd=nil, fFlags=0)
+	if hr := comCall(psl, vtShellGetPath, uintptr(unsafe.Pointer(&pathBuf[0])), bufLen, 0, 0); hrFailed(hr) {
+		return "", "", fmt.Errorf("GetPath: 0x%08X", uint32(hr))
+	}
+	argBuf := make([]uint16, bufLen)
+	if hr := comCall(psl, vtShellGetArgs, uintptr(unsafe.Pointer(&argBuf[0])), bufLen); hrFailed(hr) {
+		return "", "", fmt.Errorf("GetArguments: 0x%08X", uint32(hr))
+	}
+	return syscall.UTF16ToString(pathBuf), syscall.UTF16ToString(argBuf), nil
 }

@@ -94,6 +94,13 @@ func (a *App) onWindowActive(dataJSON string) {
 	setNotifyMainWindowActive(st.Active)
 	// Третій споживач: статус друзям «відійшов», коли вікно довго неактивне.
 	a.socialWindowActive(st.Active)
+	// Четвертий: пам'ять WebView2 (webview_memory.go) — неактивне вікно
+	// притискаємо, активне повертаємо до Normal.
+	webviewMemoryWindowActive(st.Active)
+	// П'ятий: бейдж непрочитаного в панелі завдань після пересоздання кнопки (taskbar_badge_shaurma.go).
+	if st.Active {
+		go a.taskbarBadgeReapply()
+	}
 	a.emit("window:active", map[string]any{"active": st.Active})
 }
 
@@ -118,11 +125,7 @@ func (a *App) onShellWindowState(dataJSON string) {
 		winStateLast.Fullscreen = st.Fullscreen
 	} else {
 		// hasPos приходить від shell (window_exec.go: sendWindowState) і
-		// означає «віконний менеджер реально повідомив позицію». Якщо
-		// його нема (Wayland — там клієнт не знає власних координат),
-		// зберігаємо РОЗМІР, але лишаємо раніше відому позицію недоторканою:
-		// сліпе присвоєння winStateLast = st колись затирало її нулями, і
-		// вікно щоразу відновлювалось у лівому верхньому куті.
+		// означає «віконний менеджер реально повідомив позицію».
 		if !st.HasPos {
 			st.X, st.Y, st.HasPos = winStateLast.X, winStateLast.Y, winStateLast.HasPos
 		}
@@ -185,11 +188,7 @@ func (a *App) GetWindowUIState() map[string]bool {
 // платформо-залежне window API.
 func (a *App) SaveWindowPosition(x, y int) {
 	// ЗАХИСТ (Linux/WebKitGTK): window.screenX/screenY там не дають
-	// реальних екранних координат вікна і типово повертають 0. Фронтенд
-	// уже не шле цей виклик на Linux (App.svelte), але приймати нулі як
-	// «вікно стоїть у куті екрана» не можна в жодному разі — саме так
-	// у window-state.json колись потрапляла позиція 0,0 з hasPos=true,
-	// і вікно відновлювалось притиснутим до лівого верхнього кута.
+	// реальних екранних координат вікна і типово повертають 0.
 	if x == 0 && y == 0 {
 		return
 	}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NumberInput from './NumberInput.svelte'
   // ── Сторінка "Новий сервер" ──────────────────────────────────────────
   // Побудована у стилі CreatePackPage.svelte ("Нова збірка") та "Моїх
   // збірок": ті самі класи card/card-head/row/row-label/step-num, той самий
@@ -91,7 +92,6 @@
         s.core !== 'velocity' && !taken.has(s.id) &&
         !['running', 'starting', 'stopping', 'installing'].includes(s.status),
       )
-      // Раніше вибрані сервери, яких більше нема в кандидатах — прибрати.
       for (const id of attachSelected) if (!attachCandidates.some(c => c.id === id)) attachSelected.delete(id)
     } finally {
       attachLoading = false
@@ -473,10 +473,6 @@
   let folderLaunchAfterCreate = $state(true)
 
   // ── Вигляд сервера з папки ─────────────────────────────────────────
-  // Раніше праворуч у вкладці «Додати з папки» був ЛИШЕ блок превʼю —
-  // віджет редагування стилю (іконка лаунчера + колір), який є у
-  // «Створити», просто відсутній. Тепер він тут теж: колір/іконка
-  // зберігаються ПІСЛЯ реєстрації сервера (SaveServerConfig/SetLauncherIcon).
   let folderIcon = $state('')
   let folderColor = $state('#8b8b8b')
   let folderIconSrc = $state('')
@@ -1021,7 +1017,7 @@
             <div class="flex" style="justify-content:space-between">
               <div class="rl-sub">RAM: <b class="mono" style="color:var(--orange)">{folderRamMB} MB</b></div>
             </div>
-            <input class="input mono" type="number" step="256" bind:value={folderRamMB} style="width:140px" />
+            <NumberInput class="input mono" step="256" bind:value={folderRamMB} style="width:140px" />
           </div>
           <div class="row">
             <div class="row-label"><div class="rl-name">Одразу запустити</div></div>

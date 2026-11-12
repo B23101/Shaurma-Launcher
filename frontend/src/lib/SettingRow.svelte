@@ -1,4 +1,7 @@
 <script lang="ts">
+  import NumberInput from './NumberInput.svelte'
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── SettingRow: універсальний рядок налаштування ─────────────────────
   // Рендерить контрол за типом def.type (див. config.SettingsSchema()):
   //   bool     → toggle
@@ -200,7 +203,7 @@
               ? `linear-gradient(135deg, ${a.main}, ${a.deep})`
               : (a?.main ?? '#888'))}
         <div class="accent-opt" class:sel={value === opt.value} style="background:{sw}"
-             title={t(opt.label)} onclick={() => setVal(opt.value)}>
+             use:launcherTip={t(opt.label)} onclick={() => setVal(opt.value)}>
           {#if value === opt.value}<i class="ti ti-check"></i>{/if}
         </div>
       {/each}
@@ -214,7 +217,7 @@
            Тепер плашка = label поверх прихованого нативного пікера, hex-поле
            і пресети лишились як додаткові способи. -->
       <div class="color-ctl-main">
-        <label class="color-dot" style="background:{/^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#ffffff'}" title={t('settings.colorPicker')} aria-label={t('settings.colorPicker')}>
+        <label class="color-dot" style="background:{/^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#ffffff'}" use:launcherTip={t('settings.colorPicker')} aria-label={t('settings.colorPicker')}>
           <input type="color" value={/^#[0-9a-fA-F]{6}$/.test(value || '') ? value : '#ffffff'} oninput={(e: any) => onchange(e.target.value)} />
         </label>
         <input class="input mono" style="max-width:104px" value={value || ''} placeholder="#rrggbb"
@@ -229,7 +232,7 @@
 
   {:else if def.type === 'int'}
     <div class="int-ctl">
-      <input class="input mono" style="max-width:120px" type="number" value={value ?? def.default ?? 0} step={intStep} min={intMin} max={intMax}
+      <NumberInput class="input mono" style="max-width:120px" value={value ?? def.default ?? 0} step={intStep} min={intMin} max={intMax}
              onchange={(e: any) => onchange(Math.max(intMin, Math.min(intMax, Number(e.target.value) || intMin)))} />
     </div>
 
@@ -245,7 +248,7 @@
         <div class="ram-fill" style="width:{ramPct}%"></div>
         <div class="ram-knob" style="left:{ramPct}%"></div>
       </div>
-      <input class="input mono" style="max-width:110px" type="number" value={ramMB} step={step} min={min} max={max}
+      <NumberInput class="input mono" style="max-width:110px" value={ramMB} step={step} min={min} max={max}
              onchange={(e: any) => onchange(Math.max(min, Math.min(max, Number(e.target.value))))} />
     </div>
 
@@ -274,11 +277,11 @@
              value={value ?? ''} placeholder={def.placeholder}
              onchange={(e: any) => setVal(e.target.value)} />
       {#if def.action === 'browse'}
-        <button class="btn btn-ghost" onclick={runAction} title={t('wiz.folders.browse')} aria-label={t('wiz.folders.browse')}><i class="ti ti-folder"></i></button>
+        <button class="btn btn-ghost" onclick={runAction} use:launcherTip={t('wiz.folders.browse')} aria-label={t('wiz.folders.browse')}><i class="ti ti-folder"></i></button>
       {:else if def.action === 'detectJava'}
-        <button class="btn btn-ghost" onclick={runAction} title={t('wiz.folders.findJava')} aria-label={t('wiz.folders.findJava')}><i class="ti ti-search"></i></button>
+        <button class="btn btn-ghost" onclick={runAction} use:launcherTip={t('wiz.folders.findJava')} aria-label={t('wiz.folders.findJava')}><i class="ti ti-search"></i></button>
       {:else if def.action === 'fontFile'}
-        <button class="btn btn-ghost" onclick={runAction} title={t('settings.font.custom')} aria-label={t('settings.font.custom')}><i class="ti ti-file-typography"></i></button>
+        <button class="btn btn-ghost" onclick={runAction} use:launcherTip={t('settings.font.custom')} aria-label={t('settings.font.custom')}><i class="ti ti-file-typography"></i></button>
       {/if}
     </div>
   {/if}
@@ -328,9 +331,6 @@
   }
   .dd-item:hover { background:var(--hover, rgba(255,255,255,.07)); }
   .dd-item.sel { color:var(--violet); }
-  .dd-menu::-webkit-scrollbar { width:6px; }
-  .dd-menu::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:3px; }
-  .dd-menu::-webkit-scrollbar-track { background:transparent; }
   .ram-ctl { display: flex; align-items: center; gap: 10px; }
   .ram-ctl .ram-track { height: 6px; margin: 0; }
   .color-ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

@@ -42,9 +42,7 @@ func DetectCore(dir string) (CoreDetectResult, error) {
 		result.Messages = append(result.Messages, "знайдено velocity.toml + velocity.jar")
 		result.ServerJar = "velocity.jar"
 		result.Port = detectVelocityPort(dir)
-		// MCVersion навмисно ПОРОЖНІЙ: Velocity — проксі, якому байдуже,
-		// яка версія Minecraft (раніше тут хардкодилось "1.21", через що
-		// імпортований проксі показував фейкову «версію гри»).
+		// MCVersion навмисно ПОРОЖНІЙ:
 		result.MCVersion = ""
 		return result, nil
 	}

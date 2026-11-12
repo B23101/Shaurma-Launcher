@@ -6,14 +6,18 @@
 // відкриває сторінку збірки і запускає гру.
 //
 // Реалізація:
-//   - .lnk створюється через PowerShell WScript.Shell (той самий підхід,
-//     що й тости в notify.go — без жодних додаткових залежностей);
+//   - .lnk створюється нативно через COM (IShellLinkW, lnk_com_windows.go),
+//     без сторонніх процесів; він же читається назад (readShellLink) для
+//     автопошуку ярликів;
 //   - іконка: PNG іконки збірки (локальна для кастомних, CDN для Shaurma)
 //     конвертується в .ico простим загортанням (shortcuts.PNGToICO) і
-//     кладеться в <dataDir>/shortcuts/<packID>.ico;
-//   - реєстр створених ярликів — <dataDir>/shortcuts.json (packID → ім'я
-//     файлу .lnk), щоб Remove/перейменування/видалення збірки знали, що
-//     прибрати, навіть якщо збірку перейменували.
+//     кладеться в ПОСТІЙНУ теку <ConfigDir>/shortcut-icons/<packID>.ico
+//     (не в cache/ — кеш чиститься, і ярлик втрачав іконку);
+//   - реєстр створених ярликів (packID → шлях .lnk, акаунт, сервер, іконка,
+//     тип збірки) лежить у shaurma.json (поле shortcuts), щоб Remove/
+//     перейменування/видалення збірки знали, що прибрати. Реєстр — лише
+//     допоміжний: ярлики самі впізнаються за --launch <packID> у .lnk
+//     (discoverShortcuts), тож не губляться, навіть якщо запис зник.
 //
 // Запуск з ярлика: див. shell/main.go (SingleInstance + парсинг
 // "--launch") і handleShellEvent → подія "shortcut:launch".
@@ -27,10 +31,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
 
+	"shaurma-launcher-backend/internal/builds"
 	"shaurma-launcher-backend/internal/shortcuts"
 )
 
@@ -44,20 +50,31 @@ type DesktopShortcut struct {
 	// РІВНО для запуску з цього ярлика; решта — як при звичайному запуску).
 	AccountID      string `json:"accountId,omitempty"`
 	AutoJoinServer string `json:"autoJoinServer,omitempty"`
+	// Mode — як запускати: "window" (окреме вікно запуску ярлика, головне
+	// вікно не показується) або "plain" (головний екран уже відкритий —
+	// запуск як після кнопки «Грати»). Рішення backend: decideShortcutMode.
+	Mode string `json:"mode,omitempty"`
 }
 
-// shortcutEntry — ЗНАЧЕННЯ в реєстрі ярликів. Раніше там був просто шлях
-// до .lnk; тепер — шлях + персональні опції запуску (акаунт, автоприєднання),
-// щоб діалог створення міг передзаповнити поля при редагуванні і щоб
-// перестворення ярлика (наприклад після зміни назви збірки) зберігало їх.
+// shortcutEntry — ЗНАЧЕННЯ в реєстрі ярликів.
 type shortcutEntry struct {
 	Path           string `json:"path"`
 	AccountID      string `json:"accountId,omitempty"`
 	AutoJoinServer string `json:"autoJoinServer,omitempty"`
+	// IconPath — .ico, який ЗАРАЗ прописаний у .lnk ("" = іконка exe).
+	// Exe — exe, на який вказує .lnk. Обидва потрібні для самовідновлення
+	// (RepairShortcuts): якщо .ico зник або лаунчер переїхав/оновився —
+	// .lnk перестворюється з правильними шляхами.
+	IconPath string `json:"iconPath,omitempty"`
+	Exe      string `json:"exe,omitempty"`
+	// Kind — "custom" (кастомна збірка: зникає разом зі збіркою, тож її
+	// ярлик теж прибирається) або "shaurma" (збірка лишається в каталозі
+	// навіть після видалення файлів — ярлик не чіпаємо). "" = ще не відомо.
+	Kind string `json:"kind,omitempty"`
 }
 
 // shortcutRegistry — мапа packID → shortcutEntry (закодована в JSON) або
-// (старий формат) просто ім'я/шлях .lnk. Зберігається в SQLite (таблиця
+// (старий формат) просто ім'я/шлях .lnk. Зберігається в shaurma.json (поле
 // shortcuts), щоб ярлик переживав перезапуск лаунчера.
 type shortcutRegistry map[string]string
 
@@ -92,13 +109,13 @@ func decodeShortcutEntry(v string) shortcutEntry {
 // ── Реєстр ярликів ──────────────────────────────────────────────────────
 
 // shortcutsFile повертає шлях до легасі shortcuts.json (лише для
-// одноразової міграції у БД — див. migration.go). Реєстр ярликів тепер
-// живе в SQLite (таблиця shortcuts).
+// одноразової міграції в shaurma.json — див. migration.go). Реєстр ярликів
+// тепер живе в shaurma.json (поле shortcuts).
 func (a *App) shortcutsFile() string {
 	return filepath.Join(a.cfg.Dir(), "shortcuts.json")
 }
 
-// loadShortcutRegistry читає реєстр ярликів зі SQLite (порожня мапа,
+// loadShortcutRegistry читає реєстр ярликів з shaurma.json (порожня мапа,
 // якщо записів немає — це не помилка).
 func (a *App) loadShortcutRegistry() shortcutRegistry {
 	if st := a.cfg.Store(); st != nil {
@@ -199,27 +216,296 @@ func decodeDataURLPNG(dataURL string) ([]byte, bool) {
 	return b, true
 }
 
-// ensureShortcutIcon готує .ico файл іконки збірки в <dataDir>/shortcuts/.
-// Повертає повний шлях до .ico або "" (іконку не вдалось отримати — ярлик
-// створиться з іконкою exe за замовчуванням).
+// shortcutIconsDir — ПОСТІЙНА тека .ico іконок ярликів. Лежить у ConfigDir
+// (стабільна тека біля exe), а НЕ в cache/: кеш чиститься («Очистити кеш»),
+// переноситься разом із папкою даних і взагалі вважається одноразовим, а
+// .lnk посилається на .ico абсолютним шляхом — зникне файл, і ярлик втратить
+// іконку («Не вдається знайти файл ...\\shortcuts\\x.ico»). Так само Prism
+// тримає icon.ico в теці збірки, а Modrinth App бере іконку з самого exe.
+func (a *App) shortcutIconsDir() string {
+	return filepath.Join(a.cfg.ConfigDir(), "shortcut-icons")
+}
+
+// shortcutIconPath — де має лежати .ico збірки.
+func (a *App) shortcutIconPath(packID string) string {
+	return filepath.Join(a.shortcutIconsDir(), packID+".ico")
+}
+
+// legacyShortcutIconPath — де .ico лежав у старих версіях (cache/shortcuts).
+func (a *App) legacyShortcutIconPath(packID string) string {
+	return filepath.Join(a.cfg.CacheDir(), "shortcuts", packID+".ico")
+}
+
+// removeShortcutIcons прибирає .ico збірки (нове і легасі розташування).
+func (a *App) removeShortcutIcons(packID string) {
+	_ = os.Remove(a.shortcutIconPath(packID))
+	_ = os.Remove(a.legacyShortcutIconPath(packID))
+}
+
+// writeFileAtomic пише файл через тимчасовий + rename: обірваний запис
+// (крах/вимкнення світла) не лишить напівпорожній .ico.
+func writeFileAtomic(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0644); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// existingShortcutIcon повертає шлях до ВЖЕ наявного .ico збірки (або "").
+// Якщо є лише легасі-файл у cache/shortcuts — переносить його у постійну
+// теку, поки кеш ще не почистили.
+func (a *App) existingShortcutIcon(packID string) string {
+	path := a.shortcutIconPath(packID)
+	if st, err := os.Stat(path); err == nil && st.Size() > 0 {
+		return path
+	}
+	legacy := a.legacyShortcutIconPath(packID)
+	if b, err := os.ReadFile(legacy); err == nil && len(b) > 0 {
+		if err := os.MkdirAll(a.shortcutIconsDir(), 0755); err == nil {
+			if writeFileAtomic(path, b) == nil {
+				return path
+			}
+		}
+	}
+	return ""
+}
+
+// ensureShortcutIcon готує .ico іконки збірки в постійній теці
+// (shortcutIconsDir). Повертає повний шлях до .ico або "" (іконки немає
+// взагалі — тоді ярлик бере іконку exe, див. writeShortcutLNK).
+//
+// Якщо свіжу іконку отримати не вдалось (CDN недоступний, збірка ще не
+// завантажена — типово на старті без мережі), лишається вже наявний .ico:
+// краще стара іконка збірки, ніж порожня.
 func (a *App) ensureShortcutIcon(packID string) string {
-	png, ok := a.packIconPNG(packID)
-	if !ok {
-		return ""
+	if png, ok := a.packIconPNG(packID); ok {
+		if ico, err := shortcuts.PNGToICO(png); err == nil {
+			if err := os.MkdirAll(a.shortcutIconsDir(), 0755); err == nil {
+				path := a.shortcutIconPath(packID)
+				if writeFileAtomic(path, ico) == nil {
+					return path
+				}
+			}
+		}
 	}
-	ico, err := shortcuts.PNGToICO(png)
-	if err != nil {
-		return ""
+	return a.existingShortcutIcon(packID)
+}
+
+// shortcutPackName — назва збірки для імені/опису ярлика.
+func (a *App) shortcutPackName(packID string) string {
+	if cp, ok := a.customPacks.Get(packID); ok && cp.Name != "" {
+		return cp.Name
 	}
-	dir := filepath.Join(a.cfg.CacheDir(), "shortcuts")
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return ""
+	if a.packs != nil {
+		if entry, err := a.packs.GetPackByID(packID); err == nil && entry.Name != "" {
+			return entry.Name
+		}
 	}
-	path := filepath.Join(dir, packID+".ico")
-	if err := os.WriteFile(path, ico, 0644); err != nil {
-		return ""
+	return packID
+}
+
+// writeShortcutLNK створює/перезаписує .lnk і повертає запис реєстру з тим,
+// що реально прописано (IconPath/Exe). icoPath == "" → іконка самого exe
+// (як у Modrinth App), а не порожня/дефолтна іконка Windows.
+func (a *App) writeShortcutLNK(lnkPath, name, args, icoPath string) (shortcutEntry, error) {
+	exe := execPath()
+	iconLocation := exe + ",0"
+	if icoPath != "" {
+		iconLocation = icoPath + ",0"
 	}
-	return path
+	desc := fmt.Sprintf("%s — Shaurma Launcher", name)
+	if err := createLNK(lnkPath, exe, args, filepath.Dir(exe), iconLocation, desc); err != nil {
+		return shortcutEntry{}, err
+	}
+	return shortcutEntry{Path: lnkPath, IconPath: icoPath, Exe: exe}, nil
+}
+
+// parseShortcutLaunchArgs розбирає аргументи .lnk нашого лаунчера
+// ("--launch <packID> [--account <id>] [--server <host:port>]").
+// ok == false, якщо це не ярлик збірки.
+func parseShortcutLaunchArgs(args string) (packID string, opts ShortcutOptions, ok bool) {
+	f := strings.Fields(args)
+	for i := 0; i+1 < len(f); i++ {
+		switch f[i] {
+		case "--launch":
+			packID = strings.Trim(f[i+1], `"`)
+		case "--account":
+			opts.AccountID = strings.Trim(f[i+1], `"`)
+		case "--server":
+			opts.AutoJoinServer = strings.Trim(f[i+1], `"`)
+		}
+	}
+	return packID, opts, packID != ""
+}
+
+// discoverShortcuts САМ шукає ярлики збірок нашого лаунчера і вносить їх у
+// реєстр: стіл, меню «Пуск» і теки, де вже лежать відомі ярлики. Ярлик
+// впізнається за exe (те саме ім'я файлу, що в лаунчера) і аргументом
+// --launch <packID>. Завдяки цьому лаунчер не «забуває» ярлики, якщо запис
+// у БД зник (перевстановлення, пошкоджена БД, перенос даних) або
+// користувач перемістив .lnk в іншу теку. Повертає true, якщо реєстр змінено.
+func (a *App) discoverShortcuts(reg shortcutRegistry) bool {
+	exeName := filepath.Base(execPath())
+	dirs := map[string]struct{}{}
+	add := func(d string, err error) {
+		if err == nil && d != "" {
+			dirs[filepath.Clean(d)] = struct{}{}
+		}
+	}
+	add(desktopDir())
+	add(startMenuDir())
+	for _, val := range reg {
+		if p := a.resolveShortcutPath(val); p != "" {
+			add(filepath.Dir(p), nil)
+		}
+	}
+	changed := false
+	for dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, de := range entries {
+			if de.IsDir() || !strings.EqualFold(filepath.Ext(de.Name()), ".lnk") {
+				continue
+			}
+			path := filepath.Join(dir, de.Name())
+			target, args, err := readShellLink(path)
+			if err != nil || !strings.EqualFold(filepath.Base(target), exeName) {
+				continue
+			}
+			pid, opts, ok := parseShortcutLaunchArgs(args)
+			if !ok {
+				continue
+			}
+			if val, has := reg[pid]; has {
+				cur := a.resolveShortcutEntry(val)
+				if _, statErr := os.Stat(cur.Path); statErr == nil {
+					continue // відомий ярлик на місці — не чіпаємо
+				}
+				// Запис є, а файлу за його шляхом немає: ярлик перемістили.
+				cur.Path = path
+				reg[pid] = encodeShortcutEntry(cur)
+				changed = true
+				continue
+			}
+			reg[pid] = encodeShortcutEntry(shortcutEntry{
+				Path: path, AccountID: opts.AccountID, AutoJoinServer: opts.AutoJoinServer,
+			})
+			changed = true
+		}
+	}
+	return changed
+}
+
+// shortcutKind — тип збірки для запису реєстру: "custom" / "shaurma" або ""
+// (збірки вже немає ніде — тип невідомий).
+func (a *App) shortcutKind(packID string) string {
+	if _, ok := a.customPacks.Get(packID); ok && a.isCustomPack(packID) {
+		return "custom"
+	}
+	if a.buildsReg != nil {
+		if entry, ok := a.buildsReg.Get(packID); ok && entry.Kind == builds.KindShaurma {
+			return "shaurma"
+		}
+	}
+	if a.packs != nil {
+		if _, err := a.packs.GetPackByID(packID); err == nil {
+			return "shaurma"
+		}
+	}
+	return ""
+}
+
+// RepairShortcuts — самовідновлення ярликів. Викликається при кожному
+// старті/обслуговуванні лаунчера:
+//   - .lnk зник (користувач видалив) → запис і .ico прибираються;
+//   - .ico зник / лежить у легасі-кеші / змінився exe лаунчера → .lnk
+//     перестворюється НА МІСЦІ (позиція на робочому столі зберігається),
+//     персональні опції запуску (акаунт, сервер) лишаються;
+//   - нічого не змінилось → жодних записів на диск.
+//
+// Повертає кількість перестворених ярликів. На не-Windows — no-op.
+func (a *App) RepairShortcuts() int {
+	if runtime.GOOS != "windows" {
+		return 0
+	}
+	reg := a.loadShortcutRegistry()
+	// Спершу — автопошук: відновлює записи, які зникли з реєстру, і
+	// знаходить переміщені .lnk. Лише ПІСЛЯ нього запис без файлу вважаємо
+	// видаленим користувачем.
+	changed := a.discoverShortcuts(reg)
+	if len(reg) == 0 {
+		return 0
+	}
+	exe := execPath()
+	repaired := 0
+	for pid, val := range reg {
+		e := a.resolveShortcutEntry(val)
+		if e.Path == "" {
+			continue
+		}
+		if _, err := os.Stat(e.Path); err != nil {
+			// Прибираємо запис лише коли ТЕКА ярлика існує, а файлу в ній
+			// немає (юзер видалив). Якщо недоступна сама тека (відключений
+			// диск, OneDrive ще не змонтувався) — запис не чіпаємо.
+			if dirExists(filepath.Dir(e.Path)) {
+				delete(reg, pid)
+				a.removeShortcutIcons(pid)
+				changed = true
+			}
+			continue
+		}
+		// Кастомна збірка видалена (її вже немає в реєстрі кастомних) —
+		// ярлик втратив сенс: прибираємо .lnk, запис і .ico. Shaurma-збірки
+		// не чіпаємо: вони лишаються в каталозі, ярлик має жити.
+		kind := e.Kind
+		if kind == "" {
+			kind = a.shortcutKind(pid)
+		}
+		if kind == "custom" {
+			if _, ok := a.customPacks.Get(pid); !ok {
+				_ = os.Remove(e.Path)
+				delete(reg, pid)
+				a.removeShortcutIcons(pid)
+				changed = true
+				continue
+			}
+		}
+		kindChanged := kind != e.Kind
+		ico := a.existingShortcutIcon(pid)
+		if ico == "" {
+			ico = a.ensureShortcutIcon(pid)
+		}
+		if e.Exe == exe && e.IconPath == ico {
+			if kindChanged { // лише запам'ятати тип, .lnk не чіпаємо
+				e.Kind = kind
+				reg[pid] = encodeShortcutEntry(e)
+				changed = true
+			}
+			continue
+		}
+		args := a.shortcutLaunchArgs(pid, ShortcutOptions{
+			AccountID: e.AccountID, AutoJoinServer: e.AutoJoinServer,
+		})
+		ne, err := a.writeShortcutLNK(e.Path, a.shortcutPackName(pid), args, ico)
+		if err != nil {
+			continue
+		}
+		ne.AccountID, ne.AutoJoinServer, ne.Kind = e.AccountID, e.AutoJoinServer, kind
+		reg[pid] = encodeShortcutEntry(ne)
+		repaired++
+		changed = true
+	}
+	if changed {
+		_ = a.saveShortcutRegistry(reg)
+	}
+	return repaired
 }
 
 // ── Створення .lnk через PowerShell WScript.Shell ──────────────────────
@@ -284,10 +570,6 @@ func (a *App) CreateShortcut(packID string, opts ShortcutOptions) (DesktopShortc
 
 	// Іконка .ico (якщо збірка її має).
 	icoPath := a.ensureShortcutIcon(packID)
-	iconLocation := ""
-	if icoPath != "" {
-		iconLocation = icoPath + ",0"
-	}
 
 	// Ім'я файлу: назва ярлика (санітизована). Дублікатів не буде — якщо
 	// користувач створює ярлик для двох збірок з однаковими назвами,
@@ -308,29 +590,29 @@ func (a *App) CreateShortcut(packID string, opts ShortcutOptions) (DesktopShortc
 	// назвою) І чужий ярлик з такою самою назвою (інша збірка-дублікат).
 	// Це не «рухає» ярлик: юзер сам викликав «Створити ярлик» — очікувано,
 	// що старий .lnk цієї збірки не лишиться висіти дублем.
+	// (Значення реєстру — JSON-запис, тому шлях беремо через
+	// resolveShortcutPath, а не порівнюємо сире значення.)
 	reg := a.loadShortcutRegistry()
-	for pid, oldPath := range reg {
-		if filepath.Base(oldPath) == lnkName && pid != packID {
+	for pid, val := range reg {
+		oldPath := a.resolveShortcutPath(val)
+		if pid != packID && filepath.Clean(oldPath) == filepath.Clean(lnkPath) {
 			_ = os.Remove(oldPath)
 			delete(reg, pid)
 		}
-		if pid == packID && oldPath != lnkPath {
+		if pid == packID && filepath.Clean(oldPath) != filepath.Clean(lnkPath) {
 			_ = os.Remove(oldPath)
 			delete(reg, pid)
 		}
 	}
 
-	exe := execPath()
 	args := a.shortcutLaunchArgs(packID, opts)
-	desc := fmt.Sprintf("%s — Shaurma Launcher", name)
-
-	if err := createLNK(lnkPath, exe, args, filepath.Dir(exe), iconLocation, desc); err != nil {
+	entry, err := a.writeShortcutLNK(lnkPath, name, args, icoPath)
+	if err != nil {
 		return DesktopShortcut{}, err
 	}
-
-	reg[packID] = encodeShortcutEntry(shortcutEntry{
-		Path: lnkPath, AccountID: opts.AccountID, AutoJoinServer: opts.AutoJoinServer,
-	})
+	entry.AccountID, entry.AutoJoinServer = opts.AccountID, opts.AutoJoinServer
+	entry.Kind = a.shortcutKind(packID)
+	reg[packID] = encodeShortcutEntry(entry)
 	_ = a.saveShortcutRegistry(reg)
 
 	return DesktopShortcut{
@@ -483,25 +765,19 @@ func (a *App) UpdateDesktopShortcut(packID string) error {
 	// Оновлюємо вміст .lnk (іконка, опис) за тим самим файлом — назва
 	// ярлика = ім'я файлу, воно вже змінено вище.
 	icoPath := a.ensureShortcutIcon(packID)
-	iconLocation := ""
-	if icoPath != "" {
-		iconLocation = icoPath + ",0"
-	}
-	exe := execPath()
 	// Персональні опції запуску ярлика зберігаємо ПРИ ПЕРЕСТВОРЕННІ:
 	// акаунт/сервер, обрані у діалозі, не повинні губитись при зміні
 	// назви/іконки збірки (UpdateDesktopShortcut викликається з форми).
 	args := a.shortcutLaunchArgs(packID, ShortcutOptions{
 		AccountID: oldEntry.AccountID, AutoJoinServer: oldEntry.AutoJoinServer,
 	})
-	desc := fmt.Sprintf("%s — Shaurma Launcher", name)
-	if err := createLNK(newPath, exe, args, filepath.Dir(exe), iconLocation, desc); err != nil {
+	entry, err := a.writeShortcutLNK(newPath, name, args, icoPath)
+	if err != nil {
 		return err
 	}
-
-	reg[packID] = encodeShortcutEntry(shortcutEntry{
-		Path: newPath, AccountID: oldEntry.AccountID, AutoJoinServer: oldEntry.AutoJoinServer,
-	})
+	entry.AccountID, entry.AutoJoinServer = oldEntry.AccountID, oldEntry.AutoJoinServer
+	entry.Kind = a.shortcutKind(packID)
+	reg[packID] = encodeShortcutEntry(entry)
 	_ = a.saveShortcutRegistry(reg)
 	return nil
 }
@@ -530,28 +806,22 @@ func (a *App) RenameShortcut(oldID, newID string) error {
 
 	// Перестворюємо .lnk на тому самому місці з новим --launch <newID> і
 	// збереженими персональними опціями ярлика.
+	// Старий ID більше не існує — прибираємо його .ico (нове і легасі
+	// розташування), нова іконка генерується під newID.
 	icoPath := a.ensureShortcutIcon(newID)
-	iconLocation := ""
-	if icoPath != "" {
-		iconLocation = icoPath + ",0"
-	}
-	exe := execPath()
 	args := a.shortcutLaunchArgs(newID, ShortcutOptions{
 		AccountID: oldEntry.AccountID, AutoJoinServer: oldEntry.AutoJoinServer,
 	})
-	name := newID
-	if cp, ok := a.customPacks.Get(newID); ok && cp.Name != "" {
-		name = cp.Name
-	}
-	desc := fmt.Sprintf("%s — Shaurma Launcher", name)
-	if err := createLNK(oldPath, exe, args, filepath.Dir(exe), iconLocation, desc); err != nil {
+	entry, err := a.writeShortcutLNK(oldPath, a.shortcutPackName(newID), args, icoPath)
+	if err != nil {
 		return err
 	}
+	entry.AccountID, entry.AutoJoinServer = oldEntry.AccountID, oldEntry.AutoJoinServer
+	entry.Kind = a.shortcutKind(newID)
+	a.removeShortcutIcons(oldID)
 
 	delete(reg, oldID)
-	reg[newID] = encodeShortcutEntry(shortcutEntry{
-		Path: oldPath, AccountID: oldEntry.AccountID, AutoJoinServer: oldEntry.AutoJoinServer,
-	})
+	reg[newID] = encodeShortcutEntry(entry)
 	return a.saveShortcutRegistry(reg)
 }
 
@@ -572,7 +842,7 @@ func (a *App) RemoveDesktopShortcut(packID string) error {
 
 	// Іконку .ico також прибираємо (вона генерується, її завжди можна
 	// відновити повторним CreateShortcut).
-	_ = os.Remove(filepath.Join(a.cfg.CacheDir(), "shortcuts", packID+".ico"))
+	a.removeShortcutIcons(packID)
 	return nil
 }
 
@@ -649,6 +919,9 @@ type PendingShortcutLaunch struct {
 	PackID         string `json:"packId"`
 	AccountID      string `json:"accountId,omitempty"`
 	AutoJoinServer string `json:"autoJoinServer,omitempty"`
+	// Mode — "window" (окреме вікно запуску ярлика) або "plain" (запуск як
+	// після кнопки «Грати»). Виставляє backend (decideShortcutMode).
+	Mode string `json:"mode,omitempty"`
 }
 
 var (

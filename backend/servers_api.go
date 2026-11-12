@@ -2,6 +2,7 @@
 package main
 
 import (
+	"shaurma-launcher-backend/internal/console"
 	"shaurma-launcher-backend/internal/custompack"
 	"shaurma-launcher-backend/internal/model"
 	"shaurma-launcher-backend/internal/servers"
@@ -381,4 +382,8 @@ func (a *App) GetServerLaunchWarnings(serverID string) (servers.PreflightResult,
 		}
 	}
 	return res, nil
+}
+
+func (a *App) GetServerConsolePage(id string, offset, limit int, level, query string, after uint64) console.Page {
+	return a.srvAPI.Manager().EnsureBuffer(id).Page(offset, limit, level, query, after)
 }

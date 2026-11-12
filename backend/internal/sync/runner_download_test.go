@@ -16,12 +16,8 @@ import (
 	"time"
 )
 
-// ── Баг 3: пауза/зупинка не працювали на завмерлому CDN («0.0 МБ/с,
-// кнопки не реагують») ────────────────────────────────────────────────────
-// Раніше downloadTask перевіряв прапорець паузи ЛИШЕ між читаннями —
-// заблокований Read на мовчазному з'єднанні не можна було розірвати, тож
-// Pause/Cancel «не працювали». Тепер pauseStallReader закриває тіло при
-// запиті паузи — Read розблоковується і downloadTask повертає errTaskPaused.
+// ── PauseStallReader закриває тіло при запиті паузи — Read розблоковується
+// і downloadTask повертає errTaskPaused.
 
 func newTestRunner(t *testing.T, installDir string, client *http.Client, maxRetries int) *Runner {
 	t.Helper()

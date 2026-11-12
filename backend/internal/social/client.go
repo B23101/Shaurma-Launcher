@@ -41,13 +41,16 @@ var knownCodes = map[string]bool{
 	"invites_disabled": true, "not_friends_of_friends": true, "rate_limited": true,
 	"already_friends": true, "friend_limit_reached": true, "invite_already_pending": true,
 	"invalid_handle": true, "user_not_found": true,
-	"invite_not_found": true, "invite_not_pending": true, "forbidden": true,
+	"invite_not_found": true, "invite_not_pending": true, "forbidden": true, "not_friends": true,
 	"Unauthorized": true, "Bad Request": true,
 	"friends_internal_error": true,
 	// ключі чату / пристрої
 	"key_managed": true, "device_revoked": true, "key_exists": true, "key_unavailable": true,
 	"blocked": true, "block_limit_reached": true,
 	"no_chat_key": true, "chat_key_disabled": true, "device_limit": true,
+	// коментарі в профілі
+	"text_too_long": true, "empty_text": true, "comment_limit": true, "duplicate_comment": true,
+	"comment_not_found": true, "bad_emoji": true,
 }
 
 // Client — HTTP-клієнт друзів.

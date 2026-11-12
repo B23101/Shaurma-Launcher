@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // Після краху / закриття лаунчера посеред прийому: що лишилось на диску і що з ним робити.
   // Повністю прийняте встановлюється й без відправника; недокачане продовжується з місця
   // обриву (якщо відправник ще роздає) або видаляється. Нічого не стається без кліку.
@@ -40,7 +42,7 @@
         <div class="rc-item">
           <div class="rc-ic"><i class="ti {r.kind === 'server' ? 'ti-server-2' : 'ti-package'}"></i></div>
           <div class="rc-main">
-            <b title={r.name}>{r.name}</b>
+            <b use:launcherTip={r.name}>{r.name}</b>
             <span>{t('share.recover.from', { name: r.from || t('share.friend') })} · {fmtBytes(r.bytes)}</span>
             <span class="rc-state">
               {#if r.complete}<i class="ti ti-circle-check ok"></i> {t('share.recover.complete')}

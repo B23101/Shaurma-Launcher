@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Віджет офіційного сервера збірки ────────────────────────────────────
   // Shaurma-збірки можуть мати "офіційний" сервер (pack.server_ip з
   // packs-index.json — worker/manifest.go, ServerIP), який НЕ живе у
@@ -28,12 +30,6 @@
     // doLaunch (SetLaunchClickAccount фіксується там, ПЕРЕД усім ланцюгом
     // health-guard/mod-check/ram-check) — тут його дублювати не треба.
     activeAccountId?: string
-    // onJoin — та сама точка входу, що onLaunch на сторінці збірки
-    // (App.svelte joinPinnedServer → launchWithHealthGuard): раніше цей
-    // компонент викликав App.LaunchInstanceOnServer НАПРЯМУ, в обхід
-    // health-guard/mod-check/ram-check і без жодного видимого індикатора
-    // прогресу — клік по «Приєднатись» виглядав так, ніби нічого не
-    // відбувається, поки на бекенді тихо йшло оновлення файлів збірки.
     onJoin: (packId: string, address: string) => void
   }>()
 
@@ -96,8 +92,7 @@
     // onJoin (App.svelte joinPinnedServer → launchWithHealthGuard) сам
     // ловить і показує помилки запуску через toast (той самий шлях, що й
     // головна кнопка «Грати») — дублювати try/catch з власним тостом тут
-    // не потрібно, це раніше давало б два різних повідомлення про той
-    // самий збій.
+    // не потрібно.
     await onJoin(packId, serverIp)
     joining = false
   }
@@ -119,20 +114,20 @@
       </div>
       <div class="osw-addr mono">{serverIp}</div>
       {#if ping?.online && ping.motd}
-        <div class="osw-motd" title={stripMotdCodes(ping.motd)}>{#each parseMotdSegments(ping.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
+        <div class="osw-motd" use:launcherTip={stripMotdCodes(ping.motd)}>{#each parseMotdSegments(ping.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
       {/if}
     </div>
 
     {#if pinging}
       <div class="osw-stat"><i class="ti ti-loader spin"></i></div>
     {:else if ping?.online}
-      <div class="osw-stat" title={stripMotdCodes(ping.motd || '')}><div class="dot on"></div>{ping.players ?? 0}/{ping.maxPlayers ?? 0}</div>
+      <div class="osw-stat" use:launcherTip={stripMotdCodes(ping.motd || '')}><div class="dot on"></div>{ping.players ?? 0}/{ping.maxPlayers ?? 0}</div>
     {:else}
       <div class="osw-stat"><div class="dot off"></div>{t('pack.servers.offline')}</div>
     {/if}
 
     {#if !checkingList && !inList}
-      <button class="btn btn-ghost btn-sm" onclick={addToList} disabled={addingToList} title={t('pack.servers.official.addToList')}>
+      <button class="btn btn-ghost btn-sm" onclick={addToList} disabled={addingToList} use:launcherTip={t('pack.servers.official.addToList')}>
         <i class="ti {addingToList ? 'ti-loader spin' : 'ti-plus'}"></i> {t('pack.servers.official.addToList')}
       </button>
     {/if}

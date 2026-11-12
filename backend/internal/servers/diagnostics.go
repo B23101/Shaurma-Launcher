@@ -260,10 +260,8 @@ const ramSafetyMarginMB = 512
 //
 // Available — РЕАЛЬНО вільна фізична пам'ять зараз (на Windows це
 // ullAvailPhys, на Linux MemAvailable): вона вже враховує і ОС, і всі
-// запущені програми та сервери. Раніше від неї ще віднімали 1.5 ГБ «резерву
-// ОС» і заявлений обсяг запущених серверів — подвійний облік, через який
-// старт блокувався, хоча пам'яті було достатньо. usedByServers тепер лише
-// інформаційне поле. Ok = сервер вміщується з запасом ramSafetyMarginMB.
+// запущені програми та сервери. Ok = сервер вміщується з запасом
+// ramSafetyMarginMB.
 func CheckRAM(ramMB int, usedByServers int) CheckRAMResult {
 	totalMB, availMB := getSystemRAM()
 
@@ -512,9 +510,6 @@ func javaCandidates(major int) []string {
 
 func execEnv(name string) string {
 	// os.Getenv читає змінну оточення напряму — без спавну cmd.exe.
-	// Раніше тут викликався `cmd /c echo %VAR%`, що на кожен виклик
-	// відкривало власне консольне вікно (навіть з CREATE_NO_WINDOW це
-	// зайвий процес на рівному місці — Go має прямий доступ до env).
 	return strings.TrimSpace(os.Getenv(name))
 }
 

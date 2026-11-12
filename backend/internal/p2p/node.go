@@ -80,11 +80,8 @@ func upFreshNode(ctx context.Context, cfg nodeUpConfig) (*tsnet.Server, error) {
 			AuthKey:    authKey,
 			Ephemeral:  true, // нода зникає з мережі сама, щойно процес завершиться
 			ControlURL: cfg.ControlURL,
-			// Раніше тут була заглушка («tsnet дуже говіркий»), через що збій
-			// реєстрації не лишав у лозі нічого. Тепер усе йде в p2p-tsnet
-			// (debug), з редагуванням секретів і лімітом шуму — див. tsnetLogf.
-			Logf:     logf,
-			UserLogf: logf,
+			Logf:       logf,
+			UserLogf:   logf,
 		}
 
 		launchlog.Info(compNode, "[%s/%s] спроба %d/2: hostname=%s dir=%s authKey=%s",

@@ -1,9 +1,7 @@
 <script lang="ts">
   // ── Вкладка "Файли" ────────────────────────────────────────────────────
-  // FileBrowserPanel — спільний провідник файлів (той самий, що на
-  // сторінці збірки), параметризований через FileBrowserAPI. Тут лише
-  // збираємо API-обʼєкт з методів App.*ServerFile*/*ServerEntry* —
-  // раніше цей самий обʼєкт будувався прямо в ServerInstancePage.
+  // FileBrowserPanel — спільний провідник файлів (той самий, що на сторінці
+  // збірки), параметризований через FileBrowserAPI.
   import { App } from '../../wails'
   import FileBrowserPanel from '../../FileBrowserPanel.svelte'
   import type { FileBrowserAPI } from '../../FileBrowserPanel.svelte'

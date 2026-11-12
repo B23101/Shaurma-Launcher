@@ -136,15 +136,12 @@ func loadModule(path string) (*dllModule, error) {
 // initModule кличе backend_init(configJSON, &callbacks). Повертає 0 при успіху.
 //
 // ВАЖЛИВО (фікс "cgo argument has Go pointer to unpinned Go pointer"):
-// cbs — це *bridgeCallbacksC, вказівник на Go-структуру. Раніше її поля
-// мали тип unsafe.Pointer (адреси C-функцій-колбеків), і саме структура
-// з такими полями передавалась у C.call_backend_init як
-// (*C.BridgeCallbacks)(unsafe.Pointer(cbs)). Для cgo checker'а (cgocheck,
-// увімкнений за замовчуванням у не-release збірках) це виглядає як
-// "Go-вказівник (cbs), що вказує на Go-пам'ять, яка сама містить Go-
-// вказівники (unsafe.Pointer-поля), і жоден з них не запінений через
-// runtime.Pinner" — звідси паніка одразу при першому виклику
-// initModule (старт лаунчера).
+// cbs — це *bridgeCallbacksC, вказівник на Go-структуру. Для cgo
+// checker'а (cgocheck, увімкнений за замовчуванням у не-release збірках)
+// це виглядає як "Go-вказівник (cbs), що вказує на Go-пам'ять, яка сама
+// містить Go- вказівники (unsafe.Pointer-поля), і жоден з них не
+// запінений через runtime.Pinner" — звідси паніка одразу при першому
+// виклику initModule (старт лаунчера).
 //
 // Замість пінінгу (що ускладнило б код і мусило б жити рівно стільки,
 // скільки й bridgeCB) переносимо С-структуру BridgeCallbacks у ЧИСТУ

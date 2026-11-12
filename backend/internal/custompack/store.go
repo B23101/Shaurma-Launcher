@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Pack — повний опис кастомної (не-Shaurma) збірки користувача. Джерело
@@ -97,8 +98,7 @@ type Pack struct {
 	// записі. Save порівнює його з диском: якщо знімок Pack застарів (хтось
 	// інший записав новішу ревізію, поки викликач тримав копію), Save НЕ
 	// відкочує вигляд збірки (назва, опис, іконка, колір, фон) до старих
-	// значень. Саме так раніше «злітали» пресет-іконки: фоновий потік брав
-	// копію, користувач міняв іконку, потік записував стару копію назад.
+	// значень.
 	Rev uint64 `json:"rev,omitempty"`
 }
 
@@ -266,6 +266,44 @@ func (s *Store) Get(id string) (Pack, bool) {
 	return p, ok
 }
 
+// CleanText прибирає з користувацького тексту (назва/опис збірки) символи,
+// якими можна підробити вигляд або зламати формат, куди текст потрапляє далі
+// (логи, ярлики, конфіги): керівні символи (у т.ч. \r, NUL), двоспрямовані
+// керівні Unicode-символи (U+202A–202E, U+2066–2069: підміна порядку тексту),
+// нульової ширини та BOM. multiline=true лишає \n і \t (опис). Текст
+// обрізається до maxRunes символів.
+func CleanText(s string, maxRunes int, multiline bool) string {
+	var b strings.Builder
+	n := 0
+	for _, r := range s {
+		switch {
+		case r == '\n' || r == '\t':
+			if !multiline {
+				r = ' '
+			}
+		case r == '\r':
+			continue
+		case unicode.IsControl(r):
+			continue
+		case r >= 0x202A && r <= 0x202E, r >= 0x2066 && r <= 0x2069, r >= 0x200B && r <= 0x200F, r == 0xFEFF, r == 0x2028, r == 0x2029:
+			continue
+		}
+		if maxRunes > 0 && n >= maxRunes {
+			break
+		}
+		b.WriteRune(r)
+		n++
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// cleanPackText — єдина точка очищення назви й опису перед записом у Store
+// (Save/Update): покриває створення, імпорт, «Поділитися» і перейменування.
+func cleanPackText(p *Pack) {
+	p.Name = CleanText(p.Name, 100, false)
+	p.Description = CleanText(p.Description, 2000, true)
+}
+
 // Save створює/оновлює запис збірки в instance.json.
 //
 // Save записує ЦІЛУ структуру, тож для змін поверх наявного запису
@@ -276,6 +314,7 @@ func (s *Store) Get(id string) (Pack, bool) {
 // (назва/опис/іконка/колір/фон) — ці поля лишаються з диску, решта полів
 // знімка застосовується як і раніше.
 func (s *Store) Save(p Pack) error {
+	cleanPackText(&p)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	// Читаємо лише цей один запис, а не всі збірки: Save викликається на
@@ -314,6 +353,7 @@ func (s *Store) Update(id string, fn func(*Pack) error) (Pack, bool, error) {
 		return p, true, err
 	}
 	p.ID = id
+	cleanPackText(&p)
 	p.UpdatedAt = time.Now()
 	p.Rev++
 	if err := s.savePack(p); err != nil {
@@ -373,7 +413,22 @@ func SlugifyName(name string) string {
 	if s == "" {
 		s = "pack"
 	}
+	// Зарезервовані імена пристроїв Windows (CON, NUL, COM1…) не можна
+	// використати як ім'я теки — додаємо підкреслення.
+	base := strings.ToUpper(s)
+	if i := strings.IndexByte(base, '.'); i >= 0 {
+		base = base[:i]
+	}
+	if windowsReservedNames[strings.TrimSpace(base)] {
+		s += "_"
+	}
 	return s
+}
+
+var windowsReservedNames = map[string]bool{
+	"CON": true, "PRN": true, "AUX": true, "NUL": true,
+	"COM1": true, "COM2": true, "COM3": true, "COM4": true, "COM5": true, "COM6": true, "COM7": true, "COM8": true, "COM9": true,
+	"LPT1": true, "LPT2": true, "LPT3": true, "LPT4": true, "LPT5": true, "LPT6": true, "LPT7": true, "LPT8": true, "LPT9": true,
 }
 
 // UniqueID повертає slug назви з числовим суфіксом при колізії.

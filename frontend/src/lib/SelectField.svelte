@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── SelectField: випадаючий список у стилі лаунчера ─────────────────────
   // Замінює нативний <select> у сторінках збірок, щоб меню виглядало як
   // решта UI лаунчера (без ванільних стрілок ОС). Підтримує опції з
@@ -175,7 +177,7 @@
   {:else}
     <div class="sf-trigger" role="button" tabindex={disabled ? -1 : 0}
          aria-label={ariaLabel || current?.label || placeholder}
-         title={current?.label || placeholder}
+         use:launcherTip={current?.label || placeholder}
          onclick={toggle}>
       {#if current?.head && !brokenHeads.has(current.head)}
         <span class="sf-avatars">
@@ -196,7 +198,7 @@
   {#if open && !disabled}
     <div class="sf-menu" class:sf-lg={size === 'lg'} bind:this={menuEl} onclick={(e) => e.stopPropagation()}>
       {#each filteredOptions as opt}
-        <button class="sf-item" class:sel={value === opt.value} onclick={() => pick(opt)} title={opt.label}>
+        <button class="sf-item" class:sel={value === opt.value} onclick={() => pick(opt)} use:launcherTip={opt.label}>
           {#if opt.head && !brokenHeads.has(opt.head)}
             <span class="sf-avatars">
               <img class="sf-head" src={opt.head} alt="" onerror={() => markBroken(opt.head!)} />
@@ -211,7 +213,7 @@
           {/if}
           <span class="sf-label">{opt.label}</span>
           {#if opt.badgeIcon}
-            <i class="ti {opt.badgeIcon} sf-badge" title={opt.badgeTitle || ''}></i>
+            <i class="ti {opt.badgeIcon} sf-badge" use:launcherTip={opt.badgeTitle || ''}></i>
           {/if}
         </button>
       {/each}

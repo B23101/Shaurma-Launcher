@@ -15,6 +15,7 @@
 
   Secrets are read ONLY from environment variables (never from files in git):
     SHRM_BUILD_TOKEN_SHAURMA, SHRM_BUILD_TOKEN_BASE   CDN channel tokens
+    GEMINI_API_KEY, GROQ_API_KEY                     AI client keys (recoverable from distributed binaries)
     CF_API_KEY                                       CurseForge client key (recoverable from distributed binaries)
     SHAURMA_GOOGLE_CLIENT_ID, SHAURMA_GOOGLE_CLIENT_SECRET   Google sign-in
     SHAURMA_MANIFEST_PUBKEYS                          Ed25519 public keys (base64, comma separated)
@@ -168,6 +169,8 @@ function New-ZipFromDir([string]$SrcDir, [string]$ZipPath) {
 $TokenShaurma = Get-Secret 'SHRM_BUILD_TOKEN_SHAURMA'
 $TokenBase = Get-Secret 'SHRM_BUILD_TOKEN_BASE'
 $CfKey = Get-Secret 'CF_API_KEY'
+$GeminiKey = Get-Secret 'GEMINI_API_KEY'
+$GroqKey = Get-Secret 'GROQ_API_KEY'
 $GoogleId = Get-Secret 'SHAURMA_GOOGLE_CLIENT_ID'
 $GoogleSecret = Get-Secret 'SHAURMA_GOOGLE_CLIENT_SECRET'
 $PubKeys = Get-Secret 'SHAURMA_MANIFEST_PUBKEYS'
@@ -319,7 +322,22 @@ function Build-Frontends {
     $flags = @('--no-audit', '--no-fund', '--progress=false', '--loglevel=error')
     Invoke-Native 'npm.cmd' (@('ci') + $flags) $fe
     Invoke-Native 'npm.cmd' @('run', 'build') $fe
-    & (Join-Path $PSScriptRoot 'collect-licenses.ps1') -Destination (Join-Path $fe 'dist/licenses/dependencies')
+    # License discovery must include cgo-only modules, just like the DLL build.
+    $licenseCC = Find-CCompiler
+    if (-not $licenseCC) { throw 'A C compiler is required to collect updater-backend dependencies' }
+    $previousCGO = $env:CGO_ENABLED
+    $previousCC = $env:CC
+    $previousPath = $env:PATH
+    try {
+        $env:CGO_ENABLED = '1'
+        $env:CC = $licenseCC
+        $env:PATH = (Split-Path -Parent $licenseCC) + [IO.Path]::PathSeparator + $previousPath
+        & (Join-Path $PSScriptRoot 'collect-licenses.ps1') -Destination (Join-Path $fe 'dist/licenses/dependencies')
+    } finally {
+        $env:CGO_ENABLED = $previousCGO
+        $env:CC = $previousCC
+        $env:PATH = $previousPath
+    }
     New-ZipFromDir (Join-Path $fe 'dist') (Join-Path $AssetsOut 'frontend.zip')
 
     Write-Step 'updater-frontend -> updater-frontend.zip'
@@ -376,6 +394,8 @@ function Build-Backend([string]$ed) {
     if ($RootKeys) { $ld += " -X shaurma-launcher-backend/internal/access.RootKeys=$RootKeys -X shaurma-launcher-backend/internal/access.EmbeddedKeyset=$KeysetB64 -X shaurma-launcher-backend/internal/access.EmbeddedKeysetSig=$KeysetSig" }
     if ($ed -eq 'shaurma') {
         $ld += " -X shaurma-launcher-backend/internal/api.tokenShaurma=$TokenShaurma"
+        if ($GeminiKey) { $ld += " -X shaurma-launcher-backend/internal/ai.DefaultAPIKey=$GeminiKey" }
+        if ($GroqKey) { $ld += " -X shaurma-launcher-backend/internal/ai.DefaultGroqAPIKey=$GroqKey" }
 
     }
     if ($GoogleId) {

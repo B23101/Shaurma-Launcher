@@ -58,7 +58,7 @@ func TestClaimUpstreamErrorIncludesCause(t *testing.T) {
 }
 
 func TestClaimRateLimitedMessage(t *testing.T) {
-	// 429 з поясненням сервера: показуємо саме його (раніше будь-який 429 підміняли на «забагато спроб»).
+	// 429 з поясненням сервера: показуємо саме його.
 	c := lobbyServer(t, http.StatusTooManyRequests, `{"error":"Забагато активних адрес на цей лаунчер (максимум 5)."}`)
 	_, err := c.ClaimAddress(context.Background(), "prlool", strings.Repeat("a", 32))
 	if err == nil {

@@ -83,16 +83,6 @@ const shellOldSuffix = "~"
 // достатньо великим і починатись з правильної магії заголовка. Захист
 // від того, що .new виявиться битим/чужим (CDN віддав помилку, обірвана
 // качка).
-//
-// БАГ (виправлено): перевірялась ЛИШЕ MZ-сигнатура (PE/Windows-заголовок).
-// На Linux self-update-бінарник shell — ELF (сигнатура 0x7F 'E' 'L' 'F'),
-// а не MZ, тож ця перевірка завжди повертала false для КОЖНОГО валідного
-// Linux .new — applyShellSelfUpdate() ніколи не проходив далі swap, і сам
-// shell (той самий бінарник, що показує версію в UI) ніколи не оновлювався
-// на Linux: апдейтер справно качав нову версію, install.Apply клав її як
-// shell.new, а тут файл щоразу відбраковувався як "не схожий на exe" —
-// звідси "лаунчер пише стару версію і не бачить оновлення" саме на Linux
-// (на Windows баг непомітний, бо там і .new, і магія — PE/MZ).
 func looksLikeExecutable(path string) bool {
 	fi, err := os.Stat(path)
 	if err != nil || fi.Size() < 1024*1024 {
@@ -224,10 +214,7 @@ func applyPendingUpdates() {
 
 // launcherIncomplete повертає true, якщо на диску бракує ОДНОГО з
 // обов'язкових компонентів лаунчера: updater.dll, backend.dll або
-// розпакованого frontend (index.html). Раніше перевірявся лише updater.dll,
-// тому коли є updater, але зник фасад/backend (або качка не встигла) —
-// лаунчер лишався без дизайну. Тепер брак компонента веде до повної
-// bootstrap-докачки (delete-old + install-new) ще до завантаження апдейтера.
+// розпакованого frontend (index.html).
 func launcherIncomplete() bool {
 	dir := exeDir()
 	for _, name := range []string{updaterLibraryName(), backendLibraryName()} {
@@ -289,9 +276,21 @@ func moduleConfigJSON() string {
 		"finalize":   updaterFinalize,
 		// Фоновий старт: backend не показує вікно на UIReady (ui_ready.go).
 		"background": startBackground,
+		// Запуск з ярлика збірки (--launch): оновлювач працює без екрана,
+		// якщо оновлень немає, а backend не показує головне вікно — лише
+		// вікно запуску ярлика (backend/shortcut_window.go).
+		"shortcut": shortcutStart(),
 	}
 	b, _ := json.Marshal(cfg)
 	return string(b)
+}
+
+// shortcutStart — лаунчер стартує заради запуску збірки з ярлика
+// (--launch <packID>): головне вікно не показуємо, оновлювач не тримає
+// екран. launchPackID скидається в dispatchLaunchToBackend, тож функція
+// діє лише до моменту передачі запуску у backend.
+func shortcutStart() bool {
+	return launchPackID != ""
 }
 
 // loadBackendAndShowMain — завантажує backend.dll, ініціалізує його і
@@ -302,12 +301,9 @@ func loadBackendAndShowMain() {
 	if backendModule == nil {
 		mod, err := loadModule(filepath.Join(exeDir(), backendLibraryName()))
 		if err != nil {
-			// Без backend немає UI. Раніше тут був лише println у консоль
-			// (невидиму в GUI-застосунку) і return — користувач бачив, як
-			// splash зникає, а головного вікна НЕ з'являється («лаунчер
-			// зник»). Тепер: показуємо зрозуміле вікно помилки. ВАЖЛИВО:
-			// splash знищуємо ЛИШЕ ПІСЛЯ показу вікна помилки (інакше splash
-			// — останнє вікно, і Wails завершує застосунок до показу нового).
+			// Без backend немає UI. ВАЖЛИВО: splash знищуємо ЛИШЕ ПІСЛЯ
+			// показу вікна помилки (інакше splash — останнє вікно, і Wails
+			// завершує застосунок до показу нового).
 			println(backendLibraryName()+" load error:", err.Error())
 			showFatalError(backendLibraryName(), err.Error())
 			if getWindow(splashWindowID) != nil {
@@ -323,17 +319,9 @@ func loadBackendAndShowMain() {
 	// після shutdown попередньої сесії.
 	//
 	// ВАЖЛИВО: код повернення ТРЕБА перевіряти. backend_init повертає 1,
-	// якщо ServiceStartup() повернув error АБО (після відповідного патча
-	// в backend/main.go) якщо ServiceStartup() запанікував — recover() там
+	// якщо ServiceStartup() повернув error АБО (після відповідного патча в
+	// backend/main.go) якщо ServiceStartup() запанікував — recover() там
 	// ловить паніку й повертає 1 замість того, щоб убити весь процес.
-	// Раніше код повернення ігнорувався (_ =), тож і охайна помилка init,
-	// і зловлена паніка проходили непоміченими: головне вікно все одно
-	// створювалось і показувалось — фронтенд лишався битим/порожнім, а
-	// причина була видна лише в backend:ready події, яку фронт міг ще не
-	// встигнути підписати. Тепер помилка init зупиняє показ головного вікна
-	// і одразу показує нативне showFatalError (як для помилки LoadLibrary
-	// вище) — той самий детальний текст паніки/стека потрапляє користувачу
-	// й у лог, а не губиться мовчки.
 	if code := backendModule.initModule(moduleConfigJSON(), &bridgeCB); code != 0 {
 		println("backend_init error, code:", code)
 		showFatalError(backendLibraryName(), fmt.Sprintf("backend_init повернув код помилки %d — дивись логи лаунчера (%s)", code, logsDirHint()))
@@ -360,18 +348,19 @@ func loadBackendAndShowMain() {
 		Hidden: true,
 	}
 	mainAlreadyExisted := getWindow("main") != nil
+	// Холодний запуск з ярлика (головного вікна ще не було): його не
+	// показуємо. Для повторного переходу (вікно вже існувало) логіка
+	// не змінюється.
+	shortcutHold := shortcutStart() && !mainAlreadyExisted
 	// Збережений розмір вікна читаємо ДО створення вікна — backend уже
 	// ініціалізований, тож "window:ready:main" відповість одразу.
 	//
 	// ЧОМУ САМЕ ТАК (виправлення «на Linux головне вікно відкривається
-	// криво»): раніше вікно створювалось дефолтним 1280x820, одразу
-	// показувалось, і тільки після завантаження сторінки (хук
-	// WindowRuntimeReady) йому міняли розмір/позицію/максимізацію. GTK це
-	// відпрацьовує як повноцінний цикл resize уже ПОКАЗАНОГО вікна:
-	// видимий стрибок геометрії, повна переверстка WebKit, а в частині
-	// композиторів — вікно, що лишилось у проміжному стані. Тепер вікно
-	// одразу народжується потрібного розміру, а на runtime-ready лишається
-	// хіба що максимізація.
+	// криво»). GTK це відпрацьовує як повноцінний цикл resize уже
+	// ПОКАЗАНОГО вікна: видимий стрибок геометрії, повна переверстка
+	// WebKit, а в частині композиторів — вікно, що лишилось у проміжному
+	// стані. Тепер вікно одразу народжується потрібного розміру, а на
+	// runtime-ready лишається хіба що максимізація.
 	savedState, haveSaved := fetchSavedWindowState()
 	if haveSaved {
 		if w, h := sanitizeWindowSize(savedState.Width, savedState.Height); w > 0 {
@@ -386,7 +375,14 @@ func loadBackendAndShowMain() {
 			applyWindowState(win, savedState, true)
 		}
 	}
-	if startBackground && !mainAlreadyExisted {
+	if shortcutHold {
+		// Запуск з ярлика: головне вікно лишається схованим, а замість
+		// нього backend покаже невелике вікно запуску ярлика. Спершу
+		// передаємо запуск у backend (він створить те вікно), і лише потім
+		// знімаємо splash — між ними завжди є відкрите вікно.
+		dispatchLaunchToBackend()
+		onMainShown()
+	} else if startBackground && !mainAlreadyExisted {
 		// Фоновий старт: вікно лишається схованим (воно створене
 		// Hidden:true), запасний таймер показу НЕ заводимо. Splash
 		// знімаємо тут — головне вікно вже існує, тож застосунок не
@@ -454,13 +450,16 @@ func showUpdaterSplash() {
 		Background:    "solid",
 		BackgroundHex: "#0f0f0f",
 		URL:           "updater-splash.html",
-		Hidden:        startBackground,
+		Hidden:        startBackground || shortcutStart(),
 	}
 	b, _ := json.Marshal(opts)
 	windowCreate(splashWindowID, string(b))
 	// Фоновий автозапуск: splash лишається схованим — користувач не
 	// чекав на лаунчер і не повинен бачити вікно оновлення при вході в ОС.
-	if !startBackground {
+	// Запуск з ярлика: splash теж схований — оновлювач (updater.dll)
+	// сам його покаже, лише якщо є що показувати (качка/помилка/повільна
+	// перевірка), а без оновлень гра стартує без жодного екрана оновлення.
+	if !startBackground && !shortcutStart() {
 		windowOp(splashWindowID, "show")
 	}
 }
@@ -500,6 +499,11 @@ func loadUpdaterAndShowSplash() {
 func bootstrapAndLoadUpdater() {
 	bootstrapLog(exeDir(), "bootstrapAndLoadUpdater: старт (компоненти неповні)")
 	showUpdaterSplash()
+	// Докачування компонентів — це справжня робота, а не «порожня» перевірка:
+	// навіть при запуску з ярлика користувач має бачити прогрес.
+	if shortcutStart() && !startBackground {
+		windowOp(splashWindowID, "show")
+	}
 	go func() {
 		bootstrapLog(exeDir(), "горутина bootstrap: запущена, чекаю 700мс")
 		// Даємо WebView час завантажити splash і підписатись на події
@@ -629,17 +633,12 @@ func manifestHashOf(dir string) string {
 }
 
 // showFatalError — показує просте вікно помилки, коли критичний компонент
-// (backend.dll/backend.so) не вдалось завантажити. Раніше це був невидимий
-// println, і користувач бачив лише «лаунчер зник». Вікно використовує
+// (backend.dll/backend.so) не вдалось завантажити. Вікно використовує
 // віртуальну сторінку fatal-error.html (assetfs.go) і не залежить від
 // фронтенду.
 //
 // component/detail передаються через query-параметри URL (сама сторінка —
-// статичний HTML/JS, без текстової підстановки на боці Go) — раніше
-// fatal-error.html мала захардкоджений текст "backend.dll"/"setup.exe",
-// тому на Linux (де компонент — backend.so, а setup.exe взагалі не існує)
-// повідомлення вводило користувача в оману щодо реальної причини й кроків
-// відновлення.
+// статичний HTML/JS, без текстової підстановки на боці Go).
 func showFatalError(component, detail string) {
 	q := url.Values{}
 	q.Set("component", component)
@@ -766,13 +765,6 @@ func transitionToUpdater() {
 		bridgeSvc.swap(nil)
 		backendModule.shutdownModule()
 	}
-	// БАГ (виправлено): головне вікно "main" тут ніколи не приховувалось —
-	// loadUpdaterAndShowSplash() лише СТВОРЮЄ/ПОКАЗУЄ splash поверх нього,
-	// тому при ручному оновленні (кнопка в налаштуваннях) користувач бачив,
-	// як лаунчер "не закривається": за новим splash-вікном далі висіло
-	// старе головне вікно, і жодного видимого переходу в апдейтер не було.
-	// Симетрично до того, як loadBackendAndShowMain() ховає splash при
-	// зворотному переході (updater -> backend).
 	if getWindow("main") != nil {
 		// Це ПРОГРАМНЕ приховування на час оновлення, а не «користувач згорнув
 		// у трей»: windowOp("hide") ставить маркер window_hidden.flag, і

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Віджет P2P-хостингу ("LAN через інтернет") ────────────────────────
   // Власний Headscale/tsnet-тунель без потреби ставити зовнішній агент.
   // Гравець один раз застовблює адресу (напр.
@@ -23,6 +25,7 @@
   // а гравцю показується чесне попередження (див. backend/internal/p2p/udp.go).
   import { App } from '../../wails'
   import { t } from '../../i18n.svelte'
+  import RichT from '../../RichT.svelte'
   import { toast } from '../../toast.svelte'
   import { p2pErr } from '../p2pErr'
   import UiModal from '../../UiModal.svelte'
@@ -34,10 +37,6 @@
     isRunning = false,
     refreshKey = 0,
     // serverId — СТАБІЛЬНА ідентичність сервера (id із бази лаунчера).
-    // Раніше адреса зберігалась у localStorage під ключем із ПОРТОМ, а порт
-    // сервера змінюється — тому кожен запуск вимагав нового claim'у. Тепер
-    // адреса лежить у бекенді (внутрішня книга адрес, прив'язана до акаунта)
-    // під міткою serverId.
     serverId = '',
     // accountOk/accountReason — P2P вимагає Shaurma/ліцензійний акаунт
     // (адреси прив'язуються до акаунта).
@@ -184,13 +183,11 @@
   })
 
   // ── Живе оновлення P2P-екрана ────────────────────────────────────────
-  // Раніше статус перечитувався ЛИШЕ на зміну пропсів (refreshKey /
-  // savedSubdomain / isRunning). Поки вкладка «Мережа» змонтована, ніщо не
-  // змінювалось — щоб побачити актуальний стан (напр. що хостинг піднявся
-  // сам разом із сервером, або що гість уже в мережі), доводилось
-  // перемикати розділ і повертатись, бо це єдине, що перемонтовувало
-  // віджет. Тепер статус опитується сам — плюс одразу при поверненні у
-  // вікно лаунчера.
+  // Поки вкладка «Мережа» змонтована, ніщо не змінювалось — щоб побачити
+  // актуальний стан (напр. що хостинг піднявся сам разом із сервером, або
+  // що гість уже в мережі), доводилось перемикати розділ і повертатись, бо
+  // це єдине, що перемонтовувало віджет. Статус опитується сам — плюс
+  // одразу при поверненні у вікно лаунчера.
   $effect(() => {
     if (!savedSubdomain) return
     const tick = () => { void refresh(true) }
@@ -367,7 +364,7 @@
       class:on={autoStartOn}
       onclick={toggleAutoStart}
       disabled={autoStartSaving || !serverId}
-      title={t('servers.p2p.autoStartHint')}
+      use:launcherTip={t('servers.p2p.autoStartHint')}
       aria-pressed={autoStartOn}
     >
       {#if autoStartSaving}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-bolt"></i>{/if}
@@ -381,7 +378,7 @@
       {:else if viewState === 'missing'}{t('servers.p2p.pill.missing')}
       {:else}{t('servers.p2p.pill.off')}{/if}
     </span>
-    <button class="spw-icon-btn" onclick={() => refresh()} disabled={loading} title={t('servers.p2p.refresh')} aria-label={t('servers.p2p.refresh')}>
+    <button class="spw-icon-btn" onclick={() => refresh()} disabled={loading} use:launcherTip={t('servers.p2p.refresh')} aria-label={t('servers.p2p.refresh')}>
       <i class="ti ti-refresh"></i>
     </button>
   </div>
@@ -392,7 +389,7 @@
   {#if !accountOk}
     <div class="spw-err">
       <i class="ti ti-user-exclamation"></i>
-      {accountReason || t('servers.p2p.account.required')}
+      {#if accountReason}{accountReason}{:else}<RichT key="servers.p2p.account.required" />{/if}
     </div>
   {/if}
   {#if active && status?.disabled}
@@ -401,8 +398,8 @@
 
   {#if address}
     <div class="spw-addr">
-      <code class="spw-addr-t" title={address}>{address}</code>
-      <button class="spw-copy" onclick={() => copy(address)} title={t('servers.p2p.copyTitle')} aria-label={t('servers.p2p.copy')}>
+      <code class="spw-addr-t" use:launcherTip={address}>{address}</code>
+      <button class="spw-copy" onclick={() => copy(address)} use:launcherTip={t('servers.p2p.copyTitle')} aria-label={t('servers.p2p.copy')}>
         <i class="ti ti-copy"></i>
       </button>
     </div>
@@ -433,7 +430,7 @@
       <button class="spw-btn" onclick={openPicker} disabled={busy}>
         <i class="ti ti-list"></i> {t('servers.p2p.pick')}
       </button>
-      <button class="spw-btn ghost danger-text" onclick={releaseAddress} disabled={busy} title={t('servers.p2p.release')} aria-label={t('servers.p2p.release')}>
+      <button class="spw-btn ghost danger-text" onclick={releaseAddress} disabled={busy} use:launcherTip={t('servers.p2p.release')} aria-label={t('servers.p2p.release')}>
         <i class="ti ti-trash"></i>
       </button>
     {:else}
@@ -504,7 +501,7 @@
             {@const other = !!a.label && a.label !== ownerKey}
             <div class="spw-pr" class:cur>
               <i class="ti ti-world"></i>
-              <code class="spw-pr-addr" title={fullAddr(a.subdomain)}>{fullAddr(a.subdomain)}</code>
+              <code class="spw-pr-addr" use:launcherTip={fullAddr(a.subdomain)}>{fullAddr(a.subdomain)}</code>
               {#if cur}
                 <span class="spw-tag cur"><i class="ti ti-check"></i> {t('servers.p2p.pickCurrent')}</span>
               {:else if other}
@@ -515,12 +512,12 @@
                   <i class="ti ti-corner-down-left"></i> {t('servers.p2p.pickUse')}
                 </button>
               {/if}
-              <button class="spw-icon-btn" onclick={() => copy(fullAddr(a.subdomain))} title={t('servers.p2p.copyTitle')} aria-label={t('servers.p2p.copy')}>
+              <button class="spw-icon-btn" onclick={() => copy(fullAddr(a.subdomain))} use:launcherTip={t('servers.p2p.copyTitle')} aria-label={t('servers.p2p.copy')}>
                 <i class="ti ti-copy"></i>
               </button>
               <button class="spw-icon-btn spw-del" class:armed={confirmDelSub === a.subdomain}
                 onclick={() => deleteSaved(a.subdomain)} disabled={busy}
-                title={confirmDelSub === a.subdomain ? t('servers.p2p.pickDeleteConfirm') : t('servers.p2p.pickDelete')}
+                use:launcherTip={confirmDelSub === a.subdomain ? t('servers.p2p.pickDeleteConfirm') : t('servers.p2p.pickDelete')}
                 aria-label={t('servers.p2p.pickDelete')}>
                 <i class="ti {confirmDelSub === a.subdomain ? 'ti-check' : 'ti-trash'}"></i>
                 {#if confirmDelSub === a.subdomain}<span class="spw-del-t">{t('servers.p2p.pickDeleteConfirm')}</span>{/if}

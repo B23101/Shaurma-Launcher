@@ -51,7 +51,7 @@ func runNew(ctx context.Context, installDir string, edition Channel, updateChann
 			return errors.New(msg)
 		}
 		notify(cb, StatusUpToDate, msg)
-		holdSplash(start, minSplashShow)
+		cb.hold(start)
 		return nil
 	}
 
@@ -107,7 +107,7 @@ func runNew(ctx context.Context, installDir string, edition Channel, updateChann
 		}
 		if best == nil {
 			notify(cb, StatusUpToDate, cb.tr("Лаунчер актуальний", "Launcher is up to date"))
-			holdSplash(start, minSplashShow)
+			cb.hold(start)
 			return nil
 		}
 	}
@@ -119,7 +119,7 @@ func runNew(ctx context.Context, installDir string, edition Channel, updateChann
 		if !required {
 			notify(cb, StatusUpdateAvailable, cb.tr("Доступне оновлення: %s (автооновлення вимкнено)", "Update available: %s (auto-update disabled)", best.remote.Version))
 			notify(cb, StatusLaunching, cb.meme(StatusLaunching, 0))
-			holdSplash(start, minSplashShow)
+			cb.hold(start)
 			return nil
 		}
 	}
@@ -130,7 +130,7 @@ func runNew(ctx context.Context, installDir string, edition Channel, updateChann
 	toDownload = filterFlatpakBundle(toDownload, inFlatpak)
 	if len(toDownload) == 0 {
 		notify(cb, StatusUpToDate, cb.tr("Лаунчер актуальний", "Launcher is up to date"))
-		holdSplash(start, minSplashShow)
+		cb.hold(start)
 		return nil
 	}
 

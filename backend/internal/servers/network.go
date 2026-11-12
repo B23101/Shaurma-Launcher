@@ -159,8 +159,7 @@ func SaveNetwork(dir string, net *Network) error {
 	return saveJSON(filepath.Join(dir, ".shaurma", "network.json"), net)
 }
 
-// LoadNetwork завантажує конфіг мережі (зі старого формату — з міграцією:
-// раніше «Запустити мережу» запускала всіх і пускала гравців на всіх).
+// LoadNetwork завантажує конфіг мережі (зі старого формату — з міграцією.
 func LoadNetwork(dir string) (*Network, error) {
 	var net Network
 	if err := loadJSON(filepath.Join(dir, ".shaurma", "network.json"), &net); err != nil {

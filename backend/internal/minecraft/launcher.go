@@ -37,7 +37,7 @@ import (
 // (data race) при паралельних запусках з кількох вікон консолі/акаунтів,
 // бо запис і читання йшли без м'ютекса.
 //
-// Тепер це звичайна локальна змінна всередині Launch (versionForClasspath)
+// Це звичайна локальна змінна всередині Launch (versionForClasspath)
 // — щоразу починає з "" і не протікає в жоден інший виклик.
 
 type Launcher struct {
@@ -582,9 +582,7 @@ func (l *Launcher) finishLaunch(cmd *exec.Cmd, cfg LaunchConfig, javaPath string
 	}
 }
 
-// tailConsole — ядро читання виводу гри з консольного лог-файлу. Кожен
-// рядок йде в onOutput (консоль) і, якщо ввімкнено SaveLogs, дублюється у
-// logs/latest.log (як і раніше робив tee).
+// tailConsole — ядро читання виводу гри з консольного лог-файлу.
 func (l *Launcher) tailConsole(cfg LaunchConfig, stop <-chan struct{}) {
 	// SaveLogs (налаштування «Зберігати логи») — чи писати latest.log.
 	// Якщо вимкнено — вивід гри все одно йде у консоль лаунчера, але
@@ -846,7 +844,7 @@ func isForgeLike(loader string) bool {
 
 // forgeSpecEnv повертає FORGE_SPEC=<forgeVersion> для Forge-family профілів,
 // які несуть game-аргумент --fml.forgeVersion (бутстрап-формат Forge 1.13+;
-// NeoForge такого аргумента не має, legacy Forge 1.12 і раніше теж).
+// NeoForge такого аргумента не має.
 //
 // Навіщо: ForgeVersion.<clinit> (ForgeVersion.java:47-48) читає
 // JarVersionLookupHandler.getSpecificationVersion(ForgeVersion.class), тобто
@@ -1360,7 +1358,7 @@ func (l *Launcher) AdoptProcess(pid int, gameDir string, isAlive func(pid int) b
 		defer close(tailDone)
 		// waitForFile=0: після рестарту файл або вже є, або його не буде
 		// (гра запущена старою версією лаунчера ще на pipe) — тоді просто
-		// нічого не показуємо, як і раніше.
+		// нічого не показуємо.
 		_ = TailFile(ConsoleLogPath(gameDir), 0, tailStop, func(line string) {
 			l.mu.Lock()
 			h := l.onOutput

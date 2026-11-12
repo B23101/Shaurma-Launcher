@@ -29,9 +29,7 @@ package main
 // рантайм звільняє об'єкти, але сторінки ядру віддає ліниво (за власним
 // таймером — до кількох хвилин), а glibc-арени від рядків, що
 // перетинали C ABI (JSON backend_invoke), не віддаються взагалі без
-// malloc_trim. Раніше памʼять поверталась лише «на подію» (сканування
-// модів, очищення кешів) — якщо користувач просто згорнув лаунчер у
-// трей і запустив гру, пік RSS backend.so лишався таким назавжди.
+// malloc_trim.
 //
 // ЩО РОБИМО:
 //   - прибиральник (startMemoryTrimmer) раз на memoryTrimInterval кличе
@@ -50,18 +48,19 @@ package main
 // malloc_trim) і memtrim_other.go (порожні no-op).
 
 import (
-	"shaurma-launcher-backend/internal/crashguard"
 	"context"
 	"os"
 	"runtime"
 	"runtime/debug"
+	"shaurma-launcher-backend/internal/crashguard"
+	"sync"
 	"time"
 )
 
 // memoryTrimInterval — як часто повертаємо вільні сторінки ОС, працюючи
-// у фоні. 90 с (раніше 5 хв): куп лаунчера невелика, тож повний GC
-// коштує лічені мілісекунди, а користувачі скаржились саме на «їсть RAM»
-// у фоні. maybeReleaseMemory додатково тротлиться (memReleaseInterval).
+// у фоні. 90 с: куп лаунчера невелика, тож повний GC коштує лічені
+// мілісекунди, а користувачі скаржились саме на «їсть RAM» у фоні.
+// maybeReleaseMemory додатково тротлиться (memReleaseInterval).
 const memoryTrimInterval = 90 * time.Second
 
 // startMemoryTrimmer запускає фоновий прибиральник памʼяті до завершення
@@ -71,6 +70,9 @@ func (a *App) startMemoryTrimmer() {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	// Простій користувача при відкритому вікні → WebView2 на рівень Low
+	// (webview_memory.go).
+	startWebviewIdleWatcher(ctx)
 	go func() {
 		defer crashguard.Recover("memtrim.go:72")
 		ticker := time.NewTicker(memoryTrimInterval)
@@ -97,20 +99,30 @@ func (a *App) startMemoryTrimmer() {
 // той момент, коли зайва пам'ять лаунчера нікому не потрібна.
 //
 // Робить дві речі, які не робить фоновий прибиральник:
-//   1. releaseMemoryNow — повний цикл GC + негайне повернення сторінок
-//      Go-купи (можна було б покластись на maybeReleaseMemory, але він
-//      тротлиться 15 с, а приховування — рідка й найкраща подія);
-//   2. trimProcessWorkingSets (Windows) — робочі набори нашого процесу І
-//      WebView2-нащадків: FreeOSMemory їх не чіпає, а в Диспетчері завдань
-//      саме вони й «важать» (memtrim_windows.go).
+//  1. releaseMemoryNow — повний цикл GC + негайне повернення сторінок
+//     Go-купи (можна було б покластись на maybeReleaseMemory, але він
+//     тротлиться 15 с, а приховування — рідка й найкраща подія);
+//  2. trimProcessWorkingSets (Windows) — робочі набори нашого процесу І
+//     WebView2-нащадків: FreeOSMemory їх не чіпає, а в Диспетчері завдань
+//     саме вони й «важать» (memtrim_windows.go).
 //
 // Асинхронно: приховування вікна не має чекати на повний цикл GC, інакше
 // кнопка «згорнути в трей» відчувалась би як зависання.
 func trimNowForHiddenWindow() {
+	// Спершу просимо WebView2 скинути власні кеші (рівень Low, Windows):
+	// інакше EmptyWorkingSet лише тимчасово виштовхує те, що Chromium сам
+	// потім підтягне назад (webview_memory.go).
+	webviewMemoryHidden()
 	go func() {
 		defer crashguard.Recover("trimNowForHiddenWindow")
 		releaseMemoryNow()
 		trimmed := trimProcessWorkingSets()
+		// Chromium скидає кеші асинхронно — другий прохід забирає те, що
+		// звільнилось уже після першого.
+		time.Sleep(webviewTrimSettle)
+		if n := trimProcessWorkingSets(); n > trimmed {
+			trimmed = n
+		}
 		// Скільки з «сотень мегабайт» — це справді Go-купа backend.dll, а
 		// скільки — нативний Chromium: без цього числа будь-яка скарга
 		// «бекенд їсть 100 МБ» знову зводиться до здогадів.
@@ -124,6 +136,11 @@ func trimNowForHiddenWindow() {
 // налаштування застосовується одразу (без перезапуску): GOGC не потребує
 // перестворення вікон чи рантайму.
 func (a *App) applyMemoryProfile(lowMemoryMode bool) {
+	if lowMemoryMode {
+		setActiveGCProfile(25, 64<<20)
+	} else {
+		setActiveGCProfile(40, 96<<20)
+	}
 	// Якщо користувач/дистрибутив виставив GOGC у середовищі — це його
 	// свідомий вибір (напр. GOGC=off для дебагу), не перебиваємо.
 	if os.Getenv("GOGC") != "" {
@@ -135,15 +152,61 @@ func (a *App) applyMemoryProfile(lowMemoryMode bool) {
 	if lowMemoryMode {
 		// 25: цикл GC починається, коли купа виросла лише на 25% — мінімальний
 		// пік, трохи більше CPU на збирання. Стеля 64 МБ — м'яка (див. вище).
-		debug.SetGCPercent(25)
-		debug.SetMemoryLimit(64 << 20)
+		applyGCProfile()
 		return
 	}
-	// Дефолт (раніше GOGC=100 + 256 МБ): backend лаунчера в нормі тримає
-	// ~20–30 МБ живих даних, тож GOGC=50 тримає пік ≈ 1.5× живого набору
-	// замість 2×, а стеля 96 МБ змушує GC працювати частіше ще до того,
-	// як купа розрослась. Це м'яка межа: при більшому живому наборі
-	// (великий скан модів) рантайм просто не падає і працює як раніше.
-	debug.SetGCPercent(50)
-	debug.SetMemoryLimit(96 << 20)
+	// Дефолт: backend лаунчера в нормі тримає ~20–30 МБ живих даних, тож
+	// GOGC=50 тримає пік ≈ 1.5× живого набору замість 2×, а стеля 96 МБ
+	// змушує GC працювати частіше ще до того, як купа розрослась. Це
+	// м'яка межа: при більшому живому наборі (великий скан модів)
+	// рантайм просто не падає і працює як раніше.
+	applyGCProfile()
+}
+
+// Профіль збирача сміття: «активний» (з налаштувань) і «простійний» (вікно
+// неактивне/сховане/користувач відійшов — webview_memory.go). У простої живий
+// набір малий, тож агресивний GC майже безкоштовний і тримає купу мінімальною;
+// при поверненні користувача відновлюється активний профіль.
+var (
+	gcMu          sync.Mutex
+	gcActivePct   = 40
+	gcActiveLimit = int64(96 << 20)
+	gcIdle        bool
+)
+
+const (
+	gcIdlePct   = 10
+	gcIdleLimit = int64(48 << 20)
+)
+
+func setActiveGCProfile(pct int, limit int64) {
+	gcMu.Lock()
+	gcActivePct, gcActiveLimit = pct, limit
+	gcMu.Unlock()
+}
+
+func setGCIdle(idle bool) {
+	gcMu.Lock()
+	gcIdle = idle
+	gcMu.Unlock()
+	applyGCProfile()
+}
+
+// applyGCProfile застосовує поточний профіль. Явний GOGC у середовищі
+// (дебаг) не перебиваємо.
+func applyGCProfile() {
+	if os.Getenv("GOGC") != "" {
+		return
+	}
+	gcMu.Lock()
+	pct, limit := gcActivePct, gcActiveLimit
+	if gcIdle {
+		pct = gcIdlePct
+		if limit > gcIdleLimit {
+			limit = gcIdleLimit
+		}
+	}
+	gcMu.Unlock()
+	debug.SetGCPercent(pct)
+	debug.SetMemoryLimit(limit)
 }

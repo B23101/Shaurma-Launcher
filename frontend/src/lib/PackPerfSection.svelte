@@ -1,4 +1,5 @@
 <script lang="ts">
+  import NumberInput from './NumberInput.svelte'
   // ── Розділ «Продуктивність» на сторінці збірки ─────────────────────────
   // Per-instance налаштування запуску: RAM (-Xmx/-Xms), JVM-аргументи,
   // окрема Java, вікно гри (повноекранний режим / розмір) та команди.
@@ -10,6 +11,7 @@
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import JvmArgsEditor from './JvmArgsEditor.svelte'
+  import GlobalOverride from './GlobalOverride.svelte'
   import PackResourceMetrics from './PackResourceMetrics.svelte'
   import AutoRepairDialog from './AutoRepairDialog.svelte'
   import type { InstanceConfig, Settings } from './types'
@@ -120,15 +122,16 @@
     }
   }
 
-  // ── Команди ──
-  // Стан тримає явний прапорець cfg.useCustomCommands (false = глобальні
-  // команди лаунчера). Раніше ми виводили стан з ПОРОЖНЬОСТІ чотирьох
-  // override-полів — але коли глобальні команди порожні (типовий випадок),
-  // вмикання «своїх» писало порожні рядки, derived знову ставав true, і
-  // тогл неможливо було вимкнути. Прапорець зберігається в InstanceConfig
+  // ── Команди ── Стан тримає явний прапорець cfg.useCustomCommands (false
+  // = глобальні команди лаунчера). Прапорець зберігається в InstanceConfig
   // і переживає перезапуск; значення override при цьому залишаються
   // «успадкованими», доки користувач не введе свої.
   const commandsGlobal = $derived(!cfg.useCustomCommands)
+  // Скільки глобальних команд зараз задано (для рядка «Зараз діє»).
+  const globalCommandsSummary = $derived.by(() => {
+    const n = [settings.preLaunchCommand, settings.wrapperCommand, settings.postExitCommand, settings.envVars].filter((v) => !!v).length
+    return n ? t('pack.perf.cmdCount', { n }) : t('pack.perf.cmdNone')
+  })
   function toggleCommandsGlobal() {
     if (commandsGlobal) {
       // Перехід у «свої команди»: стартуємо з глобальних значень (як
@@ -155,16 +158,7 @@
     <div class="ci green"><i class="ti ti-cpu"></i></div>
     <div class="ctw"><div class="ct">{t('pack.perf.ram')}</div><div class="cd">{t('pack.perf.globalHint')}</div></div>
   </div>
-  <div class="row">
-    <div class="row-label"><div class="rl-name">{t('pack.perf.useGlobal')}</div><div class="rl-sub">{t('pack.perf.useGlobalDesc')}</div></div>
-    <div class="toggle" class:on={ramGlobal} onclick={toggleRamGlobal}></div>
-  </div>
-  {#if ramGlobal}
-    <div class="row" style="border-bottom:none">
-      <div class="row-label"><div class="rl-name">{t('pack.perf.inheritedRam')}</div></div>
-      <span class="mono text-orange">{settings.maxRAM} МБ</span>
-    </div>
-  {:else}
+  <GlobalOverride global={ramGlobal} onToggle={toggleRamGlobal} ref="card:java/memory" current={`${settings.maxRAM} ${t('units.mb')}`}>
     <div class="row col">
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('pack.perf.ram')}</span><span class="mono text-orange">{effectiveRAM} МБ</span>
@@ -186,7 +180,7 @@
       </div>
       <div class="rl-sub">{t('pack.game.ramMinHint')}</div>
     </div>
-  {/if}
+  </GlobalOverride>
 </div>
 
 {#if packId}
@@ -229,16 +223,8 @@
     <div class="ci violet"><i class="ti ti-window-maximize"></i></div>
     <div class="ctw"><div class="ct">{t('pack.perf.window')}</div><div class="cd">{t('pack.perf.globalHint')}</div></div>
   </div>
-  <div class="row">
-    <div class="row-label"><div class="rl-name">{t('pack.perf.useGlobal')}</div><div class="rl-sub">{t('pack.perf.useGlobalDesc')}</div></div>
-    <div class="toggle" class:on={windowGlobal} onclick={toggleWindowGlobal}></div>
-  </div>
-  {#if windowGlobal}
-    <div class="row" style="border-bottom:none">
-      <div class="row-label"><div class="rl-name">{t('pack.perf.inheritedWindow')}</div></div>
-      <span class="mono muted">{effectiveFullscreen ? t('pack.perf.fullscreen') : `${settings.windowWidth}×${settings.windowHeight}`}</span>
-    </div>
-  {:else}
+  <GlobalOverride global={windowGlobal} onToggle={toggleWindowGlobal} ref="card:game/window"
+                  current={settings.fullscreen ? t('pack.perf.fullscreen') : `${settings.windowWidth}×${settings.windowHeight}`}>
     <div class="row">
       <div class="row-label"><div class="rl-name">{t('pack.perf.fullscreen')}</div></div>
       <div class="toggle" class:on={effectiveFullscreen} onclick={() => onUpdate('fullscreenOverride', !effectiveFullscreen)}></div>
@@ -246,16 +232,16 @@
     {#if !effectiveFullscreen}
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('pack.perf.windowWidth')}</div></div>
-        <input class="input mono" style="max-width:110px" type="number" value={cfg.windowWidthOverride || settings.windowWidth}
+        <NumberInput class="input mono" style="max-width:110px" value={cfg.windowWidthOverride || settings.windowWidth}
                onchange={(e: any) => onUpdate('windowWidthOverride', Number(e.target.value) || 0)} />
       </div>
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('pack.perf.windowHeight')}</div></div>
-        <input class="input mono" style="max-width:110px" type="number" value={cfg.windowHeightOverride || settings.windowHeight}
+        <NumberInput class="input mono" style="max-width:110px" value={cfg.windowHeightOverride || settings.windowHeight}
                onchange={(e: any) => onUpdate('windowHeightOverride', Number(e.target.value) || 0)} />
       </div>
     {/if}
-  {/if}
+  </GlobalOverride>
 </div>
 
 <div class="card">
@@ -263,11 +249,8 @@
     <div class="ci"><i class="ti ti-terminal"></i></div>
     <div class="ctw"><div class="ct">{t('pack.perf.commands')}</div><div class="cd">{t('pack.perf.globalHint')}</div></div>
   </div>
-  <div class="row">
-    <div class="row-label"><div class="rl-name">{t('pack.perf.useGlobal')}</div><div class="rl-sub">{t('pack.perf.useGlobalDesc')}</div></div>
-    <div class="toggle" class:on={commandsGlobal} onclick={toggleCommandsGlobal}></div>
-  </div>
-  {#if !commandsGlobal}
+  <GlobalOverride global={commandsGlobal} onToggle={toggleCommandsGlobal} ref="card:java/commands"
+                  current={globalCommandsSummary}>
     <div class="row col">
       <div class="rl-name">{t('pack.perf.preLaunch')}</div>
       <input class="input mono" value={cfg.preLaunchCommandOverride} placeholder={t('pack.perf.jvmArgsPlaceholder')}
@@ -289,7 +272,7 @@
                 placeholder={t('pack.perf.jvmArgsPlaceholder')}
                 onchange={(e: any) => onUpdate('envVarsOverride', e.target.value)}></textarea>
     </div>
-  {/if}
+  </GlobalOverride>
 </div>
 
 <!-- ── Обслуговування збірки ──

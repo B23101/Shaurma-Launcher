@@ -12,20 +12,23 @@
   import { launchStageLabel, launchStagePct } from './launchStages'
   import type { LaunchProgress } from './types'
 
-  let { packName, packIcon, presetIcon, packColor, progress, onCancel } = $props<{
+  let { packName, packIcon, presetIcon, packColor, progress, onCancel, windowMode = false } = $props<{
     packName: string
     packIcon: string // data URL/шлях PNG-іконки збірки (порожній = пресет)
     presetIcon: string // Tabler-клас пресет-іконки (напр. "ti-puzzle")
     packColor: string
     progress: LaunchProgress | null
     onCancel: () => void
+    // windowMode — картка живе в окремому frameless-вікні запуску ярлика
+    // (shortcut.html): все вікно можна тягнути за фон.
+    windowMode?: boolean
   }>()
 
   const stageLabel = $derived(progress ? launchStageLabel(progress.stage) : t('launch.stage.checking'))
   const pct = $derived(progress ? launchStagePct(progress) : 0)
 </script>
 
-<div class="lp-overlay" style="--pcol:{packColor || 'var(--orange)'}">
+<div class="lp-overlay" class:lp-window={windowMode} style="--pcol:{packColor || 'var(--orange)'}">
   <div class="lp-card">
     <div class="lp-icon">
       {#if packIcon}
@@ -51,6 +54,8 @@
     display: flex; align-items: center; justify-content: center;
     --wails-draggable: no-drag;
   }
+  .lp-overlay.lp-window { --wails-draggable: drag; }
+  .lp-overlay.lp-window .lp-cancel { --wails-draggable: no-drag; }
   .lp-card {
     display: flex; flex-direction: column; align-items: center; gap: 12px;
     width: 320px; padding: 34px 30px;

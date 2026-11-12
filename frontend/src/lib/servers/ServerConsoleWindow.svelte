@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // ── Окреме вікно консолі сервера (standalone) ────────────────────────
   // Монтується з console.ts, коли URL містить ?server=<id> (backend:
   // server_console_window.go → ShowServerConsoleWindowFor). Показує ТУ САМУ
@@ -93,9 +95,9 @@
     </div>
     <ServerStatusBadge {status} size="sm" />
     <div class="scw-win">
-      <button class="scw-b" onclick={winMin} title={t('win.minimize')} aria-label={t('win.minimize')}><i class="ti ti-minus"></i></button>
-      <button class="scw-b" onclick={winMax} title={t('win.maximize')} aria-label={t('win.maximize')}><i class="ti {maximized ? 'ti-copy' : 'ti-square'}"></i></button>
-      <button class="scw-b scw-x" onclick={hideWindow} title="Закрити вікно (лог продовжить писатись)" aria-label={t('win.close')}><i class="ti ti-x"></i></button>
+      <button class="scw-b" onclick={winMin} use:launcherTip={t('win.minimize')} aria-label={t('win.minimize')}><i class="ti ti-minus"></i></button>
+      <button class="scw-b" onclick={winMax} use:launcherTip={t('win.maximize')} aria-label={t('win.maximize')}><i class="ti {maximized ? 'ti-copy' : 'ti-square'}"></i></button>
+      <button class="scw-b scw-x" onclick={hideWindow} use:launcherTip={"Закрити вікно (лог продовжить писатись)"} aria-label={t('win.close')}><i class="ti ti-x"></i></button>
     </div>
   </div>
 

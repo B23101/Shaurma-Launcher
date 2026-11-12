@@ -504,10 +504,6 @@ type ImportParams struct {
 	// BackgroundSrcPath — фон (банер) збірки, вже лежить у teці збірки
 	// (заповнюється браузером контенту через CreateBrowserModpack, який
 	// завантажує featured-зображення з галереї Modrinth/CurseForge).
-	// Раніше ImportArchive взагалі не знав про фон — placeholder і
-	// фінальний Pack переписували запис без цього поля, тож фон,
-	// збережений при створенні «не завантаженої» картки, губився щойно
-	// користувач тиснув «Завантажити».
 	BackgroundSrcPath string
 
 	// Джерело «інтернет-збірки» (заповнює браузер контенту).
@@ -515,12 +511,7 @@ type ImportParams struct {
 	SourceProjectID   string
 	SourceVersionID   string
 	SourceProjectSlug string
-	// SourceArchiveURL — пряме посилання на архів модпаку. Критично для
-	// «Завантажити»/«Оновити» інтернет-збірки: раніше цього поля не було,
-	// тож фінальний Pack після імпорту втрачав посилання на архів і
-	// кнопка «Завантажити» на картці «не завантаженої» збірки ставала
-	// мертвою (SourceArchiveURL == ""). Тепер воно зберігається в
-	// placeholder і фінальному записі.
+	// SourceArchiveURL — пряме посилання на архів модпаку.
 	SourceArchiveURL string
 
 	// ExistingID — якщо заданий, імпорт виконується В ІСНУЮЧУ збірку з цим
@@ -685,14 +676,10 @@ func ImportArchive(ctx context.Context, store *Store, instanceDir, archivePath s
 		SourceProjectSlug: p.SourceProjectSlug,
 		SourceArchiveURL:  p.SourceArchiveURL,
 	}
-	// IconPath у placeholder одразу — раніше цей рядок був лише для
-	// BackgroundSrcPath, тож фон з'являвся у картці/сайдбарі одразу під
-	// час імпорту (як «Shaurma»-збірки), а іконка — лише в кінці функції
-	// (рядок з pack.IconPath нижче). Якщо імпорт довго тривав (завантаження
-	// модів) або обривався помилкою до фінального Save, placeholder без
-	// IconPath лишався видимим у UI — фон показувався, іконка ні, хоча
-	// сам файл іконки вже лежав у packDir (переданий з browser_api.go при
-	// CreateBrowserModpack).
+	// Якщо імпорт довго тривав (завантаження модів) або обривався помилкою
+	// до фінального Save, placeholder без IconPath лишався видимим у UI —
+	// фон показувався, іконка ні, хоча сам файл іконки вже лежав у packDir
+	// (переданий з browser_api.go при CreateBrowserModpack).
 	if p.IconSrcPath != "" {
 		placeholder.IconPath = p.IconSrcPath
 	}
@@ -799,7 +786,7 @@ func ImportArchive(ctx context.Context, store *Store, instanceDir, archivePath s
 		tasks = append(tasks, resolved...)
 		// Заблоковані автором моди: питаємо користувача (діалог як у Prism) —
 		// Modrinth fallback / пропустити / скачати вручну / скасувати. Без
-		// хендлера (nil) — мовчазний Modrinth fallback, як було раніше.
+		// хендлера (nil) — мовчазний Modrinth fallback.
 		tasks, blockedModsSkipped, err = resolveBlockedMods(ctx, p.BlockedHandler, p.UseModrinthForBlocked, blocked, tasks, report)
 		if err != nil {
 			if len(blockedModsSkipped) > 0 {
@@ -901,16 +888,11 @@ func mrpackClientFiles(files []mrpackFile) []mrpackFile {
 
 // resolveCFFiles резолвить список (projectID, fileID) у прямі URL модів
 // CurseForge ПАРАЛЕЛЬНО (maxConcurrent воркерів) із збереженням порядку
-// маніфесту. Раніше резолв ішов ПОСЛІДОВНО — один запит до API за раз, до
-// 20 секунд таймауту кожен + ретраї на 429: на модпаку з 50-100 модами це
-// 5-30 хвилин «мертвого» екрану встановлення (екран виглядав завислим,
-// хоча прогрес і публікувався). Тепер усі запити йдуть паралельно, а
-// помилки обов'язкових модів збираються в одну — без втрати порядку і без
-// стрибків прогресу (кожен мод публікує подію по завершенню резолву).
+// маніфесту.
 //
 // Повертає tasks (у порядку cfFiles) і кількість пропущених опційних модів.
-// Обов'язковий мод, що не резолвнувся, валить весь імпорт з помилкою
-// (та сама семантика, що й у послідовному циклі раніше).
+// Обов'язковий мод, що не резолвнувся, валить весь імпорт з помилкою (та
+// сама семантика.
 func resolveCFFiles(ctx context.Context, cf *CurseForgeClient, cfFiles []cfManifestFile, maxConcurrent int, report func(ImportProgress)) ([]importTask, []BlockedCFMod, error) {
 	tasks := make([]importTask, len(cfFiles))
 	resolved := make([]bool, len(cfFiles))
@@ -1099,17 +1081,17 @@ func tryModrinthBlockedFallback(ctx context.Context, sha1hex string) (*ModrinthM
 // Prism). Двоетапний конвеєр, щоб «моди, яких немає на Modrinth, не губилися
 // мовчки і не валили весь імпорт»:
 //
-//	ЕТАП 1 — рішення по всіх заблокованих:
-//	  * useModrinthForBlocked=true  → Modrinth fallback БЕЗ діалогу (згода
-//	    уже дана галочкою в налаштуваннях),
-//	  * інакше → діалог (handler, allowModrinth=true): modrinth / manual /
-//	    skip / cancel.
-//	ЕТАП 2 — якщо після спроби Modrinth ЗАЛИШИЛИСЬ моди, яких там немає:
-//	  * діалог показується ВДРУГЕ, але з allowModrinth=false — «усе, що могло
-//	    завантажитись з Modrinth, уже завантажене, далі лише ручне встановлення»
-//	    (manual / skip / cancel). Раніше обов'язковий незнайдений мод валив
-//	    весь імпорт помилкою, а опційний тихо зникав — імпорт «зависав» на
-//	    очікуванні замість того, щоб знову спитати користувача.
+// ЕТАП 1 — рішення по всіх заблокованих:
+//   - useModrinthForBlocked=true  → Modrinth fallback БЕЗ діалогу (згода
+//     уже дана галочкою в налаштуваннях),
+//   - інакше → діалог (handler, allowModrinth=true): modrinth / manual /
+//     skip / cancel.
+//
+// ЕТАП 2 — якщо після спроби Modrinth ЗАЛИШИЛИСЬ моди, яких там немає:
+//   - діалог показується ВДРУГЕ, але з allowModrinth=false — «усе, що могло
+//     завантажитись з Modrinth, уже завантажене, далі лише ручне встановлення»
+//     (manual / skip / cancel): імпорт не падає і не губить мод
+//     мовчки, а знову питає користувача.
 //
 // Якщо handler == nil (виклик без UI, напр. тести) — мовчазний Modrinth
 // fallback за замовчуванням; незнайдений обов'язковий мод валить імпорт
@@ -1276,27 +1258,23 @@ func firstNonEmptyStr(list []string) string {
 // та сама небезпека, на яку прямо вказує офіційна специфікація mrpack).
 //
 // Resume/повторний запуск: файли, що вже розпаковані (існують на диску з
-// тим самим розміром), пропускаються — раніше пауза→продовження заново
-// розпаковувало ВСІ overrides, і екран знову показував «Розпакування…»
-// навіть коли все вже було розпаковано.
+// тим самим розміром), пропускаються.
 //
 // ctx: якщо не nil — перевіряється на кожному файлі (пауза/скасування
 // перериває розпаковку без зависання; уже розпаковані файли лишаються).
 //
 // Прогрес: розпаковка великих CurseForge-збірок (сотні файлів overrides —
 // ресурспаки, шейдери, конфіги) йшла МОВЧКИ: без жодних подій UI висів на
-// «Розпаковка…» з нульовими лічильниками, схоже на вічне зависання. Тепер
-// на кожен розпакований файл публікується подія (Stage=extracting з
+// «Розпаковка…» з нульовими лічильниками, схоже на вічне зависання. Тепер на
+// кожен розпакований файл публікується подія (Stage=extracting з
 // FilesTotal/FilesCompleted/CurrentFile), і користувач бачить живий прогрес,
-// а не заморожений екран.
-// protectedOverridePaths — теки/файли гравця, які extractOverrides НЕ
-// перезаписує під час ОНОВЛЕННЯ (isUpdate=true), якщо вони вже існують на
-// диску. Дзеркалить дефолти on_missing/first_install_only з офіційних
-// Shaurma-збірок (model.DefaultSyncRules у pack-manager), але тут це
-// вбудований локальний дефолт — кастомні збірки (Modrinth/CurseForge)
-// не мають серверних SyncRules узагалі, і extractOverrides раніше
-// перезаписувала буквально все, включно з config/ і options.txt гравця,
-// при кожному натисканні «Оновити з джерела».
+// а не заморожений екран. protectedOverridePaths — теки/файли гравця, які
+// extractOverrides НЕ перезаписує під час ОНОВЛЕННЯ (isUpdate=true), якщо
+// вони вже існують на диску. Дзеркалить дефолти
+// on_missing/first_install_only з офіційних Shaurma-збірок
+// (model.DefaultSyncRules у pack-manager), але тут це вбудований локальний
+// дефолт — кастомні збірки (Modrinth/CurseForge) не мають серверних
+// SyncRules узагалі.
 var protectedOverridePaths = []string{
 	"config/",
 	"resourcepacks/",
@@ -1323,7 +1301,7 @@ func isProtectedOverridePath(rel string) bool {
 // (CurseForge overrides, generic archive) у gameDir.
 //
 // isUpdate=false (первинний імпорт, ImportArchive): нічого ще не
-// встановлено — розпаковуємо все безумовно, як і раніше.
+// встановлено — розпаковуємо все безумовно.
 //
 // isUpdate=true (UpdatePackFromSource, кнопка «Оновити з джерела»):
 // файли/теки з protectedOverridePaths, які ВЖЕ існують на диску, НЕ
@@ -2086,11 +2064,8 @@ func downloadOneFile(ctx context.Context, client *http.Client, task importTask, 
 		return 0, err
 	}
 
-	// Resume/повторний запуск: файл уже повністю скачаний і SHA1 збігається —
-	// НЕ качаємо з нуля. Раніше пауза→продовження (або повторне «Завантажити»
-	// після скасування) перекачувало вже готові моди: .part немає (перейменований
-	// у dest), тож downloadOneAttempt стартував з Range=0 і качав весь файл заново.
-	// Тепер це ідемпотентно: вже скачаний мод пропускається миттєво.
+	// Resume/повторний запуск: файл уже повністю скачаний і SHA1 збігається — НЕ
+	// качаємо з нуля.
 	if task.sha1 != "" && fileExists(dest) && fileMatchesImportTask(dest, task) {
 		if onBytes != nil {
 			onBytes(task.fileSize) // щоб прогрес-байт не «стрибав» назад при resume
@@ -2144,7 +2119,7 @@ func downloadOneAttempt(ctx context.Context, client *http.Client, task importTas
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+custompack-import; shaurmaofficial2210@gmail.com)")
+	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+custompack-import; +https://github.com/B23101/Shaurma-Launcher)")
 	// CurseForge CDN вимагає x-api-key на прямих завантаженнях файлів
 	// (edge.forgecdn.net) — без нього повертає 401. Modrinth-файли ключа
 	// не потребують, тож додаємо заголовок лише для forgecdn.net-посилань.

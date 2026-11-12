@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Властивості сервера (server.properties) ────────────────────────────
   //
   // Що було не так (і що виправлено):
@@ -67,8 +69,7 @@
   })
 
   // ── Групування ────────────────────────────────────────────────────────
-  // Дубль ключа (файл з двома однаковими рядками) раніше ламав keyed-each.
-  // Бекенд уже зливає дублі, але тут лишаємо страховку.
+  // Дубль ключа. Бекенд уже зливає дублі, але тут лишаємо страховку.
   const entries = $derived.by(() => {
     const seen = new Map<string, PropEntry>()
     for (const e of propsDoc?.entries ?? []) {
@@ -319,7 +320,7 @@
         <i class="ti ti-search"></i>
         <input class="input" bind:value={search} placeholder={t('servers.props.search')} spellcheck="false" />
         {#if search}
-          <button class="spt-x" onclick={() => search = ''} title={t('servers.props.clearSearch')} aria-label={t('servers.props.clearSearch')}><i class="ti ti-x"></i></button>
+          <button class="spt-x" onclick={() => search = ''} use:launcherTip={t('servers.props.clearSearch')} aria-label={t('servers.props.clearSearch')}><i class="ti ti-x"></i></button>
         {/if}
       </div>
       {#if searching}
@@ -334,7 +335,7 @@
           <i class="ti {PROP_GROUP_ICON[g.id] ?? 'ti-dots'}"></i>
           <span>{t(`props.group.${g.id}`)}</span>
           <span class="spt-tab-n">{g.items.length}</span>
-          {#if dirtyByGroup[g.id]}<span class="spt-tab-dot" title={t('servers.props.dirty', { n: dirtyByGroup[g.id] })}></span>{/if}
+          {#if dirtyByGroup[g.id]}<span class="spt-tab-dot" use:launcherTip={t('servers.props.dirty', { n: dirtyByGroup[g.id] })}></span>{/if}
         </button>
       {/each}
     </div>
@@ -364,7 +365,7 @@
               <div class="spt-info">
                 <div class="spt-name">
                   <span>{propName(entry)}</span>
-                  {#if entry.newWorldOnly}<span class="spt-badge" title={t('servers.props.newWorldOnlyHint')}><i class="ti ti-world-plus"></i> {t('servers.props.newWorldOnly')}</span>{/if}
+                  {#if entry.newWorldOnly}<span class="spt-badge" use:launcherTip={t('servers.props.newWorldOnlyHint')}><i class="ti ti-world-plus"></i> {t('servers.props.newWorldOnly')}</span>{/if}
                   {#if !entry.known}<span class="spt-badge mute">{t('servers.props.unknownKey')}</span>{/if}
                 </div>
                 {#if hint}<div class="spt-hint">{hint}</div>{/if}
@@ -373,7 +374,7 @@
                   {#if range}<span class="spt-chipm">{range}</span>{/if}
                   {#if defText}
                     {#if canResetDefault(entry)}
-                      <button class="spt-chipm link" title={t('servers.props.useDefault')} onclick={() => setValue(entry, entry.default ?? '')}>{defText}</button>
+                      <button class="spt-chipm link" use:launcherTip={t('servers.props.useDefault')} onclick={() => setValue(entry, entry.default ?? '')}>{defText}</button>
                     {:else}
                       <span class="spt-chipm">{defText}</span>
                     {/if}
@@ -435,7 +436,7 @@
                            oninput={(ev) => setValue(entry, (ev.currentTarget as HTMLInputElement).value)} />
                     {#if entry.secret}
                       <button class="spt-eye" onclick={() => revealed[entry.key] = !revealed[entry.key]}
-                              title={revealed[entry.key] ? t('servers.props.hide') : t('servers.props.show')}
+                              use:launcherTip={revealed[entry.key] ? t('servers.props.hide') : t('servers.props.show')}
                               aria-label={revealed[entry.key] ? t('servers.props.hide') : t('servers.props.show')}>
                         <i class="ti {revealed[entry.key] ? 'ti-eye-off' : 'ti-eye'}"></i>
                       </button>
@@ -447,7 +448,7 @@
                 {/if}
 
                 {#if isDirty(entry)}
-                  <button class="spt-revert" title={t('servers.props.revertOne')} aria-label={t('servers.props.revertOne')} onclick={() => revertOne(entry)}>
+                  <button class="spt-revert" use:launcherTip={t('servers.props.revertOne')} aria-label={t('servers.props.revertOne')} onclick={() => revertOne(entry)}>
                     <i class="ti ti-arrow-back-up"></i>
                   </button>
                 {/if}
@@ -489,7 +490,7 @@
   .spt-x:hover { color: var(--text); }
   .spt-found { font: 600 11px/1 var(--font-ui); color: var(--text-mute); }
 
-  .spt-tabs { min-width: 0; display: flex; gap: 6px; padding: 12px 22px 10px; overflow-x: auto; scrollbar-width: thin; border-bottom: 1px solid var(--border); }
+  .spt-tabs { min-width: 0; display: flex; gap: 6px; padding: 12px 22px 10px; overflow-x: auto; border-bottom: 1px solid var(--border); }
   .spt-tabs.dim .spt-tab { opacity: .55; }
   .spt-tab {
     position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;

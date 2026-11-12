@@ -95,7 +95,7 @@ func (p *shaurmaProvider) InvalidatePackCache() {
 	p.api.InvalidatePackIndexCache()
 }
 
-// DownloadPack (V2, DOWNLOAD_SYNC_DESIGN_V2.md) якає ОДИН легкий
+// DownloadPack якає ОДИН легкий
 // packs/<id>/manifest.json (замість цілого .mrpack), рахує дельту проти
 // локального InstallState і синхронізує через двочерговий sync.Runner.
 // syncMgr.Start сам відхиляє повторний виклик для вже активної збірки —
@@ -104,9 +104,7 @@ func (p *shaurmaProvider) InvalidatePackCache() {
 func (p *shaurmaProvider) DownloadPack(packID string, a *App) {
 	// Тека гри збірки — installDir/.minecraft, ЯК У СТАРОГО ЛАУНЧЕРА:
 	// старий (Java) розпаковував overrides у installations/<id>/.minecraft/
-	// і запускав гру з --gameDir <packDir>/.minecraft. Новий синк раніше
-	// писав моди/конфіги прямо в корінь installations/<packID>/, через що
-	// гра не бачила своїх файлів.
+	// і запускав гру з --gameDir <packDir>/.minecraft.
 	instDir := a.gameDir(packID)
 
 	go func() {
@@ -115,8 +113,7 @@ func (p *shaurmaProvider) DownloadPack(packID string, a *App) {
 
 		// Health-check ПЕРЕД манфестом: якщо мережі взагалі немає, кажемо
 		// про це прямо, а не показуємо загальну помилку "не вдалось
-		// завантажити маніфест" — саме те розрізнення, яке раніше плутало
-		// користувача ("здається зависло").
+		// завантажити маніфест" — саме те розрізнення.
 		if err := p.api.CheckWorkerHealth(); err != nil {
 			// Мітимо невдалий старт: waitForSyncStartThenFinish (запуск збірки)
 			// побачить це і не зависне на 20с, чекаючи runner, який не з'явиться.
@@ -222,13 +219,12 @@ func (p *shaurmaProvider) DownloadPack(packID string, a *App) {
 			// Дефолтні налаштування гри (options.txt) пишемо ОДРАЗУ лише
 			// при першому встановленні збірки — applyMinecraftDefaultsNow
 			// сам звіряється з instance.json.MinecraftDefaultsApplied і
-			// нічого не робить, якщо дефолти вже застосовувались раніше.
-			// Для звичайного оновлення вже встановленої збірки виклик тут
-			// НЕ потрібен: options.txt/config гравця (правило «Оновити
-			// при старті») не має затиратись при кожному оновленні.
-			// ApplyBeforeLaunch (перед стартом гри) сама так само
-			// звіряється з instance.json і застосує дефолти рівно один
-			// раз за все життя збірки, якщо це ще не сталось тут.
+			// нічого не робить. Для звичайного оновлення вже встановленої
+			// збірки виклик тут НЕ потрібен: options.txt/config гравця
+			// (правило «Оновити при старті») не має затиратись при кожному
+			// оновленні. ApplyBeforeLaunch (перед стартом гри) сама так
+			// само звіряється з instance.json і застосує дефолти рівно
+			// один раз за все життя збірки, якщо це ще не сталось тут.
 			if isFirstInstall {
 				a.applyMinecraftDefaultsNow(packID)
 			}

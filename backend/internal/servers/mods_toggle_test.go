@@ -88,8 +88,7 @@ func TestToggleServerMod_HealsDoubleDisabled(t *testing.T) {
 	}
 }
 
-// Видалення прибирає всі варіанти імені — раніше з теки лишався
-// «видалений» мод під другим іменем.
+// Видалення прибирає всі варіанти імені.
 func TestDeleteServerMod_RemovesAllNameVariants(t *testing.T) {
 	dir := t.TempDir()
 	mustWrite(t, filepath.Join(dir, "mods", "dup.jar"))

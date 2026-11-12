@@ -1,9 +1,7 @@
 <script lang="ts">
-  // ── FolderTile: плитка папки в сітці «Мої збірки» і в бібліотеці серверів ──
-  // Раніше ця розмітка була скопійована в App.svelte і ServerLibraryPage.svelte.
-  // Тут лише вигляд (стек до трьох іконок, «+N», назва, підпис); поведінку —
-  // кліки, drag&drop, контекстне меню, класи стану — передає батько через
-  // звичайні атрибути (...rest) і проп class. Стилі — .folder-tile/.ft-* у style.css.
+  import { tip as launcherTip } from './friends/tooltip'
+
+  // Стилі — .folder-tile/.ft-* у style.css.
   import type { Snippet } from 'svelte'
   import AnimatedIcon from './AnimatedIcon.svelte'
   import { safeFolderIcon } from './folderMeta'
@@ -35,7 +33,7 @@
   const col = $derived(color || 'var(--orange)')
 </script>
 
-<div class="inst-tile folder-tile {cls}" style="--pcol:{col};{style}" title={name} {...rest}>
+<div class="inst-tile folder-tile {cls}" style="--pcol:{col};{style}" use:launcherTip={name} {...rest}>
   <div class="ft-stack" aria-hidden="true">
     {#if total === 0}
       <span class="ft-stack-fallback ft-stack-empty" style="--pcol:{col}"><i class="ti {safeFolderIcon(icon)}"></i></span>

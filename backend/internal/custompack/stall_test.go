@@ -70,12 +70,9 @@ func newHelperServer(content []byte, stallFirst bool) *helperServer {
 	return h
 }
 
-// TestDownloadOneFileStalledConnectionRecovers — репродукція скарги
-// «качається, потім зависає на одному моді, швидкість 0.0 МБ/с і ніколи
-// не відвисає»: CDN обриває передачу посеред файлу (stall). Раніше
-// downloadOneFile висів назавжди (io.Copy блокувався до 5-хв HTTP-таймауту).
-// Тепер stallReader обриває читання через downloadStallTimeout, retry-цикл
-// перезапускає файл з місця зупинки (Range + наявний .part) і файл докачується.
+// TestDownloadOneFileStalledConnectionRecovers — репродукція скарги «качається,
+// потім зависає на одному моді, швидкість 0.0 МБ/с і ніколи не відвисає»: CDN
+// обриває передачу посеред файлу (stall).
 func TestDownloadOneFileStalledConnectionRecovers(t *testing.T) {
 	content := bytes.Repeat([]byte("0123456789abcdef"), 2048)
 	srv := newHelperServer(content, true)
@@ -271,9 +268,7 @@ func TestStallReaderWrapsProgress(t *testing.T) {
 
 // TestStallReaderCancelUnblocksImmediately — скасування користувачем
 // (кнопка «Скасувати»/«Пауза» під час імпорту) має розблокувати
-// заблокований Read МИТТЄВО, а не чекати downloadStallTimeout. Раніше
-// stallReader не знав про ctx — скасування під час завислого з'єднання
-// «зависало» на 30с, поки таймер стілу не спрацьовував.
+// заблокований Read МИТТЄВО, а не чекати downloadStallTimeout.
 func TestStallReaderCancelUnblocksImmediately(t *testing.T) {
 	// Блокувальний reader: Read висить, доки його не закриють (стіл).
 	pr, pw := io.Pipe()

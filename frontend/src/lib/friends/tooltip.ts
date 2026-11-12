@@ -16,7 +16,7 @@ function ensureStyle() {
   s.id = STYLE_ID
   s.textContent = `
   .fr-tip {
-    position: fixed; z-index: 100000; pointer-events: none;
+    position: fixed; z-index: 2147483000; pointer-events: none; /* вище за будь-яку модалку (їхній z-index ~1000000) */
     max-width: 240px; padding: 6px 10px; border-radius: 8px;
     background: var(--bg-input-hi, #282828); color: var(--text, #fff);
     border: 1px solid var(--border-hi, rgba(255,255,255,.12));
@@ -39,12 +39,25 @@ function ensureStyle() {
   document.head.appendChild(s)
 }
 
-export function tip(node: HTMLElement, arg: TipArg) {
+export function tip(node: HTMLElement | SVGElement, arg: TipArg) {
   let cur = arg
   let el: HTMLDivElement | null = null
   let showTimer: ReturnType<typeof setTimeout> | undefined
 
   const text = () => (typeof cur === 'string' ? cur : cur?.text ?? '')
+  // A title that only repeats readable text adds no information.
+  const useful = () => {
+    const visible = (node.textContent ?? '').replace(/\s+/g, ' ').trim()
+    return text().trim() !== visible || node.scrollWidth > node.clientWidth || node.scrollHeight > node.clientHeight
+  }
+  let ownsLabel = false
+  function syncLabel() {
+    if (!node.textContent?.trim() && !node.hasAttribute('aria-labelledby') && (!node.hasAttribute('aria-label') || ownsLabel)) {
+      node.setAttribute('aria-label', text())
+      ownsLabel = true
+    }
+  }
+  syncLabel()
   const pref = () => (typeof cur === 'object' && cur ? cur.side : undefined)
 
   function place() {
@@ -69,8 +82,9 @@ export function tip(node: HTMLElement, arg: TipArg) {
 
   function show() {
     clearTimeout(showTimer)
-    if (!text()) return
+    if (!text() || !useful()) return
     showTimer = setTimeout(() => {
+      if (!node.isConnected || !text() || !useful()) return
       ensureStyle()
       hide(true)
       el = document.createElement('div')
@@ -94,6 +108,9 @@ export function tip(node: HTMLElement, arg: TipArg) {
   }
 
   const onLeave = () => hide()
+  const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') hide(true) }
+  window.addEventListener('keydown', onKey)
+  window.addEventListener('resize', onLeave)
   node.addEventListener('mouseenter', show)
   node.addEventListener('mouseleave', onLeave)
   node.addEventListener('focus', show)
@@ -104,10 +121,15 @@ export function tip(node: HTMLElement, arg: TipArg) {
   return {
     update(next: TipArg) {
       cur = next
+      syncLabel()
+      if (!text() || !useful()) hide(true)
       if (el) { el.textContent = text(); place() }
     },
     destroy() {
       hide(true)
+      if (ownsLabel) node.removeAttribute('aria-label')
+      window.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onLeave)
       node.removeEventListener('mouseenter', show)
       node.removeEventListener('mouseleave', onLeave)
       node.removeEventListener('focus', show)

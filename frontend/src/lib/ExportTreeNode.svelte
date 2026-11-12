@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Вузол дерева вибору експорту (рекурсивний) ────────────────────────
   // Self-import для рекурсії (Svelte 5 рекомендує замість <svelte:self>).
   // Папки ЗГОРНУТІ за замовчуванням, БЕЗ ВИНЯТКІВ і на будь-якій глибині
@@ -130,9 +132,9 @@
       onclick={() => { if (isDir) toggleCollapsed(); else if (!node.locked) onToggle(node) }}
     >
       <span class="ep-node-icon" style="--ic:{look[1]}"><i class="ti {look[0]}"></i></span>
-      <span class="ep-node-name" title={node.path}>{name}</span>
+      <span class="ep-node-name" use:launcherTip={node.path}>{name}</span>
       {#if isDir && node.children.length > 0}<span class="ep-node-count">{node.children.length}</span>{/if}
-      {#if node.locked}<span class="ep-node-lock" title={node.lockedTip ?? ''}><i class="ti ti-lock"></i></span>{/if}
+      {#if node.locked}<span class="ep-node-lock" use:launcherTip={node.lockedTip ?? ''}><i class="ti ti-lock"></i></span>{/if}
       {#if node.size}<span class="ep-node-size">{fmtSize(node.size)}</span>{/if}
     </div>
   </div>

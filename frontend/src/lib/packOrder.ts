@@ -1,10 +1,5 @@
 // packOrder.ts — ЄДИНЕ джерело правди для ПОРЯДКУ збірок у списках.
 //
-// Раніше кожне місце зі списком збірок сортувало по-своєму: sidebar
-// використовував orderedBuildViews (закріплені → ручний порядок → нові),
-// а модалка «Копіювати сервер в іншу збірку» брала сирий масив з бекенду —
-// звідси розбіжності. Тепер порядок скрізь один:
-//
 //   1. Закріплені (packLayout.pinned) — у порядку закріплення.
 //   2. Незакріплені (packLayout.order) — у ручному порядку.
 //   3. Збірки з папок — на місці своєї папки (порядок папок = packFolders),
@@ -65,13 +60,7 @@ export function deriveServerFolders(builds: BuildView[]): PackFolder[] {
 }
 
 // mergeFolders — об'єднує серверні папки (завжди свіжі з builds) з
-// локальними user-created (packFolders у settings.json). Якщо якийсь id
-// одночасно локальний і серверний (напр. Pack Manager щойно перетворив
-// раніше кастомну папку на офіційну під тим самим id) — перемагає
-// серверна версія: сервер є джерелом правди для членства/назви/кольору
-// такої папки, локальний запис для цього id ігнорується (але НЕ
-// видаляється з локального стореджу — якщо збірку прибрати з серверної
-// папки пізніше, локальні дані не губляться самі по собі).
+// локальними user-created (packFolders у settings.json).
 export function mergeFolders(local: PackFolder[], server: PackFolder[]): PackFolder[] {
   const serverIds = new Set(server.map((f) => f.id))
   const localOnly = local.filter((f) => !serverIds.has(f.id))

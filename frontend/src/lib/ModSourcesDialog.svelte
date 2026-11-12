@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // «Єдине джерело» модів: діалог керування джерелами збірки або сервера
   // (packId — ID таргету менеджера модів, для сервера "srv:<id>"/"srvp:<id>").
   // Джерело — окремий .jar або ціла тека модів; лаунчер сам звіряє хеші й
@@ -133,9 +135,9 @@
                 {s.kind === 'folder' ? t('modsrc.kindFolder') : (s.fileName || s.path)}
                 {#if s.missing}<span class="ms-badge">{t('modsrc.missing')}</span>{/if}
               </div>
-              <div class="ms-path" title={s.path}>{s.path}</div>
+              <div class="ms-path" use:launcherTip={s.path}>{s.path}</div>
             </div>
-            <button class="icon-btn del" disabled={busy} onclick={() => remove(s.id)} title={t('modsrc.detach')}>
+            <button class="icon-btn del" disabled={busy} onclick={() => remove(s.id)} use:launcherTip={t('modsrc.detach')}>
               <i class="ti ti-unlink"></i>
             </button>
           </div>
@@ -145,10 +147,10 @@
   </div>
 
   {#snippet footer()}
-    <button class="btn btn-ghost" onclick={() => add('file')} disabled={busy || hasFolder} title={hasFolder ? t('modsrc.folderExclusive') : ''}>
+    <button class="btn btn-ghost" onclick={() => add('file')} disabled={busy || hasFolder} use:launcherTip={hasFolder ? t('modsrc.folderExclusive') : ''}>
       <i class="ti ti-file-plus"></i> {t('modsrc.addFile')}
     </button>
-    <button class="btn btn-ghost" onclick={() => add('folder')} disabled={busy || hasFolder || hasFiles} title={hasFiles ? t('modsrc.detachFirst') : ''}>
+    <button class="btn btn-ghost" onclick={() => add('folder')} disabled={busy || hasFolder || hasFiles} use:launcherTip={hasFiles ? t('modsrc.detachFirst') : ''}>
       <i class="ti ti-folder-plus"></i> {t('modsrc.addFolder')}
     </button>
     {#if view.sources.length > 0}

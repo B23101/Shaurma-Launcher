@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // «Що всередині» передачі: підсумок за категоріями (моди, ресурспаки, конфіги, світи…),
   // скільки прийде напряму з Modrinth, і список модів/паків з іконками. Мод із Modrinth
   // відкривається в браузері контенту. Дані — SharePreview (маніфест відправника через P2P,
@@ -42,7 +44,7 @@
   {:else if data}
     <div class="sc-groups">
       {#each data.groups as g (g.key)}
-        <span class="sc-chip" title={fmtBytes(g.bytes)}><i class="ti {CAT_ICON[g.key] ?? 'ti-files'}"></i> {t('share.contents.cat.' + g.key)} · {g.files}</span>
+        <span class="sc-chip" use:launcherTip={fmtBytes(g.bytes)}><i class="ti {CAT_ICON[g.key] ?? 'ti-files'}"></i> {t('share.contents.cat.' + g.key)} · {g.files}</span>
       {/each}
     </div>
     {#if data.cdnFiles > 0}
@@ -69,12 +71,12 @@
               {:else}<i class="ti {CAT_ICON[it.category]}"></i>{/if}
             </div>
             <div class="sc-main">
-              <b title={it.title || it.name}>{it.title || it.name}</b>
-              <span title={it.name}>{it.title ? it.name : ''}{it.title ? ' · ' : ''}{fmtBytes(it.size)}{it.disabled ? ' · ' + t('share.contents.disabled') : ''}</span>
+              <b use:launcherTip={it.title || it.name}>{it.title || it.name}</b>
+              <span use:launcherTip={it.name}>{it.title ? it.name : ''}{it.title ? ' · ' : ''}{fmtBytes(it.size)}{it.disabled ? ' · ' + t('share.contents.disabled') : ''}</span>
             </div>
             {#if canOpen}
-              <span class="sc-badge" title={t('share.contents.cdnTip')}><i class="ti ti-bolt"></i> Modrinth</span>
-              <button class="sc-open" onclick={() => openModFromShare(it.projectId!)} title={t('share.contents.open')} aria-label={t('share.contents.open')}>
+              <span class="sc-badge" use:launcherTip={t('share.contents.cdnTip')}><i class="ti ti-bolt"></i> Modrinth</span>
+              <button class="sc-open" onclick={() => openModFromShare(it.projectId!)} use:launcherTip={t('share.contents.open')} aria-label={t('share.contents.open')}>
                 <i class="ti ti-external-link"></i>
               </button>
             {/if}

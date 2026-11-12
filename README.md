@@ -83,7 +83,7 @@ update manifest (for the launcher). A failure of one does not open the other.
 ## Privacy policy
 
 This program does not transfer personal information to other networked systems unless you use a feature that needs it
-(accounts, friends, mod downloads, updates) or you opt in to anonymous statistics. Details: [PRIVACY.md](PRIVACY.md).
+(accounts, friends, cloud playtime, mod downloads, updates). Details: [PRIVACY.md](PRIVACY.md).
 
 ## License
 

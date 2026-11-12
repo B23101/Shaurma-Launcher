@@ -20,6 +20,12 @@ func (a *App) UIReady() {
 	a.notifyRestartedAfterCrash()
 	if consumeBackgroundStart() {
 		a.ensureTray()
+		// Запуск з ярлика: замість головного вікна — вікно запуску ярлика
+		// (shortcut_window.go). Запобіжник покаже головне вікно, якщо
+		// запуск так і не з'явився.
+		if shortcutColdStart.Load() {
+			a.shortcutSafetyNet()
+		}
 		// Фоновий старт (автозавантаження ОС): вікно не показується і може
 		// висіти в треї годинами. Саме цей випадок найдорожчий за пам'яттю -
 		// WebView2-процеси вже підняті й тримають сотні мегабайт, хоч UI

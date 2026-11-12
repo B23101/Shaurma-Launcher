@@ -127,11 +127,9 @@ func TestReadServersDatMissing(t *testing.T) {
 }
 
 // TestReadServersDatPlainNoGzip перевіряє реальний формат, який пишуть
-// сучасні версії гри: NBT БЕЗ gzip-стиснення (звичайний баг раніше — код
-// вимагав gzip і мовчки повертав порожній список для таких файлів).
-// Поля у справжньому файлі йдуть у порядку hidden → ip → name → icon →
-// requiredPackSkipped (НЕ name → ip, як у старих прикладах) — парсер має
-// читати за іменами тегів, а не за позицією.
+// сучасні версії гри: Поля у справжньому файлі йдуть у порядку hidden →
+// ip → name → icon → requiredPackSkipped (НЕ name → ip, як у старих
+// прикладах) — парсер має читати за іменами тегів, а не за позицією.
 func TestReadServersDatPlainNoGzip(t *testing.T) {
 	dir := t.TempDir()
 	path := dir + "/servers.dat"

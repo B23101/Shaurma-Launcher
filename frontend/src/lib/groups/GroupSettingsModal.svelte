@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // Налаштування групи. Адмін змінює все (назву, колір аватарки, видимість історії для новачків,
   // хто закріплює/відкріплює, дозвіл на моди й збірки), керує складом (додати, запросити, виключити,
   // передати адмінку, видалити групу). Учасник бачить склад і може вийти. Права — лише підказка UI:
@@ -68,7 +70,7 @@
         {#each ['', ...GROUP_ICONS] as ic (ic)}
           <button class="gs-i" class:on={icon === ic} role="radio" aria-checked={icon === ic} disabled={g.busy}
                   onclick={() => icon !== ic && save({ icon: ic })}
-                  title={ic ? ic : t('groups.settings.iconNone')} aria-label={ic ? ic : t('groups.settings.iconNone')}>
+                  use:launcherTip={ic ? ic : t('groups.settings.iconNone')} aria-label={ic ? ic : t('groups.settings.iconNone')}>
             {#if ic}<i class="ti ti-{ic}"></i>{:else}<span class="gs-i-l">{letter}</span>{/if}
           </button>
         {/each}
@@ -78,7 +80,7 @@
       <div class="gs-colors" role="radiogroup" aria-label={t('groups.settings.color')}>
         {#each COLORS as c (c)}
           <button class="gs-c" class:on={color === c} role="radio" aria-checked={color === c} disabled={g.busy}
-                  style="--c:{c || 'transparent'}" onclick={() => color !== c && save({ color: c })} title={c || t('groups.settings.colorNone')}
+                  style="--c:{c || 'transparent'}" onclick={() => color !== c && save({ color: c })} use:launcherTip={c || t('groups.settings.colorNone')}
                   aria-label={c || t('groups.settings.colorNone')}>
             {#if !c}<i class="ti ti-ban"></i>{/if}
           </button>

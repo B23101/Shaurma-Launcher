@@ -82,9 +82,9 @@ func TestResolveProcValueDataFileNotSharedAcrossVersions(t *testing.T) {
 		t.Fatalf("не вдалося прочитати кешований файл B: %v", err)
 	}
 
-	// РЕГРЕСІЯ: якщо кеш спільний за голим відносним шляхом, gotB буде
-	// тим самим файлом, що й gotA, і міститиме "PATCHES-FOR-1.16.5" --
-	// тобто patch-дані попередньої версії видаються за дані поточної.
+	// Якщо кеш спільний за голим відносним шляхом, gotB буде тим самим файлом, що й
+	// gotA, і міститиме "PATCHES-FOR-1.16.5" -- тобто patch-дані попередньої версії
+	// видаються за дані поточної.
 	if string(contentB) != "PATCHES-FOR-1.21.1" {
 		t.Fatalf("вміст кешованого файлу B = %q, want PATCHES-FOR-1.21.1 (отримано дані ІНШОЇ версії -- кеш не ізольований per-версія)", contentB)
 	}
@@ -96,12 +96,7 @@ func TestResolveProcValueDataFileNotSharedAcrossVersions(t *testing.T) {
 // TestForgeProcessorVarsUseCorrectVersions -- регресійний тест на плутанину
 // vanilla vs MCP версії у runForgeProcessors: MINECRAFT_JAR має вказувати
 // на справжній vanilla client jar (mcVersion), а MINECRAFT_VERSION -- на
-// MCP-рядок (profile.Minecraft), навіть коли вони різні. Раніше обидва
-// токени помилково рахувались від mcVersion, тому шляхи, які processors
-// будують із {MINECRAFT_VERSION} (напр. вихідні MC_SLIM/MC_SRG/MC_EXTRA
-// jar-и в libraries/net/minecraft/client/<MCP-версія>/...), вказували не
-// туди, де реально мала бути ця версія -- і client-*-srg.jar/-extra.jar/
-// forge-*-client.jar так ніколи й не з'являлись на очікуваному шляху.
+// MCP-рядок (profile.Minecraft), навіть коли вони різні.
 func TestForgeProcessorVarsUseCorrectVersions(t *testing.T) {
 	baseDir := t.TempDir()
 	mcVersion := "1.20.1"
@@ -166,11 +161,6 @@ func TestForgeProcessorVarsUseCorrectVersions(t *testing.T) {
 	}
 }
 
-// TestProcessorOutputsValidDetectsMissingFile -- processorOutputsValid має
-// повертати false і шлях відсутнього файлу, якщо output не існує
-// (регресія: раніше цю перевірку робили тільки ДО запуску processor'а,
-// що дозволяло тихо "успішному" запуску без реального результату
-// проскочити без помилки).
 func TestProcessorOutputsValidDetectsMissingFile(t *testing.T) {
 	baseDir := t.TempDir()
 	inst := NewInstaller(baseDir)
@@ -200,11 +190,7 @@ func TestProcessorOutputsValidDetectsMissingFile(t *testing.T) {
 // TestProcessorOutputsValidEmptyOutputs -- processor БЕЗ оголошених outputs
 // (напр. перші кроки installertools: EXTRACT_FILES/BUNDLER_EXTRACT/
 // MCP_DATA/DOWNLOAD_MOJMAPS/MERGE_MAPPING у Forge 1.20.x install_profile.json)
-// не має вважатись "невдалим" після успішного запуску. Раніше
-// processorOutputsValid повертав (false, "") для порожньої мапи outputs --
-// і весь install падав із хибною помилкою "processor ... відпрацював, але
-// очікуваний файл не з'явився:" (порожній шлях), блокуючи встановлення
-// Forge/NeoForge. Тепер порожні outputs = "перевіряти нічого" = валідно.
+// не має вважатись "невдалим" після успішного запуску.
 func TestProcessorOutputsValidEmptyOutputs(t *testing.T) {
 	inst := NewInstaller(t.TempDir())
 	ok, missing := inst.processorOutputsValid(map[string]string{}, map[string]string{"ROOT": t.TempDir()})
@@ -215,9 +201,7 @@ func TestProcessorOutputsValidEmptyOutputs(t *testing.T) {
 
 // TestReplaceTokensPreservesWindowsBackslashes -- replaceTokens має зберігати
 // звичайні бекслеші (Windows-шляхи в outputs/args), ескейпити лише спецсимволи
-// токенів. Раніше будь-який '\\' споживався як escape -- і літеральний
-// Windows-шлях у outputs (напр. "C:\\Users\\...\\client.jar") втрачав усі
-// бекслеші, через що перевірка outputs ніколи не знаходила файл.
+// токенів.
 func TestReplaceTokensPreservesWindowsBackslashes(t *testing.T) {
 	vars := map[string]string{"ROOT": "C:\\games"}
 	got := replaceTokens(vars, "{ROOT}\\minecraft\\client.jar")

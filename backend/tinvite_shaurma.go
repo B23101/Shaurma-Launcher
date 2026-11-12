@@ -67,7 +67,7 @@ type TempVoiceInfo struct {
 // DetectTempVoice шукає голосовий чат для світу на port. Світ може бути або сервером
 // лаунчера (порт збігається), або LAN-світом запущеної через лаунчер збірки; у другому
 // випадку конфіг мода читається з saves/<світ>/serverconfig та config/ цієї збірки.
-// Не знайшли — AutoPort = порт світу (як і раніше), а порт можна вказати вручну.
+// Не знайшли — AutoPort = порт світу, а порт можна вказати вручну.
 func (a *App) DetectTempVoice(port int) TempVoiceInfo {
 	out := TempVoiceInfo{AutoPort: port, Issues: []voicecfg.Issue{}}
 	pick := func(sols []voicecfg.Solution, source string) bool {

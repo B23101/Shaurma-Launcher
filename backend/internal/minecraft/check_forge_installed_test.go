@@ -161,13 +161,10 @@ func TestCheckForgeInstalledDistinguishesForgeFromNeoForge1201(t *testing.T) {
 // зберігають профіль під СТАРИМ форматом ID (версія вклеєна БЕЗ дефіса
 // після "forge"), а патчений jar — як universal jar без -client.jar:
 //
-//	1.7.10 -> versions/1.7.10-Forge10.13.4.1614-1.7.10/  (капітальна "Forge")
-//	         libraries/net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/
-//	         forge-1.7.10-10.13.4.1614-1.7.10-universal.jar
+// 1.7.10 -> versions/1.7.10-Forge10.13.4.1614-1.7.10/  (капітальна "Forge")
 //
-// Раніше checkForgeInstalled сканував лише суфікс "-forge-<ver>", тож
-// старий профіль ніколи не знаходився і install перезапускався при
-// КОЖНОМУ запуску гри.
+//	libraries/net/minecraftforge/forge/1.7.10-10.13.4.1614-1.7.10/
+//	forge-1.7.10-10.13.4.1614-1.7.10-universal.jar
 func TestCheckForgeInstalledOldForge(t *testing.T) {
 	baseDir := t.TempDir()
 	inst := NewInstaller(baseDir)
@@ -233,12 +230,10 @@ func TestCheckForgeInstalledOldForge(t *testing.T) {
 }
 
 // TestCheckForgeInstalledForge1122 — Forge 1.12.2 має СУЧАСНИЙ формат ID
-// ("1.12.2-forge-14.23.5.2860", дефіс після "forge"), але jar бандлиться
-// БЕЗ classifier (forge-1.12.2-14.23.5.2860.jar) і версія.json вказує на
-// нього через downloads.artifact.path — -client.jar не генерується. Тож
-// перевірка client.jar не спрацьовує, і раніше Forge 1.12.2 перевстановлювався
-// при кожному запуску гри. Fallback має знайти патчений jar за шляхом з
-// version.json профілю.
+// ("1.12.2-forge-14.23.5.2860", дефіс після "forge"), але jar бандлиться БЕЗ
+// classifier (forge-1.12.2-14.23.5.2860.jar) і версія.json вказує на нього
+// через downloads.artifact.path — -client.jar не генерується. Fallback має
+// знайти патчений jar за шляхом з version.json профілю.
 func TestCheckForgeInstalledForge1122(t *testing.T) {
 	baseDir := t.TempDir()
 	inst := NewInstaller(baseDir)

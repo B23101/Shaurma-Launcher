@@ -231,16 +231,6 @@ type Settings struct {
 	// Локальна аналітика по збірках від цього не залежить.
 	DisableCloudPlaytime bool `json:"disableCloudPlaytime"`
 
-	// ── Згоди на телеметрію ──
-	// AnalyticsEnabled — користувач погодився надсилати анонімну статистику (analytics.go).
-	// За замовчуванням false: без явної згоди жодного запиту не робиться.
-	AnalyticsEnabled bool `json:"analyticsEnabled"`
-	// ErrorReportsEnabled — користувач погодився, щоб його помилки лаунчера аналізував розробник
-	// (errorreports_api.go). За замовчуванням false.
-	ErrorReportsEnabled bool `json:"errorReportsEnabled"`
-	// ErrorReportsPromptShown — модалку згоди на звіти про помилки вже показано (більше не спливає).
-	ErrorReportsPromptShown bool `json:"errorReportsPromptShown"`
-
 	// ── Сповіщення ──
 	// Віджет сповіщень у трей (notify_window.go): тост у правому нижньому
 	// куті з превʼю повідомлення в чаті чи запитом у друзі.
@@ -478,12 +468,26 @@ type Settings struct {
 	SidebarScale float64 `json:"sidebarScale"`
 	// SidebarOnlyPinned — показувати у sidebar лише закріплені збірки.
 	SidebarOnlyPinned bool `json:"sidebarOnlyPinned"`
+	// SidebarCollapsed — стиснений sidebar (лише іконки). Зберігається у БД
+	// (settings.json), а не в localStorage.
+	SidebarCollapsed bool `json:"sidebarCollapsed"`
+	// SidebarHideCreate / SidebarHideSwitch — де ховати кнопку «Створити збірку» та
+	// перемикач Шаурма/Кастомні у sidebar: "" (показувати), "collapsed" (лише у
+	// стисненому), "expanded" (лише у повному), "all" (скрізь).
+	SidebarHideCreate string `json:"sidebarHideCreate"`
+	SidebarHideSwitch string `json:"sidebarHideSwitch"`
 	// ── Кастомна тема (Налаштування → Вигляд → Тема = custom) ──
 	// Кольори власної теми користувача: фон застосунку, картки/панелі,
 	// основний текст. Застосовуються через CSS-змінні (applyTheme).
 	ThemeCustomBg   string `json:"themeCustomBg"`
 	ThemeCustomCard string `json:"themeCustomCard"`
 	ThemeCustomText string `json:"themeCustomText"`
+	// ThemeCustomExtra — розширене налаштування власної теми одним JSON-рядком:
+	// {"sidebar","panel","input","border","muted":"#rrggbb","radius":40..200,
+	// "depth":"flat|normal|deep"}. Кожен ключ необов'язковий: немає ключа = «авто»
+	// (похідне від фону/карток/тексту, як було раніше). Рядок, а не окремі поля,
+	// щоб нові «ручки» теми не вимагали міграцій settings.json.
+	ThemeCustomExtra string `json:"themeCustomExtra,omitempty"`
 
 	// ── Порядок і закріплення збірок ──
 	// PackOrder — список ID збірок у порядку, який встановив користувач.
@@ -931,6 +935,11 @@ type InstanceConfig struct {
 	// зупинки збірки (навіть якщо той вигляд не збережений як пресет).
 	// nil = увімкнено (дефолт), false = лишити скін як змінився.
 	SkinRestoreOnExit *bool `json:"skinRestoreOnExit,omitempty"`
+	// SkinSystemOverride — скін-система для ЦІЄЇ збірки. "" = як у глобальному
+	// налаштуванні «Скіни» (Settings.DisableSkins); "shaurma" = скіни Shaurma
+	// (authlib-injector) увімкнено завжди; "mojang" = без інжектора, гра зі
+	// стандартними скінами Mojang (офлайн-акаунти тоді бачать Steve).
+	SkinSystemOverride string `json:"skinSystemOverride,omitempty"`
 
 	// PinnedServerIPs — адреси серверів (з servers.dat), закріплених
 	// користувачем "нагорі" списку/для швидкого запуску. Порівнюється з

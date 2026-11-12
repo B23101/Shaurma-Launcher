@@ -3,10 +3,7 @@
 package main
 
 // shortcuts_other.go — Linux/інші-не-Windows реалізація трьох функцій,
-// винесених з shortcuts.go. Поведінка НЕ змінена порівняно з тим, що
-// було раніше (runtime.GOOS != "windows" повертав ту саму помилку) —
-// просто тепер це живе у власному build-tag файлі, а не поруч з
-// golang.org/x/sys/windows.
+// винесених з shortcuts.go.
 //
 // Свідомо НЕ додано .desktop-based реалізацію ярликів на робочому столі:
 // це самостійна фіча (потребує рішення, який CLI-виклик генерує сам
@@ -34,4 +31,9 @@ func createLNK(lnkPath, exePath, args, workingDir, iconLocation, description str
 // способи (~/.local/share/applications) поки не реалізовані.
 func startMenuDir() (string, error) {
 	return "", errShortcutsWindowsOnly
+}
+
+// readShellLink — на Linux .lnk не читаємо.
+func readShellLink(lnkPath string) (target, args string, err error) {
+	return "", "", errShortcutsWindowsOnly
 }

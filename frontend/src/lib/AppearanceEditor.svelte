@@ -1,12 +1,9 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── AppearanceEditor — ЄДИНИЙ віджет «Вигляд» ──────────────────────────
   //
-  // Іконка (PNG + пресет) + колір (+ опційно банер). Раніше ця сама
-  // розмітка була продубльована у PackBasicSection.svelte та ДВІЧІ в
-  // CreatePackPage.svelte — і саме тому сервери (де свого блоку вигляду
-  // не було взагалі) виглядали й поводились інакше за збірки. Тепер і
-  // збірки, і сервери викликають ЦЕЙ компонент, тож розійтись вони більше
-  // не можуть: один PresetIconPicker, одна палітра, одна розмітка.
+  // Іконка (PNG + пресет) + колір (+ опційно банер).
   //
   // Компонент лише малює + володіє локальною логікою палітри (пресети й
   // «свій колір»); стан форми (що саме зберігати й коли) лишається у
@@ -134,7 +131,7 @@
       {#each colorPresets as c (c)}
         <button class="sw" class:sel={color === c} style="background:{c}" onclick={() => onColorChange(c)} aria-label={c}></button>
       {/each}
-      <label class="sw sw-custom" class:sel={usingCustomColor} style="--cc:{usingCustomColor ? color : customColor}" title={t('createPack.color.custom')}>
+      <label class="sw sw-custom" class:sel={usingCustomColor} style="--cc:{usingCustomColor ? color : customColor}" use:launcherTip={t('createPack.color.custom')}>
         <input type="color" value={usingCustomColor ? color : customColor} oninput={(e) => applyCustomColor(e.currentTarget.value)} />
       </label>
     </div>
@@ -158,7 +155,7 @@
           <i class="ti ti-photo"></i> {t('createPack.background.choose')}
         </button>
         {#if (backgroundPreviewUrl || backgroundRemovePending) && onRemoveBackground}
-          <button class="btn btn-ghost btn-danger-ghost" style="justify-content:center" onclick={() => onRemoveBackground?.()} title={t('createPack.background.remove')}>
+          <button class="btn btn-ghost btn-danger-ghost" style="justify-content:center" onclick={() => onRemoveBackground?.()} use:launcherTip={t('createPack.background.remove')}>
             <i class="ti ti-x"></i> {t('createPack.background.remove')}
           </button>
         {/if}

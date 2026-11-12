@@ -1,7 +1,11 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import { untrack, onDestroy } from 'svelte'
   import UiModal from './UiModal.svelte'
   import SCard from './settings/SCard.svelte'
+  import GlobalOverride from './GlobalOverride.svelte'
+  import RichT from './RichT.svelte'
   import './settings/settings.css'
   // ── Розділ «Гра» на сторінці збірки ────────────────────────────────────
   // Мінімальна RAM (-Xms), прив'язка збірки до конкретного акаунта та
@@ -95,6 +99,16 @@
       value: acc.id, label: acc.username, head: headFor(acc.uuid)
     }))
   )
+  // Скін-система збірки: '' = глобальне налаштування «Скіни», інакше своє.
+  const skinSystemOptions: StOption[] = [
+    { value: 'shaurma', label: t('pack.game.skinSystemShaurma') },
+    { value: 'mojang', label: t('pack.game.skinSystemMojang') }
+  ]
+  const skinSystemOwn = $derived(!!cfg.skinSystemOverride)
+  function toggleSkinSystemOwn() {
+    // Вмикаємо «своє» зі значенням, протилежним до глобального, — інакше перемикач нічого не змінив би.
+    onUpdate('skinSystemOverride', skinSystemOwn ? '' : (settings.disableSkins ? 'shaurma' : 'mojang'))
+  }
   const currentAccount = $derived(accounts.find((a: Account) => a.id === cfg.accountIdOverride))
 
   // ── Скін збірки ────────────────────────────────────────────────────────
@@ -239,12 +253,17 @@
   // При зміні акаунта (або перевідкритті сторінки) — свіжі пресети.
   $effect(() => {
     void launchAccount?.id
-    presetsLoaded = false
-    // Чистимо кеш мініатюр: пресети іншого акаунта можуть мати ті самі id
-    // або збігатись за сигнатурою — без скидання показувались би чужі скіни.
-    for (const k of Object.keys(thumbSig)) delete thumbSig[k]
-    for (const k of Object.keys(presetThumbs)) delete presetThumbs[k]
-    loadWardrobePresets()
+    // untrack: Object.keys(presetThumbs) інакше підписує ефект на додавання
+    // мініатюр — кожна готова мініатюра перезапускала б ефект, той стирав би
+    // кеш і знову вантажив пресети (нескінченний цикл, превʼю ніколи не видно).
+    untrack(() => {
+      presetsLoaded = false
+      // Чистимо кеш мініатюр: пресети іншого акаунта можуть мати ті самі id
+      // або збігатись за сигнатурою — без скидання показувались би чужі скіни.
+      for (const k of Object.keys(thumbSig)) delete thumbSig[k]
+      for (const k of Object.keys(presetThumbs)) delete presetThumbs[k]
+      loadWardrobePresets()
+    })
   })
 
   // ── Статус повернення скіна (після зупинки збірки) ───────────────────
@@ -521,10 +540,9 @@
         if (cancelled || !Array.isArray(list)) return
         // Бекенд повертає [] (не помилку), коли версія гри ще не
         // встановлена локально (loadGameLanguages → os.IsNotExist) —
-        // наприклад, збірка щойно створена і ще качається. Раніше це
-        // затирало fallback-список ПОРОЖНІМ, і селект лишався майже
-        // пустим. Порожню відповідь ігноруємо й лишаємо fallback —
-        // оновлюємо лише коли бекенд реально прислав мови.
+        // наприклад, збірка щойно створена і ще качається. Порожню
+        // відповідь ігноруємо й лишаємо fallback — оновлюємо лише коли
+        // бекенд реально прислав мови.
         if (list.length === 0) return
         const mapped: [string, string][] = list.map(l => [l.code, l.name || l.code])
         // Поточна мова у файлі має БУТИ у списку (навіть якщо її чомусь
@@ -594,11 +612,9 @@
   }
 
   // ── Захоплення клавіш для біндів (options.txt: key_<bind>) ────────────
-  // Той самий UX, що в «За замовчуванням» у налаштуваннях лаунчера:
-  // клік по бінду → «натисни клавішу…» → Esc/клавіша/кнопка миші записує
-  // значення у форматі Minecraft (key.keyboard.w, key.mouse.left). Раніше
-  // тут були ТЕКСТОВІ поля, де треба було вручну вписувати key.keyboard.*
-  // — незручно і легко помилитись.
+  // Той самий UX, що в «За замовчуванням» у налаштуваннях лаунчера: клік
+  // по бінду → «натисни клавішу…» → Esc/клавіша/кнопка миші записує
+  // значення у форматі Minecraft (key.keyboard.w, key.mouse.left).
   let capturingKey = $state<string | null>(null)
 
   function startCapture(bind: string) {
@@ -624,8 +640,7 @@
       ShiftLeft: 'key.keyboard.left.shift', ShiftRight: 'key.keyboard.right.shift',
       ControlLeft: 'key.keyboard.left.control', ControlRight: 'key.keyboard.right.control',
       AltLeft: 'key.keyboard.left.alt', AltRight: 'key.keyboard.right.alt',
-      // Символьні клавіші (раніше відсутні — «`» та сусідні клавіші
-      // просто не записувались, map[code] ?? null повертав null).
+      // Символьні клавіші.
       Backquote: 'key.keyboard.grave.accent',
       Minus: 'key.keyboard.minus', Equal: 'key.keyboard.equal',
       BracketLeft: 'key.keyboard.left.bracket', BracketRight: 'key.keyboard.right.bracket',
@@ -827,6 +842,27 @@
     {/if}
   </SCard>
 
+  <!-- ═══ Скін-система збірки (галочка «глобальне» → висувається своє значення) ═══ -->
+  <SCard icon="ti-palette" tone="violet" title={t('pack.game.skinSystem')}>
+    <GlobalOverride global={!skinSystemOwn} onToggle={toggleSkinSystemOwn}
+                    ref="card:privacy/skins" hint={t('pack.game.skinSystemHint')}
+                    current={settings.disableSkins ? t('pack.game.skinSystemMojang') : t('pack.game.skinSystemShaurma')}>
+      <div class="st-row">
+        <div class="st-row-text"><div class="st-row-name">{t('pack.game.skinSystem')}</div></div>
+        <div class="st-row-ctl">
+          <StSelect value={cfg.skinSystemOverride ?? ''} options={skinSystemOptions}
+                    ariaLabel={t('pack.game.skinSystem')}
+                    onchange={(v) => onUpdate('skinSystemOverride', v)} />
+        </div>
+      </div>
+      {#if cfg.skinSystemOverride === 'mojang'}
+        <div class="st-pad">
+          <div class="st-note"><i class="ti ti-info-circle"></i><span>{t('pack.game.skinSystemMojangNote')}</span></div>
+        </div>
+      {/if}
+    </GlobalOverride>
+  </SCard>
+
   <!-- ═══ Скін збірки ═══ -->
   <SCard icon="ti-hanger" tone="violet" title={t('pack.game.skinBuild')}>
     {#if !skinLicensed}
@@ -873,7 +909,7 @@
               {#if selectedThumb.cape}
                 <img class="sk-cape" src={selectedThumb.cape} alt="" />
               {:else}
-                <div class="sk-cape empty" title={t('pack.game.skinNoCape')}><i class="ti ti-minus"></i></div>
+                <div class="sk-cape empty" use:launcherTip={t('pack.game.skinNoCape')}><i class="ti ti-minus"></i></div>
               {/if}
             {/if}
             <StSelect value={cfg.skinPresetId} options={skinPresetOptions}
@@ -946,7 +982,7 @@
                         onchange={(v) => onUpdate('autoJoinWorld', v)} />
             {/if}
             <button type="button" class="st-iconbtn" onclick={onRefreshWorlds}
-                    title={t('pack.game.refreshWorlds')} aria-label={t('pack.game.refreshWorlds')}><i class="ti ti-refresh"></i></button>
+                    use:launcherTip={t('pack.game.refreshWorlds')} aria-label={t('pack.game.refreshWorlds')}><i class="ti ti-refresh"></i></button>
           </div>
         </div>
       {:else}
@@ -961,7 +997,7 @@
             {#if cfg.autoJoinServer}
               {@const pr = pings[cfg.autoJoinServer]}
               {#if pr}
-                <span class="st-tag" class:ok={pr.online} class:bad={!pr.online} title={pr.motd || pr.error || ''}>
+                <span class="st-tag" class:ok={pr.online} class:bad={!pr.online} use:launcherTip={pr.motd || pr.error || ''}>
                   <i class="ti {pr.online ? 'ti-wifi' : 'ti-wifi-off'}"></i>
                   {#if pr.online}{pr.players ?? 0}/{pr.maxPlayers ?? 0}{:else}{t('pack.game.serverOffline')}{/if}
                 </span>
@@ -969,7 +1005,7 @@
                 <span class="st-tag"><i class="ti ti-loader spin"></i></span>
               {/if}
               <button type="button" class="st-iconbtn" onclick={pingCurrent}
-                      title={t('pack.game.pingServer')} aria-label={t('pack.game.pingServer')}><i class="ti ti-refresh"></i></button>
+                      use:launcherTip={t('pack.game.pingServer')} aria-label={t('pack.game.pingServer')}><i class="ti ti-refresh"></i></button>
             {/if}
           </div>
         </div>
@@ -1012,7 +1048,7 @@
       <div class="st-row">
         <div class="st-row-text">
           <div class="st-row-name">{optionsView.exists ? t('pack.game.optionsApply') : t('pack.game.optionsCreate')}</div>
-          <div class="st-row-hint">{t('pack.game.optionsApplyHint')}</div>
+          <div class="st-row-hint"><RichT key="pack.game.optionsApplyHint" /></div>
         </div>
         <div class="st-row-ctl">
           <button type="button" class="btn btn-ghost btn-sm" disabled={busy} onclick={applyDefaultsToPack}>
@@ -1235,7 +1271,7 @@
                 <div class="kb-group-title">{group.modName}</div>
                 <div class="kb-grid">
                   {#each group.binds as bind}
-                    <button type="button" class="kb-row" class:capturing={capturingKey === bind} onclick={() => startCapture(bind)} title={bind}>
+                    <button type="button" class="kb-row" class:capturing={capturingKey === bind} onclick={() => startCapture(bind)} use:launcherTip={bind}>
                       <span class="kb-label">{modBindLabel(bind)}</span>
                       <span class="kb-key mono">{capturingKey === bind ? t('defaults.key.waiting') : formatKeyName(opts['key_' + bind])}</span>
                     </button>

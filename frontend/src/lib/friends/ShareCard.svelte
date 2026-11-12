@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './tooltip'
+
   // Картка «Збірку/сервер надіслано» у чаті. Одержувач бачить «Прийняти / Відмовитись», потім
   // живий прогрес із паузою і підсумок (з причиною); відправник — статус свого друга. Повний
   // вигляд — у ShareTransferModal («Деталі»). Уся логіка передачі в бекенді (share_shaurma.go).
@@ -62,7 +64,7 @@
     <div class="sh-ic"><i class="ti {isServer ? 'ti-server-2' : 'ti-package'}"></i></div>
     <div class="sh-titles">
       <div class="sh-kind">{t(isServer ? 'share.card.kindServer' : 'share.card.kindBuild')}</div>
-      <div class="sh-name" title={card.n}>{card.n}</div>
+      <div class="sh-name" use:launcherTip={card.n}>{card.n}</div>
       <div class="sh-meta">
         {#if card.m?.mc}<span>{card.m.mc}</span>{/if}
         {#if card.m?.loader && card.m.loader !== 'vanilla'}<span>{card.m.loader}</span>{/if}

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── LauncherMigrationModal: міграція збірок з інших лаунчерів ──────────
   // Показується після входу (один раз — галочка MigrateDismiss у БД) або
   // з віджета в Налаштуваннях. Сканує інші лаунчери (Prism / Modrinth App)
@@ -11,6 +13,7 @@
   // Публічний контракт: open + onClose. Сканування і стан — усередині
   // (самодостатній компонент), тож App.svelte лише відкриває/закриває.
 
+  import { untrack } from 'svelte'
   import UiModal from './UiModal.svelte'
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
@@ -36,7 +39,7 @@
   let launchers = $state<MigrationLauncher[]>([])
   // Є дані зі статусу — стартуємо без «Сканування…», щоб не показувати
   // нескінченне завантаження.
-  let loading = $state(initialLaunchers.length === 0)
+  let loading = $state((initialLaunchers ?? []).length === 0)
   let scanError = $state('')
   let activeTab = $state<string>('')
   let selected = $state<Record<string, Set<string>>>({}) // launcherKind -> packId set
@@ -46,17 +49,22 @@
   let done = $state(false)
   let unsubs: Array<() => void> = []
 
+  // Тіло в untrack: applyLaunchers/scan читають і перезаписують launchers,
+  // selected, activeTab — без untrack effect підписується на них і
+  // перезапускається безкінечно (нескінченне «Сканування…»).
   $effect(() => {
     if (open) {
-      if (initialLaunchers.length > 0) applyLaunchers(initialLaunchers)
-      else scan()
+      untrack(() => {
+        if ((initialLaunchers ?? []).length > 0) applyLaunchers(initialLaunchers)
+        else scan()
+      })
     }
     return () => { for (const u of unsubs) u(); unsubs = [] }
   })
 
   function applyLaunchers(list: MigrationLauncher[]) {
     loading = false; scanError = ''; done = false
-    launchers = list.filter((l: MigrationLauncher) => l.found)
+    launchers = normalizeLaunchers(list)
     if (launchers.length > 0 && !launchers.some((l: MigrationLauncher) => l.kind === activeTab)) {
       activeTab = launchers[0].kind
     }
@@ -66,11 +74,19 @@
     subscribeProgress()
   }
 
+  // Go віддає порожній слайс як null: без нормалізації `l.packs.length`
+  // падає з «Cannot read properties of null (reading 'length')».
+  function normalizeLaunchers(list: MigrationLauncher[] | null | undefined): MigrationLauncher[] {
+    return (list ?? [])
+      .filter((l: MigrationLauncher) => l && l.found)
+      .map((l: MigrationLauncher) => ({ ...l, packs: l.packs ?? [] }))
+  }
+
   async function scan() {
     loading = true; scanError = ''; done = false
     try {
       const res = await App.MigrateScan()
-      launchers = res.launchers.filter((l: MigrationLauncher) => l.found)
+      launchers = normalizeLaunchers(res?.launchers)
       // Перша вкладка — перший знайдений лаунчер; перевибір при повторному
       // скануванні (напр. після того, як знайшли новий лаунчер).
       if (launchers.length > 0 && !launchers.some((l: MigrationLauncher) => l.kind === activeTab)) {
@@ -145,6 +161,7 @@
     if (!bytes) return ''
     const mb = bytes / 1024 / 1024
     if (mb >= 1024) return (mb / 1024).toFixed(1) + ' GB'
+    if (mb < 1) return '<1 MB'
     return Math.round(mb) + ' MB'
   }
 
@@ -165,7 +182,8 @@
   $effect(() => {
     const launcher = launchers.find((l: MigrationLauncher) => l.kind === activeTab)
     if (!launcher) return
-    for (const p of launcher.packs) iconFor(p)
+    const packs = launcher.packs ?? []
+    untrack(() => { for (const p of packs) iconFor(p) })
   })
 
   async function doImport() {
@@ -200,7 +218,7 @@
 </script>
 
 <UiModal {open} onclose={close} locked={importing} icon="ti-arrows-shuffle" title={t('migrate.title')}
-         width="min(560px, 94vw)" maxHeight="84vh" bodyClass="no-pad"
+         width="min(620px, 94vw)" maxHeight="86vh" bodyClass="no-pad"
          footer={!loading && !scanError && activeLauncher ? foot : null}>
 
     {#if loading}
@@ -210,94 +228,104 @@
     {:else if launchers.length === 0}
       <div class="lm-empty"><i class="ti ti-search-off"></i> {t('migrate.noneFound')}</div>
     {:else}
-      <!-- Перемикачі між знайденими лаунчерами -->
-      <div class="lm-tabs">
-        {#each launchers as l (l.kind)}
-          <button
-            class="lm-tab"
-            class:active={activeTab === l.kind}
-            onclick={() => activeTab = l.kind}
-            disabled={importing}
-          >
-            <span class="lm-tab-ic">
-              {#if l.kind === 'prism'}
-                <img src={prismIcon} alt="" />
-              {:else if l.kind === 'modrinth'}
-                <img src={modrinthIcon} alt="" />
-              {:else}
-                <i class="ti ti-box"></i>
-              {/if}
+      <!-- Липка шапка: вкладки лаунчерів + лічильник вибору -->
+      <div class="lm-head">
+        <div class="lm-tabs" role="tablist">
+          {#each launchers as l (l.kind)}
+            <button
+              role="tab"
+              aria-selected={activeTab === l.kind}
+              class="lm-tab"
+              class:active={activeTab === l.kind}
+              onclick={() => activeTab = l.kind}
+              disabled={importing}
+            >
+              <span class="lm-tab-ic">
+                {#if l.kind === 'prism'}
+                  <img src={prismIcon} alt="" />
+                {:else if l.kind === 'modrinth'}
+                  <img src={modrinthIcon} alt="" />
+                {:else}
+                  <i class="ti ti-box"></i>
+                {/if}
+              </span>
+              <span class="lm-tab-name">{l.name}</span>
+              <span class="lm-tab-count">{l.packs.length}</span>
+            </button>
+          {/each}
+        </div>
+
+        {#if activeLauncher}
+          <div class="lm-toolbar">
+            <span class="lm-hint" class:has={selectedCount(activeTab) > 0}>
+              {t('migrate.selectedHint', { n: selectedCount(activeTab), total: activeLauncher.packs.length })}
             </span>
-            <span class="lm-tab-name">{l.name}</span>
-            <span class="lm-tab-count">{l.packs.length}</span>
-          </button>
-        {/each}
+            <button class="lm-all" onclick={() => toggleAll(activeTab)} disabled={importing}>
+              <i class="ti {allSelected(activeTab) ? 'ti-square-off' : 'ti-square-check'}"></i>
+              {allSelected(activeTab) ? t('migrate.selectNone') : t('migrate.selectAll')}
+            </button>
+          </div>
+        {/if}
       </div>
 
       {#if activeLauncher}
-        <div class="lm-toolbar">
-          <span class="lm-toolbar-hint">
-            {t('migrate.selectedHint', { n: selectedCount(activeTab), total: activeLauncher.packs.length })}
-          </span>
-          <button class="btn btn-ghost btn-sm" onclick={() => toggleAll(activeTab)} disabled={importing}>
-            <i class="ti {allSelected(activeTab) ? 'ti-square-off' : 'ti-square-check'}"></i>
-            {allSelected(activeTab) ? t('migrate.selectNone') : t('migrate.selectAll')}
-          </button>
-        </div>
-
-        <div class="lm-grid">
+        <div class="lm-list">
           {#each activeLauncher.packs as p (p.id)}
-            <div class="lm-card" class:sel={selected[activeTab]?.has(p.id)} class:imported={p.alreadyImported} onclick={() => togglePack(activeTab, p.id)}>
+            {@const isSel = selected[activeTab]?.has(p.id) ?? false}
+            {@const pr = progress[p.id]}
+            <div class="lm-row" class:sel={isSel} class:imported={p.alreadyImported} class:busy={importing} role="presentation"
+                 onclick={() => { if (!importing) togglePack(activeTab, p.id) }}>
               <button
                 type="button"
                 role="checkbox"
-                aria-checked={selected[activeTab]?.has(p.id) ?? false}
+                aria-checked={isSel}
+                aria-label={p.name}
                 class="lm-check"
-                class:checked={selected[activeTab]?.has(p.id) ?? false}
+                class:checked={isSel}
                 disabled={importing}
                 onclick={(e: any) => { e.stopPropagation(); togglePack(activeTab, p.id) }}
               >
                 <i class="ti ti-check"></i>
               </button>
-              <span class="lm-card-ic" style="--pcol:{['#ff8a00','#9d7cff','#10b981','#3b82f6','#f43f5e'][p.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0)%5]}">
+
+              <span class="lm-ic" style="--pcol:{['#ff8a00','#9d7cff','#10b981','#3b82f6','#f43f5e'][p.id.split('').reduce((a,c)=>a+c.charCodeAt(0),0)%5]}">
                 {#if iconCache[p.id]}
                   <img src={iconCache[p.id]} alt="" loading="lazy" />
                 {:else}
                   <i class="ti ti-package"></i>
                 {/if}
               </span>
-              <span class="lm-card-body">
-                <span class="lm-card-name" title={p.name}>{p.name}</span>
-                <span class="lm-card-meta">
-                  {#if p.alreadyImported}
-                    <span class="lm-imported-badge"><i class="ti ti-circle-check"></i> {t('migrate.alreadyImported')}</span>
-                  {/if}
-                  {#if p.mcVersion}<span class="chip"><i class="ti ti-cube"></i> {p.mcVersion}</span>{/if}
+
+              <span class="lm-main">
+                <span class="lm-name" use:launcherTip={p.name}>{p.name}</span>
+                <span class="lm-meta">
+                  {#if p.mcVersion}<span class="lm-m"><i class="ti ti-cube"></i>{p.mcVersion}</span>{/if}
                   {#if p.loader && p.loader !== 'vanilla'}
-                    <span class="chip chip-l"><i class="ti ti-brand-git"></i> {p.loader}{p.loaderVersion ? ' ' + p.loaderVersion : ''}</span>
+                    <span class="lm-loader">{p.loader}{p.loaderVersion ? ' ' + p.loaderVersion : ''}</span>
                   {/if}
-                  {#if p.sizeBytes}<span class="chip"><i class="ti ti-database"></i> {fmtSize(p.sizeBytes)}</span>{/if}
-                  {#if p.hasConfig}<span class="chip chip-v"><i class="ti ti-settings"></i>{t('migrate.withSettings')}</span>{/if}
+                  {#if p.sizeBytes}<span class="lm-m"><i class="ti ti-database"></i>{fmtSize(p.sizeBytes)}</span>{/if}
+                  {#if p.hasConfig}<span class="lm-m ok"><i class="ti ti-settings"></i>{t('migrate.withSettings')}</span>{/if}
                 </span>
               </span>
-              <span class="lm-card-side">
-                {#if importing && progress[p.id]}
-                  <span class="lm-pct mono">{pct(progress[p.id])}%</span>
-                {:else if progress[p.id]?.stage === 'done'}
-                  <i class="ti ti-circle-check" style="color:var(--green)"></i>
-                {:else if progress[p.id]?.error}
-                  <i class="ti ti-circle-x" style="color:#ef4444" title={progress[p.id].error}></i>
-                {:else}
-                  <span class="chip chip-dim"><i class="ti ti-arrow-down"></i> {t('migrate.importShort')}</span>
+
+              <span class="lm-side">
+                {#if importing && pr && pr.stage !== 'done' && !pr.error}
+                  <span class="lm-pct mono">{pct(pr)}%</span>
+                {:else if pr?.stage === 'done'}
+                  <i class="ti ti-circle-check lm-ok-ic" aria-hidden="true"></i>
+                {:else if pr?.error}
+                  <i class="ti ti-circle-x lm-err-ic" use:launcherTip={pr.error}></i>
+                {:else if p.alreadyImported}
+                  <span class="lm-imported-badge"><i class="ti ti-circle-check"></i>{t('migrate.alreadyImported')}</span>
                 {/if}
               </span>
-              {#if importing && progress[p.id] && progress[p.id].filesTotal > 0}
-                <div class="lm-bar"><div class="lm-bar-fill" style="width:{pct(progress[p.id])}%"></div></div>
+
+              {#if importing && pr && pr.filesTotal > 0}
+                <span class="lm-bar"><span class="lm-bar-fill" style="width:{pct(pr)}%"></span></span>
               {/if}
             </div>
           {/each}
         </div>
-
       {/if}
     {/if}
 </UiModal>
@@ -317,117 +345,142 @@
 {/snippet}
 
 <style>
+  /* ── Шапка (липка): вкладки + лічильник ── */
+  .lm-head {
+    position: sticky; top: 0; z-index: 3;
+    padding: 14px 20px 12px; background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+  }
 
-  .lm-tabs { display: flex; gap: 7px; padding: 12px 20px 10px; border-bottom: 1px solid var(--border); }
+  /* Сегментований перемикач лаунчерів */
+  .lm-tabs {
+    display: flex; gap: 4px; padding: 4px;
+    background: var(--bg-input); border: 1px solid var(--border); border-radius: 14px;
+  }
   .lm-tab {
-    display: inline-flex; align-items: center; gap: 7px;
-    padding: 7px 13px; border-radius: 999px; border: 1px solid var(--border);
-    background: var(--bg-input); color: var(--text-mute);
-    font-size: 12px; font-weight: 700; font-family: inherit; cursor: pointer;
-    transition: all .15s;
+    flex: 1 1 0; min-width: 0;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 8px 12px; border-radius: 10px; border: 0;
+    background: transparent; color: var(--text-mute);
+    font-size: 12.5px; font-weight: 700; line-height: 1; font-family: inherit; cursor: pointer;
+    transition: background .16s, color .16s, box-shadow .16s;
   }
-  .lm-tab.active { background: rgba(157,124,255,.12); border-color: rgba(157,124,255,.45); color: var(--violet-l); }
+  .lm-tab:hover:not(:disabled):not(.active) { color: var(--text); background: color-mix(in srgb, var(--text) 5%, transparent); }
+  .lm-tab.active {
+    color: var(--text);
+    background: color-mix(in srgb, var(--orange) 13%, var(--bg-card));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--orange) 45%, transparent);
+  }
   .lm-tab:disabled { opacity: .55; cursor: default; }
-  .lm-tab-count {
-    font-size: var(--fs-min); font-weight: 800; padding: 1px 7px; border-radius: 999px;
-    background: var(--bg-panel); color: var(--text-dim);
-  }
-  .lm-tab-ic {
-    width: 16px; height: 16px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
+  .lm-tab:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+  .lm-tab-ic { width: 18px; height: 18px; flex: none; display: flex; align-items: center; justify-content: center; }
   .lm-tab-ic img { width: 100%; height: 100%; object-fit: contain; }
-  .lm-tab-ic i { font-size: 14px; color: var(--text-mute); }
-
-  .lm-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 20px 6px; }
-  .lm-toolbar-hint { font-size: 11.5px; color: var(--text-mute); }
-
-  .lm-grid {
-    padding: 4px 20px 14px;
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 10px; min-height: 160px; align-content: start;
+  .lm-tab-ic i { font-size: 15px; color: var(--text-mute); }
+  .lm-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lm-tab-count {
+    flex: none; min-width: 20px; padding: 2px 7px; border-radius: 999px; text-align: center;
+    font-size: var(--fs-min); font-weight: 800; background: var(--bg-input-hi); color: var(--text-dim);
   }
+  .lm-tab.active .lm-tab-count { background: var(--orange); color: #111; }
 
-  /* ── Картка збірки — стиль браузера контенту (cb-card) ── */
-  .lm-card {
-    position: relative; display: flex; gap: 10px; padding: 12px;
+  .lm-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+  .lm-hint { font-size: 12px; font-weight: 600; color: var(--text-dim); transition: color .15s; }
+  .lm-hint.has { color: var(--orange); }
+  .lm-all {
+    display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 9px;
+    border: 1px solid var(--border-hi); background: transparent; color: var(--text-mute);
+    font-size: 12px; font-weight: 700; line-height: 1; font-family: inherit; cursor: pointer; transition: color .15s, border-color .15s, background .15s;
+  }
+  .lm-all i { font-size: 14px; }
+  .lm-all:hover:not(:disabled) { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 55%, transparent); background: color-mix(in srgb, var(--orange) 8%, transparent); }
+  .lm-all:disabled { opacity: .5; cursor: default; }
+  .lm-all:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+
+  /* ── Список: один рядок = одна збірка ── */
+  .lm-list { display: flex; flex-direction: column; gap: 8px; padding: 14px 20px 18px; min-height: 160px; }
+
+  .lm-row {
+    position: relative; overflow: hidden;
+    display: grid; grid-template-columns: 22px 48px minmax(0, 1fr) auto; align-items: center; column-gap: 14px;
+    padding: 12px 16px 12px 14px; border-radius: 14px;
     background: var(--bg-card); border: 1px solid var(--border);
-    border-radius: 12px; cursor: pointer; min-width: 0;
-    box-shadow: 0 1px 3px rgba(0,0,0,.12);
-    transition: transform .18s, border-color .18s, box-shadow .22s, background .18s;
+    cursor: pointer; transition: border-color .16s, background .16s, box-shadow .16s;
   }
-  .lm-card:hover {
-    border-color: rgba(157,124,255,.35);
-    box-shadow: 0 4px 14px rgba(0,0,0,.2);
-    transform: translateY(-1px);
+  .lm-row::before {
+    content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0;
+    background: var(--orange); opacity: 0; transform: scaleY(.4); transition: opacity .16s, transform .2s;
   }
-  .lm-card.sel {
-    border-color: rgba(157,124,255,.55);
-    background: rgba(157,124,255,.07);
-    box-shadow: 0 0 0 1px rgba(157,124,255,.25), 0 4px 14px rgba(0,0,0,.2);
+  .lm-row:hover:not(.busy) { border-color: var(--border-hi); background: color-mix(in srgb, var(--text) 3%, var(--bg-card)); }
+  .lm-row.sel {
+    border-color: color-mix(in srgb, var(--orange) 50%, transparent);
+    background: color-mix(in srgb, var(--orange) 8%, var(--bg-card));
   }
-  .lm-card.imported { opacity: .85; }
+  .lm-row.sel::before { opacity: 1; transform: none; }
+  .lm-row.imported:not(.sel) { opacity: .72; }
+  .lm-row.imported:not(.sel):hover { opacity: 1; }
+  .lm-row.busy { cursor: default; }
 
   .lm-check {
-    position: absolute; top: 8px; right: 8px; z-index: 2;
-    width: 20px; height: 20px; margin: 0; padding: 0;
-    border-radius: 6px; border: 1.5px solid var(--border-hi);
-    background: var(--bg-input);
-    display: flex; align-items: center; justify-content: center;
-    color: transparent; cursor: pointer;
-    transition: border-color .15s, background .15s, color .12s, transform .12s;
+    width: 22px; height: 22px; margin: 0; padding: 0; border-radius: 7px;
+    border: 1.5px solid var(--border-hi); background: var(--bg-input); color: transparent;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+    transition: border-color .15s, background .15s, color .12s, transform .15s;
   }
-  .lm-check i { font-size: 13px; line-height: 1; }
-  .lm-check:hover:not(:disabled) { border-color: var(--violet); transform: scale(1.08); }
-  .lm-check.checked {
-    background: var(--violet); border-color: var(--violet); color: #fff;
-  }
-  .lm-check.checked:hover:not(:disabled) { background: color-mix(in srgb, var(--violet) 85%, #fff); }
-  .lm-check:disabled { opacity: .5; cursor: default; }
+  .lm-check i { font-size: 14px; line-height: 1; transform: scale(.5); transition: transform .18s cubic-bezier(.34, 1.56, .64, 1); }
+  .lm-check:hover:not(:disabled) { border-color: var(--orange); }
+  .lm-check.checked { background: var(--orange); border-color: var(--orange); color: #111; }
+  .lm-check.checked i { transform: none; }
+  .lm-check:disabled { opacity: .55; cursor: default; }
+  .lm-check:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
 
-  .lm-card-ic {
-    width: 52px; height: 52px; border-radius: 10px; background: var(--bg-panel);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; color: var(--pcol, var(--text-dim)); overflow: hidden; flex-shrink: 0;
-    border: 1px solid var(--border);
+  .lm-ic {
+    width: 48px; height: 48px; border-radius: 12px; overflow: hidden; flex: none;
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+    color: var(--pcol, var(--text-dim));
+    background: color-mix(in srgb, var(--pcol, var(--text-dim)) 14%, var(--bg-panel));
+    border: 1px solid color-mix(in srgb, var(--pcol, var(--text-dim)) 25%, var(--border));
   }
-  .lm-card-ic:has(img) { color: transparent; }
-  .lm-card-ic img { width: 100%; height: 100%; object-fit: cover; }
+  .lm-ic:has(img) { color: transparent; background: var(--bg-panel); border-color: var(--border); }
+  .lm-ic img { width: 100%; height: 100%; object-fit: cover; image-rendering: auto; }
 
-  .lm-card-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; flex: 1; }
-  .lm-card-name {
-    font-size: 13px; font-weight: 700; color: var(--text);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    padding-right: 18px; /* місце для чекбокса */
+  .lm-main { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .lm-name { font-size: 14px; font-weight: 700; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lm-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 11.5px; color: var(--text-mute); }
+  .lm-m { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .lm-m i { font-size: 13px; color: var(--text-dim); }
+  .lm-m.ok, .lm-m.ok i { color: var(--green); }
+  .lm-loader {
+    padding: 1px 8px; border-radius: 999px; white-space: nowrap; font-weight: 700;
+    color: var(--violet-l); background: rgba(157,124,255,.12); border: 1px solid rgba(157,124,255,.24);
   }
-  .lm-card-meta { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-  .chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 8px; border-radius: 999px; font-size: var(--fs-min); font-weight: 700;
-    background: var(--bg-input); color: var(--text-mute); border: 1px solid var(--border);
-    white-space: nowrap;
-  }
-  .chip i { font-size: 11px; }
-  .chip-l { color: var(--violet-l); background: rgba(157,124,255,.1); border-color: rgba(157,124,255,.22); }
-  .chip-v { color: var(--green); background: rgba(16,185,129,.1); border-color: rgba(16,185,129,.22); }
-  .chip-dim { color: var(--text-dim); background: var(--bg-panel); border-color: transparent; }
 
-  .lm-card-side { display: flex; align-items: center; justify-content: flex-end; min-width: 34px; }
-  .lm-pct { font-size: 11px; font-weight: 800; color: var(--orange); }
+  .lm-side { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+  .lm-pct { font-size: 12px; font-weight: 800; color: var(--orange); }
+  .lm-ok-ic { font-size: 22px; color: var(--green); }
+  .lm-err-ic { font-size: 22px; color: #ef4444; }
   .lm-imported-badge {
-    display: inline-flex; align-items: center; gap: 4px;
-    padding: 2px 9px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; white-space: nowrap;
     font-size: var(--fs-min); font-weight: 800; letter-spacing: .2px;
-    color: var(--green); background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.32);
-    white-space: nowrap;
+    color: var(--green); background: rgba(16,185,129,.12); border: 1px solid rgba(16,185,129,.3);
   }
   .lm-imported-badge i { font-size: 12px; }
 
-  .lm-bar { height: 3px; border-radius: 2px; background: var(--bg-input-hi); overflow: hidden; position: absolute; left: 12px; right: 12px; bottom: 6px; }
-  .lm-bar-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, var(--orange), var(--violet)); transition: width .25s ease; }
+  .lm-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--bg-input-hi); }
+  .lm-bar-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--orange), var(--violet-l)); transition: width .25s ease; }
 
+  /* Вузьке вікно */
+  @media (max-width: 520px) {
+    .lm-row { grid-template-columns: 22px 42px minmax(0, 1fr) auto; column-gap: 10px; padding: 10px 12px 10px 10px; }
+    .lm-ic { width: 42px; height: 42px; }
+    .lm-tab-name { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lm-row, .lm-row::before, .lm-check, .lm-check i, .lm-bar-fill { transition: none; }
+  }
+
+  /* ── Футер ── */
   .lm-foot-hint { flex: 1; font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
-  .lm-foot-hint i { color: var(--green); }
+  .lm-foot-hint i { color: var(--green); flex: none; }
   .lm-done { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; color: var(--green); }
 
   .lm-empty {

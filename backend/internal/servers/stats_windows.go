@@ -36,11 +36,10 @@ type processMemoryCounters struct {
 // getProcessRAMWindows повертає RSS (working set) процесу в МБ через
 // прямий виклик WinAPI GetProcessMemoryInfo — БЕЗ спавну tasklist.exe.
 //
-// Раніше тут запускався `tasklist.exe` РАЗ НА СЕКУНДУ для кожного
-// запущеного сервера (collectLoop — тікер 1с у stats.go). Кожен такий
-// spawn — це нове консольне вікно (яке блимає, якщо не приховане) і
-// зайві мілісекунди на створення процесу. GetProcessMemoryInfo — та сама
-// інформація напряму з ядра, без жодного дочірнього процесу.
+// Кожен такий spawn — це нове консольне вікно (яке блимає, якщо не
+// приховане) і зайві мілісекунди на створення процесу.
+// GetProcessMemoryInfo — та сама інформація напряму з ядра, без жодного
+// дочірнього процесу.
 func getProcessRAMWindows(pid int) int64 {
 	const processQueryLimitedInformation = 0x1000
 	const processVMRead = 0x0010
@@ -78,13 +77,11 @@ func getProcessRAMWindows(pid int) int64 {
 // getProcessCPUWindows повертає сукупний CPU time процесу через прямий
 // виклик WinAPI GetProcessTimes — БЕЗ спавну жодного дочірнього процесу.
 //
-// Раніше тут запускався `powershell -Command (Get-Process ...)` РАЗ НА
-// СЕКУНДУ для кожного запущеного сервера (collectLoop — тікер 1с). Старт
-// PowerShell коштує 200–800 мс і без прапорця приховування відкривав
-// власне консольне вікно, яке щосекунди блимало на екрані користувача —
-// саме ці "консолі, що вилазять". GetProcessTimes — те саме, що робить
-// PowerShell під капотом, але напряму через syscall, без вікна й майже
-// миттєво (мікросекунди замість сотень мілісекунд).
+// Старт PowerShell коштує 200–800 мс і без прапорця приховування
+// відкривав власне консольне вікно, яке щосекунди блимало на екрані
+// користувача — саме ці "консолі, що вилазять". GetProcessTimes — те
+// саме, що робить PowerShell під капотом, але напряму через syscall, без
+// вікна й майже миттєво (мікросекунди замість сотень мілісекунд).
 func getProcessCPUWindows(pid int) time.Duration {
 	const processQueryLimitedInformation = 0x1000
 

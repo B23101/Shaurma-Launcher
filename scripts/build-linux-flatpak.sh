@@ -58,6 +58,7 @@ cp "$ROOT/flatpak/com.shaurma.Launcher.yml" "$STAGE/"
   printf 'ROOT_KEYS=%q\nKEYSET_B64=%q\nKEYSET_SIG=%q\n' "${SHAURMA_ROOT_PUBKEYS:-}" "${SHAURMA_KEYSET_B64:-}" "${SHAURMA_KEYSET_SIG:-}"
   printf 'MANIFEST_KEYS=%q\nCF_KEY=%q\n' "${SHAURMA_MANIFEST_PUBKEYS:-}" "${CF_API_KEY:-}"
   printf 'GOOGLE_ID=%q\nGOOGLE_SECRET=%q\n' "${SHAURMA_GOOGLE_CLIENT_ID:-}" "${SHAURMA_GOOGLE_CLIENT_SECRET:-}"
+  printf 'GEMINI_KEY=%q\nGROQ_KEY=%q\n' "${GEMINI_API_KEY:-}" "${GROQ_API_KEY:-}"
 } > "$STAGE/src/build.env"
 
 # ── збірка ─────────────────────────────────────────────────────────────────────

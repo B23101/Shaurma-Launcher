@@ -9,7 +9,7 @@
 // backend.dll — shell.exe більше ніколи не потребує перекомпіляції заради
 // нової фічі фронтенду. Формат відповіді: {"ok":true,"result":..} або
 // {"ok":false,"error":..} — розпаковується тут ОДИН РАЗ у call() нижче,
-// тому кожен App.X() нижче й далі повертає Promise<T>, як і раніше.
+// тому кожен App.X() нижче й далі повертає Promise<T>.
 //
 // Events.On(name, cb) — підписка на подію. У v3 колбек отримує об'єкт
 // WailsEvent {name, data}, тому тут ми розпаковуємо .data, щоб колбеки
@@ -48,7 +48,7 @@ import type {
   ServerModInfo, ServerPluginInfo, WorldInfo, BackupInfo, ServerPlayer, ServerPlayerPlaytime, ServerBackupProgress, CrashAnalysis, ServerBrowserContextView,
   NetworkView, NetworkMemberView, NetworkSettings, NetworkIssue, ExternalServer, NetworkFolderInfo, NetworkImportResult,
   BrowserSearchResult, BrowserProjectDetail, BrowserVersionView, BrowserCompatiblePack, BrowserInstallResult, BrowserServerCompat,
-  DesktopShortcut, PendingShortcutLaunch,
+  DesktopShortcut, PendingShortcutLaunch, ShortcutWindowInfo,
   BrowserCategory, BrowserInstalledItem, BrowserInstalledInPack, BrowserProgress, BrowserModpackInstallCheck,
   ContentFileEntry,
   BrowserGameVersion, BrowserLoaderTag,
@@ -66,7 +66,7 @@ import type {
   HealthCheckReport, UIState,
   BrowserCollection, CollectionItemVersion, CollectionInstallPlanItem, TempModInfo, SearchHistoryItem,
   AutoPackView, WhitelistEntry, PackWikiDoc,
-  SocialState, SocialInvite, SocialPrivacy, SocialBlockedAccount, SocialPeerProfile, SocialFriendProfile, SocialProfileVisibility, SocialUserHit, SocialChatPage, SocialNotifyPayload, ChatMuteState,
+  SocialState, SocialInvite, SocialPrivacy, SocialBlockedAccount, SocialPeerProfile, SocialFriendProfile, SocialProfileComments, SocialProfileVisibility, SocialUserHit, SocialChatPage, SocialNotifyPayload, ChatMuteState,
   LocalServer, TempInvite, TempVoiceInfo, TempInviteState,
   RemoteServer, RemoteAccessView, RemoteAuditEntry
 } from './types'
@@ -98,7 +98,7 @@ async function call(method: string, ...args: unknown[]): Promise<any> {
     // (UI показує переклад за кодом), а не збої лаунчера.
     const skipAutolog = new Set([
       'RemoteStartServer', 'RemoteStopServer', 'RemoteSetP2P', 'RemoteOpenConsole', 'RemoteConsoleExec', 'RemoteCloseConsole',
-      'GetFriendsState', 'RefreshFriends', 'SendFriendInvite', 'SendFriendInviteByHandle', 'SetShaurmaHandle', 'SetShaurmaProfileStyle', 'RespondFriendInvite', 'ListSentFriendInvites', 'RemoveFriend', 'SetFriendsPrivacy', 'GetFriendProfile', 'GetProfileVisibility', 'SetProfileVisibility',
+      'GetFriendsState', 'RefreshFriends', 'SendFriendInvite', 'SendFriendInviteByHandle', 'SetShaurmaHandle', 'SetShaurmaProfileStyle', 'RespondFriendInvite', 'ListSentFriendInvites', 'RemoveFriend', 'SetFriendsPrivacy', 'GetFriendProfile', 'GetProfileComments', 'PostProfileComment', 'DeleteProfileComment', 'ReactProfileComment', 'GetProfileVisibility', 'SetProfileVisibility', 'GetMutualVisibility', 'SetMutualVisibility',
     ])
     if (method !== 'AppendLauncherError' && !skipAutolog.has(method)) {
       App.AppendLauncherError(method, err.message, '').catch(() => {})
@@ -248,12 +248,26 @@ export const App = {
   // Фронтенд викликає один раз на маунті — збірка одразу відкриється і
   // запуститься (з опціями ярлика, якщо вони задані).
   TakePendingShortcutLaunch: (): Promise<PendingShortcutLaunch> => call('TakePendingShortcutLaunch'),
+  // ── Вікно запуску ярлика (shortcut.html, backend/shortcut_window.go) ──
+  // Стан вікна при монтуванні його сторінки.
+  TakeShortcutLaunchInfo: (): Promise<ShortcutWindowInfo> => call('TakeShortcutLaunchInfo'),
+  // Сторінка вікна готова — backend показує вікно.
+  ShortcutWindowReady: (): Promise<void> => call('ShortcutWindowReady'),
+  // Головне (приховане) вікно повідомляє назву/іконку/колір збірки для вікна.
+  SetShortcutWindowInfo: (info: ShortcutWindowInfo): Promise<void> => call('SetShortcutWindowInfo', info),
+  // Для запуску потрібен користувач (діалог/помилка): закрити вікно запуску
+  // і відкрити головний екран.
+  ShortcutWindowEscalate: (): Promise<void> => call('ShortcutWindowEscalate'),
+  // «Скасувати» у вікні запуску: зупинити запуск і відкрити головний екран.
+  ShortcutWindowCancel: (): Promise<void> => call('ShortcutWindowCancel'),
   GetAccountHead: (uuid: string, username: string, isLicensed: boolean): Promise<string> => call('GetAccountHead', uuid, username, isLicensed),
   GetAccounts: (): Promise<Account[]> => call('GetAccounts'),
   GetAppDir: (): Promise<string> => call('GetAppDir'),
   // ── Розумна консоль гри ──
   // buildID: вкладка консолі на сторінці збірки показує буфер САМЕ цієї
   // збірки; порожній рядок (окреме вікно) — поточний активний буфер.
+  GetConsolePage: (id: string, offset: number, limit: number, level: string, query: string, after: number): Promise<import('./consolePage').ConsolePage> => call('GetConsolePage', id, offset, limit, level, query, after),
+  GetServerConsolePage: (id: string, offset: number, limit: number, level: string, query: string, after: number): Promise<import('./consolePage').ConsolePage> => call('GetServerConsolePage', id, offset, limit, level, query, after),
   GetConsoleSnapshot: (buildID: string): Promise<ConsoleLine[]> => call('GetConsoleSnapshot', buildID),
   ClearConsoleBuffer: (buildID: string): Promise<void> => call('ClearConsoleBuffer', buildID),
   GetConsoleContext: (instanceID: string): Promise<ConsoleContext> => call('GetConsoleContext', instanceID),
@@ -519,6 +533,7 @@ export const App = {
   GetPackIndex: (): Promise<PackIndexEntry[]> => call('GetPackIndex'),
   // data URL асета збірки (іконка/фон) — качається через бекенд, бо браузер
   // не може додати токен-заголовки до <img> (див. lib/packAssets.svelte.ts).
+  GetPackAssetThumbnail: (url: string, side: number): Promise<string> => call('GetPackAssetThumbnail', url, side),
   GetPackAsset: (url: string): Promise<string> => call('GetPackAsset', url),
   // Динамічний банер головного екрана: data URL картинки останнього
   // офіційного оновлення Minecraft (бекенд сам питає Mojang-маніфест +
@@ -550,6 +565,8 @@ export const App = {
   GetSettingsSchema: (): Promise<SettingDef[]> => call('GetSettingsSchema'),
   GetPackLayout: (): Promise<{ order: string[]; pinned: string[] }> => call('GetPackLayout'),
   SavePackLayout: (order: string[], pinned: string[]): Promise<void> => call('SavePackLayout', order, pinned),
+  GetOpenFolders: (): Promise<string[]> => call('GetOpenFolders'),
+  SaveOpenFolders: (ids: string[]): Promise<void> => call('SaveOpenFolders', ids),
   GetPackFolders: (): Promise<PackFolder[]> => call('GetPackFolders'),
   SavePackFolders: (folders: PackFolder[]): Promise<void> => call('SavePackFolders', folders),
   GetServerFolders: (): Promise<ServerFolder[]> => call('GetServerFolders'),
@@ -571,15 +588,6 @@ export const App = {
   // застосунок / журнал помилок).
   AppendLauncherError: (source: string, message: string, detail: string): Promise<void> =>
     call('AppendLauncherError', source, message, detail),
-  // Згода на звіти про помилки (backend/errorreports_api.go). Binding був
-  // відсутній тут, тож модалка ловила TS-помилку, а виклик ішов у
-  // Bridge.Invoke «наосліп» — додаємо явні сигнатури.
-  ErrorReportsStatus: (): Promise<{ shouldShow: boolean; promptShown: boolean; hasAccounts: boolean; enabled: boolean }> =>
-    call('ErrorReportsStatus'),
-  ErrorReportsSetConsent: (enabled: boolean): Promise<void> =>
-    call('ErrorReportsSetConsent', enabled),
-  ErrorReportsDismiss: (): Promise<void> =>
-    call('ErrorReportsDismiss'),
   GetLauncherErrors: (): Promise<LauncherErrorEntry[]> => call('GetLauncherErrors'),
   GetLauncherErrorCount: (): Promise<number> => call('GetLauncherErrorCount'),
   // Відкриває Save-діалог і записує JSON-журнал помилок; повертає шлях
@@ -739,6 +747,12 @@ export const App = {
   GetChatPeerProfile: (accountID: string): Promise<SocialPeerProfile> => call('GetChatPeerProfile', accountID),
   // Профіль друга: приватність застосовує сервер (hidden=true — друг закрив профіль).
   GetFriendProfile: (accountID: string): Promise<SocialFriendProfile> => call('GetFriendProfile', accountID),
+  GetProfileComments: (accountID: string): Promise<SocialProfileComments> => call('GetProfileComments', accountID),
+  PostProfileComment: (accountID: string, text: string): Promise<void> => call('PostProfileComment', accountID, text),
+  DeleteProfileComment: (commentID: number): Promise<void> => call('DeleteProfileComment', commentID),
+  ReactProfileComment: (commentID: number, emoji: string): Promise<void> => call('ReactProfileComment', commentID, emoji),
+  GetMutualVisibility: (): Promise<SocialProfileVisibility> => call('GetMutualVisibility'),
+  SetMutualVisibility: (v: SocialProfileVisibility): Promise<void> => call('SetMutualVisibility', v),
   GetProfileVisibility: (): Promise<SocialProfileVisibility> => call('GetProfileVisibility'),
   SetProfileVisibility: (v: SocialProfileVisibility): Promise<void> => call('SetProfileVisibility', v),
   SetPresenceMode: (mode: 'online' | 'away' | 'dnd' | 'invisible'): Promise<string> => call('SetPresenceMode', mode),
@@ -811,9 +825,8 @@ export const App = {
   ListShareRecoverable: (): Promise<ShareRecoverable[]> => call('ListShareRecoverable'),
   ShareResumeRecovered: (mid: string): Promise<ShareInView> => call('ShareResumeRecovered', mid),
   ShareDiscardRecovered: (mid: string): Promise<void> => call('ShareDiscardRecovered', mid),
-  // ── Віджет сповіщень у трей (notify.html) ──
-  // TakeNotifyPopup — накопичені сповіщення при монтуванні вікна (подія
-  // notify:push могла прийти раніше, ніж вікно реєструвало слухача).
+  // ── Віджет сповіщень у трей (notify.html) ── TakeNotifyPopup —
+  // накопичені сповіщення при монтуванні вікна (подія notify.
   TakeNotifyPopup: (): Promise<SocialNotifyPayload[]> => call('TakeNotifyPopup'),
   // SetNotifyPopupSize — фактична висота стосу карток: бекенд ставить розмір
   // вікна і привʼязує його до правого нижнього кута; h<=0 → сховати вікно.
@@ -1036,10 +1049,6 @@ export const App = {
   // Готова мережа з однієї теки: проксі + сервери в підтеках — одним кроком.
   DetectNetworkFolder: (dir: string): Promise<NetworkFolderInfo> => call('DetectNetworkFolder', dir),
   ImportNetworkFolder: (dir: string): Promise<NetworkImportResult> => call('ImportNetworkFolder', dir),
-  // ── Браузер контенту ДЛЯ СЕРВЕРІВ ──
-  // ServerBrowserContext — версія MC / лоадер / уже встановлені файли,
-  // щоб вкладка «Знайти онлайн» шукала сумісний з САМЕ ЦИМ сервером
-  // контент (раніше для серверів можна було лише підсунути .jar з диска).
   ServerBrowserContext: (serverID: string): Promise<ServerBrowserContextView> => call('ServerBrowserContext', serverID),
   // InstallServerBrowserVersion — встановлення конкретної версії
   // Modrinth/CurseForge у mods/ або plugins/ сервера (kind: "mods" |

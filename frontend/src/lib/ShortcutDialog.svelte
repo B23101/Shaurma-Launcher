@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── ShortcutDialog: гнучке створення ярлика збірки ─────────────────────
   // Порт діалогу CreateShortcutDialog з Prism: назва ярлика + місце
   // збереження (робочий стіл / меню «Пуск» / довільна тека — "Other...") +
@@ -12,6 +14,7 @@
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import UiModal from './UiModal.svelte'
+  import SelectField from './SelectField.svelte'
   import type { DesktopShortcut, Account } from './types'
 
   let { packId, packName, open, accounts, onClose, onCreate } = $props<{
@@ -65,6 +68,35 @@
     }
   })
 
+  // Голови акаунтів для списку (той самий кеш, що в сайдбарі й консолі).
+  let heads = $state<Record<string, string>>({})
+  $effect(() => {
+    if (!open) return
+    const accs: Account[] = accounts ?? []
+    let cancelled = false
+    ;(async () => {
+      const next: Record<string, string> = {}
+      await Promise.all(accs.map(async (acc) => {
+        try {
+          const url = await App.GetAccountHead(acc.uuid || '', acc.username, !!acc.isLicensed)
+          if (url) next[acc.id] = url
+        } catch { /* без голови — іконка за замовчуванням */ }
+      }))
+      if (!cancelled) heads = next
+    })()
+    return () => { cancelled = true }
+  })
+
+  const accountOptions = $derived([
+    { value: '', label: t('shortcut.accountDefault'), icon: 'ti-user-check' },
+    ...(accounts ?? []).map((acc: Account) => ({
+      value: acc.id,
+      label: acc.username + (acc.isLicensed ? '' : ` (${t('shortcut.accountOffline')})`),
+      head: heads[acc.id],
+      icon: 'ti-user',
+    })),
+  ])
+
   async function create() {
     busy = true
     error = ''
@@ -91,9 +123,9 @@
   }
 
   const locations = [
-    { value: 'desktop', label: t('shortcut.locationDesktop') },
-    { value: 'startmenu', label: t('shortcut.locationStartMenu') },
-    { value: 'custom', label: t('shortcut.locationCustom') },
+    { value: 'desktop', label: t('shortcut.locationDesktop'), icon: 'ti-device-desktop' },
+    { value: 'startmenu', label: t('shortcut.locationStartMenu'), icon: 'ti-layout-grid' },
+    { value: 'custom', label: t('shortcut.locationCustom'), icon: 'ti-folder' },
   ]
 </script>
 
@@ -108,51 +140,63 @@
     onclose={onClose}
   >
     <div class="sc-body">
-      <label class="sc-field">
-        <span class="sc-label">{t('shortcut.name')}</span>
-        <input class="sc-input" bind:value={name} placeholder={packName} maxlength="80" disabled={busy} />
-      </label>
-
-      <span class="sc-label">{t('shortcut.location')}</span>
-      <div class="sc-locations">
-        {#each locations as loc (loc.value)}
-          <button
-            class="sc-loc"
-            class:sel={location === loc.value}
-            onclick={() => location = loc.value}
-            disabled={busy}
-          >
-            <i class="ti {loc.value === 'desktop' ? 'ti-monitor' : loc.value === 'startmenu' ? 'ti-layout-grid' : 'ti-folder'}"></i>
-            {loc.label}
-          </button>
-        {/each}
-      </div>
-
-      {#if location === 'custom'}
-        <div class="sc-custom">
-          <input class="sc-input mono" bind:value={customDir} placeholder="C:\..." disabled={busy} />
-          <button class="btn btn-ghost" onclick={browse} disabled={busy} title={t('shortcut.browse')}>
-            <i class="ti ti-folder-open"></i>
-          </button>
+      <section class="sc-sec">
+        <div class="sc-label"><i class="ti ti-pencil"></i> {t('shortcut.name')}</div>
+        <div class="sc-name">
+          <input class="input" bind:value={name} placeholder={packName} maxlength="80" disabled={busy} />
+          <span class="sc-ext mono">.lnk</span>
         </div>
-      {/if}
+      </section>
 
-      <span class="sc-label">{t('shortcut.optionsHint')}</span>
-      <label class="sc-field">
-        <span class="sc-label">{t('shortcut.account')}</span>
-        <select class="sc-input" bind:value={accountId} disabled={busy || accounts.length === 0}>
-          <option value="">{t('shortcut.accountDefault')}</option>
-          {#each accounts as acc (acc.id)}
-            <option value={acc.id}>{acc.username}{acc.isLicensed ? '' : ` (${t('shortcut.accountOffline')})`}</option>
+      <section class="sc-sec">
+        <div class="sc-label"><i class="ti ti-map-pin"></i> {t('shortcut.location')}</div>
+        <div class="sc-locations" role="radiogroup" aria-label={t('shortcut.location')}>
+          {#each locations as loc (loc.value)}
+            <button
+              class="sc-loc"
+              class:sel={location === loc.value}
+              role="radio"
+              aria-checked={location === loc.value}
+              onclick={() => location = loc.value}
+              disabled={busy}
+            >
+              <i class="ti {loc.icon}"></i>
+              <span>{loc.label}</span>
+            </button>
           {/each}
-        </select>
-      </label>
-      <label class="sc-field">
-        <span class="sc-label">{t('shortcut.autoJoin')}</span>
-        <input class="sc-input mono" bind:value={autoJoinServer} placeholder="play.example.com:25565" disabled={busy} />
-      </label>
+        </div>
+        {#if location === 'custom'}
+          <div class="sc-custom">
+            <input class="input mono" bind:value={customDir} placeholder="C:\..." disabled={busy} />
+            <button class="btn btn-ghost" onclick={browse} disabled={busy} use:launcherTip={t('shortcut.browse')}>
+              <i class="ti ti-folder-open"></i>
+            </button>
+          </div>
+        {/if}
+      </section>
 
-      <div class="sc-note"><i class="ti ti-info-circle"></i> {t('shortcut.optionsNote')}</div>
+      <section class="sc-card">
+        <div class="sc-card-head"><i class="ti ti-player-play"></i> {t('shortcut.optionsHint')}</div>
+        <div class="sc-sec">
+          <div class="sc-sub">{t('shortcut.account')}</div>
+          <SelectField
+            value={accountId}
+            options={accountOptions}
+            onchange={(v) => accountId = v}
+            disabled={busy || accounts.length === 0}
+            minWidth="100%"
+            ariaLabel={t('shortcut.account')}
+          />
+        </div>
+        <div class="sc-sec">
+          <div class="sc-sub">{t('shortcut.autoJoin')}</div>
+          <div class="sc-iconfield">
+            <i class="ti ti-server-2"></i>
+            <input class="input mono" bind:value={autoJoinServer} placeholder="play.example.com:25565" disabled={busy} />
+          </div>
+        </div>
+        <div class="sc-note"><i class="ti ti-info-circle"></i> {t('shortcut.optionsNote')}</div>
+      </section>
 
       {#if error}
         <div class="sc-error"><i class="ti ti-alert-triangle"></i> {error}</div>
@@ -169,31 +213,73 @@
 {/if}
 
 <style>
-  .sc-body { display: flex; flex-direction: column; gap: 8px; }
+  .sc-body { display: flex; flex-direction: column; gap: 16px; }
+  .sc-sec { display: flex; flex-direction: column; gap: 8px; }
 
-  .sc-field { display: flex; flex-direction: column; gap: 5px; }
-  .sc-label { font-size: 11.5px; font-weight: 700; color: var(--text-mute); }
-  .sc-input {
-    width: 100%; padding: 8px 11px; font-size: 12.5px; font-family: inherit;
-    background: var(--bg-input); color: var(--text); border: 1px solid var(--border);
-    border-radius: var(--r-sm); outline: none; box-sizing: border-box;
+  .sc-label {
+    display: flex; align-items: center; gap: 7px;
+    font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+    color: var(--text-mute);
   }
-  .sc-input:focus { border-color: var(--violet); }
+  .sc-label i { font-size: 14px; color: var(--orange); }
+  .sc-sub { font-size: 11.5px; font-weight: 700; color: var(--text-mute); }
 
-  .sc-locations { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sc-name { position: relative; }
+  .sc-name .input { padding-right: 46px; font-weight: 700; }
+  .sc-ext {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 11.5px; color: var(--text-dim); pointer-events: none;
+  }
+
+  .sc-locations { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .sc-loc {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border);
-    background: var(--bg-input); color: var(--text-mute);
-    font-size: 11.5px; font-weight: 700; font-family: inherit; cursor: pointer;
-    transition: all .15s;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+    padding: 13px 6px 11px; border-radius: var(--r-md);
+    border: 1px solid var(--border); background: var(--bg-input);
+    color: var(--text-mute); font-family: inherit; font-size: 11.5px; font-weight: 700;
+    line-height: 1.2; text-align: center; cursor: pointer;
+    transition: border-color .15s, background .15s, color .15s, transform .15s;
   }
-  .sc-loc i { font-size: 13px; }
-  .sc-loc.sel { background: rgba(157,124,255,.12); border-color: rgba(157,124,255,.45); color: var(--violet-l); }
+  .sc-loc i { font-size: 20px; transition: transform .2s cubic-bezier(.34,1.56,.64,1), color .15s; }
+  .sc-loc:hover:not(:disabled) { border-color: var(--border-hi); color: var(--text); }
+  .sc-loc:hover:not(:disabled) i { transform: translateY(-1px); }
+  .sc-loc.sel {
+    color: var(--text);
+    border-color: rgba(var(--orange-rgb), .5);
+    background: linear-gradient(180deg, rgba(var(--orange-rgb), .16), rgba(var(--orange-rgb), .06));
+    box-shadow: 0 6px 18px -10px rgba(var(--orange-rgb), .7);
+  }
+  .sc-loc.sel i { color: var(--orange); }
+  .sc-loc:focus-visible { outline: 2px solid rgba(var(--orange-rgb), .55); outline-offset: 2px; }
   .sc-loc:disabled { opacity: .55; cursor: default; }
 
   .sc-custom { display: flex; gap: 6px; }
-  .sc-custom .sc-input { flex: 1; }
+  .sc-custom .input { flex: 1; }
+
+  .sc-card {
+    display: flex; flex-direction: column; gap: 12px;
+    padding: 14px; border-radius: var(--r-md);
+    background: color-mix(in srgb, var(--bg-input) 70%, transparent);
+    border: 1px solid var(--border);
+  }
+  .sc-card-head {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12.5px; font-weight: 800; color: var(--text);
+  }
+  .sc-card-head i { color: var(--orange); font-size: 15px; }
+
+  .sc-iconfield { position: relative; }
+  .sc-iconfield > i {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 15px; color: var(--text-mute); pointer-events: none;
+  }
+  .sc-iconfield .input { padding-left: 36px; }
+
+  .sc-note {
+    display: flex; align-items: flex-start; gap: 7px;
+    font-size: 11px; line-height: 1.45; color: var(--text-dim);
+  }
+  .sc-note i { flex-shrink: 0; margin-top: 1px; font-size: 13px; }
 
   .sc-error {
     display: flex; align-items: center; gap: 7px;
@@ -201,16 +287,4 @@
     background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25);
     border-radius: var(--r-sm); word-break: break-word;
   }
-
-  .sc-note {
-    display: flex; align-items: flex-start; gap: 7px;
-    padding: 8px 11px; font-size: 11px; line-height: 1.45;
-    color: var(--text-mute);
-    background: color-mix(in srgb, var(--violet) 8%, transparent);
-    border: 1px solid color-mix(in srgb, var(--violet) 22%, transparent);
-    border-radius: var(--r-sm);
-  }
-  .sc-note i { flex-shrink: 0; margin-top: 1px; color: var(--violet-l); }
-
-  .sc-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 18px 16px; border-top: 1px solid var(--border); }
 </style>

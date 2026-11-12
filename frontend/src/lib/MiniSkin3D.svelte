@@ -1,14 +1,32 @@
 <script lang="ts" module>
-  // Спільне для ВСІХ карток: модуль three.js, черга рендеру і кеш готових прев'ю.
-  // Раніше це жило в кожному екземплярі — кеш зникав разом із карткою, і кожне
-  // відкриття гардероба рендерило всі скіни заново.
-  // Динамичний імпорт wardrobe3d — завантажується один раз на перший рендер.
-  let thumbRenderer: ((opts: { slim: boolean; textureUrl?: string; capeTextureUrl?: string }) => Promise<string>) | null = null
+  // Спільне для ВСІХ карток: модуль three.js, черга рендеру і кеші готових прев'ю.
+  // Схема як у Modrinth (batch-skin-renderer + skin-preview-storage):
+  //  1) памʼять (blob-URL) → 2) IndexedDB (переживає перезапуск) → 3) рендер у черзі.
+  // Якщо превʼю є на диску, three.js для картки не вантажиться взагалі, а картки
+  // з'являються одразу, без «завислого» відкриття Гардероба.
+  // Динамічний імпорт wardrobe3d — завантажується один раз на перший справжній рендер.
+  import { loadStoredThumb, storeThumb, thumbKey } from './thumbStore'
 
-  // Готові прев'ю переживають закриття гардероба (рівень модуля — спільні для всіх карток): при повторному відкритті
-  // картки показуються одразу, без повторного рендера кожного скіна.
+  let thumbRenderer: ((opts: { slim: boolean; textureUrl?: string; capeTextureUrl?: string }) => Promise<Blob>) | null = null
+
+  // key → blob-URL. Blob-URL мізерні (кілька КБ у памʼяті браузера), на відміну від
+  // base64-рядків у DOM/стані. Найстаріші відкликаємо, щоб не текло.
   const thumbCache = new Map<string, string>()
-  const THUMB_CACHE_MAX = 80
+  const THUMB_CACHE_MAX = 300
+  function rememberThumb(key: string, blob: Blob): string {
+    const old = thumbCache.get(key)
+    if (old) return old
+    const url = URL.createObjectURL(blob)
+    thumbCache.set(key, url)
+    if (thumbCache.size > THUMB_CACHE_MAX) {
+      const oldest = thumbCache.keys().next().value as string
+      const oldUrl = thumbCache.get(oldest)
+      thumbCache.delete(oldest)
+      if (oldUrl) URL.revokeObjectURL(oldUrl)
+    }
+    return url
+  }
+
   // Черга на один важкий рендер: 20+ карток не стартують одночасно
   // (інакше перший кадр гардероба з'їдає секунду на компіляцію шейдерів).
   let thumbQueue: Promise<void> = Promise.resolve()
@@ -41,7 +59,7 @@
   // Міні-3D превʼю картки Гардероба. Рендерить СПРАВЖНЮ модель
   // (skin-model-launcher.glb / -slim.glb) з текстурою скіна через
   // renderSkinThumbnail (wardrobe3d.ts) — результат один статичний кадр
-  // як data URL, без живого WebGL-контексту на кожній картці.
+  // як Blob, без живого WebGL-контексту на кожній картці.
 
   // ОПТИМІЗАЦІЯ (розділ 2 плану): three.js (vendor-three чанк, ~619 КБ)
   // імпортується ДИНАМІЧНО — тільки коли ця картка реально починає
@@ -52,10 +70,26 @@
   let { slim, textureUrl, capeTextureUrl }: { slim: boolean; textureUrl?: string; capeTextureUrl?: string } = $props()
 
   let imgSrc = $state<string | null>(null)
+  let host: HTMLSpanElement | undefined = $state()
+  // Рендеримо лише картки, що в зоні видимості (з запасом): у гардеробі з десятками
+  // пресетів решта чекає, поки до неї прокрутять, і не заважає відкриттю.
+  let visible = $state(false)
+
+  $effect(() => {
+    const el = host
+    if (!el) return
+    if (typeof IntersectionObserver === 'undefined') { visible = true; return }
+    const io = new IntersectionObserver((entries) => {
+      for (const e of entries) visible = e.isIntersecting
+    }, { rootMargin: '240px 0px' })
+    io.observe(el)
+    return () => io.disconnect()
+  })
 
   $effect(() => {
     const url = textureUrl
     const cape = capeTextureUrl
+    const isVisible = visible
     // undefined = ще не запитували текстуру (запит у польоті) — чекаємо.
     // '' = запит завершився помилкою — все одно рендеримо картку:
     // renderSkinThumbnail сам підставить фолбек-текстуру Steve замість
@@ -64,28 +98,35 @@
       imgSrc = null
       return
     }
-    const key = `${slim ? 'slim' : 'classic'}|${url}|${cape ?? ''}`
+    const key = thumbKey(slim, url, cape ?? '')
     const cached = thumbCache.get(key)
     if (cached) {
       imgSrc = cached
       return
     }
     imgSrc = null
+    if (!isVisible) return
     let alive = true
-    enqueueThumb(async () => {
-      await nextIdle()
-      if (!alive) return null
-      await ensureThumbModule()
-      if (!alive || !thumbRenderer) return null
-      const d = await thumbRenderer({ slim, textureUrl: url || undefined, capeTextureUrl: cape || undefined })
-      if (d) {
-        thumbCache.set(key, d)
-        if (thumbCache.size > THUMB_CACHE_MAX) thumbCache.delete(thumbCache.keys().next().value as string)
-      }
-      return d
-    })
-      .then((d) => {
-        if (alive && d) imgSrc = d
+    loadStoredThumb(key)
+      .then(async (stored) => {
+        if (stored) {
+          const u = rememberThumb(key, stored)
+          if (alive) imgSrc = u
+          return
+        }
+        if (!alive) return
+        // Немає на диску — рендеримо в черзі й одразу кладемо в обидва кеші.
+        const blob = await enqueueThumb(async () => {
+          await nextIdle()
+          if (!alive) return null
+          await ensureThumbModule()
+          if (!alive || !thumbRenderer) return null
+          return thumbRenderer({ slim, textureUrl: url || undefined, capeTextureUrl: cape || undefined })
+        })
+        if (!blob) return
+        storeThumb(key, blob)
+        const u = rememberThumb(key, blob)
+        if (alive) imgSrc = u
       })
       .catch(() => {
         if (alive) imgSrc = null
@@ -96,10 +137,13 @@
   })
 </script>
 
-{#if imgSrc}
-  <img class="wr-mini-3d" src={imgSrc} alt="" draggable="false" />
-{/if}
+<span class="wr-mini-3d-host" bind:this={host}>
+  {#if imgSrc}
+    <img class="wr-mini-3d" src={imgSrc} alt="" draggable="false" />
+  {/if}
+</span>
 
 <style>
+  .wr-mini-3d-host { display:block; width:100%; height:100%; }
   .wr-mini-3d { width:100%; height:100%; object-fit:contain; display:block; user-select:none; -webkit-user-drag:none; }
 </style>

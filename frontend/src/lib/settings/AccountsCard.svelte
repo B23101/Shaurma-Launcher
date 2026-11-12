@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // AccountsCard.svelte — список акаунтів лаунчера. Порядок міняється
   // перетягуванням за значок ⠿ (pointer-drag з setPointerCapture: HTML5
   // draggable не спрацьовує через preventDefault на mousedown).
@@ -60,7 +62,7 @@
          class:drop-before={dragAcc !== null && dragAcc !== i && dragOverRow === i && dragOverRow < dragAcc}
          class:drop-after={dragAcc !== null && dragAcc !== i && dragOverRow === i && dragOverRow > dragAcc}
          animate:flip={{ duration: 200 }}>
-      <span class="st-grip" role="button" tabindex="-1" title={t('acc.dragHint')} aria-label={t('acc.dragHint')}
+      <span class="st-grip" role="button" tabindex="-1" use:launcherTip={t('acc.dragHint')} aria-label={t('acc.dragHint')}
             onpointerdown={(e) => gripDown(e, i)} onpointermove={gripMove} onpointerup={gripUp}
             onpointercancel={() => { dragAcc = null; dragOverRow = null }}><i class="ti ti-grip-vertical"></i></span>
       <div class="st-avatar"><img src={headFor(acc.uuid)} alt="" /></div>
@@ -75,12 +77,12 @@
           <button class="btn btn-ghost btn-sm" onclick={() => switchAccount(acc.id)}><i class="ti ti-user-check"></i> {t('acc.use')}</button>
         {/if}
         {#if acc.isLicensed}
-          <button class="st-iconbtn" onclick={() => reloginAccount(acc)} title={t('acc.relogin')} aria-label={t('acc.relogin')}><i class="ti ti-refresh"></i></button>
+          <button class="st-iconbtn" onclick={() => reloginAccount(acc)} use:launcherTip={t('acc.relogin')} aria-label={t('acc.relogin')}><i class="ti ti-refresh"></i></button>
         {/if}
         {#if canRename(acc)}
-          <button class="st-iconbtn" onclick={() => openRenameAccount(acc)} title={t('acc.rename')} aria-label={t('acc.rename')}><i class="ti ti-edit"></i></button>
+          <button class="st-iconbtn" onclick={() => openRenameAccount(acc)} use:launcherTip={t('acc.rename')} aria-label={t('acc.rename')}><i class="ti ti-edit"></i></button>
         {/if}
-        <button class="st-iconbtn danger" onclick={() => removeAccount(acc.id)} title={t('st.delete')} aria-label={t('st.delete')}><i class="ti ti-trash"></i></button>
+        <button class="st-iconbtn danger" onclick={() => removeAccount(acc.id)} use:launcherTip={t('acc.delete')} aria-label={t('acc.delete')}><i class="ti ti-trash"></i></button>
       </div>
     </div>
   {/each}

@@ -1,8 +1,5 @@
 // ── Спільні хелпери для серверних компонентів ─────────────────────────
-// Статус → колір/підпис/іконка. Раніше ці ж функції жили копіпастом у
-// ServersLibraryPage.svelte, ServerInstancePage.svelte та старому
-// ServerConsolePanel.svelte (видалений — його замінює
-// servers/tabs/ServerConsoleTab.svelte) — тепер одна реалізація.
+// Статус → колір/підпис/іконка.
 import type { ServerView } from '../types'
 import { CORE_META } from './constants'
 import { serverVisual } from './serverTargets'
@@ -19,9 +16,6 @@ export function statusColor(s: string): string {
 }
 
 // statusLabel — єдине місце, де статус сервера перетворюється на текст.
-// Раніше рядки були тут хардкодом українською, через що картки серверів
-// лишались українськими навіть при англійській мові лаунчера. Тепер ключі
-// t(), а реактивність зберігається: t() читає currentLang під час рендеру.
 export function statusLabel(s: string): string {
   switch (s) {
     case 'running': return t('servers.status.running')

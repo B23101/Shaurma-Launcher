@@ -230,10 +230,7 @@ type cfFileResponse struct {
 		FileLength  int64  `json:"fileLength"`
 		// GameVersions — ЗМІШАНИЙ масив: і версії Minecraft, і назва
 		// лоадера (напр. ["Fabric", "1.20", "1.20.1"]) — так реально
-		// відповідає CurseForge API. Поля "modLoaders" на цьому рівні
-		// відповіді НЕ ІСНУЄ (раніше тут стояв `json:"modLoaders"`, який
-		// мовчки завжди десеріалізувався в порожній масив) — назва
-		// лоадера дістається з GameVersions через cfLoaderNamesFrom.
+		// відповідає CurseForge API.
 		GameVersions []string `json:"gameVersions"`
 		Hashes       []struct {
 			Value string `json:"value"`
@@ -293,7 +290,7 @@ func cfClassID(projectType string) int {
 // видачі найпопулярніші проєкти, що лише ЧАСТКОВО збігаються з ключовим
 // словом, і запит здається проігнорованим. Для «Рекомендованих» та «За
 // релевантністю» з текстом просимо Featured (1) — порядок за збігом, як у
-// пошуку CurseForge. Без тексту й для явних сортувань — як і раніше.
+// пошуку CurseForge. Без тексту й для явних сортувань .
 func cfSearchSortField(query, sort string) int {
 	if strings.TrimSpace(query) != "" && (sort == "" || sort == "featured" || sort == "relevance") {
 		return 1
@@ -321,9 +318,8 @@ type CFProjectSummary struct {
 	Name    string `json:"name"`
 	Summary string `json:"summary"`
 	// Logo — лого проєкту. ВАЖЛИВО: CurseForge API v1 повертає лого у
-	// НЕПРАВИЛЬНОМУ для нас форматі: вкладеного об'єкта logo:{url,...},
-	// а НЕ рядка logoUrl. Раніше тут був `json:"logoUrl"` — тому картинки
-	// збірок у пошуку НІКОЛИ не показувались (поле завжди порожнє).
+	// НЕПРАВИЛЬНОМУ для нас форматі: вкладеного об'єкта logo:{url,...}, а
+	// НЕ рядка logoUrl.
 	Logo struct {
 		URL          string `json:"url"`
 		ThumbnailURL string `json:"thumbnailUrl"`
@@ -393,8 +389,6 @@ const cfSearchMaxIndex = 10000
 // сторінки видачі: offset іде в параметр index (зсув у результатах), а
 // другим значенням повертається загальна кількість хітів
 // (pagination.totalCount, обрізана межею API) — для пагінації браузера.
-// Раніше index не передавався зовсім, і будь-яка сторінка CurseForge
-// показувала ту саму першу сторінку.
 func (c *CurseForgeClient) SearchProjectsPage(query, projectType, gameVersion, loader string, sort string, limit, offset int, categoryIDs []int) ([]CFProjectSummary, int, error) {
 	if limit <= 0 {
 		limit = 20
@@ -415,13 +409,9 @@ func (c *CurseForgeClient) SearchProjectsPage(query, projectType, gameVersion, l
 	}
 	// Категорії фільтруються ПРЯМО в CurseForge Search API (categoryId для
 	// одного тегу, categoryIds=[...] для декількох — офіційний параметр
-	// /mods/search), а НЕ постфактум на клієнті: раніше фільтр застосовувався
-	// вже ПІСЛЯ обрізання видачі до `limit` (типово 30) нефільтрованих
-	// хітів, тож обраний тег часто відсіював майже все, хоча реально
-	// сумісних проєктів під цим тегом могло бути значно більше — вони
-	// просто не потрапляли у перші `limit` найпопулярніших хітів без
-	// фільтра. З categoryId(s) у запиті CurseForge сам повертає лише
-	// проєкти цього тегу, і `limit` обрізає вже ВІДФІЛЬТРОВАНУ видачу.
+	// /mods/search), а НЕ постфактум на клієнті. З categoryId(s) у запиті
+	// CurseForge сам повертає лише проєкти цього тегу, і `limit` обрізає вже
+	// ВІДФІЛЬТРОВАНУ видачу.
 	if len(categoryIDs) == 1 {
 		u += fmt.Sprintf("&categoryId=%d", categoryIDs[0])
 	} else if len(categoryIDs) > 1 {
@@ -564,12 +554,7 @@ func (c *CurseForgeClient) GetProjectDetail(projectID int) (*CFProjectDetail, er
 	d.ModLoaders = cfLoaderNamesFrom(d.GameVersions)
 	// Повний опис проєкту (баг 8): /mods/{id} у полі description часто
 	// віддає ЛИШЕ короткий анонс (2 речення), а канонічне джерело повної
-	// статті — GET /mods/{id}/description ({data: "<html>"}). Раніше
-	// фолбек спрацьовував лише коли description був ПОРОЖНІМ — для
-	// модпаків з коротким, але непорожнім description (напр. «Create -
-	// Forge Frontier») сторінка контенту показувала 2 речення замість
-	// цілої статті. Тепер повний опис завжди має пріоритет над полем
-	// /mods/{id}, а коротке поле лишається лише фолбеком.
+	// статті — GET /mods/{id}/description ({data: "<html>"}).
 	if desc, derr := c.getProjectDescription(projectID); derr == nil && strings.TrimSpace(desc) != "" {
 		d.Description = desc
 	}
@@ -763,14 +748,7 @@ type CFFileHit struct {
 	GameVersions []string `json:"gameVersions"`
 	ModLoaders   []string `json:"modLoaders"`
 	// ReleaseType — канал релізу файлу CurseForge: 1=release, 2=beta,
-	// 3=alpha (офіційне поле releaseType /mods/{id}/files). Раніше його
-	// взагалі не читали: для CurseForge pickBestBrowserVersion бачив
-	// порожній VersionType і завжди обирав найсвіжіший файл — а ним може
-	// бути beta/alpha, випущена після останнього стабільного релізу
-	// (реально: у JEI-файлів 1.19.2/1.21.1 на CurseForge перші 3-4 файли
-	// за датою — beta, а стабільний release лежить нижче). Це і є
-	// «сортування/вибір версії мода згідно збірки»: має братись останній
-	// СТАБІЛЬНИЙ реліз, як у GDLauncher/Modrinth (release → beta → alpha).
+	// 3=alpha (офіційне поле releaseType /mods/{id}/files).
 	ReleaseType int `json:"releaseType"`
 	Hashes      []struct {
 		Value string `json:"value"`
@@ -806,10 +784,6 @@ func CFReleaseTypeName(releaseType int) string {
 //   - alpha — лише коли allowBeta й allowAlpha;
 //   - якщо дозволеного файлу немає взагалі — nil (викликач вирішує:
 //     «немає новішої версії» замість встановлення небажаного каналу).
-//
-// Раніше «найсвіжіший» брався сліпо (files[0]) всюди поза браузером
-// (оновлення модів, міграція) — найсвіжішим міг бути beta/alpha,
-// випущена після останнього стабільного релізу.
 func CFLatestFile(files []CFFileHit, allowBeta, allowAlpha bool) *CFFileHit {
 	// Правило — «найсвіжіший ДОЗВОЛЕНИЙ»: список уже відсортований
 	// новіші-перші, тож перший файл, чий канал дозволений, і є відповіддю.
@@ -852,13 +826,7 @@ func (h *CFFileHit) SHA1() string {
 // cfLoaderTypeID — числовий код лоадера для параметра modLoaderType
 // CurseForge API. 0 = «Any» (офіційне значення CurseForge для «без
 // фільтра за лоадером», те саме, що НЕ передавати modLoaderType
-// узагалі) — повертається для порожнього/невідомого лоадера. Раніше тут
-// був default-фолбек на 1 (Forge): невідома чи майбутня назва лоадера
-// (регістр, нова назва на кшталт "legacyfabric", помилка передачі) тихо
-// перетворювалась на «шукати ЛИШЕ Forge-файли», через що GetModFiles
-// повертав порожній список і сумісна збірка помилково показувалась як
-// непідтримувана, хоча насправді проєкт мав версію під її лоадер —
-// просто не під Forge, на який мовчки підмінявся запит.
+// узагалі) — повертається для порожнього/невідомого лоадера.
 func cfLoaderTypeID(loader string) int {
 	switch strings.ToLower(strings.TrimSpace(loader)) {
 	case "forge":
@@ -946,7 +914,7 @@ func (c *CurseForgeClient) doRequestDirect(ctx context.Context, req *http.Reques
 	// CurseForge, як і Modrinth, радить унікальний User-Agent з контактом
 	// замість дефолтного Go http.Client (порожній) — щоб трафік не виглядав
 	// як анонімний бот і не потрапив під блокування без попередження.
-	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (shaurmaofficial2210@gmail.com)")
+	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+https://github.com/B23101/Shaurma-Launcher)")
 	if ctx != nil {
 		req = req.WithContext(ctx)
 	}
@@ -1033,17 +1001,13 @@ func (c *CurseForgeClient) SearchMods(query, gameVersion, loader string) ([]CFSe
 // GetModFiles повертає файли (версії) мода проєкту, опційно відфільтровані
 // за версією гри та лоадером.
 //
-// РЕГРЕСІЯ (виправлено): раніше запит брав ЛИШЕ перші 50 файлів
-// (pageSize=50, без index — API повертає перший page) і БЕЗ
-// gameVersion=/modLoaderType= у самому запиті — фільтрація йшла вручну
-// вже після відповіді, локально, тільки серед цих 50. У проєкта з
-// довгою історією версій (сотні файлів) потрібна версія майже напевно
-// лежала за межами перших 50 — фільтр казав «немає сумісних файлів»,
-// хоча підтримка насправді була. Це проявлялось як: (1) пошук показує
-// мод «непідтримується» для версії/лоадера, які CurseForge насправді
-// підтримує; (2) сторінка модпаку не знаходить жодної сумісної версії →
-// кнопка «Встановити» видає «Спершу обери версію»; (3) те саме в
-// модальному вікні встановлення модпаку.
+// У проєкта з довгою історією версій (сотні файлів) потрібна версія
+// майже напевно лежала за межами перших 50 — фільтр казав «немає
+// сумісних файлів», хоча підтримка насправді була. Це проявлялось як:
+// (1) пошук показує мод «непідтримується» для версії/лоадера, які
+// CurseForge насправді підтримує; (2) сторінка модпаку не знаходить
+// жодної сумісної версії → кнопка «Встановити» видає «Спершу обери
+// версію»; (3) те саме в модальному вікні встановлення модпаку.
 //
 // Виправлення: gameVersion=/modLoaderType= тепер ідуть ПРЯМО в запиті —
 // CurseForge фільтрує на своєму боці (офіційно документований параметр
@@ -1459,14 +1423,8 @@ var cfKnownLoaderNames = map[string]bool{
 // containsLoader — чи є серед РЯДКІВ gameVersions назва потрібного
 // лоадера. ВАЖЛИВО: приймає САМЕ gameVersions (не окреме поле
 // "modLoaders" — такого поля в відповіді CurseForge API немає, воно
-// завжди приходить порожнім, і перевірка проти нього раніше ЗАВЖДИ
-// відхиляла файл як "несумісний", навіть коли лоадер насправді
-// підтримувався — саме це виглядало як "лаунчер не вміє шукати/качати
-// з CurseForge, хоча підтримується"). Порівняння — точний збіг без
-// урахування регістру (HasPrefix прибрано: раніше "forge" помилково
-// збігався з версією гри, що починається на ту саму підрядку, і з
-// назвою "Forge" для будь-якого mod_loader — обидва боки тепер повна,
-// а не часткова назва).
+// завжди приходить порожнім. Порівняння — точний збіг без урахування
+// регістру (HasPrefix прибрано.
 func containsLoader(gameVersions []string, loader string) bool {
 	l := strings.ToLower(strings.TrimSpace(loader))
 	if l == "" {
@@ -1482,11 +1440,7 @@ func containsLoader(gameVersions []string, loader string) bool {
 
 // cfExtractMCVersion — версія Minecraft із масиву gameVersions, що
 // змішує в собі і версії гри, і назву лоадера (див. коментар
-// cfKnownLoaderNames). Раніше код брав GameVersions[0] напряму — коли
-// CurseForge клав лоадер ПЕРШИМ елементом масиву (реальна поведінка
-// API, підтверджено на живих файлах), це давало mcVersion="Fabric"
-// замість справжньої версії гри. Тут беремо перший елемент, який НЕ є
-// відомою назвою лоадера/client/server.
+// cfKnownLoaderNames).
 func cfExtractMCVersion(gameVersions []string) string {
 	for _, v := range gameVersions {
 		if !cfKnownLoaderNames[strings.ToLower(strings.TrimSpace(v))] {

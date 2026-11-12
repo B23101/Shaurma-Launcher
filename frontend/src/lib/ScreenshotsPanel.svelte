@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import Portal from './Portal.svelte'
   import UiModal from './UiModal.svelte'
   import './settings/settings.css'
@@ -101,18 +103,16 @@
   // завантаження мініатюр робить lazyThumb (IntersectionObserver) — лише
   // для карток, що наблизились до в'юпорту.
   //
-  // ВАЖЛИВО (причина зависання галереї): раніше цей ефект БЕЗУМОВНО писав
-  // thumbCache (новий об'єкт), хоча й читав його ж як залежність. Svelte 5
-  // перевиконує ефект, який пише у власну залежність (у runes-режимі
-  // активний ефект не пропускається при позначці реакцій) — виходив
-  // нескінченний цикл: при відкритті «Галереї» ефект крутився ~1000 разів
-  // (поки Svelte не кидав effect_update_depth_exceeded), на кожній ітерації
-  // перезапускаючи чергу мініатюр і пускаючи нові запити на повне
+  // Svelte 5 перевиконує ефект, який пише у власну залежність (у
+  // runes-режимі активний ефект не пропускається при позначці реакцій) —
+  // виходив нескінченний цикл: при відкритті «Галереї» ефект крутився ~1000
+  // разів (поки Svelte не кидав effect_update_depth_exceeded), на кожній
+  // ітерації перезапускаючи чергу мініатюр і пускаючи нові запити на повне
   // декодування скріншотів у бекенд — UI замерзав, галерея не вантажилась.
-  // Тепер: (1) ефект завершується одразу (guard за підписом списку),
-  // (2) thumbCache пишеться лише коли прунінг реально щось видалив,
-  // (3) оновлення кешу мініатюр більше НЕ перезапускає чергу (запити, що
-  // вже летять, доїжджають і застосовуються під своїм поколінням).
+  // Тепер: (1) ефект завершується одразу (guard за підписом списку), (2)
+  // thumbCache пишеться лише коли прунінг реально щось видалив, (3)
+  // оновлення кешу мініатюр більше НЕ перезапускає чергу (запити, що вже
+  // летять, доїжджають і застосовуються під своїм поколінням).
   $effect(() => {
     const key = entries.map(thumbKey).join('|')
     if (key === lastListKey) return
@@ -373,10 +373,10 @@
           {/if}
         </div>
         <div class="gal-meta">
-          <div class="gal-title" title={entry.title || entry.fileName}>{entry.title || entry.fileName}</div>
+          <div class="gal-title" use:launcherTip={entry.title || entry.fileName}>{entry.title || entry.fileName}</div>
           <div class="gal-date">{fmtDate(entry.modified)}</div>
         </div>
-        <button class="gal-more" title={t('gallery.editDetails')} onclick={(e: any) => { e.stopPropagation(); openCtx(e, entry) }}>
+        <button class="gal-more" use:launcherTip={t('gallery.editDetails')} onclick={(e: any) => { e.stopPropagation(); openCtx(e, entry) }}>
           <i class="ti ti-dots-vertical"></i>
         </button>
       </div>

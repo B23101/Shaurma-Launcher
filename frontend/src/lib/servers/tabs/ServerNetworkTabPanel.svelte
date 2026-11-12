@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Вкладка "Мережа" ──────────────────────────────────────────────────
   // Тут лише МЕРЕЖА — тобто доступ до сервера:
   //   • локальна адреса (ServerIpBar);
@@ -87,11 +89,11 @@
         <div class="st-row-ctl wrap">
           {#if rs.p2p && rs.p2pAddr}
             <span class="st-tag ok mono">{rs.p2pAddr}</span>
-            <button type="button" class="st-iconbtn" onclick={copyAddr} title={t('servers.remote.copyAddr')} aria-label={t('servers.remote.copyAddr')}><i class="ti ti-copy"></i></button>
+            <button type="button" class="st-iconbtn" onclick={copyAddr} use:launcherTip={t('servers.remote.copyAddr')} aria-label={t('servers.remote.copyAddr')}><i class="ti ti-copy"></i></button>
           {/if}
           <button type="button" class="st-switch" class:on={rs.p2p} role="switch" aria-checked={!!rs.p2p}
                   aria-label={t('servers.remote.p2pTitle')} disabled={!canToggleP2P || p2pBusy}
-                  title={!rs.p2p && rs.state !== 'running' ? t('servers.remote.p2pNeedRunning') : ''}
+                  use:launcherTip={!rs.p2p && rs.state !== 'running' ? t('servers.remote.p2pNeedRunning') : ''}
                   onclick={() => remoteP2P(rs, !rs.p2p)}></button>
         </div>
       </div>

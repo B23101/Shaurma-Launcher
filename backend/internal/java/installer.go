@@ -7,14 +7,9 @@
 //
 // ДЖЕРЕЛО ЗАВАНТАЖЕННЯ: офіційний Mojang java-runtime маніфест
 // (piston-meta.mojang.com / launchermeta.mojang.com), той самий, яким
-// користується vanilla Minecraft launcher і Prism Launcher. Раніше
-// лаунчер качав Java напряму з Adoptium API (api.adoptium.net) — це
-// давало ІНШУ збірку/вендора, ніж те, що реально ставить і тестує
-// Mojang для кожної версії гри (напр. для нових snapshot-ів Mojang
-// використовує Microsoft Build of OpenJDK для java-runtime-epsilon
-// (Java 25), тоді як Adoptium міг віддавати щось інше під тим самим
-// номером мажора). Використання того самого джерела, що й Prism,
-// усуває розбіжності версій і поламані запуски на нових snapshot-ах.
+// користується vanilla Minecraft launcher і Prism Launcher.
+// Використання того самого джерела, що й Prism, усуває розбіжності
+// версій і поламані запуски на нових snapshot-ах.
 package java
 
 import (

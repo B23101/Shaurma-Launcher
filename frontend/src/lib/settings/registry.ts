@@ -116,12 +116,19 @@ export const searchItems: SearchItem[] = [
     ['x:theme', 'тема theme темна світла dark light oled система'],
     ['x:accent', 'акцент колір accent color градієнт'],
   ]),
-  ...I('appearance', 'customTheme', ['themeCustomBg', 'themeCustomCard', 'themeCustomText']),
+  ...I('appearance', 'customTheme', [
+    ['themeCustomBg', 'фон background колір власна тема custom'],
+    ['themeCustomCard', 'картки cards панелі колір'],
+    ['themeCustomText', 'текст text колір'],
+    ['x:customTheme', 'власна тема бічна панель рамки скруглення тіні радіус border radius shadow sidebar тонке налаштування'],
+  ]),
   ...I('appearance', 'font', [['font', 'шрифт font typeface'], ['fontPath', 'ttf otf файл шрифту'], ['x:fontsFolder', 'тека шрифтів fonts folder']]),
   ...I('appearance', 'sidebar', [
     ['sidebarOnlyPinned', 'закріплені pinned бічна панель сайдбар'],
     ['x:sidebarScale', 'розмір масштаб scale сайдбар'],
     ['x:sidebarWidth', 'ширина width сайдбар'],
+    ['x:sidebarHideCreate', 'кнопка створити збірку сховати прибрати сайдбар hide create button'],
+    ['x:sidebarHideSwitch', 'перемикач типів шаурма кастомні сховати прибрати сайдбар hide type switch'],
     ['sidebarAnimAlways', 'gif іконки анімація сайдбар'],
     ['pinnedServersCompact', 'сервери закріплені компактні'],
   ]),
@@ -255,7 +262,7 @@ export const searchItems: SearchItem[] = [
 
   // ── Про лаунчер ──
   ...I('about', 'app', [['x:version', 'версія version система архітектура'], ['x:updatesCheck', 'перевірити оновлення update']]),
-  ...I('about', 'help', [['x:bug', 'баг помилка discord підтримка'], ['x:errorLog', 'журнал помилок mclo.gs логи лаунчера']]),
+  ...I('about', 'help', [['x:bug', 'баг помилка github issues'], ['x:community', 'discord спільнота підтримка'], ['x:donate', 'донат donatello підтримати розробку'], ['x:errorLog', 'журнал помилок mclo.gs логи лаунчера']]),
 ]
 
 // ── Назви ───────────────────────────────────────────────────────────────

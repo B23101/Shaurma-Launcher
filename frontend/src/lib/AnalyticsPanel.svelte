@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ══════════════════════════════════════════════════════════════════════
   // Аналітика ігрового часу (розділ «Аналітика» у «Моїх збірках»).
   //
@@ -279,7 +281,7 @@
             <div class="an-chart-empty"><i class="ti ti-chart-dots"></i></div>
           {:else}
             {#each series as p, i (mode + p.start)}
-              <div class="an-col" title={`${fullLabel(p)} · ${durationLabel(p.seconds)}`}>
+              <div class="an-col" use:launcherTip={`${fullLabel(p)} · ${durationLabel(p.seconds)}`}>
                 <div class="an-col-track">
                   {#if p.seconds > 0}
                     <div

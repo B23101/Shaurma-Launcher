@@ -175,8 +175,8 @@ func (m *Manager) Start(srv *Server, javaPath string) error {
 	// Вивід — у ФАЙЛ, а не в анонімний pipe (console_file.go): дескриптор
 	// успадковується java і лишається валідним після смерті лаунчера, тож
 	// після перезапуску консоль показує ВЕСЬ вивід, включно з тим, що сервер
-	// написав, поки лаунчера не було (раніше читався лише logs/latest.log).
-	// stdin лишається pipe — команди працюють, поки лаунчер живий.
+	// написав, поки лаунчера не було. stdin лишається pipe — команди
+	// працюють, поки лаунчер живий.
 	consoleFile, err := openServerConsoleLog(srv.Dir)
 	if err != nil {
 		stdin.Close()
@@ -289,7 +289,7 @@ func (m *Manager) Stop(serverID string, graceful bool) error {
 	if graceful {
 		// Команда graceful-зупинки залежить від ядра ("stop" скрізь, "end"
 		// у Velocity) — розділ 2.3: винесено в CoreForStopCommand (server.go),
-		// а не хардкодиться тут inline, як було раніше.
+		// а не хардкодиться тут inline.
 		stopCmd := "stop\n"
 		if srv, err := m.serverCoreOf(serverID); err == nil {
 			stopCmd = CoreForStopCommand(srv) + "\n"
@@ -311,9 +311,8 @@ func (m *Manager) Stop(serverID string, graceful bool) error {
 
 	// Force kill.
 	m.killProcess(serverID)
-	// Дочекатись реального завершення процесу (watchProcess прибере його
-	// з running і надішле фінальний статус), щоб виклик Stop не повертався
-	// раніше, ніж порт справді звільниться.
+	// Дочекатись реального завершення процесу (watchProcess прибере його з
+	// running і надішле фінальний статус).
 	select {
 	case <-pi.exited:
 	case <-time.After(10 * time.Second):
@@ -397,8 +396,7 @@ func (m *Manager) killProcess(serverID string) error {
 }
 
 // markServerReady переводить статус у "running", коли в лозі з'явився рядок
-// "Done …!". Викликається з followLogFile — єдиного джерела виводу сервера
-// (раніше це робив readOutput, який читав анонімний pipe).
+// "Done …!".
 func (m *Manager) markServerReady(serverID string) {
 	m.mu.Lock()
 	pi, ok := m.running[serverID]
@@ -550,11 +548,7 @@ func (m *Manager) NotifyInstallStatus(serverID, status string) {
 
 func (m *Manager) notifyLine(serverID string, line model.ConsoleLine) {
 	// Рядок УЖЕ покладено в буфер викликачем (readOutput → buf.AppendLevel,
-	// NotifyInstallLine → buf.AppendLevel). Раніше тут додатково викликався
-	// EnsureBuffer().AppendRaw(line), і кожен рядок лягав у буфер ДВІЧІ —
-	// знімок консолі показував кожен рядок двічі. Саме звідси скарга про
-	// «подвійне [SYSTEM] Сервер: stopped (PID: ...)». Тут лишається ТІЛЬКИ
-	// розсилка події назовні.
+	// NotifyInstallLine → buf.AppendLevel).
 	m.mu.RLock()
 	fn := m.onLine
 	m.mu.RUnlock()
@@ -603,10 +597,10 @@ func (m *Manager) StopAll() {
 //
 // Розділ 2.1: для Forge/NeoForge читає LaunchConfig (launch_config.json,
 // через resolveLaunchConfig — самозцілення розділу 1.2), замість того щоб
-// самому сканувати диск на win_args.txt/forge-*-universal.jar при
-// КОЖНОМУ виклику, як робили buildForgeArgs/buildNeoForgeArgs раніше.
-// Встановлення (install.go) вирішує ЩО запускати один раз і зберігає це;
-// buildCommand лише БЕРЕ готове рішення і будує з нього java-аргументи.
+// самому сканувати диск на win_args.txt/forge-*-universal.jar при КОЖНОМУ
+// виклику. Встановлення (install.go) вирішує ЩО запускати один раз і
+// зберігає це; buildCommand лише БЕРЕ готове рішення і будує з нього
+// java-аргументи.
 func buildCommand(srv *Server) []string {
 	jvmArgs := parseArgs(srv.JvmArgs)
 	if srv.JvmArgs == "" {
@@ -689,7 +683,7 @@ func buildModdedLoaderArgs(srv *Server, vendorPath string) []string {
 
 	if cfg.ArgsFile != "" {
 		// @user_jvm_args.txt (якщо є) @libraries/.../win_args.txt nogui —
-		// та сама нова система запуску (MC ≥1.17), що й раніше.
+		// та сама нова система запуску (MC ≥1.17).
 		argsFile := filepath.Join(srv.Dir, filepath.FromSlash(cfg.ArgsFile))
 		userArgsFile := filepath.Join(srv.Dir, "user_jvm_args.txt")
 		var result []string
@@ -733,9 +727,7 @@ func buildModdedLoaderArgs(srv *Server, vendorPath string) []string {
 	// випадку конфіг лишається порожнім навмисно, щоб зламана установка
 	// проявлялась як помилка, а не мовчки ставала vanilla). buildCommand
 	// не має способу повернути помилку (сигнатура []string), тому
-	// віддаємо той самий vanilla-фолбек, що й раніше — Manager.Start()
-	// однаково побачить нездатність java знайти клас модів і впаде з
-	// осмисленою помилкою в консолі сервера, а не мовчки запуститься.
+	// віддаємо той самий vanilla-фолбек.
 	_ = vendorPath // залишено як параметр для симетрії двох викликів і майбутніх діагностичних повідомлень
 	return []string{"-jar", filepath.Join(srv.Dir, "server.jar"), "nogui"}
 }

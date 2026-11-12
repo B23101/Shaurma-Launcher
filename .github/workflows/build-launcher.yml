@@ -9,6 +9,7 @@
 # attestation of this run. The order check only guards against accidental runs.
 #
 # Secrets: SIGNPATH_API_TOKEN (environment "release"), CF_API_KEY, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET.
+# AI secrets: GEMINI_API_KEY, GROQ_API_KEY (repository or release environment).
 # Variables (public): ORDER_PUBKEYS, SIGNPATH_ORGANIZATION_ID, SHAURMA_MANIFEST_PUBKEYS,
 #   SHAURMA_ROOT_PUBKEYS, SHAURMA_KEYSET_B64, SHAURMA_KEYSET_SIG, SHAURMA_GOOGLE_CLIENT_ID.
 name: build-launcher
@@ -140,6 +141,8 @@ jobs:
           SHAURMA_KEYSET_B64: ${{ vars.SHAURMA_KEYSET_B64 }}
           SHAURMA_KEYSET_SIG: ${{ vars.SHAURMA_KEYSET_SIG }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
           SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
@@ -148,7 +151,10 @@ jobs:
 
       - name: Check release components for forbidden credentials
         shell: pwsh
-        run: ./scripts/check-release-secrets.ps1 -Directory dist/unsigned -Edition shaurma
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: ./scripts/check-release-secrets.ps1 -Directory dist/unsigned -Edition shaurma -AllowBackendAIKeys
 
       - name: Upload unsigned components
         id: upload-unsigned
@@ -203,6 +209,7 @@ jobs:
   # Фронтенд — ті самі zip, що й у Windows-компонентах.
   linux-flatpak:
     needs: [validate, windows-components]
+    environment: release
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
@@ -234,6 +241,8 @@ jobs:
           SHAURMA_KEYSET_B64: ${{ vars.SHAURMA_KEYSET_B64 }}
           SHAURMA_KEYSET_SIG: ${{ vars.SHAURMA_KEYSET_SIG }}
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           SHAURMA_GOOGLE_CLIENT_ID: ${{ vars.SHAURMA_GOOGLE_CLIENT_ID || secrets.GOOGLE_CLIENT_ID }}
           SHAURMA_GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |

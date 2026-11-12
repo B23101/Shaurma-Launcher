@@ -9,6 +9,7 @@
   import { App } from './wails'
   import { t } from './i18n.svelte'
   import { pirateNicknameError, sanitizeNick } from './validation'
+  import Callout from './Callout.svelte'
 
   let {
     open = false,
@@ -64,9 +65,7 @@
 </script>
 
 <UiModal {open} onclose={() => oncancel?.()} locked={busy} size="sm" icon="ti-pencil" title={t('acc.renameTitle')}>
-  <div class="rename-hint"><i class="ti ti-info-circle"></i>
-    <span>{t('acc.renameHint')}</span>
-  </div>
+  <Callout>{t('acc.renameHint')}</Callout>
   <div class="wiz-field-row" style="margin-top:12px">
     <!-- svelte-ignore a11y_autofocus -->
     <input class="st-input mono grow {nickErr && touched ? 'input-err' : ''}"
@@ -89,11 +88,4 @@
 </UiModal>
 
 <style>
-  .rename-hint {
-    display:flex; align-items:flex-start; gap:8px;
-    font-size:12.5px; color:var(--text-mute); line-height:1.5;
-    background:rgba(var(--orange-rgb),.07); border:1px solid rgba(var(--orange-rgb),.2);
-    border-radius:10px; padding:10px 14px;
-  }
-  .rename-hint i { color:var(--orange); font-size:16px; flex-shrink:0; margin-top:1px; }
 </style>

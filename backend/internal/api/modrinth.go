@@ -98,7 +98,7 @@ func (c *ModrinthClient) fetchJSON(method, path string, params map[string]string
 		if err != nil {
 			return nil, err
 		}
-		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (shaurmaofficial2210@gmail.com)")
+		req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+https://github.com/B23101/Shaurma-Launcher)")
 		if bodyBytes != nil {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -107,10 +107,7 @@ func (c *ModrinthClient) fetchJSON(method, path string, params map[string]string
 		if err != nil {
 			// Мережевий збій (обрив, TCP reset, відмова, тимчасова помилка
 			// DNS) — НЕ остаточний висновок: у лаунчера мережа «блимає»
-			// (Wi-Fi, VPN, провайдер), і одна невдала спроба раніше валила
-			// завантаження сторінки проєкту цілком — користувач бачив
-			// «не вдалося завантажити проєкт» через один обірваний запит.
-			// Повторюємо з короткою паузою.
+			// (Wi-Fi, VPN, провайдер). Повторюємо з короткою паузою.
 			//
 			// ВАЖЛИВО: таймаут НЕ повторюємо — якщо ми вже прочекали
 			// 30 с, ще два кола (90 с) лише подовжать «сторінка вантажиться
@@ -176,11 +173,9 @@ func (c *ModrinthClient) GetVersionsByHashes(hashes []string) (map[string]*FullV
 			return nil, err
 		}
 		// ВАЖЛИВО: /version_files повертає ОБ'ЄКТ {hash: version}, а НЕ
-		// масив — на відміну від /projects чи /search. Раніше тут парсили
-		// як []mrVersion, json.Unmarshal падав на об'єкті з помилкою, і
-		// виклик трактувався як "мережа недоступна": усі моди мовчки йшли
-		// в overrides/bundled без резолву. Ключ мапи — це саме той хеш,
-		// що ми питали, тож можна не покладатись на fv.Files[].Sha1.
+		// масив — на відміну від /projects чи /search. Ключ мапи — це
+		// саме той хеш, що ми питали, тож можна не покладатись на
+		// fv.Files[].Sha1.
 		var versions map[string]mrVersion
 		if err := json.Unmarshal(data, &versions); err != nil {
 			return nil, err
@@ -287,10 +282,7 @@ func (c *ModrinthClient) GetVersionsByHashes512(hashes []string) (map[string]*Fu
 			return nil, err
 		}
 		// Той самий момент, що й у GetVersionsByHashes: відповідь — ОБ'ЄКТ
-		// {hash: version}, не масив. Парсинг як []mrVersion раніше тихо
-		// провалював Unmarshal, resolveMods() трактував це як недоступність
-		// мережі, і ВСІ моди йшли в overrides/mods без запису в files[]
-		// modrinth.index.json (звідси порожній "files": [] у mrpack-індексі).
+		// {hash: version}, не масив.
 		var versions map[string]mrVersion
 		if err := json.Unmarshal(data, &versions); err != nil {
 			return nil, err
@@ -1068,8 +1060,7 @@ type ModrinthProjectDetail struct {
 	License      ModrinthLicense `json:"license"`
 	// GameVersions/Loaders — версії гри та лоадери, під які проєкт має
 	// версії (те саме, що ProjectPage веб-апки показує у сайдбарі
-	// «Сумісність»). Раніше їх тут НЕ було — сторінка проєкту Modrinth
-	// показувала порожній рядок сумісності, хоча API віддає ці поля.
+	// «Сумісність»).
 	GameVersions []string `json:"game_versions"`
 	Loaders      []string `json:"loaders"`
 }
@@ -1095,10 +1086,8 @@ type ModrinthCategory struct {
 // GetCategories повертає теги-категорії для типу контенту (mod/modpack/
 // resourcepack/shader/datapack/plugin) — з іконками для сайдбара браузера.
 //
-// Modrinth віддає ЄДИНИЙ список /tag/category з полем project_type —
-// шляху /tag/category/{type} не існує (404), через що фільтр категорій
-// Modrinth раніше був завжди порожній. Фільтруємо самі. Плагіни й датапаки
-// власних категорій не мають — Modrinth використовує для них категорії модів.
+// Фільтруємо самі. Плагіни й датапаки власних категорій не мають — Modrinth
+// використовує для них категорії модів.
 func (c *ModrinthClient) GetCategories(projectType string) ([]ModrinthCategory, error) {
 	data, err := c.fetch("/tag/category", nil)
 	if err != nil {

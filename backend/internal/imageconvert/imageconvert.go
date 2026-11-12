@@ -226,9 +226,6 @@ func FetchImageToPNG(url, dir, baseName string) string {
 	}
 	resp, err := fetchImageClient.Get(url)
 	if err != nil {
-		// Мовчазна відмова тут раніше означала, що картка збірки
-		// лишалась без іконки без жодного сліду в логах — важко було
-		// зрозуміти, чи іконка взагалі намагалась завантажитись.
 		log.Printf("imageconvert: не вдалося завантажити %q (%s): %v", baseName, url, err)
 		return ""
 	}
@@ -284,13 +281,6 @@ func FetchImageToPNG(url, dir, baseName string) string {
 		os.Remove(rawPath)
 		return ""
 	}
-	// Завжди приводимо фінальний шлях до <dir>/<baseName>.png — раніше
-	// це робилось лише коли pngPath == rawPath (джерело вже було PNG за
-	// сигнатурою), а у типовому випадку (Modrinth-іконки — webp) файл
-	// лишався під іменем "<baseName>-raw.png", яке ніде більше не
-	// очікується. Через це іконка технічно зберігалась на диску, але
-	// показувалась/оновлювалась нестабільно — на відміну від фону, який
-	// цей самий шлях не проходив.
 	finalPath := filepath.Join(dir, baseName+".png")
 	if pngPath != finalPath {
 		if err := os.Rename(pngPath, finalPath); err != nil {

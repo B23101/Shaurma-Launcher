@@ -10,11 +10,13 @@
   import { t } from './i18n.svelte'
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
+  import ExportForge from './ExportForge.svelte'
   import ExportTreeNode, { type ExportTreeNodeData } from './ExportTreeNode.svelte'
   import modrinthIcon from '../assets/images/Modrinth_icon.png'
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
   import shaurmaIcon from '../assets/images/appicon.png'
   import type { ExportCandidate, ExportProgress, ExportPackResult, ExportShaurmpackRequest, ExportShaurmpackResult } from './types'
+  import EmptyState from './EmptyState.svelte'
 
   let {
     packId = '',
@@ -40,7 +42,10 @@
 
   let exporting = $state(false)
   let progress = $state<ExportProgress | null>(null)
-  let recentFiles = $state<{ file: string; modName?: string; iconUrl?: string }[]>([])
+  let forge = $state<ReturnType<typeof ExportForge> | null>(null)
+  // Події, що прийшли до монтування анімації, — віддаємо їй, щойно вона готова.
+  let forgeBuffer: ExportProgress[] = []
+  let forgeRounds = $state(1)
   let progressUnsub: (() => void) | null = null
 
   let tree = $state<ExportTreeNodeData[]>([])
@@ -157,9 +162,6 @@
           index.set(cur, node)
           level.push(node)
         } else if (node.type === 'directory') {
-          // Страховка: якщо вузол-директорія вже існував (напр. створений
-          // раніше як проміжний рівень іншого файлу), гарантуємо, що він
-          // лишається згорнутим, а не був випадково розкритий.
           node.collapsed = true
         }
         level = node.children
@@ -171,10 +173,7 @@
   // nodeState — стан вузла з УСПАДКУВАННЯМ, як на бекенді
   // (export.exportSelection / PathFilter: найглибше правило перемагає,
   // excluded сильніше за included на тому ж шляху). inherited — рішення
-  // найближчої батьківської папки. Раніше файл був вибраний лише якщо
-  // його шлях ЯВНО лежав у included, тож новий мод, доданий у вже
-  // вибрану папку mods/, показувався знятим (хоча бекенд його пакував),
-  // а папка ставала «частково вибраною».
+  // найближчої батьківської папки.
   function nodeState(n: ExportTreeNodeData, own: boolean): 'checked' | 'unchecked' | 'indeterminate' {
     if (n.type === 'file' || n.children.length === 0) return own ? 'checked' : 'unchecked'
     const childStates = n.children.map(c => c.state)
@@ -186,16 +185,11 @@
   // syncChecks — ОДИН прохід дерева знизу вгору (post-order): стан
   // кожного вузла рахується РІВНО ОДИН РАЗ, з уже готових n.state дітей
   // (nodeState вище читає child.state, не рекурсивно перераховує його
-  // через дітей дітей). Раніше nodeState була рекурсивною САМА ПО СОБІ
-  // (n.children.map(c => nodeState(c)), кожен виклик наново спускався у
-  // всіх нащадків), а syncChecks викликала її ЩЕ РАЗ на кожному вузлі
-  // під час обходу walk(tree) — тобто для вузла на глибині d його
-  // піддерево перераховувалось O(глибина_дерева) разів. На збірці з
-  // тисячами файлів (мод-паки часто мають 5000+ файлів у mods/config/
-  // resourcepacks) це перетворювалось на секунди лагу на КОЖЕН клік по
-  // чекбоксу. Post-order (спочатку діти, потім сам вузол) прибирає
-  // повторний рахунок повністю — загальна робота O(кількість_вузлів),
-  // а не O(вузли × глибина).
+  // через дітей дітей). На збірці з тисячами файлів (мод-паки часто
+  // мають 5000+ файлів у mods/config/ resourcepacks) це перетворювалось
+  // на секунди лагу на КОЖЕН клік по чекбоксу. Post-order (спочатку
+  // діти, потім сам вузол) прибирає повторний рахунок повністю —
+  // загальна робота O(кількість_вузлів), а не O(вузли × глибина).
   //
   // includedSet/excludedSet — Set замість Array.includes(): included/
   // excluded теж ростуть до тисяч шляхів на великих збірках, а
@@ -282,7 +276,7 @@
 
     exporting = true
     progress = null
-    recentFiles = []
+    forgeBuffer = []
     subscribeProgress()
 
     // .shaurmpack іде окремим Wails-методом (ExportShaurmpack) — не через
@@ -292,6 +286,7 @@
     const regularFormats = formats.filter(f => f !== 'shaurmpack') as ('mrpack' | 'curseforge')[]
     const wantShaurmpack = formats.includes('shaurmpack')
     const doneFiles: string[] = []
+    forgeRounds = (regularFormats.length > 0 ? 1 : 0) + (wantShaurmpack ? 1 : 0)
 
     try {
       if (regularFormats.length > 0) {
@@ -314,10 +309,7 @@
             danger: true
           })
           if (ok) {
-            // ВАЖЛИВО: скидаємо прапорці ПЕРЕД повторним запуском. Раніше
-            // рекурсивний startExport(true) блокувався рядком `if (exporting)
-            // return` — exporting був ще true, тому «Видалити і експортувати»
-            // просто нічого не робило (ні видаляло, ні експортувало).
+            // ВАЖЛИВО: скидаємо прапорці ПЕРЕД повторним запуском.
             exporting = false
             progressUnsub?.()
             progressUnsub = null
@@ -365,6 +357,9 @@
       }
 
       const files = doneFiles.map(f => f.split(/[\\/]/).pop() ?? f).join(', ')
+      // Фінал анімації (кришка зачиняється, іконки розлітаються) — чекаємо,
+      // поки відіграє, і лише тоді закриваємо вікно.
+      await forge?.finish()
       toast(t('export.done', { files }), 'success')
       onClose()
     } catch (e: any) {
@@ -381,29 +376,16 @@
     progressUnsub = on('export:progress', (p: ExportProgress) => {
       if (p.packId !== packId) return
       progress = p
-      if (p.fileName) {
-        recentFiles = [{ file: p.fileName, modName: p.modName, iconUrl: p.iconUrl }, ...recentFiles].slice(0, 12)
-      }
+      if (forge) forge.push(p)
+      else forgeBuffer.push(p)
     })
   }
 
-  const stageLabel = $derived.by(() => {
-    if (!progress) return ''
-    switch (progress.stage) {
-      case 'mod_sources': return t('export.stage.modSources')
-      case 'scan': return t('export.stage.scan')
-      case 'hash': return t('export.stage.hash')
-      case 'resolve': return t('export.stage.resolve')
-      case 'pack': return t('export.stage.pack')
-      default: return ''
-    }
-  })
-
-  const stagePct = $derived.by(() => {
-    if (!progress) return 0
-    if (progress.total <= 0) return progress.stage === 'done' ? 100 : 0
-    return Math.round((progress.current / progress.total) * 100)
-  })
+  function forgeReady() {
+    const buf = forgeBuffer
+    forgeBuffer = []
+    for (const p of buf) forge?.push(p)
+  }
 
   async function browseDir() {
     const dir = await App.BrowseFolder()
@@ -412,30 +394,8 @@
 </script>
 
 {#if exporting}
-  <!-- ── Живий прогрес-оверлей ── -->
-  <UiModal open={true} dismissible={false} zIndex="2100000" icon="ti-package-export" color="var(--orange)" title={t('export.title')}>
-    <div class="ep-stage">{stageLabel || (progress ? '' : '…')}</div>
-    <div class="ep-track">
-      <div class="ep-fill" style="width:{progress ? stagePct : 0}%"></div>
-    </div>
-    <div class="ep-pct">{progress ? `${stagePct}%` : '…'}</div>
-
-    <div class="ep-stream">
-      {#each recentFiles as f}
-        <div class="ep-stream-item">
-          {#if f.iconUrl}
-            <img src={f.iconUrl} alt="" class="ep-icon" loading="lazy" />
-          {:else}
-            <i class="ti ti-file"></i>
-          {/if}
-          <span class="ep-fname" title={f.file}>{f.modName || f.file.split('/').pop()}</span>
-        </div>
-      {/each}
-      {#if recentFiles.length === 0}
-        <div class="ep-stream-empty"><i class="ti ti-loader" style="animation:spin 1s linear infinite"></i></div>
-      {/if}
-    </div>
-  </UiModal>
+  <!-- ── Анімація експорту: скриня, літаючі іконки модів і ресурспаків ── -->
+  <ExportForge bind:this={forge} {packId} {packName} rounds={forgeRounds} onready={forgeReady} />
 {:else}
   <!-- ── Форма експорту ── -->
   <UiModal
@@ -460,7 +420,7 @@
             {#if loadingCandidates}
               <div class="ep-empty"><i class="ti ti-loader" style="animation:spin 1s linear infinite"></i></div>
             {:else if tree.length === 0}
-              <div class="ep-empty"><i class="ti ti-package-off"></i></div>
+              <EmptyState icon="ti-package-off" compact />
             {:else}
               <div class="ep-tree">
                 {#each tree as node}

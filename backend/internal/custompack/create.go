@@ -29,8 +29,7 @@ type CreateParams struct {
 	// в цьому збереженні (клік по пресету або новий файл через діалог).
 	// Без цього прапорця Update не може відрізнити "форма просто завжди
 	// шле поточний iconName у payload" від "користувач свідомо обрав
-	// пресет замість PNG" — і раніше видаляв робочий PNG при будь-якому
-	// збереженні (навіть простої зміни назви), бо Icon непорожній.
+	// пресет замість PNG".
 	IconChanged bool
 	Color       string
 
@@ -167,9 +166,7 @@ func Create(store *Store, instanceDir string, p CreateParams) (Pack, error) {
 // ті самі поля, без зміни ID/теки на диску).
 //
 // Усі зміни запису застосовуються через store.Update — читання свіжого
-// instance.json і запис під одним м'ютексом. Раніше тут було Get → правки →
-// Save, і між Get та Save фоновий потік (імпорт, синхронізація) міг записати
-// свою копію, затерши щойно обрану користувачем іконку.
+// instance.json і запис під одним м'ютексом.
 func Update(store *Store, instanceDir, id string, p CreateParams) (Pack, error) {
 	if _, ok := store.Get(id); !ok {
 		return Pack{}, fmt.Errorf("збірку не знайдено: %s", id)

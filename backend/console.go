@@ -38,6 +38,20 @@ import (
 // buildID порожній (окреме вікно консолі) — поточний активний буфер
 // (той, за ким вікно слідує: остання запущена збірка).
 func (a *App) GetConsoleSnapshot(buildID string) []model.ConsoleLine {
+	if b := a.consoleBufferFor(buildID); b != nil {
+		return b.Snapshot()
+	}
+	return []model.ConsoleLine{}
+}
+
+func (a *App) GetConsolePage(buildID string, offset, limit int, level, query string, after uint64) console.Page {
+	if b := a.consoleBufferFor(buildID); b != nil {
+		return b.Page(offset, limit, level, query, after)
+	}
+	return console.NewBuffer(1).Page(offset, limit, level, query, after)
+}
+
+func (a *App) consoleBufferFor(buildID string) *console.Buffer {
 	if buildID != "" {
 		// Який акаунт показувати: якщо користувач ПЕРЕМКНУВ консоль на
 		// інший акаунт (consoleCurKey збігається з buildID) — рядки його
@@ -66,14 +80,14 @@ func (a *App) GetConsoleSnapshot(buildID string) []model.ConsoleLine {
 				a.consoleBufs[consoleKey{accountID: accID, buildID: buildID}] = b
 			}
 			a.consoleBufMu.Unlock()
-			return b.Snapshot()
+			return b
 		}
 	}
 	buf := a.activeConsoleBuf()
 	if buf == nil {
-		return []model.ConsoleLine{}
+		return nil
 	}
-	return buf.Snapshot()
+	return buf
 }
 
 // ClearConsoleBuffer очищає буфер консолі (кнопка «Очистити»). buildID
@@ -319,8 +333,7 @@ func (a *App) SwitchConsoleAccount(accountID, buildID string) {
 // збірки (для UI консолі, попереджень про RAM і панелі "Продуктивність").
 //
 // ВАЖЛИВО: тут НАВМИСНО немає жодного авто-підбору/евристики під фізичну
-// пам'ять — раніше тут була перевірка "якщо ram == 4096 (заводський
-// дефолт) — підмінити на autoGameRAM(...)". Вона виглядала безпечною
+// пам'ять: підміна "ram == 4096 → autoGameRAM(...)" виглядала б безпечною
 // ("міняємо лише дефолт, явний вибір користувача поважаємо"), але 4096 —
 // це ЗАВОДСЬКИЙ дефолт, а НЕ маркер "користувач нічого не обирав": якщо
 // людина сама зайшла в Налаштування і поставила рівно 4 ГБ — код не міг
@@ -352,12 +365,10 @@ func (a *App) effectiveRAM(instanceID string) int {
 	return ram
 }
 
-// AnalyzeCrash — головний метод «розумної консолі». ВЕСЬ аналіз крашу
-// виконує виключно Gemini: локальний/машинний детектор (crashdiag)
-// видалено повністю — він не вмів «думати» і видавав хибні діагнози.
-// Лаунчер лише ЗБИРАЄ дані для ШІ: crash-report файл (якщо гра його
-// створила) або останні значущі рядки консолі (лише WARN/ERROR, без
-// дублікатів) — див. logWindowForAI.
+// AnalyzeCrash — головний метод «розумної консолі». Лаунчер лише
+// ЗБИРАЄ дані для ШІ: crash-report файл (якщо гра його створила) або
+// останні значущі рядки консолі (лише WARN/ERROR, без дублікатів) —
+// див. logWindowForAI.
 func (a *App) AnalyzeCrash(instanceID string) model.AIDiagnosis {
 	s := a.cfg.GetSettings()
 
@@ -429,6 +440,7 @@ func (a *App) AnalyzeCrash(instanceID string) model.AIDiagnosis {
 		AvailableActions: []string{"increase_ram", "disable_mod", "download_dependency", "repair", "none"},
 		HasCrashReport:   res.CrashReportFile != "",
 		HasErrorLines:    consoleHasErrors(recent),
+		Private:          a.aiPrivateValues(),
 	}
 
 	// БЕЗКОШТОВНО ПЕРШИМ: Groq (openai/gpt-oss-120b з фолбеком на
@@ -540,6 +552,17 @@ func (a *App) instanceMods(instanceID string) []string {
 		}
 	}
 	return mods
+}
+
+// aiPrivateValues — точні значення, які не можна віддавати ШІ: ніки всіх акаунтів
+// лаунчера. Решту (шляхи з імʼям користувача, IP, адреси серверів, токени) прибирає
+// ai.SanitizeCrashContext за шаблонами.
+func (a *App) aiPrivateValues() []string {
+	var out []string
+	for _, acc := range a.cfg.GetAccounts() {
+		out = append(out, acc.Username)
+	}
+	return out
 }
 
 // consoleHasErrors повертає true, якщо серед рядків логу є хоча б один

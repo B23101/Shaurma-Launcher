@@ -60,9 +60,6 @@ func (a *API) GetServerCoreVersions(core, mcVersion string) ([]ServerCoreVersion
 		// Velocity — це проксі, який НЕ прив'язаний до версії Minecraft:
 		// версії, які показуємо в селекторі, — це версії самого проксі
 		// (з api.papermc.io/v2/projects/velocity), а не "версія гри".
-		// (Раніше тут повертався nil і користувач не міг обрати версію
-		// проксі — install мовчки брав останню. Тепер UI може показати
-		// повний список і користувач обирає явно, як у збірках.)
 		return getVelocityVersions()
 	case CorePaper:
 		return getPaperBuilds(mcVersion)

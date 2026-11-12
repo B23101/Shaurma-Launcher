@@ -87,6 +87,10 @@ type taskbarVtbl struct {
 	setTabOrder        uintptr
 	setTabActive       uintptr
 	thumbBarAddButtons uintptr
+	// Далі — для оверлея-бейджа (taskbar_overlay_windows.go): порядок слотів фіксований COM-контрактом.
+	thumbBarUpdateButtons uintptr
+	thumbBarSetImageList  uintptr
+	setOverlayIcon        uintptr
 }
 
 func (t *itaskbarList3) hrInit() error {
@@ -166,39 +170,75 @@ func newTaskbarIface() (iface *itaskbarList3, coOwned bool, err error) {
 // RPC_E_CHANGED_MODE (0x80010106) та інші помилки — не наш потік, не чіпаємо.
 func coInitializedByUs(hr uint32) bool { return hr == 0 || hr == 1 }
 
-// mainWindowHwnd повертає HWND головного вікна лаунчера (перше вікно
-// нашого процесу). Той самий підхід, що у focus_windows.go: backend.dll
-// живе В ПРОЦЕСІ shell.exe, тож EnumWindows за PID нас знаходить — це
-// надійно, бо WebView2 тримає окремі процеси з іншими PID. Кешуємо після
-// першого знаходження; якщо вікно ще не створене (сигнал прийшов рано) —
-// наступний виклик пересканує (мутекс, не Once).
+// mainWindowTitle — заголовок головного вікна, яке створює shell (updater_phase.go).
+const mainWindowTitle = "Shaurma Launcher"
+
+// mainWindowHwnd повертає HWND ГОЛОВНОГО вікна лаунчера — того, що має кнопку в панелі завдань.
+// backend.dll живе В ПРОЦЕСІ shell.exe, тож EnumWindows за PID нас знаходить (WebView2 тримає окремі
+// процеси з іншими PID). Але вікон у процесі кілька: віджет сповіщень, splash/оновлення, консолі,
+// службові повідомлення трея. Кеш діє, лише поки HWND ще живий і це вікно з правильним заголовком.
 var (
-	mainHwndMu  sync.Mutex
-	mainHwnd    uintptr
-	mainHwndSet bool
+	mainHwndMu sync.Mutex
+	mainHwnd   uintptr
 )
 
 func mainWindowHwnd() uintptr {
 	mainHwndMu.Lock()
 	defer mainHwndMu.Unlock()
-	if mainHwndSet {
-		return mainHwnd
-	}
-	pid := uint32(syscall.Getpid())
 	user32 := syscall.NewLazyDLL("user32.dll")
-	enumWindows := user32.NewProc("EnumWindows")
+	isWindow := user32.NewProc("IsWindow")
+	if mainHwnd != 0 {
+		if ok, _, _ := isWindow.Call(mainHwnd); ok != 0 {
+			return mainHwnd
+		}
+		mainHwnd = 0
+	}
+	const (
+		gwOwner       = 4
+		gwlExStyle    = ^uintptr(19) // -20
+		wsExToolWnd   = 0x00000080
+		titleBufChars = 256
+	)
+	pid := uint32(syscall.Getpid())
+	getPid := user32.NewProc("GetWindowThreadProcessId")
+	getWindow := user32.NewProc("GetWindow")
+	getLong := user32.NewProc("GetWindowLongPtrW")
+	getText := user32.NewProc("GetWindowTextW")
+	getRect := user32.NewProc("GetWindowRect")
+	var exact, biggest uintptr
+	var biggestArea int32
 	enumProc := syscall.NewCallback(func(hwnd uintptr, lparam uintptr) uintptr {
 		var wndPid uint32
-		user32.NewProc("GetWindowThreadProcessId").Call(hwnd, uintptr(unsafe.Pointer(&wndPid)))
-		if wndPid == pid {
-			mainHwnd = hwnd
-			mainHwndSet = true
+		getPid.Call(hwnd, uintptr(unsafe.Pointer(&wndPid)))
+		if wndPid != pid {
+			return 1
+		}
+		if owner, _, _ := getWindow.Call(hwnd, gwOwner); owner != 0 {
+			return 1 // вікно з власником кнопки в панелі завдань не має
+		}
+		if ex, _, _ := getLong.Call(hwnd, gwlExStyle); ex&wsExToolWnd != 0 {
+			return 1
+		}
+		var buf [titleBufChars]uint16
+		n, _, _ := getText.Call(hwnd, uintptr(unsafe.Pointer(&buf[0])), titleBufChars)
+		if n > 0 && syscall.UTF16ToString(buf[:n]) == mainWindowTitle {
+			exact = hwnd
 			return 0
+		}
+		var rc struct{ left, top, right, bottom int32 }
+		if r, _, _ := getRect.Call(hwnd, uintptr(unsafe.Pointer(&rc))); r != 0 {
+			if area := (rc.right - rc.left) * (rc.bottom - rc.top); area > biggestArea {
+				biggestArea, biggest = area, hwnd
+			}
 		}
 		return 1
 	})
-	enumWindows.Call(enumProc, 0)
-	return mainHwnd
+	user32.NewProc("EnumWindows").Call(enumProc, 0)
+	if exact != 0 {
+		mainHwnd = exact // кешуємо лише точний збіг
+		return exact
+	}
+	return biggest
 }
 
 // updateTaskbarProgress малює прогрес у панелі завдань.

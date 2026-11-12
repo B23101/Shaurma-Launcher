@@ -277,7 +277,7 @@ func TestTwoDevicesBothWorkAfterRecover(t *testing.T) {
 	if _, err := recoverAdopt(t, m2, "pc2", ""); err != nil {
 		t.Fatal(err)
 	}
-	// Обидва залишаються діючими: ПК1 НЕ вибито входом на ПК2 (раніше казало «Потрібен вхід»).
+	// Обидва залишаються діючими: ПК1 НЕ вибито входом на ПК2.
 	m1.Invalidate("pc1")
 	m2.Invalidate("pc2")
 	s1, err1 := m1.Session(ctx, "pc1")

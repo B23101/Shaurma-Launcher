@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Поле вводу команд з історією (↑ / ↓) ─────────────────────────────
   import { t } from '../../i18n.svelte'
 
@@ -58,7 +60,7 @@
     class:ready={!disabled && !!value.trim()}
     onclick={() => { if (!disabled && value.trim()) { history.push(value.trim()); idx = history.length; onsubmit(value.trim()); value = '' } }}
     disabled={disabled || !value.trim()}
-    title={t('servers.console.send')}
+    use:launcherTip={t('servers.console.send')}
     aria-label={t('servers.console.send')}
   >
     <i class="ti ti-arrow-up"></i>

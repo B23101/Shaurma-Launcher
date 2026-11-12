@@ -26,6 +26,7 @@ func (a *App) SetPresenceMode(mode string) string {
 	s.PresenceMode = pm
 	s.NotifyDnd = dnd
 	_ = a.cfg.UpdateSettings(s)
+	a.taskbarBadgeRefresh() // DND глушить бейдж, вихід із DND повертає
 	if svc := currentSocialService(); svc != nil {
 		if dnd {
 			svc.SetManualPresence("dnd")

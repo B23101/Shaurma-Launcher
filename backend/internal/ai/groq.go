@@ -135,12 +135,6 @@ var retryAfterRe = regexp.MustCompile(`try again in (\d+(?:\.\d+)?)\s*s`)
 // перекладу, де невалідний JSON перетворювався на сирий текст з дужками у
 // тілі опису.
 //
-// Безкоштовний тариф Groq періодично кидає 429 з повідомленням
-// «Please try again in Xs» — раніше функція падала з першого ж ліміту, і
-// помилка йшла в журнал лаунчера. Тепер чекаємо вказаний час (Retry-After
-// із заголовка або з тексту помилки, максимум 15с) і пробуємо ще раз — до
-// 3 спроб загалом, з повагою до дедлайну контексту.
-//
 // Моделі з c.models перебираються ПОСЛІДОВНО (перша успішна виграє, той
 // самий принцип, що Client.Complete у gemini.go) — якщо модель зняли з
 // продакшену (model_decommissioned, HTTP 400), c.chatOnce повертає
@@ -218,7 +212,7 @@ func (c *GroqClient) chatOnce(reqCtx context.Context, payload []byte) (out strin
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (shaurmaofficial2210@gmail.com)")
+	req.Header.Set("User-Agent", "shaurma-team/shaurma-launcher/2.0 (+https://github.com/B23101/Shaurma-Launcher)")
 
 	resp, doErr := c.http.Do(req)
 	if doErr != nil {

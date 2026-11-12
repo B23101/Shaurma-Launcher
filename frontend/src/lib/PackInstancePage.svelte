@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Сторінка деталей збірки Shaurma ───────────────────────────────────
   // Показує одну офіційну збірку: банер, статус завантаження/гри та вкладки
   // (Сервери / Основне / Продуктивність / Гра / Файли / Моди). Версія гри,
@@ -17,6 +19,8 @@
   import { slide } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import { t } from './i18n.svelte'
+  import { smoothTabsWheel } from './slideTabs'
+  import { tabsFit } from './tabsFit'
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import UiModal from './UiModal.svelte'
@@ -297,18 +301,15 @@
 
   function closeActionsMenu() { actionsOpen = false }
 
-  // ── Фон банеру/героя збірки ──
-  // Якщо є фон (background_url) — картинка; якщо ні — градієнт у КОЛЬОРІ
-  // збірки (pack.color). Раніше суміш була 30% кольору / 70% майже
-  // чорного (#1d150c→#120c06) — при будь-якому кольорі це виглядало як
-  // суцільно чорний банер з ледь помітним відтінком (баг: "чому банер
-  // чорний?"). Тепер суміш нахилена сильніше на бік кольору збірки і
-  // другий стоп світліший — колір збірки видно одразу, а не лише при
+  // ── Фон банеру/героя збірки ── Якщо є фон (background_url) —
+  // картинка; якщо ні — градієнт у КОЛЬОРІ збірки (pack.color). "чому
+  // банер чорний?"). Тепер суміш нахилена сильніше на бік кольору збірки
+  // і другий стоп світліший — колір збірки видно одразу, а не лише при
   // придивлянні. Текст банера лишається білим (--ib-name у style.css),
   // тому темний градієнт тут і далі потрібен ЯК ФОН для контрасту з
   // білим текстом — просто вже не "чорний", а помітно кольоровий.
   function bgStyle(p: PackIndexEntry): string {
-    const bg = packAsset(p.background_url)
+    const bg = packAsset(p.background_url, 1920)
     if (bg) return `background-image:url('${bg}')`
     const c = p.color || 'var(--orange)'
     return `background:linear-gradient(135deg, color-mix(in srgb, ${c} 55%, #241a10), color-mix(in srgb, ${c} 22%, #120c06))`
@@ -320,7 +321,7 @@
   //   • auto-vanilla  → картинка останнього РЕЛІЗУ (GetNewsBanner, та сама
   //     що на головній);
   //   • auto-snapshot → картинка САМОГО снапшота зі статті minecraft.net
-  //     (GetSnapshotBanner). Раніше тут теж ішла картинка релізу — баг.
+  //     (GetSnapshotBanner).
   // Для снапшота картинки релізу НЕ підставляємо навіть як запасну: якщо
   // статтю не знайдено, лишається градієнт кольору збірки.
   let autoBanner = $state('')
@@ -369,9 +370,7 @@
 
   // uiReady — поки НЕ відновлено збережену вкладку на маунті, ефект
   // збереження нижче не має писати дефолтну вкладку ('servers') і затирати
-  // збережену. Раніше persist-ефект (оголошений першим) спрацьовував на
-  // маунті ДО відновлення й перезаписував збережений розділ на дефолтний —
-  // повернення в збірку завжди відкривало «Сервери».
+  // збережену.
   let uiReady = $state(false)
 
   function persistViewState() {
@@ -396,9 +395,6 @@
     // (реактивні на pack) можуть виконатись ще раз із pack === null.
     if (!pack) return
     const t2 = tab
-    // Перемикання вкладки НЕ чіпає скрол: раніше тут викликався
-    // restoreContentScroll() зі збереженим скролом нового розділу (+ повтори
-    // кожні 120мс, поки вантажиться контент) — екран стрибав і «трясся».
     // Скрол розділу відновлюється лише при відкритті збірки (ефект нижче).
     untrack(() => {
       const saved = getPackUI(pack.id)
@@ -406,6 +402,21 @@
       setPackUI(pack.id, { tab: t2, scroll: scr, scrolls: { ...(saved?.scrolls ?? {}), [t2]: scr } })
     })
   })
+
+  // Плавне перемикання розділів: старий розділ згасає, новий проявляється
+  // поверх (обидва в одній клітинці grid — див. .tab-panel-host у style.css).
+  // Лише opacity: transform/filter ламали sticky-панелі й fixed-модалки.
+  // Вимкнені анімації / режим продуктивності — без переходу.
+  function panelMs(ms: number): number {
+    const d = document.documentElement.dataset
+    return d.animations === 'off' || d.performanceMode === 'on' ? 0 : ms
+  }
+  function panelOut(_node: Element) {
+    return { duration: panelMs(150), easing: cubicOut, css: (t: number) => `opacity:${t};pointer-events:none` }
+  }
+  function panelIn(_node: Element) {
+    return { delay: panelMs(70), duration: panelMs(260), easing: cubicOut, css: (t: number) => `opacity:${t}` }
+  }
 
   // Утримуємо висоту панелі під час заміни вкладки ({#key tab} знищує DOM
   // і висота на мить падала до нуля → скролбар блимав, сторінка смикалась).
@@ -552,8 +563,8 @@
 
   // Світи і сервери з server.dat збірки перечитуються ПРИ КОЖНОМУ відкритті
   // вкладки «Гра»: гра могла створити новий світ або користувач міг додати
-  // сервер — список має бути актуальним (раніше вантажився лише раз і
-  // «застигав»). Кнопка «Оновити» у розділі теж кличе цю функцію.
+  // сервер — список має бути актуальним. Кнопка «Оновити» у розділі теж
+  // кличе цю функцію.
   async function refreshGameTab() {
     const id = pack?.id
     if (!id) return
@@ -595,7 +606,7 @@
       envVarsOverride: '', useCustomCommands: false, useSeparateJava: false, javaPathOverride: '',
       accountIdOverride: '', autoJoinEnabled: false, autoJoinType: 'world',
       autoJoinWorld: '', autoJoinServer: '',
-      skinPresetId: '', skinRestoreOnExit: null
+      skinPresetId: '', skinRestoreOnExit: null, skinSystemOverride: ''
     }
   }
 
@@ -641,25 +652,14 @@
       // Скасовуємо ще незбережений відкладений таймер попередньої збірки:
       // сам знімок (cfg на момент update()) далі коректний навіть без
       // цього, але явне скасування прибирає зайвий пізній запис під час
-      // навігації.
-      // Незбережену правку ПОПЕРЕДНЬОЇ збірки дописуємо до диска, а вже
-      // потім читаємо конфіг нової (раніше таймер просто скасовувався —
-      // зміна, зроблена менш ніж за 350 мс до переходу, губилась).
+      // навігації. Незбережену правку ПОПЕРЕДНЬОЇ збірки дописуємо до
+      // диска, а вже потім читаємо конфіг нової.
       void commitPending().then(() => loadConfig())
     }
   })
 
   // ВАЖЛИВО: `cfg` — реактивна змінна сторінки, спільна для ВСІХ збірок
-  // (перезаписується в loadConfig() при переході на іншу збірку). Раніше
-  // setTimeout-колбек читав `cfg` у МОМЕНТ СПРАЦЮВАННЯ (через 350мс), а не
-  // в момент виклику saveConfig() — якщо користувач встигав перейти на
-  // іншу збірку до спрацювання таймера, loadConfig() вже підмінював `cfg`
-  // на конфіг ІНШОЇ збірки, і відкладене збереження писало чужі
-  // JVM-аргументи/RAM під невірним ID (виглядало так, ніби налаштування
-  // "стають глобальними" — насправді потрапляли не в ту збірку). Тепер
-  // знімок cfg робиться одразу при виклику, а не всередині колбека.
-  // pendingSnapshot — остання ще не записана версія конфіга (одна на
-  // сторінку: перед переходом на іншу збірку її дописує commitPending).
+  // (перезаписується в loadConfig() при переході на іншу збірку).
   let pendingSnapshot: InstanceConfig | null = null
 
   async function commitPending(): Promise<boolean> {
@@ -729,10 +729,7 @@
   // оголошення, тому залежні похідні мають йти ПІСЛЯ тих, на які спираються.
   const status = $derived(buildView?.status ?? 'not-installed')
   const buildProgress = $derived(buildView?.progress ?? null)
-  // Збірка "встановлена" = файли є локально (buildView.installed). Раніше тут
-  // був статус 'installed', якого взагалі не існує (статуси: not-installed /
-  // needs-update / ready / downloading / updating / running / error) — тому
-  // після успішної качки сторінка лишалась на екрані завантаження.
+  // Збірка "встановлена" = файли є локально (buildView.installed).
   const installed = $derived(
     buildView?.installed === true || status === 'ready' || status === 'needs-update'
   )
@@ -784,7 +781,7 @@
   // Банер на всю ширину розділу (Налаштування → Вигляд → «Банер збірки на
   // всю ширину», packBannerFull): геро-блок на всю ширину контенту
   // (край-у-край, без паддингів), сайдбар лаунчера НЕ чіпаємо. За
-  // замовчуванням вимкнено — звичайний банер-картка, як раніше.
+  // замовчуванням вимкнено — звичайний банер-картка.
   const bannerFull = $derived(!!(settings as any).packBannerFull)
   // Іконка збірки (локальний асет або URL) — потрібна у банері, який у
   // повному режимі рендериться ДО тулбара (нагорі розділу).
@@ -1057,8 +1054,8 @@
        їхали за екран, а секції під ним залипали на tbH → «пробіл»). Геро
        заїжджає під тулбар через від'ємний margin-top = виміряна висота. -->
     <div class="pack-toolbar pt-full" class:pt-stuck={heroStuck} bind:this={toolbarEl}>
-      <button class="btn btn-ghost btn-sm" onclick={onBack} title={t('pack.back')}><i class="ti ti-arrow-left"></i> {t('pack.back')}</button>
-      <div class="pt-id" class:show={heroTitleGone} title={pack.name}>
+      <button class="btn btn-ghost btn-sm" onclick={onBack} use:launcherTip={t('pack.back')}><i class="ti ti-arrow-left"></i> {t('pack.back')}</button>
+      <div class="pt-id" class:show={heroTitleGone} use:launcherTip={pack.name}>
         {#if bannerIcon}<span class="pt-id-ic"><img src={bannerIcon} alt="" use:smartImage /></span>{:else}<span class="pt-id-ic ti-fallback" style="--pcol:{pack.color || 'var(--orange)'}"><i class="ti {pack.icon || 'ti-puzzle'}"></i></span>{/if}
         <div class="pt-id-meta">
           <div class="pt-id-name">{pack.name}</div>
@@ -1066,14 +1063,14 @@
         </div>
       </div>
       <div class="pt-spacer"></div>
-      <button class="btn btn-ghost btn-sm" onclick={openFolder} title={t('pack.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
-      <button class="btn btn-ghost btn-sm" onclick={() => App.OpenPackConsole(pack.id)} title={t('pack.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
+      <button class="btn btn-ghost btn-sm" onclick={openFolder} use:launcherTip={t('pack.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
+      <button class="btn btn-ghost btn-sm" onclick={() => App.OpenPackConsole(pack.id)} use:launcherTip={t('pack.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
       {#if kind === 'custom'}
-        <button class="btn btn-ghost btn-sm" onclick={() => exportOpen = true} title={t('pack.export')}><i class="ti ti-package-export"></i> {t('pack.export')}</button>
-        {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} title="Поділитися з друзями"><i class="ti ti-share-3"></i> Поділитися</button>{/if}
+        <button class="btn btn-ghost btn-sm" onclick={() => exportOpen = true} use:launcherTip={t('pack.export')}><i class="ti ti-package-export"></i> {t('pack.export')}</button>
+        {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} use:launcherTip={"Поділитися з друзями"}><i class="ti ti-share-3"></i> Поділитися</button>{/if}
       {/if}
       <div class="menu-wrap">
-        <button class="btn btn-ghost btn-sm" onclick={(e: any) => { e.stopPropagation(); actionsOpen = !actionsOpen }} title={t('pack.update')}><i class="ti ti-dots-vertical"></i></button>
+        <button class="btn btn-ghost btn-sm" onclick={(e: any) => { e.stopPropagation(); actionsOpen = !actionsOpen }} use:launcherTip={t('pack.moreActions')} aria-label={t('pack.moreActions')} aria-expanded={actionsOpen}><i class="ti ti-dots-vertical"></i></button>
         {#if actionsOpen}
           <div class="dropdown-menu" onclick={(e: any) => e.stopPropagation()}>
             {#if kind === 'shaurma' || isSourcePack}
@@ -1101,11 +1098,11 @@
           {/if}
         </button>
       {:else if migration}
-        <button class="btn btn-info" disabled title={t('mods.migratingTitle')}>
+        <button class="btn btn-info" disabled use:launcherTip={t('mods.migratingTitle')}>
           <i class="ti ti-arrows-right-left"></i> {t('mods.migratingTitle')}
         </button>
       {:else if isDownloading}
-        <button class="btn btn-warning" disabled title={status === 'updating' ? t('build.status.updating') : t('build.status.downloading')}>
+        <button class="btn btn-warning" disabled use:launcherTip={status === 'updating' ? t('build.status.updating') : t('build.status.downloading')}>
           {#if status === 'updating'}
             <i class="ti ti-refresh spin"></i> {t('build.status.updating')}
           {:else}
@@ -1119,7 +1116,7 @@
         <button
           class="btn btn-danger play-launch-btn launch-stop-btn"
           onclick={() => cancelGameInstall(pack.id)}
-          title={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
+          use:launcherTip={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
         >
           <i class="ti ti-square"></i>
           <span>{t('pack.stop')}</span>
@@ -1148,17 +1145,17 @@
               {#each pack.tags as tag}<span class="ib-tag">{tag}</span>{/each}
             {/if}
           </div>
-          {#if pack.description}<div class="ib-desc" title={pack.description}>{pack.description}</div>{/if}
+          {#if pack.description}<div class="ib-desc" use:launcherTip={pack.description}>{pack.description}</div>{/if}
         </div>
       </div>
       <div class="phf-side">
       {#if kind === 'shaurma'}
-      <div class="ib-lock" title={t('pack.locked.hint')}>
+      <div class="ib-lock" use:launcherTip={t('pack.locked.hint')}>
         <i class="ti ti-lock"></i> {t('pack.locked')}
       </div>
       {/if}
       {#if settings.showGameTimeOnPage && playtimeSeconds > 0}
-      <div class="ib-time" title={t('pack.totalTimeDesc')}>
+      <div class="ib-time" use:launcherTip={t('pack.totalTimeDesc')}>
         <i class="ti ti-clock"></i> {fmtPlaytime(playtimeSeconds)}
       </div>
       {/if}
@@ -1175,11 +1172,11 @@
              як картку .pip-running (--bg-card) — та розрахована на
              непрозорий фон звичайної сторінки, на арт-банері виглядала б
              чужою плямою. -->
-        <div class="ib-running" title={t('pack.runningOnAccounts')}>
+        <div class="ib-running" use:launcherTip={t('pack.runningOnAccounts')}>
           <i class="ti ti-users"></i>
           <span class="ib-running-heads">
             {#each runningAccounts as acc (acc.id)}
-              <img src={headOf(acc)} alt="" title={acc.username} />
+              <img src={headOf(acc)} alt="" use:launcherTip={acc.username} />
             {/each}
           </span>
         </div>
@@ -1189,56 +1186,56 @@
       </div>
     </div>
 
-<div class="tabbar tb-slide tb-full" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
-      <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
-        <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{serverCount}</span>
+<div class="tabbar tb-slide tb-full" use:smoothTabsWheel use:tabsFit={{ onFit: measureTabPill }} bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
+      <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'} aria-label={t('pack.tab.servers')} use:launcherTip={t('pack.tab.servers')}>
+        <i class="ti ti-server-2"></i><span class="tab-label">{t('pack.tab.servers')}</span> <span class="num">{serverCount}</span>
       </button>
       {#if hasScreenshots}
-        <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
-          <i class="ti ti-photo"></i> {t('pack.tab.gallery')}
+        <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'} aria-label={t('pack.tab.gallery')} use:launcherTip={t('pack.tab.gallery')}>
+          <i class="ti ti-photo"></i><span class="tab-label">{t('pack.tab.gallery')}</span>
         </button>
       {/if}
       {#if canManage}
-        <button class="tab-btn" data-section="content" class:active={tab === 'content'} onclick={() => tab = 'content'}>
-          <i class="ti ti-puzzle"></i> {t('pack.tab.content')}
+        <button class="tab-btn" data-section="content" class:active={tab === 'content'} onclick={() => tab = 'content'} aria-label={t('pack.tab.content')} use:launcherTip={t('pack.tab.content')}>
+          <i class="ti ti-puzzle"></i><span class="tab-label">{t('pack.tab.content')}</span>
         </button>
-        <button class="tab-btn" data-section="files" class:active={tab === 'files'} onclick={() => tab = 'files'}>
-          <i class="ti ti-files"></i> {t('pack.tab.files')}
+        <button class="tab-btn" data-section="files" class:active={tab === 'files'} onclick={() => tab = 'files'} aria-label={t('pack.tab.files')} use:launcherTip={t('pack.tab.files')}>
+          <i class="ti ti-files"></i><span class="tab-label">{t('pack.tab.files')}</span>
         </button>
       {/if}
       <!-- Ті самі умови, що й у звичайному режимі: в авто-збірках «Основного»
            немає (раніше великий банер показував його все одно). -->
       {#if !isAutoPack}
-        <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
-          <i class="ti ti-info-circle"></i> {t('pack.tab.basic')}
+        <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'} aria-label={t('pack.tab.basic')} use:launcherTip={t('pack.tab.basic')}>
+          <i class="ti ti-info-circle"></i><span class="tab-label">{t('pack.tab.basic')}</span>
         </button>
       {/if}
       {#if kind === 'shaurma'}
-        <button class="tab-btn" data-section="wiki" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'}>
-          <i class="ti ti-book-2"></i> {t('pack.tab.wiki')}
+        <button class="tab-btn" data-section="wiki" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'} aria-label={t('pack.tab.wiki')} use:launcherTip={t('pack.tab.wiki')}>
+          <i class="ti ti-book-2"></i><span class="tab-label">{t('pack.tab.wiki')}</span>
         </button>
       {/if}
-      <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
-        <i class="ti ti-cpu"></i> {t('pack.tab.perf')}
+      <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'} aria-label={t('pack.tab.perf')} use:launcherTip={t('pack.tab.perf')}>
+        <i class="ti ti-cpu"></i><span class="tab-label">{t('pack.tab.perf')}</span>
       </button>
-      <button class="tab-btn" data-section="game" class:active={tab === 'game'} onclick={() => tab = 'game'}>
-        <i class="ti ti-device-gamepad-2"></i> {t('pack.tab.game')}
+      <button class="tab-btn" data-section="game" class:active={tab === 'game'} onclick={() => tab = 'game'} aria-label={t('pack.tab.game')} use:launcherTip={t('pack.tab.game')}>
+        <i class="ti ti-device-gamepad-2"></i><span class="tab-label">{t('pack.tab.game')}</span>
       </button>
-      <button class="tab-btn" data-section="console" class:active={tab === 'console'} onclick={() => tab = 'console'}>
-        <i class="ti ti-terminal-2"></i> {t('pack.tab.console')}
+      <button class="tab-btn" data-section="console" class:active={tab === 'console'} onclick={() => tab = 'console'} aria-label={t('pack.tab.console')} use:launcherTip={t('pack.tab.console')}>
+        <i class="ti ti-terminal-2"></i><span class="tab-label">{t('pack.tab.console')}</span>
       </button>
     </div>
   </div>
 {:else}
 <div class="pack-toolbar" bind:this={toolbarEl}>
-  <button class="btn btn-ghost btn-sm" onclick={onBack} title={t('pack.back')}><i class="ti ti-arrow-left"></i> {t('pack.back')}</button>
+  <button class="btn btn-ghost btn-sm" onclick={onBack} use:launcherTip={t('pack.back')}><i class="ti ti-arrow-left"></i> {t('pack.back')}</button>
   <!-- Компактна ідентичність збірки у ЗАКРІПЛЕНОМУ тулбарі: з'являється,
        щойно банер з великою назвою/іконкою виїхав за верх при скролі
        (class:show). Той самий прийом, що плашка активної вкладки у
        ContentBrowser: у верху сторінки прихована (display:none, не займає
        місця), при скролі плавно з'являється — користувач завжди бачить,
        на сторінці ЯКОЇ збірки він зараз. -->
-  <div class="pt-id" class:show={toolbarStuck} title={pack.name}>
+  <div class="pt-id" class:show={toolbarStuck} use:launcherTip={pack.name}>
     {#if bannerIcon}<span class="pt-id-ic"><img src={bannerIcon} alt="" use:smartImage /></span>{:else}<span class="pt-id-ic ti-fallback" style="--pcol:{pack.color || 'var(--orange)'}"><i class="ti {pack.icon || 'ti-puzzle'}"></i></span>{/if}
     <div class="pt-id-meta">
       <div class="pt-id-name">{pack.name}</div>
@@ -1248,22 +1245,22 @@
   {#if runningAccounts.length}
     <!-- Акаунти, у яких ця збірка ЗАРАЗ запущена — квадратні голови з
          закругленнями прямо в тулбарі (не окремим віджетом під банером). -->
-    <span class="pt-heads" title="{t('pack.runningOnAccounts')}: {runningAccounts.map((a: Account) => a.username).join(', ')}">
+    <span class="pt-heads" use:launcherTip={(t('pack.runningOnAccounts')) + ": " + (runningAccounts.map((a: Account) => a.username).join(', '))}>
       {#each runningAccounts as acc (acc.id)}
-        <img class="pt-head" src={headOf(acc)} alt="" title={acc.username} />
+        <img class="pt-head" src={headOf(acc)} alt="" use:launcherTip={acc.username} />
       {/each}
     </span>
   {/if}
   <div class="pt-spacer"></div>
-  <button class="btn btn-ghost btn-sm" onclick={openFolder} title={t('pack.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
-  <button class="btn btn-ghost btn-sm" onclick={() => App.OpenPackConsole(pack.id)} title={t('pack.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
+  <button class="btn btn-ghost btn-sm" onclick={openFolder} use:launcherTip={t('pack.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
+  <button class="btn btn-ghost btn-sm" onclick={() => App.OpenPackConsole(pack.id)} use:launcherTip={t('pack.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
   {#if installed && kind === 'custom'}
-    <button class="btn btn-ghost btn-sm" onclick={() => exportOpen = true} title={t('pack.export')}><i class="ti ti-package-export"></i> {t('pack.export')}</button>
-    {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} title="Поділитися з друзями"><i class="ti ti-share-3"></i> Поділитися</button>{/if}
+    <button class="btn btn-ghost btn-sm" onclick={() => exportOpen = true} use:launcherTip={t('pack.export')}><i class="ti ti-package-export"></i> {t('pack.export')}</button>
+    {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} use:launcherTip={"Поділитися з друзями"}><i class="ti ti-share-3"></i> Поділитися</button>{/if}
   {/if}
   {#if installed}
     <div class="menu-wrap">
-      <button class="btn btn-ghost btn-sm" onclick={(e: any) => { e.stopPropagation(); actionsOpen = !actionsOpen }} title={t('pack.update')}><i class="ti ti-dots-vertical"></i></button>
+      <button class="btn btn-ghost btn-sm" onclick={(e: any) => { e.stopPropagation(); actionsOpen = !actionsOpen }} use:launcherTip={t('pack.moreActions')} aria-label={t('pack.moreActions')} aria-expanded={actionsOpen}><i class="ti ti-dots-vertical"></i></button>
       {#if actionsOpen}
         <div class="dropdown-menu" onclick={(e: any) => e.stopPropagation()}>
           {#if kind === 'shaurma' || isSourcePack}
@@ -1297,7 +1294,7 @@
     {:else if migration}
       <!-- Під час міграції модів гра не запускається — кнопка «Грати»
            стає заблокованою з написом «Міграція модів». -->
-      <button class="btn btn-info" disabled title={t('mods.migratingTitle')}>
+      <button class="btn btn-info" disabled use:launcherTip={t('mods.migratingTitle')}>
         <i class="ti ti-arrows-right-left"></i> {t('mods.migratingTitle')}
       </button>
     {:else if isDownloading}
@@ -1308,7 +1305,7 @@
            ігнорувався (скарга: «коли вантажиться чи оновлюється щось,
            кнопка грати показує грати, а не оновлюється»). Тепер —
            заблокована кнопка зі стадією, як у Java/лоадера. -->
-      <button class="btn btn-warning" disabled title={status === 'updating' ? t('build.status.updating') : t('build.status.downloading')}>
+      <button class="btn btn-warning" disabled use:launcherTip={status === 'updating' ? t('build.status.updating') : t('build.status.downloading')}>
         {#if status === 'updating'}
           <i class="ti ti-refresh spin"></i> {t('build.status.updating')}
         {:else}
@@ -1327,7 +1324,7 @@
       <button
         class="btn btn-danger play-launch-btn launch-stop-btn"
         onclick={() => cancelGameInstall(pack.id)}
-        title={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
+        use:launcherTip={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
       >
         <i class="ti ti-square"></i>
         <span>{t('pack.stop')}</span>
@@ -1399,7 +1396,7 @@
                  контенту або порожня ручна) раніше не мала способу
                  видалитись зі сторінки — «⋯» ховалось усередині
                  {#if installed}. Тепер видалення доступне і тут. -->
-            <button class="btn btn-ghost btn-lg" onclick={() => onDelete(pack.id)} title={t('pack.delete')}>
+            <button class="btn btn-ghost btn-lg" onclick={() => onDelete(pack.id)} use:launcherTip={t('pack.delete')}>
               <i class="ti ti-trash"></i>
             </button>
           {/if}
@@ -1423,16 +1420,16 @@
             {#each pack.tags as tag}<span class="ib-tag">{tag}</span>{/each}
           {/if}
         </div>
-        {#if pack.description}<div class="ib-desc" title={pack.description}>{pack.description}</div>{/if}
+        {#if pack.description}<div class="ib-desc" use:launcherTip={pack.description}>{pack.description}</div>{/if}
       </div>
     </div>
     {#if kind === 'shaurma'}
-    <div class="ib-lock" title={t('pack.locked.hint')}>
+    <div class="ib-lock" use:launcherTip={t('pack.locked.hint')}>
       <i class="ti ti-lock"></i> {t('pack.locked')}
     </div>
     {/if}
     {#if settings.showGameTimeOnPage && playtimeSeconds > 0}
-    <div class="ib-time" title={t('pack.totalTimeDesc')}>
+    <div class="ib-time" use:launcherTip={t('pack.totalTimeDesc')}>
       <i class="ti ti-clock"></i> {fmtPlaytime(playtimeSeconds)}
     </div>
     {/if}
@@ -1524,55 +1521,48 @@
     <div class="mig-banner">
       <div class="mig-banner-head">
         <span class="mig-banner-title"><i class="ti ti-arrows-right-left spin-slow"></i> {t('mods.migratingTitle')}</span>
-        <span class="mig-banner-pct mono">{migration.total ? Math.round(migration.done / migration.total * 100) : 0}%</span>
       </div>
-      <div class="mig-banner-track"><div class="mig-banner-fill" style="width:{migration.total ? Math.round(migration.done / migration.total * 100) : 0}%"></div></div>
-      <div class="mig-banner-current">
-        {#if migration.iconUrl}<img src={migration.iconUrl} alt="" loading="lazy" use:smartImage />{:else}<span class="mig-banner-ic"><i class="ti ti-puzzle"></i></span>{/if}
-        <span class="mig-banner-name">{migration.name || migration.currentFile}</span>
-        <span class="mono mig-banner-file">{migration.currentFile}</span>
-      </div>
-      <div class="mig-banner-sub">{t('mods.migratingSub')} — {migration.done}/{migration.total}</div>
+      <div class="mig-banner-sub">{t('mods.migratingSub')}</div>
     </div>
   {/if}
 </div>
 
 {#if !bannerFull}
-  <div class="tabbar tb-slide" bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
-    <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'}>
-      <i class="ti ti-server-2"></i> {t('pack.tab.servers')} <span class="num">{serverCount}</span>
+  <div class="tabbar tb-slide" use:smoothTabsWheel use:tabsFit={{ onFit: measureTabPill }} bind:this={tabbarEl} style="--tb-ind-l:{tbIndL}px;--tb-ind-w:{tbIndW}px">
+    <button class="tab-btn" data-section="servers" class:active={tab === 'servers'} onclick={() => tab = 'servers'} aria-label={t('pack.tab.servers')} use:launcherTip={t('pack.tab.servers')}>
+      <i class="ti ti-server-2"></i><span class="tab-label">{t('pack.tab.servers')}</span> <span class="num">{serverCount}</span>
     </button>
     {#if hasScreenshots}
-      <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'}>
-        <i class="ti ti-photo"></i> {t('pack.tab.gallery')}
+      <button class="tab-btn" data-section="gallery" class:active={tab === 'gallery'} onclick={() => tab = 'gallery'} aria-label={t('pack.tab.gallery')} use:launcherTip={t('pack.tab.gallery')}>
+        <i class="ti ti-photo"></i><span class="tab-label">{t('pack.tab.gallery')}</span>
       </button>
     {/if}
     {#if canManage}
-      <button class="tab-btn" data-section="content" class:active={tab === 'content'} onclick={() => tab = 'content'}>
-        <i class="ti ti-puzzle"></i> {t('pack.tab.content')}
+      <button class="tab-btn" data-section="content" class:active={tab === 'content'} onclick={() => tab = 'content'} aria-label={t('pack.tab.content')} use:launcherTip={t('pack.tab.content')}>
+        <i class="ti ti-puzzle"></i><span class="tab-label">{t('pack.tab.content')}</span>
       </button>
-      <button class="tab-btn" data-section="files" class:active={tab === 'files'} onclick={() => tab = 'files'}>
-        <i class="ti ti-files"></i> {t('pack.tab.files')}
+      <button class="tab-btn" data-section="files" class:active={tab === 'files'} onclick={() => tab = 'files'} aria-label={t('pack.tab.files')} use:launcherTip={t('pack.tab.files')}>
+        <i class="ti ti-files"></i><span class="tab-label">{t('pack.tab.files')}</span>
       </button>
     {/if}
     {#if !isAutoPack}
-      <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'}>
-        <i class="ti ti-info-circle"></i> {t('pack.tab.basic')}
+      <button class="tab-btn" data-section="basic" class:active={tab === 'basic'} onclick={() => tab = 'basic'} aria-label={t('pack.tab.basic')} use:launcherTip={t('pack.tab.basic')}>
+        <i class="ti ti-info-circle"></i><span class="tab-label">{t('pack.tab.basic')}</span>
       </button>
     {/if}
     {#if kind === 'shaurma'}
-      <button class="tab-btn" data-section="wiki" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'}>
-        <i class="ti ti-book-2"></i> {t('pack.tab.wiki')}
+      <button class="tab-btn" data-section="wiki" class:active={tab === 'wiki'} onclick={() => tab = 'wiki'} aria-label={t('pack.tab.wiki')} use:launcherTip={t('pack.tab.wiki')}>
+        <i class="ti ti-book-2"></i><span class="tab-label">{t('pack.tab.wiki')}</span>
       </button>
     {/if}
-    <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'}>
-      <i class="ti ti-cpu"></i> {t('pack.tab.perf')}
+    <button class="tab-btn" data-section="perf" class:active={tab === 'perf'} onclick={() => tab = 'perf'} aria-label={t('pack.tab.perf')} use:launcherTip={t('pack.tab.perf')}>
+      <i class="ti ti-cpu"></i><span class="tab-label">{t('pack.tab.perf')}</span>
     </button>
-    <button class="tab-btn" data-section="game" class:active={tab === 'game'} onclick={() => tab = 'game'}>
-      <i class="ti ti-device-gamepad-2"></i> {t('pack.tab.game')}
+    <button class="tab-btn" data-section="game" class:active={tab === 'game'} onclick={() => tab = 'game'} aria-label={t('pack.tab.game')} use:launcherTip={t('pack.tab.game')}>
+      <i class="ti ti-device-gamepad-2"></i><span class="tab-label">{t('pack.tab.game')}</span>
     </button>
-    <button class="tab-btn" data-section="console" class:active={tab === 'console'} onclick={() => tab = 'console'}>
-      <i class="ti ti-terminal-2"></i> {t('pack.tab.console')}
+    <button class="tab-btn" data-section="console" class:active={tab === 'console'} onclick={() => tab = 'console'} aria-label={t('pack.tab.console')} use:launcherTip={t('pack.tab.console')}>
+      <i class="ti ti-terminal-2"></i><span class="tab-label">{t('pack.tab.console')}</span>
     </button>
   </div>
 {/if}
@@ -1588,7 +1578,7 @@
 {#if installed}
 <div class="tab-panel-host" bind:this={panelHost}>
 {#key tab}
-<div class="tab-panel-anim">
+<div class="tab-panel-anim" in:panelIn out:panelOut>
 {#if !cfgLoaded}
   <div class="card"><div style="padding:24px;text-align:center;color:var(--text-mute);font-size:12px">…</div></div>
 
@@ -1642,12 +1632,9 @@
     {allBuilds}
     {packPicker}	    // Закріплений тулбар сторінки лишається над контентом при скролі —
 	    // тулбар менеджера модів/контенту прилипає одразу ПІД ним (sticky
-	    // top = висота тулбара, БЕЗ зайвого проміжку). Раніше тут було
-	    // tbH+16: між двома закріпленими смугами лишалась щілина 16px,
-	    // крізь яку просвічував контент, що скролиться — виглядало як
-	    // «виступ» між панеллю збірки (Грати та інші кнопки) і панеллю
-	    // пошуку. Самі смуги мають власний зградієнтний blur-фон, тож
-	    // стик без проміжку виглядає суцільним.
+	    // top = висота тулбара, БЕЗ зайвого проміжку). Самі смуги мають
+	    // власний зградієнтний blur-фон, тож стик без проміжку виглядає
+	    // суцільним.
 	    stickyTop={Math.max(40, tbH)}
     // Збірка запущена (на поточному чи будь-якому іншому акаунті) —
     // змінювати моди/ресурспаки/шейдери/версію заборонено: фронтенд

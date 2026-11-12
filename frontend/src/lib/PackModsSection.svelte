@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   import UiModal from './UiModal.svelte'
   // ── Розділ «Моди» на сторінці збірки ───────────────────────────────────
   // Повноцінний менеджер модів:
@@ -18,6 +20,7 @@
   // рекомендацій, «Портувати зі збірки» — лише на сервер.
   import { onMount, untrack } from 'svelte'
   import { t } from './i18n.svelte'
+  import EmptyState from './EmptyState.svelte'
   import { App, on } from './wails'
   import { modIcon } from './modIcon'
   import { VirtualWindow } from './virtualWindow.svelte'
@@ -34,6 +37,7 @@
   import curseforgeIcon from '../assets/images/curseforge_icon.png'
   import type { ModEntry, ModVersionOption, ModBackupEntry, SuggestedMod, TempModInfo, MigrationPack } from './types'
   import type { PackPickerItem, PackRow, PackFolderRow } from './PackPicker.svelte'
+  import SearchField from './SearchField.svelte'
 
   let {
     packId,
@@ -663,11 +667,7 @@
 
   // ── Захист скролу ─────────────────────────────────────────────────────
   // Фонові оновлення списку (перевірка оновлень, сумісність, пересканування,
-  // оновлення мода) не повинні відкидати сторінку на початок. Раніше захист
-  // діяв лише ~1.5 с після перевірки і лише для .content — стрибки від інших
-  // оновлень проходили. Тепер: якщо скрол-контейнер списку стрибнув у 0 БЕЗ
-  // дії користувача (коліщатко, тач, клавіша, клік за останні 600 мс) —
-  // повертаємо останню позицію.
+  // оновлення мода) не повинні відкидати сторінку на початок.
   let lastScrollTop = 0
   let userScrollAt = 0
   let rootEl = $state<HTMLElement | undefined>()
@@ -746,14 +746,7 @@
   let currentScanId = ''
 
   // ВАЖЛИВО (виправлення «лаунчер зависає при завантаженні модів»): цей
-  // $effect має залежати ЛИШЕ від packId/mcVersion/loader. Раніше його тіло
-  // читало реактивний стан (mods.length у loadMods, mods.some у
-  // verifyIncompatible тощо) і одночасно писало `mods = []`, тож ефект
-  // підписувався на `mods`: щойно скан завершувався й `mods` змінювався,
-  // ефект запускався знову, скидав список і стартував повний скан +
-  // перевірку оновлень + сумісність + рекомендації — безкінечний цикл
-  // сканів, що й виглядав як зависання. Тепер залежності зчитуємо явно, а
-  // решту виконуємо в untrack.
+  // $effect має залежати ЛИШЕ від packId/mcVersion/loader.
   $effect(() => {
     const id = packId
     void mcVersion
@@ -765,9 +758,7 @@
   function startScanCycle(id: string) {
     currentScanId = id
     // Список очищуємо лише при переході на ІНШУ збірку. Зміна версії гри чи
-    // лоадера тієї самої збірки пересканує тихо (setModsQuiet у loadMods):
-    // раніше `mods = []` прибирало весь список, висота сторінки падала і
-    // скрол відлітав на початок.
+    // лоадера тієї самої збірки пересканує тихо (setModsQuiet у loadMods).
     const samePack = id === lastCyclePack
     lastCyclePack = id
     if (!samePack) {
@@ -802,9 +793,6 @@
 
   onMount(() => {
     loadTempModsDefaultAction()
-    // Застосувати ОДНУ подію прогресу (той самий payload, що раніше йшов
-    // окремим mods:update-progress) — винесено в окрему функцію, бо тепер
-    // застосовується в циклі по пачці (applyProgress нижче).
     function applyProgress(p: any) {
       if (p?.packId !== packId) return
       checkDone = p.done ?? checkDone
@@ -813,11 +801,10 @@
         updateAllProgress = `${p.current ?? 0}/${p.total ?? 0}`
       }
     }
-    // mods:update-progress:batch — той самий канал, що раніше окремими
-    // mods:update-progress, але пачкою (бекенд: mods_batch.go). На збірках
-    // з великою кількістю модів окремі події (сотні підряд у синхронному
-    // циклі CheckModUpdates) призводили до "зависання" інтерфейсу — щоб
-    // не рендерити список сотні разів поспіль, застосовуємо всю пачку і
+    // mods:update-progress:batch — той самий канал. На збірках з великою
+    // кількістю модів окремі події (сотні підряд у синхронному циклі
+    // CheckModUpdates) призводили до "зависання" інтерфейсу — щоб не
+    // рендерити список сотні разів поспіль, застосовуємо всю пачку і
     // читаємо лише ОСТАННІЙ елемент кожного типу поля (checkDone/checkTotal
     // — проміжні значення для решти елементів пачки нікому не потрібні,
     // важливий лише фінальний стан після пачки).
@@ -827,18 +814,16 @@
     })
     // Живе оновлення ОДНОГО мода під час перевірки оновлень: бекенд шле
     // mods:update-one:batch пачкою (mods_batch.go) — патчимо КОЖЕН рядок
-    // із пачки за один прохід по локальному масиву й ОДНЕ присвоєння
-    // mods = mods наприкінці, щоб Svelte перерендерив список ОДИН раз на
-    // всю пачку, а не окремо на кожен мод (раніше — окрема подія й окреме
-    // присвоєння mods[idx]=m на кожен файл, що на збірках із сотнями
-    // модів давало сотні реактивних ре-рендерів списку підряд).
+    // із пачки за один прохід по локальному масиву й ОДНЕ присвоєння mods
+    // = mods наприкінці, щоб Svelte перерендерив список ОДИН раз на всю
+    // пачку, а не окремо на кожен мод.
     const offOne = on('mods:update-one:batch', (batch: any[]) => {
       if (!Array.isArray(batch) || batch.length === 0) return
       // `mods` — $state.raw (без глибоких проксі на кожне поле кожного мода:
       // на збірці з сотнями модів це зайві мегабайти і повільні рендери),
       // тому патчимо НЕЗМІННО: копія масиву + копії лише змінених рядків,
       // одне присвоєння на всю пачку. Індекс fileName→позиція будуємо один
-      // раз на пачку (раніше findIndex на кожну подію = O(n²)).
+      // раз на пачку).
       let next: ModEntry[] | null = null
       let index: Map<string, number> | null = null
       for (const p of batch) {
@@ -1221,10 +1206,7 @@
   <!-- ═══ Тулбар ═══ -->
   <div class="mods-toolbar" onclick={closeRowMenu} style={`--mt-top:${stickyTop}px`}>
     <div class="mt-group mt-group-main">
-      <div class="mt-search">
-        <i class="ti ti-search"></i>
-        <input value={search} placeholder={t('mods.search')} oninput={(e: any) => search = e.target.value} />
-      </div>
+      <SearchField bind:value={search} placeholder={t('mods.search')} />
       <SelectField
         value={filter}
         options={[
@@ -1273,16 +1255,16 @@
         <button onclick={() => { exportSelectedFiles = [...selected]; exportOpen = true }} use:tip={t('mods.export.title')} aria-label={t('mods.export.title')}><i class="ti ti-list-details"></i></button>
       </div>
       {#if onSearchMods}
-        <button class="btn btn-ghost btn-sm" onclick={onSearchMods} title={t('mods.searchOnline')}>
+        <button class="btn btn-ghost btn-sm" onclick={onSearchMods} use:launcherTip={t('mods.searchOnline')}>
           <i class="ti ti-world-search"></i> {t('mods.searchOnline')}
         </button>
       {/if}
-      <button class="btn btn-ghost btn-sm" onclick={pickAndImportFiles} disabled={importing} title={t('mods.addMod')}>
+      <button class="btn btn-ghost btn-sm" onclick={pickAndImportFiles} disabled={importing} use:launcherTip={t('mods.addMod')}>
         {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-file-plus"></i>{/if} {t('mods.addMod')}
       </button>
       <button class="btn btn-primary btn-sm" onclick={() => updateAllOpen = true}
               disabled={updatesCount === 0 || updateChecking || updateAllRunning}
-              title={t('mods.updateAll')}>
+              use:launcherTip={t('mods.updateAll')}>
         <i class="ti ti-refresh"></i> {t('mods.updateAll')}
         {#if updatesCount > 0}<span class="upd-badge">{updatesCount}</span>{/if}
       </button>
@@ -1314,17 +1296,8 @@
     {#if scanning && mods.length === 0}
       <div class="mods-empty"><i class="ti ti-loader spin"></i> {t('mods.scanning')}</div>
     {:else if mods.length === 0}
-      <!-- Тека модів фізично порожня — картка у стилі лаунчера (перероблена
-           з нуля): градієнтна плитка, заголовок, підказка, кнопки дій
-           (додати jar / відкрити теку / шукати онлайн) і натяк на drag&drop.
-           Не спирається на .mods-empty (щоб не тягнути його гігантську
-           іконку 64px і великі відступи, через які старий стан «виглядав
-           криво»). -->
-      <div class="mods-empty-folder">
-        <div class="mef-ic"><i class="ti ti-box"></i></div>
-        <div class="mef-title">{t('mods.emptyFolderTitle')}</div>
-        <div class="mef-sub">{t('mods.emptyFolderHint')}</div>
-        <div class="mef-actions">
+      <EmptyState icon="ti-box" title={t('mods.emptyFolderTitle')} hint={t('mods.emptyFolderHint')}>
+        {#snippet actions()}
           <button class="btn btn-primary" onclick={pickAndImportFiles} disabled={importing}>
             {#if importing}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-file-plus"></i>{/if} {t('mods.addMod')}
           </button>
@@ -1332,9 +1305,9 @@
           {#if onSearchMods}
             <button class="btn btn-ghost" onclick={onSearchMods}><i class="ti ti-world-search"></i> {t('mods.searchOnline')}</button>
           {/if}
-        </div>
-        <div class="mef-drop"><i class="ti ti-download"></i> {t('mods.emptyDropHint')}</div>
-      </div>
+        {/snippet}
+        {#snippet footnote()}<i class="ti ti-download"></i> {t('mods.emptyDropHint')}{/snippet}
+      </EmptyState>
     {:else}
       {#if dupGroups.length > 0}
         <!-- Дублікати одним віджетом: групи за modId згортаються/розгортаються.
@@ -1352,7 +1325,7 @@
               <i class="ti ti-search"></i>
               <input value={dupSearch} placeholder={t('mods.dupSearch')}
                      oninput={(e: any) => dupSearch = e.target.value} />
-              {#if dupSearch}<button class="dup-search-clear" onclick={() => dupSearch = ''} title={t('mods.dupSearchClear')}><i class="ti ti-x"></i></button>{/if}
+              {#if dupSearch}<button class="dup-search-clear" onclick={() => dupSearch = ''} use:launcherTip={t('mods.dupSearchClear')}><i class="ti ti-x"></i></button>{/if}
             </div>
             {#if filteredDupGroups.length === 0}
               <div class="dup-empty">
@@ -1374,12 +1347,12 @@
                       {:else}<i class="ti ti-puzzle"></i>{/if}
                     </div>
                     <div class="dup-group-meta">
-                      <div class="dup-group-name" title={g[0].name}>{g[0].name}</div>
+                      <div class="dup-group-name" use:launcherTip={g[0].name}>{g[0].name}</div>
                       <div class="dup-group-sub">{t('mods.dupGroupSub', { n: g.length, version: g[0].version || '' })}</div>
                     </div>
-                    <span class="dup-group-count">{matched.length}×{#if matched.length < g.length} <i class="ti ti-filter" title={t('mods.dupGroupFiltered', { n: g.length })}></i>{/if}</span>
+                    <span class="dup-group-count">{matched.length}×{#if matched.length < g.length} <i class="ti ti-filter" use:launcherTip={t('mods.dupGroupFiltered', { n: g.length })}></i>{/if}</span>
                     <button class="icon-btn del dup-group-del" onclick={() => deleteDupGroup(g)}
-                            disabled={bulkWorking} title={t('mods.dupGroupDelete')}>
+                            disabled={bulkWorking} use:launcherTip={t('mods.dupGroupDelete')}>
                       <i class="ti ti-trash"></i>
                     </button>
                   </div>
@@ -1391,16 +1364,16 @@
                              зберегти, замість автозбереження найновішої. -->
                         <button class="dup-file-keep" class:on={isKeep}
                                 onclick={() => setDupKeep(g[0].id, f.fileName)}
-                                title={t('mods.dupKeepThis')}>
+                                use:launcherTip={t('mods.dupKeepThis')}>
                           <i class="ti {isKeep ? 'ti-circle-check' : 'ti-circle'}"></i>
                         </button>
                         <i class="ti ti-file"></i>
-                        <span class="dup-file-name" title={f.fileName}>{f.fileName}</span>
+                        <span class="dup-file-name" use:launcherTip={f.fileName}>{f.fileName}</span>
                         <span class="dup-file-meta">{f.version || f.installedDate || ''}</span>
                         {#if isKeep}<span class="dup-keep-badge">{t('mods.dupKeep')}</span>{/if}
                         <!-- Видалити саме цей файл (вибір «те чи те»). -->
                         <button class="dup-file-del" onclick={() => deleteDupFile(g, f)} disabled={bulkWorking}
-                                title={t('mods.delete')}><i class="ti ti-trash"></i></button>
+                                use:launcherTip={t('mods.delete')}><i class="ti ti-trash"></i></button>
                       </div>
                     {/each}
                   </div>
@@ -1434,14 +1407,14 @@
                   {/if}
                 </div>
                 <button class="suggest-mod-install" disabled={installingSuggested === s.depId}
-                        onclick={() => installSuggested(s)} title={t('mods.suggested.install')}>
+                        onclick={() => installSuggested(s)} use:launcherTip={t('mods.suggested.install')}>
                   {#if installingSuggested === s.depId}
                     <i class="ti ti-loader spin"></i>
                   {:else}
                     <i class="ti ti-download"></i>
                   {/if}
                 </button>
-                <button class="suggest-mod-dismiss" onclick={() => dismissSuggested(s.depId)} title={t('mods.suggested.dismiss')}>
+                <button class="suggest-mod-dismiss" onclick={() => dismissSuggested(s.depId)} use:launcherTip={t('mods.suggested.dismiss')}>
                   <i class="ti ti-x"></i>
                 </button>
               </div>
@@ -1467,15 +1440,15 @@
               <i class="ti ti-check"></i>
             </button>
             {#if isModPageClickable(m)}
-              <button type="button" class="mod-ic clickable" title={t('mods.openPage')}
+              <button type="button" class="mod-ic clickable" use:launcherTip={t('mods.openPage')}
                       onclick={(e: any) => { e.stopPropagation(); openModPage(m) }}>
                 {#if m.hasIcon}<img use:modIcon={{ packId, fileName: m.fileName, rev: m.fileSize }} alt="" />
                 {:else if m.iconUrl}<img src={m.iconUrl} alt="" loading="lazy" />
                 {:else}<i class="ti ti-puzzle"></i>{/if}
                 {#if m.source === 'modrinth'}
-                  <span class="mod-src" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                  <span class="mod-src" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                 {:else if m.source === 'curseforge'}
-                  <span class="mod-src" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                  <span class="mod-src" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                 {/if}
               </button>
             {:else}
@@ -1484,9 +1457,9 @@
                 {:else if m.iconUrl}<img src={m.iconUrl} alt="" loading="lazy" />
                 {:else}<i class="ti ti-puzzle"></i>{/if}
                 {#if m.source === 'modrinth'}
-                  <span class="mod-src" title="Modrinth"><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
+                  <span class="mod-src" use:launcherTip={"Modrinth"}><img src={modrinthIcon} alt="Modrinth" loading="lazy" /></span>
                 {:else if m.source === 'curseforge'}
-                  <span class="mod-src" title="CurseForge"><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
+                  <span class="mod-src" use:launcherTip={"CurseForge"}><img src={curseforgeIcon} alt="CurseForge" loading="lazy" /></span>
                 {/if}
               </div>
             {/if}
@@ -1494,21 +1467,21 @@
             <div class="mod-info">
               <div class="mod-name">
                 {#if isModPageClickable(m)}
-                  <button type="button" class="mod-name-btn" title={t('mods.openPage')}
+                  <button type="button" class="mod-name-btn" use:launcherTip={t('mods.openPage')}
                           onclick={(e: any) => { e.stopPropagation(); openModPage(m) }}>{m.name}</button>
                 {:else}
-                  <span title={m.description || m.name}>{m.name}</span>
+                  <span use:launcherTip={m.description || m.name}>{m.name}</span>
                 {/if}
                 {#if m.sourceKind}
                   <span class="src-badge" class:gone={m.sourceMissing}
-                        title={m.sourceMissing ? t('modsrc.sourceGone') : m.sourcePath}>
+                        use:launcherTip={m.sourceMissing ? t('modsrc.sourceGone') : m.sourcePath}>
                     <i class="ti ti-link"></i> {m.sourceKind === 'folder' ? t('modsrc.fromFolder') : t('modsrc.fromFile')}
                   </span>
                 {/if}
                 {#if m.status === 'checking'}
-                  <i class="ti ti-loader spin mod-checking" title={t('mods.checkingOne')}></i>
+                  <i class="ti ti-loader spin mod-checking" use:launcherTip={t('mods.checkingOne')}></i>
                 {:else if m.hasUpdate}
-                  <span class="badge upd" title={t('mods.updateRangeHint', { from: m.version || '?', to: m.latestVersion || '?' })}>
+                  <span class="badge upd" use:launcherTip={t('mods.updateRangeHint', { from: m.version || '?', to: m.latestVersion || '?' })}>
                     <i class="ti ti-arrow-up"></i> {m.version ? m.version + ' → ' : ''}{m.latestVersion}
                   </span>
                 {/if}
@@ -1517,28 +1490,28 @@
                   <span class="badge off">{t('mods.off')}</span>
                 {/if}
                 {#if m.isDuplicate}
-                  <span class="badge dup" title={t('mods.duplicateHint')}>
+                  <span class="badge dup" use:launcherTip={t('mods.duplicateHint')}>
                     <i class="ti ti-copy"></i> {t('mods.duplicate')}
                   </span>
                 {/if}
                 {#if m.incompatible}
-                  <span class="badge incompat" title={t('mods.incompatibleHint', { loader: m.incompatibleReason ?? '' })}>
+                  <span class="badge incompat" use:launcherTip={t('mods.incompatibleHint', { loader: m.incompatibleReason ?? '' })}>
                     <i class="ti ti-plug-x"></i> {t('mods.incompatible')}
                   </span>
                 {/if}
                 {#if m.viaConnector && !m.incompatible}
-                  <span class="badge connector" title={t('mods.viaConnectorHint', { loader: m.loader ?? 'fabric' })}>
+                  <span class="badge connector" use:launcherTip={t('mods.viaConnectorHint', { loader: m.loader ?? 'fabric' })}>
                     <i class="ti ti-plug-connected"></i> {t('mods.viaConnector')}
                   </span>
                 {/if}
                 {#if isServer && m.environment === 'client'}
-                  <span class="badge client" title={t('servers.content.clientOnlyHint')}>
+                  <span class="badge client" use:launcherTip={t('servers.content.clientOnlyHint')}>
                     <i class="ti ti-device-desktop"></i> {t('servers.content.clientOnly')}
                   </span>
                 {/if}
                 {#if tempModFor(m.fileName)}
                   {@const tm = tempModFor(m.fileName)!}
-                  <span class="badge temp" title={t(tm.action === 'delete' ? 'mods.temp.willDeleteAt' : 'mods.temp.willDisableAt', { date: fmtDate(tm.expiresAt) })}>
+                  <span class="badge temp" use:launcherTip={t(tm.action === 'delete' ? 'mods.temp.willDeleteAt' : 'mods.temp.willDisableAt', { date: fmtDate(tm.expiresAt) })}>
                     <i class="ti ti-clock-hour-4"></i> {fmtTimeRemaining(tm.secondsRemaining)}
                   </span>
                 {/if}
@@ -1558,20 +1531,20 @@
 
             <div class="mod-acts">
               {#if m.hasUpdate && !m.sourceKind}
-                <button class="icon-btn upd" onclick={() => updateOne(m)} title={t('mods.updateOne')}><i class="ti ti-refresh"></i></button>
+                <button class="icon-btn upd" onclick={() => updateOne(m)} use:launcherTip={t('mods.updateOne')}><i class="ti ti-refresh"></i></button>
               {/if}
               <div class="toggle" class:on={m.enabled} class:locked={!!m.sourceKind} role="switch" aria-checked={m.enabled} tabindex="0"
                    onclick={() => toggleMod(m)}
                    onkeydown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') toggleMod(m) }}
-                   title={m.enabled ? t('mods.disable') : t('mods.enable')}></div>
-              <button class="icon-btn" onclick={() => openVersion(m)} disabled={!!m.sourceKind} title={t('mods.changeVersion')}>
+                   use:launcherTip={m.enabled ? t('mods.disable') : t('mods.enable')}></div>
+              <button class="icon-btn" onclick={() => openVersion(m)} disabled={!!m.sourceKind} use:launcherTip={t('mods.changeVersion')}>
                 <i class="ti ti-versions"></i>
               </button>
-              <button class="icon-btn del" onclick={() => deleteMod(m)} disabled={deleting === m.fileName || !!m.sourceKind} title={t('mods.delete')}>
+              <button class="icon-btn del" onclick={() => deleteMod(m)} disabled={deleting === m.fileName || !!m.sourceKind} use:launcherTip={t('mods.delete')}>
                 {#if deleting === m.fileName}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-trash"></i>{/if}
               </button>
                 <div class="row-menu-wrap">
-                <button class="icon-btn" onclick={(e: any) => toggleRowMenu(m.fileName, e)} title={t('mods.moreActions')}>
+                <button class="icon-btn" onclick={(e: any) => toggleRowMenu(m.fileName, e)} use:launcherTip={t('mods.moreActions')}>
                   <i class="ti ti-dots-vertical"></i>
                 </button>
                 {#if menuFor === m.fileName}
@@ -1627,13 +1600,13 @@
       <button class="btn btn-ghost btn-sm" onclick={() => bulkEnable(false)} disabled={bulkWorking}>
         <i class="ti ti-power"></i> {t('mods.disable')}
       </button>
-      <button class="btn btn-ghost btn-sm" onclick={selectAllVisible} disabled={bulkWorking} title={t('mods.selectAllVisible')}>
+      <button class="btn btn-ghost btn-sm" onclick={selectAllVisible} disabled={bulkWorking} use:launcherTip={t('mods.selectAllVisible')}>
         <i class="ti ti-square-check"></i> {t('mods.selectAllVisible')}
       </button>
       <button class="btn btn-ghost btn-sm bulk-del" onclick={bulkDelete} disabled={bulkWorking}>
         <i class="ti ti-trash"></i> {t('mods.delete')}
       </button>
-      <button class="bulk-clear" onclick={clearSelection} title={t('mods.clearSelection')}><i class="ti ti-x"></i></button>
+      <button class="bulk-clear" onclick={clearSelection} use:launcherTip={t('mods.clearSelection')}><i class="ti ti-x"></i></button>
     </div>
   {/if}
 </div>
@@ -1767,7 +1740,7 @@
           <div class="ua-list">
             {#each toUpd as m (m.fileName)}
               <div class="ua-row">
-                <span class="ua-name" title={m.fileName}>{m.name}</span>
+                <span class="ua-name" use:launcherTip={m.fileName}>{m.name}</span>
                 <span class="ua-old">{m.version}</span>
                 <i class="ti ti-arrow-right ua-arr"></i>
                 <span class="ua-new">{m.latestVersion}</span>
@@ -1806,7 +1779,7 @@
     onclose={() => { if (!updateOneRunning) updateOneMod = null }}
   >
         <div class="ua-row">
-          <span class="ua-name" title={updateOneMod.fileName}>{updateOneMod.name}</span>
+          <span class="ua-name" use:launcherTip={updateOneMod.fileName}>{updateOneMod.name}</span>
           <span class="ua-old">{updateOneMod.version}</span>
           <i class="ti ti-arrow-right ua-arr"></i>
           <span class="ua-new">{updateOneMod.latestVersion}</span>
@@ -1911,7 +1884,7 @@
                   <div class="bk-sub">{b.version} · {fmtDate(b.date)}</div>
                 </div>
                 {#if b.sourceUrl}
-                  <button class="btn btn-ghost btn-sm" onclick={() => copyBackupSource(b)} title={t('mods.backupSource')}>
+                  <button class="btn btn-ghost btn-sm" onclick={() => copyBackupSource(b)} use:launcherTip={t('mods.backupSource')}>
                     <i class="ti ti-link"></i>
                   </button>
                 {/if}
@@ -1996,16 +1969,6 @@
   .mt-group-main { flex: 1 1 360px; min-width: 0; }
   .mt-group-actions { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
   .mt-group-actions .btn { height: 36px; white-space: nowrap; }
-  .mt-search {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
-    padding: 0 12px; height: 36px; flex: 1 1 200px; min-width: 140px;
-    transition: border-color .15s, box-shadow .15s;
-  }
-  .mt-search:focus-within { border-color: rgba(var(--orange-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
-  .mt-search i { color: var(--text-dim); font-size: 15px; }
-  .mt-search:focus-within i { color: var(--orange); }
-  .mt-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 13px; }
   .mt-spacer { flex: 1; }
   .upd-badge {
     display: inline-flex; align-items: center; justify-content: center;
@@ -2470,34 +2433,6 @@
   .mods-dropzone { position: relative; border-radius: var(--r-md); transition: background .15s; }
   .mods-dropzone.drag {
     background: rgba(255,138,0,.06); outline: 2px dashed rgba(255,138,0,.5); outline-offset: 4px;
-  }
-
-  /* ── Порожня тека модів (окремий стан, з діями) ──
-     Окрема картка у стилі лаунчера: іконка-«плитка» з градієнтом, заголовок,
-     підказка та дії — як у порожнього стану серверів/картки «Створити збірку».
-     Раніше був «сирий» стан з гігантською іконкою 64px і майже без відступів,
-     який вибивався з решти сторінки. */
-  .mods-empty-folder {
-    display: flex; flex-direction: column; align-items: center; text-align: center;
-    gap: 8px; padding: 44px 24px; margin: 4px 0;
-    background: color-mix(in srgb, var(--bg-card) 55%, transparent);
-    border: 1px dashed var(--border-hi); border-radius: var(--r-lg);
-    animation: rise-in .3s ease both;
-  }
-  .mods-empty-folder i { color: var(--orange); }
-  .mef-ic {
-    width: 62px; height: 62px; border-radius: 17px; margin-bottom: 4px;
-    display: flex; align-items: center; justify-content: center; font-size: 27px;
-    background: linear-gradient(135deg, rgba(var(--orange-rgb), .2), rgba(var(--orange-rgb), .04));
-    border: 1px solid rgba(var(--orange-rgb), .35);
-    box-shadow: 0 10px 26px rgba(0,0,0,.3);
-  }
-  .mef-title { font-size: 15px; font-weight: 700; color: var(--text); }
-  .mef-sub { font-size: 12.5px; color: var(--text-mute); max-width: 400px; line-height: 1.5; }
-  .mef-actions { display: flex; gap: 8px; margin-top: 12px; }
-  .mef-drop {
-    display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
-    font-size: 11.5px; color: var(--text-dim);
   }
 
   /* ── Модалка версій: двоколонковий макет (список + деталі/changelog) ──

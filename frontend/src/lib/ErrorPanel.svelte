@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Згортувана панель помилки ─────────────────────────────────────────
   // Великі помилки (інсталер/запуск) більше не заповнюють пів екрана:
   // панель згорнута за замовчуванням, згори — заголовок і кнопки
@@ -33,10 +35,10 @@
        onkeydown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open = !open } }}>
     <span class="ep-title"><i class="ti ti-alert-triangle"></i> <span class="ep-title-text">{title}</span></span>
     <div class="ep-acts" role="group" onclick={(e: any) => e.stopPropagation()}>
-      <button class="ep-btn" onclick={copyMessage} title={t('error.copy')}>
+      <button class="ep-btn" onclick={copyMessage} use:launcherTip={t('error.copy')}>
         <i class="ti ti-copy"></i> {t('error.copy')}
       </button>
-      <button class="ep-btn" onclick={() => open = !open} title={open ? t('error.collapse') : t('error.expand')}>
+      <button class="ep-btn" onclick={() => open = !open} use:launcherTip={open ? t('error.collapse') : t('error.expand')}>
         <i class="ti {open ? 'ti-chevron-up' : 'ti-chevron-down'}"></i>
       </button>
     </div>

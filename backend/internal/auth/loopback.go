@@ -17,11 +17,10 @@ import (
 
 // Єдиний loopback-сервер для ВСІХ входів через браузер (Microsoft і Google).
 //
-// Раніше Microsoft слухав 29111-29115 (/auth), а Google — випадковий порт (/shaurma-oidc).
 // Різні порти ламали Google: «Помилка 400: redirect_uri_mismatch» — Google приймає лише
 // redirect_uri, що точно збігається із зареєстрованим. Тепер ОДИН порт і ОДИН шлях для обох:
 //
-//	http://localhost:29111/auth
+// http://localhost:29111/auth
 //
 // Саме цей URI (один раз) треба додати в «Authorized redirect URIs» клієнта Google
 // (Google Cloud Console → Credentials). У Microsoft він уже зареєстрований.

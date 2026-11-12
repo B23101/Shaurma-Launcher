@@ -1,13 +1,11 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Вкладка «Вигляд» на сторінці сервера ────────────────────────────
   //
   // Сюди переїхало все, що описує сервер ЯК ОБʼЄКТ У ЛАУНЧЕРІ, а не як
   // процес: назва, опис (нотатки), ID (тека) і, власне, вигляд — іконка
   // лаунчера + колір + протокольна іконка гри (server-icon.png).
-  //
-  // Раніше це лежало в «Налаштуваннях» поряд із портом/JVM-аргументами —
-  // різні за змістом речі в одному екрані. Тепер «Налаштування» = запуск,
-  // «Вигляд» = як сервер виглядає й називається.
   import { App } from '../../wails'
   import { toast } from '../../toast.svelte'
   import { t } from '../../i18n.svelte'
@@ -211,7 +209,7 @@
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('servers.settings.name')}</span>
         <button class="sat-save sm" class:busy={savingKey === 'name'} disabled={savingKey === 'name' || !dirtyName}
-                onclick={() => saveOne('name')} title={t('servers.settings.save')} aria-label={t('servers.settings.save')}>
+                onclick={() => saveOne('name')} use:launcherTip={t('servers.settings.save')} aria-label={t('servers.settings.save')}>
           {#if savingKey === 'name'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-check"></i>{/if}
         </button>
       </div>
@@ -237,7 +235,7 @@
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('servers.settings.notes')}</span>
         <button class="sat-save sm" class:busy={savingKey === 'notes'} disabled={savingKey === 'notes' || !dirtyNotes}
-                onclick={() => saveOne('notes')} title={t('servers.settings.save')} aria-label={t('servers.settings.save')}>
+                onclick={() => saveOne('notes')} use:launcherTip={t('servers.settings.save')} aria-label={t('servers.settings.save')}>
           {#if savingKey === 'notes'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-check"></i>{/if}
         </button>
       </div>
@@ -286,7 +284,7 @@
         </label>
         <input id="srv-icon-file" type="file" accept="image/*" hidden onchange={pickIcon} />
         {#if srv.iconData}
-          <button class="btn btn-ghost btn-sm" onclick={resetIcon} title={t('servers.settings.appearanceReset')}><i class="ti ti-trash"></i></button>
+          <button class="btn btn-ghost btn-sm" onclick={resetIcon} use:launcherTip={t('servers.settings.appearanceReset')}><i class="ti ti-trash"></i></button>
         {/if}
       </div>
     </div>

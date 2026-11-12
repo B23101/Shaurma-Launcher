@@ -70,6 +70,9 @@ func (a *App) startModIconServer() {
 	mux.HandleFunc(modIconRoutePrefix, func(w http.ResponseWriter, r *http.Request) {
 		a.serveModIcon(w, r, token, port)
 	})
+	mux.HandleFunc(packIconRoutePrefix, func(w http.ResponseWriter, r *http.Request) {
+		a.servePackIcon(w, r, token, port)
+	})
 	srv := &http.Server{
 		Handler:           mux,
 		ReadHeaderTimeout: 5 * time.Second,

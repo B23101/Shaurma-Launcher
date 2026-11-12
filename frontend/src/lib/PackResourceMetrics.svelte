@@ -13,20 +13,27 @@
   let m = $state<PackMetrics | null>(null)
   let loaded = $state(false)
 
+  let disposed = false
+  let busy = false
   async function poll() {
+    if (disposed || busy || document.hidden) return
+    busy = true
+    const id = packId
     try {
-      m = await App.GetPackMetrics(packId)
+      const next = await App.GetPackMetrics(id)
+      if (!disposed && id === packId) m = next
     } catch {
       /* метрика — допоміжна, помилку мовчки ігноруємо */
     } finally {
-      loaded = true
+      busy = false
+      if (!disposed) loaded = true
     }
   }
 
   onMount(() => {
     poll()
     const timer = setInterval(poll, 2000)
-    return () => clearInterval(timer)
+    return () => { disposed = true; clearInterval(timer) }
   })
 
   const samples = $derived<PackMetricSample[]>(m?.samples ?? [])

@@ -72,6 +72,15 @@ export function hueOf(id: string): number {
   return h
 }
 
+/**
+ * Акцентний колір профілю: вибраний вручну або запасний за хешем ID. ЄДИНЕ джерело для вікна профілю
+ * друга (FriendProfileModal) і прев'ю в налаштуваннях (ProfilePreview) — раніше в них були різні
+ * значення насиченості (72% / 70%), тому «стандартний» колір виглядав по-різному.
+ */
+export function profileAccent(color: string | undefined, accountId: string): string {
+  return safeColor(color) || `hsl(${hueOf(accountId)} 72% 52%)`
+}
+
 /** ID коротко для показу: перші 8 і останні 4 символи (повний — у буфер по кліку). */
 export function shortId(id: string): string {
   return id.length > 16 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id

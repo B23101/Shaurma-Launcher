@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../../friends/tooltip'
+
   // ── Консоль сервера друга ─────────────────────────────────────────────
   // Відкривається з картки сервера друга. Стан і виклики — у remoteServers.svelte.ts.
   import UiModal from '../../UiModal.svelte'
@@ -33,9 +35,9 @@
   {#if srv}
     <div class="rcm-sec">
       {#if remote.secure === true}
-        <span class="rcm-pill ok" title={t('servers.remote.encryptedTip')}><i class="ti ti-lock"></i> {t('servers.remote.encrypted')}</span>
+        <span class="rcm-pill ok" use:launcherTip={t('servers.remote.encryptedTip')}><i class="ti ti-lock"></i> {t('servers.remote.encrypted')}</span>
       {:else if remote.secure === false}
-        <span class="rcm-pill" title={t('servers.remote.viaVpsTip')}><i class="ti ti-lock-open"></i> {t('servers.remote.viaVps')}</span>
+        <span class="rcm-pill" use:launcherTip={t('servers.remote.viaVpsTip')}><i class="ti ti-lock-open"></i> {t('servers.remote.viaVps')}</span>
       {/if}
     </div>
     <div class="rcm-out" bind:this={box}>

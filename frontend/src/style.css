@@ -41,16 +41,27 @@ img { -webkit-user-drag: none; user-drag: none; user-select: none; -webkit-user-
    (html[data-theme="light"] перевизначає --hover-strong/--border-hi).
    Більш специфічні правила (напр. .content, .gc-term) перекривають
    ширину/радіус поверх цих дефолтів. */
-* {
-  scrollbar-width: thin; /* Firefox */
-  scrollbar-color: var(--hover-strong) transparent;
+/* ЄДИНИЙ скролбар для всього лаунчера. Раніше на `*` стояло
+   `scrollbar-width`/`scrollbar-color`: у сучасному Chromium (WebView2) вони
+   ВІДМИКАЮТЬ ::-webkit-scrollbar, тож одні блоки (.content) малювали кастомний
+   стрілочний скрол, а інші (.st-main у налаштуваннях) — системний тонкий.
+   Тепер стандартні властивості діють лише там, де ::-webkit-scrollbar не
+   підтримується (Firefox), а у Chromium/WebKit усюди один стиль нижче.
+   Локальні перевизначення ширини/кольору скролбара не додавати. */
+@supports not selector(::-webkit-scrollbar) {
+  * { scrollbar-width: thin; scrollbar-color: var(--hover-strong) transparent; }
 }
 *::-webkit-scrollbar { width:8px; height:8px; }
 *::-webkit-scrollbar-track { background:transparent; }
-*::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:4px; }
-*::-webkit-scrollbar-thumb:hover { background:var(--border-hi); }
+*::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:4px; border:2px solid transparent; background-clip:padding-box; transition:background-color .15s; }
+*::-webkit-scrollbar-thumb:hover { background:var(--border-hi); background-clip:padding-box; border:2px solid transparent; }
 *::-webkit-scrollbar-button { display:none; width:0; height:0; }
 *::-webkit-scrollbar-corner { background:transparent; }
+
+/* Числові поля: нативні стрілки сховані скрізь — крок дає NumberInput. */
+input[type=number] { -moz-appearance:textfield; appearance:textfield; }
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; appearance:none; margin:0; display:none; }
 
 /* Ванільний <select>: страховка на випадок, якщо десь лишився нативний
    випадаючий список — виглядає як кастомний контрол лаунчера (без
@@ -220,8 +231,8 @@ body {
 .sidebar.collapsed .sidebar-collapse-btn { transform:rotate(180deg); }
 /* У стисненому sidebar навігація — квадратні іконки по центру, більші
    (не видовжені вправо): приховуємо текст, центруємо і збільшуємо іконку. */
-.sidebar.collapsed .nav-list { padding:0 8px 6px; }
-.sidebar.collapsed .nav-item { justify-content:center; padding:10px 8px; gap:0; }
+.sidebar.collapsed .nav-list { padding:0 0 6px; align-items:center; }
+.sidebar.collapsed .nav-item { box-sizing:border-box; width:var(--sbc-tile); margin:0 auto; justify-content:center; padding:10px 0; gap:0; }
 .sidebar.collapsed .nav-item i { font-size:18px; width:auto; }
 
 /* ── Голови друзів онлайн на пункті «Друзі» ───────────────────────────
@@ -368,9 +379,12 @@ body {
    Клас .rise-in задає анімацію появи знизу вгору; елементи, що хочуть
    каскад (один за одним), додатково задають inline animation-delay через
    індекс у {#each}. Без цього класу списки з'являлися б "стрибком". */
-.rise-in { animation:rise-in .3s cubic-bezier(.22,.9,.35,1.1) both; }
+/* backwards, а не both: після кінця анімації елемент повертається до звичайних
+   стилів — без постійного composited-шару на кожній плитці і з робочим
+   hover-transform (fill-mode forwards перекривав його). */
+.rise-in { animation:rise-in .16s cubic-bezier(.22,1,.36,1) backwards; }
 @keyframes rise-in {
-  from { opacity:0; transform:translateY(6px); }
+  from { opacity:0; transform:translateY(4px); }
   to   { opacity:1; transform:translateY(0); }
 }
 
@@ -514,8 +528,6 @@ html[data-window-active="off"] *::after {
 }
 
 .sb-packs { flex:1; overflow-y:auto; padding:2px 10px 6px; display:flex; flex-direction:column; gap:3px; min-height:0; }
-.sb-packs::-webkit-scrollbar { width:4px; }
-.sb-packs::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:2px; }
 .sb-pack {
   display:flex; align-items:center; gap:8px;
   padding:6px 7px; border-radius:var(--r-md);
@@ -749,7 +761,7 @@ html[data-window-active="off"] *::after {
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 .ft-live { color:var(--green); }
-.ft-live i { font-size:7px; vertical-align:middle; }
+.ft-live i { font-size:7px; vertical-align:middle; margin-right:2px; }
 .inst-tile.folder-tile .ft-sub {
   font-size:11.5px; color:var(--text-mute);
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
@@ -778,12 +790,7 @@ html[data-window-active="off"] *::after {
 }
 
 .fm-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap:12px; padding:2px; }
-.fm-tile { animation:rise-in .3s cubic-bezier(.34,1.56,.64,1) both; }
-.fm-empty {
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
-  padding:40px 16px; color:var(--text-mute); font-size:13px; text-align:center;
-}
-.fm-empty i { font-size:30px; }
+.fm-tile { animation:rise-in .16s cubic-bezier(.22,1,.36,1) backwards; }
 .fm-hint {
   flex:1 1 auto; color:var(--text-mute);
   font-size:11.5px; display:flex; align-items:center; gap:7px; line-height:1.35;
@@ -889,7 +896,6 @@ html[data-window-active="off"] *::after {
   max-height:min(38vh, 320px); overflow-y:auto;
   display:flex; flex-direction:column; gap:4px;
   padding:4px; margin:0 -4px;
-  scrollbar-width:thin;
 }
 .fe-pack-empty {
   padding:14px; text-align:center; font-size:12px; color:var(--text-dim);
@@ -935,7 +941,6 @@ html[data-window-active="off"] *::after {
   overflow:hidden; opacity:1; max-width:160px;
   transition:opacity .16s ease, max-width .2s cubic-bezier(.4,0,.2,1);
 }
-.sidebar.collapsed .sb-create { margin:4px 8px 2px; padding:7px 0; gap:0; }
 .sb-create { transition:border-color .15s, color .15s, background .15s, margin .22s cubic-bezier(.4,0,.2,1), padding .22s cubic-bezier(.4,0,.2,1), gap .22s cubic-bezier(.4,0,.2,1); }
 .sidebar.collapsed .sb-create span { opacity:0; max-width:0; }
 
@@ -1384,30 +1389,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   overflow:hidden; opacity:1; max-width:100px;
   transition:opacity .16s ease, max-width .2s cubic-bezier(.4,0,.2,1);
 }
-/* Згорнутий sidebar: тільки іконки збірок + перемикач Шаурма/Кастомні */
-.sidebar.collapsed .pack-switch {
-  flex-direction:column; margin:6px 8px 8px; padding:3px;
-}
-.sidebar.collapsed .pack-switch button span { opacity:0; max-width:0; }
-.sidebar.collapsed .pack-switch button { padding:6px 0; }
-.sidebar.collapsed .sb-packs {
-  padding:2px 0 6px; display:flex; flex-direction:column; gap:6px; align-items:center;
-  overflow-y:auto; /* прокручується але без видимого scrollbar */
-  scrollbar-width:none; /* Firefox — ховаємо scrollbar */
-}
-.sidebar.collapsed .sb-packs::-webkit-scrollbar { display:none; } /* Chrome/WebKit */
-/* У стисненому вигляді картка — рівний квадрат (а не «ширина впритул до
-   скролбара»): фіксований розмір 42px = іконка 36 + паддинг 3×2, щоб навіть
-   коли з'являється скролбар кнопка не розтягувалась і не переставала бути
-   квадратом. */
-.sidebar.collapsed .sb-pack {
-  justify-content:center; padding:3px; width:42px; height:42px; min-height:42px;
-  border-radius:12px; flex-shrink:0;
-}
-/* Лінія «обраної» збірки у стисненому вигляді засмічує маленьку кнопку —
-   приховуємо (активний стан і так видно по фону). Тепер лінія — це
-   border-left самої картки, тому просто скидаємо його колір назад. */
-.sidebar.collapsed .sb-pack.active { border-left-color: transparent; }
 /* Текст/кнопка всередині картки спершу тане (opacity), і лише ПІСЛЯ
    цього (visibility з delay) картка стискається в 42px квадрат — без
    цього текст різко зникав по display:none в той самий момент, коли
@@ -1426,34 +1407,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   transition:opacity .1s ease, visibility 0s linear .1s;
 }
 .sidebar.collapsed .sb-pin-label { display:none; }
-/* Стадійна іконка у стисненому вигляді: замість кнопки показується під
-   іконкою збірки (квадрат 20px), щоб стан Java/лоадера було видно. */
-.sidebar.collapsed .sb-pack .sp-st {
-  position:absolute; bottom:-4px; right:-4px; z-index:2;
-  width:20px; height:20px; min-width:20px; border-radius:6px;
-  border:1px solid var(--border-hi);
-}
-.sidebar.collapsed .sb-pack .sp-st img { padding:2px; }
-.sidebar.collapsed .sb-pack .sp-st i { font-size:11px; }
-/* У стисненому вигляді картка (.sb-pack, 42px) вже сама несе фон/стан
-   (active/pinned/hover/glow) — .sp-ic (36px) майже впритул до її країв
-   мала СВІЙ ДРУГИЙ кольоровий фон (color-mix з .pcol, той самий колір),
-   і два напівпрозорих шари різного border-radius (12px картка/10px
-   іконка) на 3px відступі накладались один на одного: візуально це
-   читалось як «розмита кольорова каша» під іконкою, а не чіткий значок
-   («крива іконка з купою фонів»). У стисненому вигляді фон лишає тільки
-   картка — .sp-ic стає прозорим контейнером саме під картинку/іконку,
-   без власного кольорового квадрата.
-   Виняток: коли картинки немає (fallback ti-іконка), лишаємо легкий фон
-   під нею — інакше голий glyph без підкладки губиться на фоні картки. */
-.sidebar.collapsed .sb-pack .sp-ic {
-  width:36px; height:36px; min-width:36px; border-radius:10px; font-size:17px;
-  background:transparent;
-}
-.sidebar.collapsed .sb-pack .sp-ic:not(.has-icon) {
-  background:color-mix(in srgb, var(--pcol, var(--orange)) 14%, transparent);
-}
-.sidebar.collapsed .sb-pack .sp-ic i { font-size:18px; }
 /* У стисненому режимі стан показує «сяйво» (glow-*), а не старе блимання:
    вимикаємо blink, щоб вони не працювали одночасно. */
 .sidebar.collapsed .sb-pack .sp-ic.blink img,
@@ -1473,49 +1426,12 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .sidebar.collapsed .sb-pack.glow-blue .sp-ic   { --glow-c:rgba(59,130,246,.8); animation:sb-glow 1.8s ease-in-out infinite; }
 .sidebar.collapsed .sb-pack.glow-yellow .sp-ic { --glow-c:rgba(245,158,11,.8); animation:sb-glow 2s ease-in-out infinite; }
 
-/* ── Папка (кастомні збірки) у стисненому sidebar ──
-   Той самий трактат, що й .sb-pack: квадратна плитка 42×42 з іконкою по
-   центру, без назви/лічильника/стрілки. Клік по папці РОЗКРИВАЄ список
-   збірок ВСЕРЕДИНІ стисненого сайдбара (без розгортання всього sidebar!):
-   .sf-packs показується лише у відкритій папці — колонкою квадратів-
-   іконок тих самих .sb-pack (вони вже мають стиснені стилі: 42px, лише
-   іконка, без назви/кнопок). Так збірки папки доступні зі стисненого
-   вигляду, і сайдбар лишається вузьким.
-   Розкриття анімується ТІЄЮ Ж технікою, що й в expanded-режимі
-   (grid-template-rows 0fr→1fr на .sf-packs, див. базове правило вище) —
-   раніше collapsed перекривав його на display:none/flex, два несумісні
-   display-режими ламали transition і папка розкривалась/згорталась
-   миттєвим стрибком замість плавного роз'їзду. */
-.sidebar.collapsed .sb-folder { width:42px; margin:1px auto; transition:width .22s cubic-bezier(.4,0,.2,1), margin .22s, border-color .18s, background .18s, box-shadow .2s; }
-.sidebar.collapsed .sf-row {
-  justify-content:center; padding:3px; width:42px; height:42px; min-height:42px;
-  border-radius:12px; gap:0;
-  transition:width .22s cubic-bezier(.4,0,.2,1), height .22s cubic-bezier(.4,0,.2,1),
-    padding .22s cubic-bezier(.4,0,.2,1), background .18s, border-color .18s;
-}
-.sidebar.collapsed .sf-stack { width:36px; height:36px; flex:0 0 36px; transition:width .22s, height .22s, flex-basis .22s; }
-.sidebar.collapsed .sf-stack img,
-.sidebar.collapsed .sf-stack-fallback { width:26px; height:26px; }
-.sidebar.collapsed .sf-stack img:nth-child(2), .sidebar.collapsed .sf-stack-fallback:nth-child(2) { left:7px; top:5px; }
-.sidebar.collapsed .sf-stack img:nth-child(3), .sidebar.collapsed .sf-stack-fallback:nth-child(3) { left:14px; top:10px; }
-.sidebar.collapsed .sf-stack .sf-stack-empty { left:5px; top:5px; width:26px; height:26px; }
 .sf-meta, .sf-arrow {
   opacity:1; max-width:160px; overflow:hidden;
   transition:opacity .16s ease, max-width .2s cubic-bezier(.4,0,.2,1);
 }
 .sidebar.collapsed .sf-meta,
 .sidebar.collapsed .sf-arrow { opacity:0; max-width:0; }
-/* Відкрита папка у стисненому вигляді: список збірок — колонка
-   квадратів-іконок по центру (без лівого бордера/відступу звичайного
-   .sf-packs). */
-.sidebar.collapsed .sf-packs-inner {
-  align-items:center; gap:4px;
-  padding:4px 0 2px; border-left:none; margin-left:0;
-}
-.sidebar.collapsed .sb-folder.open .sf-row {
-  background:color-mix(in srgb, var(--pcol, var(--orange)) 14%, var(--hover));
-  border-color:color-mix(in srgb, var(--pcol, var(--orange)) 30%, var(--border));
-}
 
 .sidebar-footer {
   margin-top:auto; padding:12px 14px 16px;
@@ -1818,8 +1734,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
    (стиль UA) — порожня обгортка забирала половину flex-висоти й контент
    браузера «опускався» на середину вікна. Як для .cb-page-holder нижче. */
 .content.content-no-scroll > .page-view[hidden] { display:none; }
-.content::-webkit-scrollbar { width:6px; }
-.content::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:3px; }
 
 /* Заголовок + опис сторінки тепер у верхній панелі (topbar); тут лишається
    лише компактний рядок дій сторінки (кнопки/підказки). */
@@ -2198,19 +2112,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 
 /* Порожній стан «Мої збірки» (розділ кастомних збірок): іконка + напис +
    кнопки «Створити збірку» / «Імпортувати». */
-.empty-packs {
-  display:flex; flex-direction:column; align-items:center; justify-content:center;
-  gap:14px; padding:52px 20px; text-align:center;
-}
-.empty-packs-ic {
-  width:74px; height:74px; border-radius:22px;
-  background:color-mix(in srgb, var(--orange) 10%, transparent);
-  border:1px dashed var(--border-hi);
-  display:flex; align-items:center; justify-content:center;
-  color:var(--orange); font-size:34px;
-}
-.empty-packs-title { font-size:15px; font-weight:700; color:var(--text); }
-.empty-packs-acts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; justify-content:center; }
 
 /* Порожній sidebar (немає жодної збірки): компактний варіант того ж стану. */
 .sb-empty {
@@ -2291,9 +2192,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 }
 .select .dd-menu .dd-item:hover { background:var(--hover, rgba(255,255,255,.07)); }
 .select .dd-menu .dd-item.sel { color: var(--violet); }
-.select .dd-menu::-webkit-scrollbar { width:6px; }
-.select .dd-menu::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:3px; }
-.select .dd-menu::-webkit-scrollbar-track { background:transparent; }
 
 .input { background:var(--bg-input); border:1px solid var(--border); border-radius:var(--r-md); padding:10px 12px; font-size:13px; color:var(--text); font-family:inherit; outline:none; width:100%; transition:border-color .15s; }
 .input.mono { font-family:var(--font-mono); font-size:12px; }
@@ -2643,8 +2541,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 /* Стара «хвиля» на .sni.active::after більше не потрібна — її замінює
    пігулка-індикатор. */
 .sub-nav .sni.active::after { display:none; }
-.sub-nav::-webkit-scrollbar { width:5px; }
-.sub-nav::-webkit-scrollbar-thumb { background:var(--hover-strong); border-radius:3px; }
 
 /* Поява вкладки: fade + slide + scale + blur — преміум-перехід. */
 @keyframes st-panel-in {
@@ -3547,7 +3443,6 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .sidebar .sp-btn { width: calc(26px * var(--sb-scale)); height: calc(26px * var(--sb-scale)); min-width: calc(26px * var(--sb-scale)); }
 .sidebar .logo-icon-box { width: calc(36px * var(--sb-scale)); height: calc(36px * var(--sb-scale)); border-radius: calc(11px * var(--sb-scale)); }
 .sidebar.collapsed .nav-item i { font-size: calc(18px * var(--sb-scale)); }
-.sidebar.collapsed .sb-pack .sp-ic { width: calc(36px * var(--sb-scale)); height: calc(36px * var(--sb-scale)); min-width: calc(36px * var(--sb-scale)); border-radius: calc(10px * var(--sb-scale)); }
 
 /* ── Сегментний перемикач (розмір sidebar у налаштуваннях) ── */
 .seg-ctl { display: flex; gap: 3px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
@@ -3911,7 +3806,29 @@ button.sw { appearance:none; -webkit-appearance:none; }
    transform/filter з keyframes, лишився лише opacity (fade без
    slide/scale/skew/blur) — .page-view більше не ламає sticky для
    жодної сторінки, що рендериться всередині. */
-.page-view { animation:page-view-in .42s cubic-bezier(.16,1,.3,1) backwards; }
+.page-view { animation:page-view-in .26s cubic-bezier(.22,.61,.36,1) backwards; }
+/* Сторінки, що монтуються прямо під .content (гардероб, друзі, налаштування,
+   аналітика, браузер контенту) не мали жодної анімації — з'являлись різко.
+   Той самий fade. Без View Transitions; з ними (html[data-vt]) цим
+   займається cross-fade нижче, щоб не було подвійної анімації. */
+.content > :not(.page-view):not([hidden]) { animation:page-view-in .22s cubic-bezier(.22,.61,.36,1) backwards; }
+/* Під час View Transition власний fade сторінки вимкнено ТРИВАЛІСТЮ 0s, а не
+   `animation:none`: зміна animation-name після завершення переходу
+   перезапускала б fade (сторінка «блимала» вдруге). Зміна тривалості вже
+   завершеної анімації її не перезапускає. */
+html[data-vt] .page-view,
+html[data-vt] .content > * { animation-duration:0s !important; animation-delay:0s !important; }
+
+/* View Transitions: ковзає лише область вмісту (.content); sidebar і
+   верхня панель не «розчиняються». Ім'я ставиться лише на час переходу,
+   щоб постійний view-transition-name не створював зайвий контекст. */
+html[data-vt] .content { view-transition-name:page-content; }
+::view-transition-old(root), ::view-transition-new(root) { animation:none; mix-blend-mode:normal; }
+/* Однакова тривалість і крива для старого й нового знімка — сума непрозорості
+   лишається ~1 (cross-fade), без «провалу» у порожнечу посередині. */
+::view-transition-group(page-content) { animation-duration:.22s; }
+::view-transition-old(page-content),
+::view-transition-new(page-content) { animation-duration:.22s; animation-timing-function:ease-in-out; }
 @keyframes page-view-in {
   0%   { opacity:0; }
   100% { opacity:1; }
@@ -4017,8 +3934,11 @@ button.sw { appearance:none; -webkit-appearance:none; }
   backdrop-filter:blur(8px);
 }
 /* Поява контенту вкладки сторінки збірки (обгортка {#key tab}). */
-.tab-panel-host { position:relative; }
-.tab-panel-anim { animation:tab-panel-in .22s ease-out both; }
+/* Старий і новий розділ лежать в одній клітинці grid і перетікають
+   (crossfade — transition у PackInstancePage): без різкого «зникло → з'явилось»
+   і без стрибка висоти. */
+.tab-panel-host { position:relative; display:grid; }
+.tab-panel-anim { grid-area:1 / 1; min-width:0; }
 /* Лише opacity: translate/blur розширювали область прокрутки й перемальовували
    текст — саме це «трясло» екран при перемиканні розділів. */
 @keyframes tab-panel-in {
@@ -4125,134 +4045,10 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .settings-grid > * { position:relative; z-index:1; }
 
 /* ══════════════ ГЛОБАЛЬНИЙ ПОШУК (Ctrl+K) ══════════════
-   Модалка пошуку у стилі лаунчера: скляна панель, акцентні hover,
-   типи результатів (збірки / пресети гардероба / контент / налаштування). */
-.search-overlay {
-  position: fixed; inset: 0; z-index: 900;
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 12vh 20px 20px;
-  background: rgba(5, 5, 8, 0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
-  animation: gs-fade-in .18s ease;
-}
-@keyframes gs-fade-in { from { opacity: 0 } to { opacity: 1 } }
-
-.global-search {
-  width: min(600px, 100%);
-  max-height: min(72vh, 640px);
-  display: flex; flex-direction: column;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--bg-panel) 96%, var(--orange) 4%), var(--bg-panel));
-  border: 1px solid var(--border-hi);
-  border-radius: 18px;
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.03), 0 0 60px rgba(var(--orange-rgb), 0.06);
-  overflow: hidden;
-  animation: gs-pop-in .22s cubic-bezier(.22, 1.2, .36, 1);
-}
-@keyframes gs-pop-in {
-  from { opacity: 0; transform: translateY(-14px) scale(.97); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.gs-input-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-input) 55%, transparent);
-  flex-shrink: 0;
-}
-.gs-input-row > .ti {
-  font-size: 17px; color: var(--orange);
-  filter: drop-shadow(0 0 6px rgba(var(--orange-rgb), .4));
-}
-.gs-input-row input {
-  flex: 1; min-width: 0;
-  background: transparent; border: none; outline: none;
-  color: var(--text); font-family: inherit; font-size: 14.5px; font-weight: 600;
-  padding: 6px 0;
-}
-.gs-input-row input::placeholder { color: var(--text-dim); font-weight: 500; }
-.gs-input-row kbd {
-  padding: 3px 8px;
-  font-size: var(--fs-min); font-weight: 700; color: var(--text-mute);
-  background: var(--bg-input); border: 1px solid var(--border-hi);
-  border-radius: 6px; letter-spacing: .5px;
-  flex-shrink: 0;
-}
-
-.gs-results {
-  overflow-y: auto;
-  padding: 8px 10px 12px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--hover-strong) transparent;
-}
-
-.gs-group { margin-top: 6px; }
-.gs-group-title {
-  display: flex; align-items: center; gap: 7px;
-  padding: 8px 10px 6px;
-  font-size: var(--fs-min); font-weight: 800; letter-spacing: 1.1px; text-transform: uppercase;
-  color: var(--text-dim);
-}
-.gs-group-title .ti { font-size: 12px; color: var(--orange); }
-.gs-group-title .gs-count {
-  margin-left: auto; font-size: var(--fs-min); font-weight: 700;
-  color: var(--text-dim); background: var(--hover);
-  padding: 1px 7px; border-radius: 20px;
-}
-.gs-spinner {
-  width: 12px; height: 12px; margin-left: 2px;
-  border: 2px solid var(--hover-strong); border-top-color: var(--orange);
-  border-radius: 50%; animation: spin .7s linear infinite;
-}
-
-.gs-item {
-  display: flex; align-items: center; gap: 11px;
-  padding: 8px 10px;
-  border-radius: 11px;
-  cursor: pointer;
-  transition: background .13s, transform .1s;
-}
-.gs-item:hover { background: var(--hover); }
-.gs-item:active { transform: scale(.985); }
-.gs-item + .gs-item { margin-top: 1px; }
-
-.gs-ic {
-  width: 36px; height: 36px; min-width: 36px;
-  border-radius: 10px;
-  display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(135deg, color-mix(in srgb, var(--pcol, var(--orange)) 22%, transparent), color-mix(in srgb, var(--pcol, var(--orange)) 8%, transparent));
-  border: 1px solid color-mix(in srgb, var(--pcol, var(--orange)) 28%, transparent);
-  color: var(--pcol, var(--orange));
-  font-size: 16px;
-  overflow: hidden;
-  flex-shrink: 0;
-}
-.gs-ic.has-icon { border: none; background: var(--bg-input); }
-.gs-ic img { width: 100%; height: 100%; object-fit: cover; display: block; }
-
-.gs-name {
-  flex: 1; min-width: 0;
-  font-size: 13px; font-weight: 700; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.gs-meta {
-  flex-shrink: 0;
-  font-size: var(--fs-min); font-weight: 600; color: var(--text-dim);
-  display: flex; align-items: center; gap: 5px;
-}
-.gs-meta .dot {
-  width: 5px; height: 5px; border-radius: 50%; background: var(--hover-strong);
-}
-
-.gs-empty {
-  display: flex; flex-direction: column; align-items: center; gap: 8px;
-  padding: 34px 16px;
-  color: var(--text-dim); font-size: 12.5px; font-weight: 600;
-  text-align: center;
-}
-.gs-empty .ti { font-size: 26px; opacity: .5; }
-.gs-empty.small { padding: 16px; font-size: 11.5px; }
+   Увесь вигляд модалки пошуку живе у GlobalSearchModal.svelte (scoped-стилі).
+   Старі глобальні правила (.global-search, .gs-input-row, .gs-ic, .gs-item…)
+   прибрано: вони накладалися на компонент і давали подвійні лінії, обведені
+   іконки та злиплі чипи. Тут лишились лише класи пресетів гардероба. */
 
 /* Пресет гардероба у результатах: 2D голова скіна + картка плаща. */
 .gs-wardrobe {
@@ -5058,7 +4854,8 @@ html[data-theme="light"] .hl-f { color:#b91c1c; }
   .tabbar.tb-slide:has(> .tab-btn:nth-of-type(8)) > .tab-btn { padding-left:10px; padding-right:10px; }
 }
 @media (max-width: 1180px) {
-  .tabbar.tb-slide:has(> .tab-btn:nth-of-type(8)) > .tab-btn > i { display:none; }
+  /* Таббари зі стисканням (.sv-tabs, .tbf — дія tabsFit) самі переходять до іконок — їм іконки потрібні. */
+  .tabbar.tb-slide:not(.sv-tabs):not(.tbf):has(> .tab-btn:nth-of-type(8)) > .tab-btn > i { display:none; }
 }
 
 /* Interactive feedback uses compositor-only scale; low-motion modes stay still. */
@@ -5091,11 +4888,6 @@ html[data-performance-mode="on"] .btn { scale:1 !important; }
   /* Іконка щойно обраної вкладки «підстрибує». */
   html:not([data-animations="off"]):not([data-performance-mode="on"]) .tab-btn.active > i:first-child {
     animation:ui-tab-icon-pop .46s cubic-bezier(.34,1.56,.64,1);
-  }
-  /* Новий розділ: лише opacity — transform/filter на обгортці ламали
-     sticky-панелі та fixed-модалки (див. коментар до tab-panel-in вище). */
-  html:not([data-animations="off"]):not([data-performance-mode="on"]) .tab-panel-anim {
-    animation:ui-tab-panel-in .3s cubic-bezier(.16,1,.3,1) both;
   }
   /* Перемикачі: повзунок пружинить, а при вмиканні коротко «розтягується». */
   html:not([data-animations="off"]):not([data-performance-mode="on"]) :is(.st-switch, .toggle)::after {
@@ -5212,3 +5004,219 @@ html[data-performance-mode="on"] .inst-tile:hover .it-ic { transform:none; }
   text-shadow:0 2px 10px rgba(0,0,0,.7);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
 }
+
+/* ═══ Створення збірки — оновлений вигляд ═══════════════════════════════
+   Сторінка фарбується в ОБРАНИЙ колір збірки (--pc, виставляє CreatePackPage),
+   а не в акцент лаунчера: активні вкладки, вибраний лоадер, повзунок RAM,
+   перемикачі, крок-бейджі й дропзона підхоплюють колір збірки. */
+.create-page { --pc:#7b4dff; --pc-soft:color-mix(in srgb, var(--pc) 14%, transparent); --pc-line:color-mix(in srgb, var(--pc) 45%, transparent); }
+
+/* Вкладки «Вручну / Імпортувати» */
+.create-page .tabbar { padding:5px; border-radius:14px; margin-bottom:22px; }
+.create-page .tab-btn { padding:9px 18px; border-radius:10px; }
+.create-page .tab-btn.active {
+  background:linear-gradient(135deg, var(--pc), color-mix(in srgb, var(--pc) 70%, #000));
+  box-shadow:0 6px 16px color-mix(in srgb, var(--pc) 38%, transparent);
+}
+.create-page .tab-btn:focus-visible:not(.active) { outline-color:var(--pc-line); }
+
+/* Картки секцій */
+.create-page .card { border-radius:18px; overflow:hidden; box-shadow:0 1px 0 rgba(255,255,255,.03) inset, 0 8px 24px rgba(0,0,0,.14); }
+.create-page .card-head { padding:16px 22px 14px; border-bottom:1px solid var(--border); background:linear-gradient(180deg, color-mix(in srgb, var(--pc) 6%, transparent), transparent); }
+.create-page .card-head .ci,
+.create-page .card-head .ci.violet,
+.create-page .card-head .ci.green,
+.create-page .card-head .ci.orange,
+.create-page .card-head .ci.blue,
+.create-page .card-head .ci.yellow { width:34px; height:34px; border-radius:11px; font-size:17px; background:var(--pc-soft); color:var(--pc); border:1px solid color-mix(in srgb, var(--pc) 22%, transparent); }
+.create-page .card-head .ct { font-size:14px; font-weight:800; }
+.create-page .card-head .cd { font-size:11.5px; }
+.create-page .row { padding:15px 22px; }
+.create-page .row:last-child { border-bottom:none; }
+
+/* Крок-бейджі: заповнені, а не лише при наведенні */
+.create-page .step-num { width:24px; height:24px; min-width:24px; border-radius:50%; background:var(--pc-soft); border-color:var(--pc-line); color:var(--pc); }
+.create-page .card-head:hover .step-num { color:#fff; border-color:var(--pc); background:var(--pc); }
+
+/* Поля вводу */
+.create-page .input:focus { border-color:var(--pc); box-shadow:0 0 0 3px var(--pc-soft); outline:none; }
+
+/* Вибір завантажувача */
+.create-page .loader-grid { grid-template-columns:repeat(auto-fill, minmax(118px, 1fr)); gap:10px; }
+.create-page .loader-opt { padding:16px 8px 14px; border-radius:14px; border-width:1.5px; position:relative; transition:border-color .15s, background .15s, transform .2s cubic-bezier(.34,1.56,.64,1), box-shadow .2s; }
+.create-page .loader-opt:hover { transform:translateY(-2px); border-color:var(--border-hi); }
+.create-page .loader-opt.sel { border-color:var(--pc); background:linear-gradient(180deg, color-mix(in srgb, var(--pc) 16%, transparent), color-mix(in srgb, var(--pc) 5%, transparent)); box-shadow:0 6px 18px color-mix(in srgb, var(--pc) 22%, transparent); }
+.create-page .loader-opt.sel::after { content:''; position:absolute; top:8px; right:8px; width:10px; height:10px; border-radius:50%; background:var(--pc); box-shadow:0 0 0 3px color-mix(in srgb, var(--pc) 28%, transparent); }
+.create-page .loader-opt .loader-ic { width:34px; height:34px; }
+
+/* Чіпи, перемикачі, повзунок RAM */
+.create-page .chip.on { background:var(--pc-soft); border-color:var(--pc-line); color:var(--pc); }
+.create-page .toggle.on { background:var(--pc-soft); border-color:var(--pc-line); }
+.create-page .toggle.on::after { background:var(--pc); box-shadow:0 2px 8px color-mix(in srgb, var(--pc) 50%, transparent); }
+.create-page .ram-track { height:8px; border-radius:8px; }
+.create-page .ram-fill { border-radius:8px; background:linear-gradient(90deg, color-mix(in srgb, var(--pc) 60%, #fff), var(--pc)); }
+.create-page .ram-knob { width:18px; height:18px; border:3px solid var(--pc); box-sizing:border-box; }
+
+/* Дропзона імпорту */
+.create-page .dropzone { border-radius:16px; border-color:var(--border-hi); }
+.create-page .dropzone:hover, .create-page .dropzone.drag-over { border-color:var(--pc); background:var(--pc-soft); }
+.create-page .dropzone i { color:var(--pc); }
+
+/* Права колонка: прев'ю і стани */
+.create-page .preview-col { gap:18px; }
+.create-page .status-pills { border-radius:14px; }
+.create-page .status-pills .pill.sel { background:var(--pc-soft); border-color:var(--pc-line); color:var(--pc); }
+.create-page .pv-tile { box-shadow:0 10px 28px rgba(0,0,0,.22); }
+.create-page .inst-banner { border-radius:16px; box-shadow:0 10px 28px rgba(0,0,0,.22); }
+
+/* Нижня панель дій: кнопка «Створити» теж у кольорі збірки */
+.create-footer .btn-primary { background:linear-gradient(135deg, var(--pc, #7b4dff), color-mix(in srgb, var(--pc, #7b4dff) 70%, #000)); border-color:transparent; box-shadow:0 6px 18px color-mix(in srgb, var(--pc, #7b4dff) 35%, transparent); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   СТИСНЕНИЙ SIDEBAR (68px) — єдине місце всіх правил стисненого режиму
+   для колонки збірок/папок/перемикача/кнопки «+».
+   • Усе в колонці має ОДНУ ширину --sbc-tile (48px при масштабі 1×) і
+     центрується через margin:auto — спільна вісь без зсувів.
+   • Рамки карток симетричні (раніше border-left:3px проти 1px зсувало
+     іконку вправо); колір рамки (running/active) не чіпаємо.
+   • Стек іконок папки (до 3) відцентровано за кількістю картинок:
+     1 — по центру, 2 — діагональ, 3 — габарит рівно 36×36.
+   • Фон несе лише картка; .sp-ic — прозорий контейнер під картинку
+     (виняток — збірка без картинки, іконка-пазл: легкий тон на картці).
+   • Масштаб sidebar (--sb-scale) враховано в усіх розмірах.
+   ══════════════════════════════════════════════════════════════════════ */
+.sidebar.collapsed {
+  --sbc-ic: calc(36px * var(--sb-scale, 1));
+  --sbc-tile: calc(var(--sbc-ic) + 12px);
+  --sbc-it: calc(22px * var(--sb-scale, 1));
+  --sbc-st: calc(7px * var(--sb-scale, 1));
+  --sbc-r: calc(12px * var(--sb-scale, 1));
+}
+
+/* Перемикач Шаурма/Кастомні + кнопка «+» */
+.sidebar.collapsed .pack-switch {
+  box-sizing:border-box; width:var(--sbc-tile); margin:6px auto 8px; padding:3px;
+  flex-direction:column; align-items:stretch; gap:4px; border-radius:14px;
+}
+.sidebar.collapsed .pack-switch button { flex:0 0 auto; justify-content:center; height:calc(34px * var(--sb-scale, 1)); padding:0; gap:0; border-radius:11px; }
+.sidebar.collapsed .pack-switch button i { font-size:calc(16px * var(--sb-scale, 1)); }
+.sidebar.collapsed .pack-switch button span { opacity:0; max-width:0; }
+/* Кнопка «+» — компактна (менша за плитку збірки), по центру тієї ж осі */
+.sidebar.collapsed .sb-create {
+  box-sizing:border-box; width:calc(var(--sbc-tile) - 8px); height:calc(30px * var(--sb-scale, 1));
+  margin:2px auto 6px; padding:0; gap:0; justify-content:center; border-radius:calc(10px * var(--sb-scale, 1));
+}
+.sidebar.collapsed .sb-create i { font-size:calc(14px * var(--sb-scale, 1)); }
+
+/* Колонка збірок (прокручується без видимого скролбара) */
+.sidebar.collapsed .sb-packs {
+  padding:4px 0 8px; gap:6px; align-items:center;
+  overflow-y:auto; scrollbar-width:none;
+}
+.sidebar.collapsed .sb-packs::-webkit-scrollbar { display:none; }
+
+/* Картка збірки: рівний квадрат, іконка рівно по центру */
+.sidebar.collapsed .sb-pack {
+  box-sizing:border-box; display:flex; align-items:center; justify-content:center;
+  flex-wrap:nowrap; flex-shrink:0; gap:0; padding:0; margin:0 auto;
+  width:var(--sbc-tile); height:var(--sbc-tile); min-height:var(--sbc-tile);
+  border-width:1px; border-left-width:1px; border-radius:var(--sbc-r);
+}
+.sidebar.collapsed .sb-pack.active { border-left-color:transparent; } /* лінія активної тут зайва */
+.sidebar.collapsed .sf-packs { --sbc-ic:calc(30px * var(--sb-scale, 1)); --sbc-tile:calc(var(--sbc-ic) + 10px); --sbc-r:calc(10px * var(--sb-scale, 1)); }
+/* Збірки всередині папки трохи менші за плитку папки: лишається повітря з боків,
+   тож наведення (scale іконки, рамка, сяйво) не вилазить за межі папки.
+   .sf-packs-inner має overflow:hidden (потрібен для анімації 0fr→1fr). */
+.sidebar.collapsed .sf-packs .sb-pack { padding:0; }
+.sidebar.collapsed .sf-packs-inner { padding-left:0; padding-right:0; }
+.sidebar.collapsed .sb-pack:hover .sp-ic { transform:scale(1.04); }
+.sidebar.collapsed .sb-pack .sp-ic {
+  flex:0 0 var(--sbc-ic); width:var(--sbc-ic); height:var(--sbc-ic); min-width:var(--sbc-ic);
+  margin:0; border-radius:calc(10px * var(--sb-scale, 1)); font-size:17px; background:transparent;
+}
+.sidebar.collapsed .sb-pack .sp-ic img { display:block; }
+.sidebar.collapsed .sb-pack .sp-ic i { font-size:18px; }
+/* Збірка без картинки (іконка-пазл): тон несе картка */
+.sidebar.collapsed .sb-pack .sp-ic:not(.has-icon) { background:transparent; border-radius:0; }
+.sidebar.collapsed .sb-pack:has(.sp-ic:not(.has-icon)) {
+  background:color-mix(in srgb, var(--pcol, var(--orange)) 14%, transparent);
+}
+.sidebar.collapsed .sb-pack.active:has(.sp-ic:not(.has-icon)) {
+  background:color-mix(in srgb, var(--pcol, var(--orange)) 22%, var(--bg-card));
+  border-color:color-mix(in srgb, var(--pcol, var(--orange)) 45%, var(--border-hi));
+}
+/* Стадійний значок Java/лоадера в куті картки */
+.sidebar.collapsed .sb-pack .sp-st {
+  position:absolute; bottom:-3px; right:-3px; z-index:2;
+  width:20px; height:20px; min-width:20px; border-radius:6px;
+  border:1px solid var(--border-hi);
+}
+.sidebar.collapsed .sb-pack .sp-st img { padding:2px; }
+.sidebar.collapsed .sb-pack .sp-st i { font-size:11px; }
+
+/* Папка: та сама плитка; клік розкриває колонку збірок усередині 68px.
+   Розкриття анімує grid-template-rows 0fr→1fr на .sf-packs (як в
+   розгорнутому режимі) — display не перемикаємо. */
+.sidebar.collapsed .sb-folder {
+  box-sizing:border-box; width:var(--sbc-tile); margin:0 auto; border-width:1px;
+  transition:width .22s cubic-bezier(.4,0,.2,1), border-color .18s, background .18s, box-shadow .2s;
+}
+.sidebar.collapsed .sf-row {
+  box-sizing:border-box; display:flex; align-items:center; justify-content:center;
+  gap:0; padding:0; width:100%; height:var(--sbc-tile); min-height:var(--sbc-tile);
+  border-radius:var(--sbc-r);
+  transition:width .22s cubic-bezier(.4,0,.2,1), height .22s cubic-bezier(.4,0,.2,1), background .18s, border-color .18s;
+}
+.sidebar.collapsed .sf-meta { flex:0 0 0; width:0; min-width:0; margin:0; padding:0; }
+.sidebar.collapsed .sb-folder.open .sf-row {
+  background:color-mix(in srgb, var(--pcol, var(--orange)) 14%, var(--hover));
+  border-color:color-mix(in srgb, var(--pcol, var(--orange)) 30%, var(--border));
+}
+.sidebar.collapsed .sf-packs-inner { align-items:center; gap:6px; padding:6px 0 4px; margin:0; border-left:none; }
+
+/* Стек іконок папки */
+.sidebar.collapsed .sf-stack {
+  position:relative; flex:0 0 var(--sbc-ic); width:var(--sbc-ic); height:var(--sbc-ic);
+  margin:0; overflow:visible; border-radius:0;
+}
+.sidebar.collapsed .sf-stack > img,
+.sidebar.collapsed .sf-stack > .sf-stack-fallback {
+  position:absolute; box-sizing:border-box; border-radius:calc(6px * var(--sb-scale, 1));
+  width:var(--sbc-it); height:var(--sbc-it);
+  left:calc((var(--sbc-ic) - var(--sbc-it)) / 2); top:calc((var(--sbc-ic) - var(--sbc-it)) / 2); /* 1 іконка */
+}
+.sidebar.collapsed .sf-stack > .sf-stack-fallback { display:flex; align-items:center; justify-content:center; }
+.sidebar.collapsed .sf-stack > :first-child:nth-last-child(2) {            /* 2 іконки */
+  left:calc((var(--sbc-ic) - var(--sbc-it) - var(--sbc-st) * 1.2) / 2);
+  top:calc((var(--sbc-ic) - var(--sbc-it) - var(--sbc-st) * 1.2) / 2);
+}
+.sidebar.collapsed .sf-stack > :nth-child(2):nth-last-child(1) {
+  left:calc((var(--sbc-ic) - var(--sbc-it) - var(--sbc-st) * 1.2) / 2 + var(--sbc-st) * 1.2);
+  top:calc((var(--sbc-ic) - var(--sbc-it) - var(--sbc-st) * 1.2) / 2 + var(--sbc-st) * 1.2);
+}
+.sidebar.collapsed .sf-stack > :first-child:nth-last-child(3) { left:0; top:0; }               /* 3 іконки */
+.sidebar.collapsed .sf-stack > :nth-child(2):nth-last-child(2) { left:var(--sbc-st); top:var(--sbc-st); }
+.sidebar.collapsed .sf-stack > :nth-child(3):nth-last-child(1) { left:calc(var(--sbc-st) * 2); top:calc(var(--sbc-st) * 2); }
+.sidebar.collapsed .sf-stack > :nth-child(n+4) { display:none; }
+.sidebar.collapsed .sf-stack > .sf-stack-empty {                            /* порожня папка */
+  left:calc((var(--sbc-ic) - var(--sbc-it)) / 2); top:calc((var(--sbc-ic) - var(--sbc-it)) / 2);
+}
+
+/* Футер (аватар) на тій самій осі */
+.sidebar.collapsed .sidebar-footer { padding:10px 0 14px; justify-content:center; gap:0; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Поступове стискання таббара (дія lib/tabsFit.ts: сторінки збірки й сервера)
+   1) .tbf-fit   — відступи вкладок зменшуються плавно (--tbf-px ставить дія);
+   2) .tbf-tight — відступи мінімальні: щільніші шрифт, іконки, проміжки;
+   3) .tbf-ico   — на кнопці: лише іконка (підпис, лічильник і ↗ сховано).
+   Підпис кнопки має бути в <span>, а не голим текстом.
+   ══════════════════════════════════════════════════════════════════════ */
+.tabbar.tb-slide.tbf.tbf-fit > .tab-btn:not(.tbf-ico) { padding-left:var(--tbf-px); padding-right:var(--tbf-px); }
+.tabbar.tb-slide.tbf.tbf-tight { gap:1px; }
+.tabbar.tb-slide.tbf.tbf-tight > .tab-btn:not(.tbf-ico) { gap:5px; font-size:11.5px; }
+.tabbar.tb-slide.tbf.tbf-tight > .tab-btn:not(.tbf-ico) > i:not(.sv-tab-out) { font-size:14px; }
+.tabbar.tb-slide.tbf > .tab-btn.tbf-ico { padding-left:12px; padding-right:12px; gap:0; }
+.tabbar.tb-slide.tbf > .tab-btn.tbf-ico > :not(i),
+.tabbar.tb-slide.tbf > .tab-btn.tbf-ico > .sv-tab-out { display:none; }
+.tabbar.tb-slide.tbf > .tab-btn.tbf-ico > i { font-size:16px; }

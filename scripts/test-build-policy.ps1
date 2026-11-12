@@ -21,6 +21,8 @@ $RequireSecrets = $true
 $GoogleId = [guid]::NewGuid().ToString('N')
 $GoogleSecret = ''
 $CfKey = ''
+$GeminiKey = [guid]::NewGuid().ToString('N')
+$GroqKey = [guid]::NewGuid().ToString('N')
 $RootKeys = [Convert]::ToBase64String((New-Object byte[] 32))
 $KeysetB64 = 'a2V5c2V0'
 $KeysetSig = 'c2ln'
@@ -33,7 +35,11 @@ foreach ($ed in @('base', 'shaurma')) {
     if (-not $captured.Flags.Contains($expected) -or $captured.Flags.Contains($forbidden)) { throw 'Updater edition isolation failed' }
     if ($captured.Tags -ne 'production' -or -not $captured.Out.EndsWith("$ed\updater.dll")) { throw 'Updater output/tag isolation failed' }
     if (-not $captured.Flags.Contains("newupdate.RootKeys=$RootKeys") -or -not $captured.Flags.Contains("newupdate.EmbeddedKeyset=$KeysetB64")) { throw 'Updater misses new update trust material' }
+    if ($captured.Flags.Contains($GeminiKey) -or $captured.Flags.Contains($GroqKey)) { throw 'Updater contains AI keys' }
     Build-Backend $ed
+    foreach ($key in @($GeminiKey, $GroqKey)) {
+        if ($captured.Flags.Contains($key) -ne ($ed -eq 'shaurma')) { throw 'Backend AI key injection/isolation failed' }
+    }
     if ($ed -eq 'base' -and ($captured.Tags -ne 'production' -or $captured.Flags.Contains($TokenShaurma))) { throw 'Base skin build leaked private edition support' }
 }
 foreach ($RequireSecrets in @($true, $false)) {

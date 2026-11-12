@@ -1,10 +1,13 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ── Розділ «Сервери» на сторінці збірки ────────────────────────────────
   // Відображення у стилі гардероба: картки з gradient-background, halo-glow
   // при hover, floating action-buttons. Drag&drop з візуальним ghost-
   // індикатором вставки (рядок між картками, що «розсовує» місце куди
   // потрапить сервер) — так само, як у Wardrobe.svelte для пресетів.
   import { t } from './i18n.svelte'
+  import EmptyState from './EmptyState.svelte'
   import { flip } from 'svelte/animate'
   import { toast, confirmDialog } from './toast.svelte'
   import { App } from './wails'
@@ -17,6 +20,7 @@
   import SelectField from './SelectField.svelte'
   import { tip } from './friends/tooltip'
   import type { PackRow, PackFolderRow, PackPickerItem } from './PackPicker.svelte'
+  import SearchField from './SearchField.svelte'
 
   let { packId, packName = '', disabled = false, allBuilds, packPicker = null, onServersChanged = () => {}, activeAccountId = '', stickyTop = 0, onPlay } = $props<{
     packId: string
@@ -37,11 +41,7 @@
     // ланцюга запуску (launchWithHealthGuard/doLaunch), а не тут.
     activeAccountId?: string
     // onPlay — та сама точка входу, що onLaunch на сторінці збірки
-    // (App.svelte joinPinnedServer → launchWithHealthGuard): раніше
-    // playOn() нижче викликав App.LaunchInstanceOnServer НАПРЯМУ, в обхід
-    // health-guard/mod-check/ram-check і без видимого прогресу запуску —
-    // кнопка «Грати» біля сервера в цьому списку працювала «тихіше», ніж
-    // головна кнопка «Грати» на тій самій сторінці.
+    // (App.svelte joinPinnedServer → launchWithHealthGuard).
     onPlay: (packId: string, address: string) => void
   }>()
 
@@ -369,10 +369,7 @@
      картку-заголовок прибрано: кількість серверів уже видно на вкладці. -->
 <div class="mods-toolbar server-toolbar" style={`--mt-top:${stickyTop}px`}>
   <div class="mt-group mt-group-main">
-    <div class="mt-search">
-      <i class="ti ti-search"></i>
-      <input bind:value={query} aria-label={t('pack.servers.search')} placeholder={t('pack.servers.search')} />
-    </div>
+    <SearchField bind:value={query} ariaLabel={t('pack.servers.search')} placeholder={t('pack.servers.search')} />
     <SelectField
       value={statusFilter}
       options={[
@@ -415,19 +412,17 @@
 {#if loading}
   <div class="srv-empty" role="status"><i class="ti ti-loader spin"></i><div>{t('loading')}</div></div>
 {:else if loadError}
-  <div class="srv-empty" role="alert"><i class="ti ti-alert-circle"></i><div>{loadError}</div><button class="btn btn-secondary" onclick={load}>{t('pack.servers.retry')}</button></div>
+  <EmptyState icon="ti-alert-circle" color="var(--red)" title={loadError}>
+    {#snippet actions()}<button class="btn btn-secondary" onclick={load}>{t('pack.servers.retry')}</button>{/snippet}
+  </EmptyState>
 {:else if !servers.length}
-  <div class="srv-empty">
-    <i class="ti ti-server-2"></i>
-    <div>{t('pack.servers.empty')}</div>
-    <button class="btn btn-primary" onclick={openAddModal}><i class="ti ti-plus"></i>{t('pack.servers.add')}</button>
-  </div>
+  <EmptyState icon="ti-server-2" title={t('pack.servers.empty')}>
+    {#snippet actions()}<button class="btn btn-primary" onclick={openAddModal}><i class="ti ti-plus"></i>{t('pack.servers.add')}</button>{/snippet}
+  </EmptyState>
 {:else if !filtered.length}
-  <div class="srv-empty">
-    <i class="ti ti-search-off"></i>
-    <div>{t('pack.servers.noResultsFor', { query })}</div>
-    <button class="btn btn-secondary" onclick={() => { query = ''; statusFilter = 'all' }}>{t('pack.servers.clearFilters')}</button>
-  </div>
+  <EmptyState icon="ti-search-off" title={t('pack.servers.noResultsFor', { query })}>
+    {#snippet actions()}<button class="btn btn-secondary" onclick={() => { query = ''; statusFilter = 'all' }}>{t('pack.servers.clearFilters')}</button>{/snippet}
+  </EmptyState>
 {:else}
   {#each filtered as s, i (s.address)}
     {@const pr = pings[s.address]}
@@ -459,7 +454,7 @@
         class="srv-check"
         class:checked={selected.has(s.address)}
         onclick={(e: any) => { e.stopPropagation(); toggleSelected(s.address) }}
-        aria-label={t('pack.servers.selectForCopy') + ': ' + (s.name || s.address)} title={t('pack.servers.selectForCopy')}
+        aria-label={t('pack.servers.selectForCopy') + ': ' + (s.name || s.address)} use:launcherTip={t('pack.servers.selectForCopy')}
       >
         <i class="ti ti-check"></i>
       </button>
@@ -478,20 +473,20 @@
       <!-- Основна інфа -->
       <div class="srv-info">
         <div class="srv-name">
-          <span class="srv-name-text" title={s.name || s.address}>{s.name || s.address}</span>
+          <span class="srv-name-text" use:launcherTip={s.name || s.address}>{s.name || s.address}</span>
           {#if s.official}<span class="chip on">{t('pack.servers.official')}</span>{/if}
           <!-- Тимчасовий сервер (P2P-кімната): лаунчер прибере його сам,
                щойно доступу не стане — про це треба чесно сказати тут. -->
           {#if s.temp}
-            <span class="chip temp" title={t('servers.tempServer.hint')}>
+            <span class="chip temp" use:launcherTip={t('servers.tempServer.hint')}>
               <i class="ti ti-clock-play"></i> {t('servers.tempServer.badge')}
             </span>
           {/if}
           {#if s.pinned}<span class="chip pin"><i class="ti ti-pin"></i></span>{/if}
         </div>
-        <div class="srv-addr" title={s.address}>{s.address}</div>
+        <div class="srv-addr" use:launcherTip={s.address}>{s.address}</div>
         {#if pr?.online && pr.motd}
-          <div class="srv-motd" title={stripMotdCodes(pr.motd)}>{#each parseMotdSegments(pr.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
+          <div class="srv-motd" use:launcherTip={stripMotdCodes(pr.motd)}>{#each parseMotdSegments(pr.motd) as seg}<span style="color:{seg.color ?? 'inherit'}; font-weight:{seg.bold ? 700 : 'inherit'}; font-style:{seg.italic ? 'italic' : 'normal'}; text-decoration:{[seg.underline && 'underline', seg.strikethrough && 'line-through'].filter(Boolean).join(' ') || 'none'}">{seg.text}</span>{/each}</div>
         {/if}
       </div>
 
@@ -511,19 +506,19 @@
 
       <!-- Action-кнопки: завжди видимі справа -->
       <div class="srv-actions">
-        <button class="srv-action-btn primary" onclick={() => playOn(s)} disabled={disabled} title={t('pack.servers.join')}>
+        <button class="srv-action-btn primary" onclick={() => playOn(s)} disabled={disabled} use:launcherTip={t('pack.servers.join')}>
           <i class="ti ti-player-play" aria-hidden="true"></i><span>{t('pack.servers.join')}</span>
         </button>
-        <button class="srv-action-btn" onclick={() => openEditModal(s)} aria-label={t('pack.servers.edit')} title={t('pack.servers.edit')}>
+        <button class="srv-action-btn" onclick={() => openEditModal(s)} aria-label={t('pack.servers.edit')} use:launcherTip={t('pack.servers.edit')}>
           <i class="ti ti-pencil"></i>
         </button>
-        <button class="srv-action-btn" onclick={() => openCopyModal([s])} aria-label={t('pack.servers.copyTo')} title={t('pack.servers.copyTo')}>
+        <button class="srv-action-btn" onclick={() => openCopyModal([s])} aria-label={t('pack.servers.copyTo')} use:launcherTip={t('pack.servers.copyTo')}>
           <i class="ti ti-copy"></i>
         </button>
-        <button class="srv-action-btn" class:pin-on={s.pinned} onclick={() => togglePin(s)} aria-label={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')} title={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')}>
+        <button class="srv-action-btn" class:pin-on={s.pinned} onclick={() => togglePin(s)} aria-label={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')} use:launcherTip={s.pinned ? t('pack.servers.unpin') : t('pack.servers.pin')}>
           <i class="ti ti-pin"></i>
         </button>
-        <button class="srv-action-btn danger" onclick={() => removeServer(s)} aria-label={t('pack.servers.remove')} title={t('pack.servers.remove')}>
+        <button class="srv-action-btn danger" onclick={() => removeServer(s)} aria-label={t('pack.servers.remove')} use:launcherTip={t('pack.servers.remove')}>
           <i class="ti ti-trash"></i>
         </button>
       </div>
@@ -590,7 +585,7 @@
                 {#if s.icon}<img src={s.icon} alt="" />{:else}<i class="ti ti-server-2"></i>{/if}
               </div>
               <div class="cp-src-name">{s.name || s.address}</div>
-              <div class="cp-src-addr mono muted" title={s.address}>{s.address}</div>
+              <div class="cp-src-addr mono muted" use:launcherTip={s.address}>{s.address}</div>
               {#if copyChecking}
                 <i class="ti ti-loader spin" style="flex-shrink:0"></i>
               {:else if copyExisting.has(s.address)}
@@ -662,16 +657,6 @@
   .mt-group-main { flex: 1 1 360px; min-width: 0; }
   .mt-group-actions { flex: 0 1 auto; margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
   .mt-group-actions .btn { height: 36px; white-space: nowrap; }
-  .mt-search {
-    display: flex; align-items: center; gap: 8px;
-    background: var(--bg-input); border: 1px solid var(--border); border-radius: 12px;
-    padding: 0 12px; height: 36px; flex: 1 1 200px; min-width: 140px;
-    transition: border-color .15s, box-shadow .15s;
-  }
-  .mt-search:focus-within { border-color: rgba(var(--orange-rgb), .6); box-shadow: 0 0 0 3px rgba(var(--orange-rgb), .12); }
-  .mt-search i { color: var(--text-dim); font-size: 15px; }
-  .mt-search:focus-within i { color: var(--orange); }
-  .mt-search input { flex: 1; min-width: 0; background: none; border: none; outline: none; color: var(--text); font-size: 13px; }
   .tool-cluster > .tc-copy { position: relative; }
   .tc-copy .srv-sel-count { position: absolute; top: -5px; right: -5px; padding: 0 5px; }
 

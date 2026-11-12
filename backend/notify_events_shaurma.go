@@ -294,7 +294,7 @@ func notifyRemoteBaseline(lists []social.RemoteOwnerList) {
 }
 
 // notifyRemoteDiff порівнює оновлений перелік серверів друга з попереднім і
-// показує «запустив»/«зупинив». Пропускає сервери, яких раніше не бачили.
+// показує «запустив»/«зупинив».
 func (a *App) notifyRemoteDiff(l social.RemoteOwnerList) {
 	type change struct {
 		s    social.RemoteServer

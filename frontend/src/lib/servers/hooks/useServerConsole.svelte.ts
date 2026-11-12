@@ -1,14 +1,11 @@
-// ── useServerConsole — буфер логів консолі сервера (runes-хук) ──────────
-// Тримає масив рядків (з обмеженням CONSOLE_MAX_LINES), тягне знімок з
-// бекенду при зміні serverId (консоль НЕ очищається при перемиканні
-// вкладок — showить те, що вже було), підписується на server:line/
-// server:status/server:install-progress. Рендер-логіка (фільтр/пошук/
-// автоскрол) лишається в ConsoleView — тут лише дані.
+// Local status and command feedback only. History is fetched by PagedConsole.
+import { onDestroy } from 'svelte'
 import { App, on } from '../../wails'
 import type { ServerInstallProgress } from '../../types'
 import type { LogLine } from '../components/ConsoleView.svelte'
 
-const CONSOLE_MAX_LINES = 8000
+// Only local command feedback lives here; history is paged from the backend.
+const CONSOLE_MAX_LINES = 20
 
 export interface ServerConsoleHandle {
   readonly lines: LogLine[]
@@ -31,13 +28,12 @@ export function useServerConsole(getId: () => string): ServerConsoleHandle {
     statusLoaded: boolean
     installProgress: ServerInstallProgress | null
   }>({ status: 'stopped', statusLoaded: false, installProgress: null })
-  // $state.raw: до 8000 рядків НЕ обгортаються в глибокі проксі (раніше це давало
-  // лаг при відкритті вкладки з великим логом). Оновлюємо заміною масиву.
+  // Оновлюємо заміною масиву.
   let lines = $state.raw<LogLine[]>([])
 
   // seq — ЄДИНЕ джерело id для КОЖНОГО рядка (і зі знімка, і живого),
   // а не два незалежні лічильники (бекендовий line.id + локальний
-  // nextId), як було раніше. Той старий підхід і спричиняв
+  // nextId). Той старий підхід і спричиняв
   // each_key_duplicate у ConsoleView (#each lines as line (line.id)):
   // при перемиканні вкладок/гонці між асинхронним GetServerConsoleSnapshot
   // і вже прилетілими live-рядками (server:line) локальний nextId міг
@@ -50,6 +46,8 @@ export function useServerConsole(getId: () => string): ServerConsoleHandle {
 
   let pending: LogLine[] = []
   let flushScheduled = false
+  let flushRaf = 0
+  let disposed = false
 
   function flush() {
     flushScheduled = false
@@ -63,8 +61,10 @@ export function useServerConsole(getId: () => string): ServerConsoleHandle {
   function addLine(level: string, text: string) {
     // id проставляється у flush() (в порядку реальної вставки) — тут 0
     // як тимчасове значення, ще не показане користувачу.
+    if (disposed) return
     pending.push({ id: 0, time: new Date().toTimeString().slice(0, 8), level, text })
-    if (!flushScheduled) { flushScheduled = true; requestAnimationFrame(flush) }
+    if (pending.length >= CONSOLE_MAX_LINES * 2) pending = pending.slice(-CONSOLE_MAX_LINES)
+    if (!flushScheduled) { flushScheduled = true; flushRaf = requestAnimationFrame(flush) }
   }
 
   let prevId = ''
@@ -72,6 +72,12 @@ export function useServerConsole(getId: () => string): ServerConsoleHandle {
   // хук) змінюється, поки GetServerConsoleSnapshot ще в польоті,
   // прострочена відповідь НЕ повинна перезаписати вже свіжіший стан.
   let snapshotToken = 0
+  onDestroy(() => {
+    disposed = true
+    snapshotToken++
+    cancelAnimationFrame(flushRaf)
+    pending = []
+  })
   $effect(() => {
     const serverId = getId()
     if (!serverId) return
@@ -84,22 +90,9 @@ export function useServerConsole(getId: () => string): ServerConsoleHandle {
       // Скидаємо чергу live-рядків попереднього серверу — інакше вони
       // могли б домішатись у flush() ПІСЛЯ знімка нового сервера.
       pending = []
-      const myToken = ++snapshotToken
-      // Знімок з бекенду при вході на вкладку — консоль не очищається,
-      // а показує весь буфер, що вже накопичився на сервері.
-      App.GetServerConsoleSnapshot(serverId).then((snap: any[]) => {
-        if (myToken !== snapshotToken) return // прийшла застаріла відповідь — ігноруємо
-        const src = (snap ?? []).slice(-CONSOLE_MAX_LINES)
-        lines = src.map((l: any) => ({
-          id: nextSeq(), time: l.time ?? '', level: l.level ?? 'info', text: l.text ?? '',
-        }))
-      }).catch(() => { if (myToken === snapshotToken) lines = [] })
     }
+    const offLine = () => {}
 
-    const offLine = on('server:line', (data: any) => {
-      if (data.serverId !== serverId) return
-      addLine(data.level || 'info', data.text || '')
-    })
     const offStatus = on('server:status', (data: any) => {
       if (data.serverId !== serverId) return
       state.status = data.status || 'stopped'
@@ -112,12 +105,14 @@ export function useServerConsole(getId: () => string): ServerConsoleHandle {
       state.installProgress = { stage: data.stage || 'core', percent: data.percent ?? -1, message: data.message || '' }
     })
 
+    let active = true
     App.GetServerStatus(serverId).then((s: any) => {
+      if (!active) return
       state.status = s?.status || 'stopped'
       state.statusLoaded = true
-    }).catch(() => { state.statusLoaded = true })
+    }).catch(() => { if (active) state.statusLoaded = true })
 
-    return () => { offLine?.(); offStatus?.(); offProgress?.() }
+    return () => { active = false; snapshotToken++; offLine?.(); offStatus?.(); offProgress?.() }
   })
 
   // Очищення ЛИШЕ локального буфера перегляду (кнопка «Кошик» у тулбарі,

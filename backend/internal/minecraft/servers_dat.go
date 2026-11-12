@@ -72,8 +72,7 @@ func ReadServersDat(path string) ([]ServerEntry, error) {
 // (атомарно: спершу у тимчасовий файл, потім rename — щоб гра ніколи не
 // побачила напівзаписаний файл, якщо саме зараз читає його при старті).
 // Пишемо у форматі PLAIN NBT (без gzip) — це формат, який зараз реально
-// пише сама гра; гра коректно читає його незалежно від того, чи файл був
-// раніше стиснений.
+// пише сама гра; гра коректно читає його незалежно від того.
 func WriteServersDat(path string, entries []ServerEntry) error {
 	data := encodeServersNBT(entries)
 	tmp := path + ".tmp"

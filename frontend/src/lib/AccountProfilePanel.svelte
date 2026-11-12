@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from './friends/tooltip'
+
   // ══════════════════════════════════════════════════════════════════════
   // Сторінка «Акаунт» у налаштуваннях обох редакцій.
   //
@@ -18,7 +20,9 @@
   import DevicesPanel from './DevicesPanel.svelte'
   import { normalizeHandle } from './friends/handle'
   import { buildFriendLink } from './friends/friendLink'
-  import { BIO_MAX, PROFILE_COLORS, normalizeBio, bioLength, safeColor, hueOf } from './friends/profileStyle'
+  import { BIO_MAX, PROFILE_COLORS, normalizeBio, bioLength, safeColor } from './friends/profileStyle'
+  import ProfilePreview from './friends/ProfilePreview.svelte'
+  import EmptyState from './EmptyState.svelte'
 
   let { accountName = '', head = '' }: { accountName?: string; head?: string } = $props()
 
@@ -42,7 +46,6 @@
     (bioNorm.text !== (profile.bio ?? '') || safeColor(colorDraft) !== (profile.color ?? '')))
   const styleValid = $derived(bioNorm.ok && (colorDraft === '' || safeColor(colorDraft) !== ''))
   const styleCooling = $derived(styleCooldownUntil > Date.now())
-  const previewHue = $derived(hueOf(profile?.accountId ?? ''))
 
   // Ліміт — у СИМВОЛАХ (як на сервері), а не в байтах/UTF-16: емодзі = 1 символ. Вставка довгого тексту
   // обрізається по межі символу, а не відхиляється; Enter заблоковано — біо однорядкове.
@@ -213,17 +216,9 @@
     <div class="skel hero-skel"></div>
     <div class="stats"><div class="skel tile-skel"></div><div class="skel tile-skel"></div><div class="skel tile-skel"></div></div>
   {:else if profile?.reason === 'no_launcher_account'}
-    <div class="empty">
-      <div class="empty-ic warn"><i class="ti ti-user-exclamation"></i></div>
-      <div class="empty-t">Немає акаунта лаунчера</div>
-      <div class="empty-s">Спершу додайте акаунт у лаунчері — акаунт Шаурми прив'язується до нього.</div>
-    </div>
+    <EmptyState icon="ti-user-exclamation" color="var(--yellow)" title="Немає акаунта лаунчера" hint="Спершу додайте акаунт у лаунчері — акаунт Шаурми прив'язується до нього." />
   {:else if profile?.reason === 'no_hwid'}
-    <div class="empty">
-      <div class="empty-ic warn"><i class="ti ti-device-desktop-off"></i></div>
-      <div class="empty-t">Комп'ютер не визначено</div>
-      <div class="empty-s">Не вдалося визначити цей комп'ютер — акаунт Шаурми тут недоступний.</div>
-    </div>
+    <EmptyState icon="ti-device-desktop-off" color="var(--yellow)" title="Комп'ютер не визначено" hint="Не вдалося визначити цей комп'ютер — акаунт Шаурми тут недоступний." />
   {:else if !profile?.hasAccount}
     <!-- ── Створення акаунта ───────────────────────────────────────── -->
     <div class="hero create">
@@ -293,7 +288,7 @@
       <div class="hero-row">
         <div class="avatar">
           {#if head}<img src={head} alt="" />{:else}<i class="ti ti-user"></i>{/if}
-          <span class="avatar-dot" title="Акаунт Шаурми активний"><i class="ti ti-check"></i></span>
+          <span class="avatar-dot" use:launcherTip={"Акаунт Шаурми активний"}><i class="ti ti-check"></i></span>
         </div>
         <div class="hero-txt">
           <div class="hero-name">{profile.nickname || '—'}</div>
@@ -321,15 +316,15 @@
           {/if}
         </div>
         {#if profile.handle}
-          <button class="copy" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} title="Копіювати ідентифікатор">
+          <button class="copy" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} use:launcherTip={"Копіювати ідентифікатор"}>
             <i class="ti {copied === 'handle' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
         {:else}
-          <button class="copy" class:ok={copied === 'id'} onclick={() => copyText('id', profile?.accountId)} title="Копіювати ID">
+          <button class="copy" class:ok={copied === 'id'} onclick={() => copyText('id', profile?.accountId)} use:launcherTip={"Копіювати ID"}>
             <i class="ti {copied === 'id' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
         {/if}
-        <button class="copy" class:ok={copied === 'link'} onclick={copyInviteLink} title="Копіювати посилання на дружбу">
+        <button class="copy" class:ok={copied === 'link'} onclick={copyInviteLink} use:launcherTip={"Копіювати посилання на дружбу"}>
           <i class="ti {copied === 'link' ? 'ti-check' : 'ti-link'}"></i>
         </button>
       </div>
@@ -369,7 +364,7 @@
           <span class="li-k">UUID</span>
           <span class="li-v mono">{profile.uuid || '—'}</span>
           {#if profile.uuid}
-            <button class="copy sm" class:ok={copied === 'uuid'} onclick={() => copyText('uuid', profile?.uuid)} title="Копіювати UUID">
+            <button class="copy sm" class:ok={copied === 'uuid'} onclick={() => copyText('uuid', profile?.uuid)} use:launcherTip={"Копіювати UUID"}>
               <i class="ti {copied === 'uuid' ? 'ti-check' : 'ti-copy'}"></i>
             </button>
           {/if}
@@ -423,7 +418,7 @@
     <div class="acard">
       <div class="acard-t"><i class="ti ti-at"></i> Мій ідентифікатор
         {#if profile.handle}
-          <button class="copy sm" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} title="Копіювати">
+          <button class="copy sm" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} use:launcherTip={"Копіювати"}>
             <i class="ti {copied === 'handle' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
         {/if}
@@ -465,28 +460,20 @@
 
       <div class="field-l"><i class="ti ti-droplet"></i> Колір фону</div>
       <div class="swatches" role="group" aria-label="Колір фону профілю">
-        <button class="sw sw-none" class:on={colorDraft === ''} onclick={() => (colorDraft = '')} title="Стандартний (за акаунтом)" aria-pressed={colorDraft === ''}>
+        <button class="sw sw-none" class:on={colorDraft === ''} onclick={() => (colorDraft = '')} use:launcherTip={"Стандартний (за акаунтом)"} aria-pressed={colorDraft === ''}>
           <i class="ti ti-x"></i>
         </button>
         {#each PROFILE_COLORS as c}
-          <button class="sw" class:on={safeColor(colorDraft) === c} style="--c:{c}" onclick={() => (colorDraft = c)} title={c} aria-label={c} aria-pressed={safeColor(colorDraft) === c}></button>
+          <button class="sw" class:on={safeColor(colorDraft) === c} style="--c:{c}" onclick={() => (colorDraft = c)} use:launcherTip={c} aria-label={c} aria-pressed={safeColor(colorDraft) === c}></button>
         {/each}
-        <label class="sw sw-custom" class:on={colorDraft !== '' && !(PROFILE_COLORS as readonly string[]).includes(safeColor(colorDraft))} title="Свій колір">
+        <label class="sw sw-custom" class:on={colorDraft !== '' && !(PROFILE_COLORS as readonly string[]).includes(safeColor(colorDraft))} use:launcherTip={"Свій колір"}>
           <i class="ti ti-color-picker"></i>
           <input type="color" value={safeColor(colorDraft) || '#ff7a1a'} oninput={(e) => (colorDraft = safeColor((e.currentTarget as HTMLInputElement).value))} aria-label="Свій колір" />
         </label>
       </div>
 
-      <div class="pv" style={safeColor(colorDraft) ? `--cv:${safeColor(colorDraft)}` : `--h:${previewHue}`} class:custom={!!safeColor(colorDraft)} aria-hidden="true">
-        <div class="pv-cover"></div>
-        <div class="pv-body">
-          <div class="pv-ava">{#if head}<img src={head} alt="" />{:else}<i class="ti ti-user"></i>{/if}</div>
-          <div class="pv-txt">
-            <b>{profile.nickname || '—'}</b>
-            <span>{bioNorm.ok && bioNorm.text ? bioNorm.text : 'Так друзі побачать ваше біо'}</span>
-          </div>
-        </div>
-      </div>
+      <ProfilePreview nickname={profile.nickname || ''} {head} accountId={profile.accountId ?? ''} color={colorDraft}
+                      bio={bioNorm.ok ? bioNorm.text : ''} handle={profile.handle ?? ''} />
 
       <div class="style-acts">
         <button class="btn btn-primary btn-sm" onclick={saveStyle} disabled={busy === 'style' || !styleDirty || !styleValid || styleCooling}>
@@ -669,11 +656,6 @@
   .upgrade b { display: block; font: 700 12.5px/1.2 var(--font-ui); color: var(--text); margin-bottom: 4px; }
   .upgrade span { font: 400 11px/1.5 var(--font-ui); color: var(--text-mute); }
 
-  .empty { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; padding: 34px 20px; border-radius: 16px; background: var(--bg-card); border: 1px dashed var(--border-hi); }
-  .empty-ic { width: 52px; height: 52px; border-radius: 16px; display: flex; align-items: center; justify-content: center; font-size: 26px; color: var(--yellow); background: color-mix(in srgb, var(--yellow) 12%, transparent); }
-  .empty-t { font: 700 14px/1.2 var(--font-ui); color: var(--text); }
-  .empty-s { font: 400 11.5px/1.5 var(--font-ui); color: var(--text-mute); max-width: 340px; }
-
   .danger { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 13px 14px; border-radius: 14px; background: color-mix(in srgb, var(--red) 6%, transparent); border: 1px solid color-mix(in srgb, var(--red) 24%, transparent); }
   .danger-ic { width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--red); background: color-mix(in srgb, var(--red) 14%, transparent); }
   .danger-txt { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 3px; }
@@ -711,15 +693,6 @@
   .sw-custom { background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #6366f1, #ec4899, #ef4444); color: #fff; }
   .sw-custom i { filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
   .sw-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
-  .pv { --cv: hsl(var(--h, 24) 70% 52%); border-radius: 14px; overflow: hidden; border: 1px solid var(--border);
-    background: color-mix(in srgb, var(--cv) 9%, var(--bg-panel)); }
-  .pv-cover { height: 44px; background: linear-gradient(135deg, var(--cv), color-mix(in srgb, var(--cv) 50%, #000)); }
-  .pv-body { display: flex; align-items: center; gap: 12px; padding: 0 14px 12px; margin-top: -18px; }
-  .pv-ava { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 14px; background: var(--bg-input); border: 3px solid var(--bg-panel); display: grid; place-items: center; overflow: hidden; color: var(--text-mute); }
-  .pv-ava img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
-  .pv-txt { min-width: 0; padding-top: 18px; display: flex; flex-direction: column; gap: 2px; }
-  .pv-txt b { font: 700 13px/1.2 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pv-txt span { font: 400 12px/1.4 var(--font-ui); color: var(--text-mute); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
   .style-acts { display: flex; flex-wrap: wrap; gap: 8px; }
   @media (prefers-reduced-motion: reduce) { .sw { transition: none; } }
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tip as launcherTip } from '../friends/tooltip'
+
   // Вкладка «Групи» в лівій панелі: запрошення, список груп, кнопка «Нова група».
   import { t } from '../i18n.svelte'
   import { useGroupsStore } from './GroupsStore.svelte'
@@ -32,7 +34,7 @@
   {#if !invitesOnly}
   {#each g.groups as gr (gr.id)}
     <button class="gl-row" class:active={g.activeId === gr.id} class:compact onclick={() => g.open(gr.id)}
-            style="--gc:{safeGroupColor(gr.settings.color) || 'var(--border-hi)'}" title={gr.title}>
+            style="--gc:{safeGroupColor(gr.settings.color) || 'var(--border-hi)'}" use:launcherTip={gr.title}>
       <GroupAvatar title={gr.title} icon={gr.settings.icon} color={gr.settings.color} />
       {#if !compact}
         <span class="gl-t"><b>{gr.title}</b><small>{t('groups.members', { n: gr.members.length })}</small></span>

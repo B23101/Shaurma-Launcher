@@ -1,7 +1,6 @@
 // ── useServerStats — жива статистика CPU/RAM/гравці (runes-хук) ─────────
-// Поки сервер запущено — раз/секунду тягне GetServerStats(); зупиняється
-// й скидає значення, щойно сервер не running. Раніше цей таймер жив
-// прямо в ServerInstancePage — тепер одна реалізація для банера.
+// Поки сервер запущено — раз/секунду тягне GetServerStats(); зупиняється й
+// скидає значення, щойно сервер не running.
 import { App } from '../../wails'
 import type { ServerLiveStats } from '../../types'
 
@@ -24,8 +23,11 @@ export function useServerStats(getId: () => string, isRunning: () => boolean): L
       return
     }
     let alive = true
+    let busy = false
     const poll = () => {
-      App.GetServerStats(serverId).then((s: any) => { if (alive) state.stats = s }).catch(() => {})
+      if (!alive || busy || document.hidden) return
+      busy = true
+      App.GetServerStats(serverId).then((s: any) => { if (alive) state.stats = s }).catch(() => {}).finally(() => { busy = false })
     }
     poll()
     const timer = setInterval(poll, 1000)

@@ -5,10 +5,8 @@
 // neoforge.mods.toml/mcmod.info), що й менеджер модів збірки: реальна
 // назва/версія/автор/іконка з самого jar (а не лише ім'я файлу), SHA1
 // для точного матчингу на Modrinth, і Environment ("client"/"server"/
-// "*") для позначення клієнтських модів, які на сервері не мають
-// жодного ефекту. Раніше тут була лише проста тека-список (listJarFiles)
-// без жодних метаданих — картки модів на сторінці сервера не показували
-// ні іконок, ні версій з маніфесту, ні попередження "лише клієнтський".
+// "*") для позначення клієнтських модів, які на сервері не мають жодного
+// ефекту.
 package servers
 
 import (
@@ -81,7 +79,7 @@ func DeleteServerMod(serverDir, fileName string) error {
 // (ім'я ставало "X.jar.disabled"), і мод лишався вимкненим назавжди —
 // ні увімкнути, ні вимкнути його було неможливо.
 //
-// Тепер стан визначається за РЕАЛЬНИМ станом на диску (яке з двох імен
+// Стан визначається за РЕАЛЬНИМ станом на диску (яке з двох імен
 // існує), а всі хвостові ".disabled" складаються до одного — тому toggle
 // коректний для будь-якого варіанту імені й ДОДАТКОВО лікує вже зіпсовані
 // файли "X.jar.disabled.disabled" при першому ж перемиканні.
@@ -145,9 +143,7 @@ func toggleServerFile(dir, fileName string) error {
 }
 
 // deleteServerFile видаляє файл і всі його варіанти іменування
-// ("X.jar", "X.jar.disabled", "X.jar.disabled.disabled") — раніше
-// видалявся лише один із них, і «видалений» мод лишався в теці другим
-// іменем.
+// ("X.jar", "X.jar.disabled", "X.jar.disabled.disabled").
 func deleteServerFile(dir, fileName string) error {
 	base, _ := splitServerFileName(fileName)
 	candidates := []string{
@@ -218,10 +214,8 @@ func MigrateModsFromPack(packModsDir, serverModsDir string, clientOnlyFilter boo
 // normalizeDisabledNames згортає дубльовані хвостові ".disabled" у канонічне
 // ОДНЕ ("X.jar.disabled.disabled" → "X.jar.disabled"). Для модів це вже
 // робить mods.migrateLegacyDisabled, але плагіни (plugins/) не проходять
-// через internal/mods.Manager — раніше зіпсований багаторазовим toggle
-// плагін лишався з іменем "X.jar.disabled.disabled", і у списку було видно
-// «подвійний .disable». Ідемпотентно і безпечно: якщо канонічне ім'я вже
-// зайняте — не чіпаємо.
+// через internal/mods.Manager. Ідемпотентно і безпечно: якщо канонічне ім'я
+// вже зайняте — не чіпаємо.
 func normalizeDisabledNames(dir string) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -271,9 +265,8 @@ func listJarFiles(dir string) []ServerModInfo {
 			continue
 		}
 
-		// splitServerFileName знімає ВСІ хвостові ".disabled", а не один:
-		// так Name ніколи не містить залишкового суфікса (раніше
-		// "X.jar.disabled" лишався в імені для багаторазово вимкненого файлу).
+		// splitServerFileName знімає ВСІ хвостові ".disabled", а не один: так
+		// Name ніколи не містить залишкового суфікса.
 		base, disabled := splitServerFileName(name)
 
 		info, _ := e.Info()

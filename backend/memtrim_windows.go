@@ -27,6 +27,7 @@ package main
 
 import (
 	"log"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -39,8 +40,16 @@ var procEmptyWorkingSet = syscall.NewLazyDLL("psapi.dll").NewProc("EmptyWorkingS
 // процесів; 32 — з запасом, щоб ніколи не «гуляти» по всьому дереву ОС).
 const trimTreeLimit = 32
 
-// trimProcessWorkingSets віддає ОС робочі набори нашого процесу і всіх
-// нащадків (WebView2). Повертає кількість процесів, які вдалось обробити.
+// trimChildAllowed — які дочірні процеси чіпаємо. Лише WebView2: гра (java),
+// локальні сервери та будь-які інші нащадки лаунчера — теж його діти, але їм
+// EmptyWorkingSet шкодить (сторінки доведеться підтягувати з диска просто
+// посеред гри/сервера → фрізи). Змінна — для тестів.
+var trimChildAllowed = func(exe string) bool {
+	return strings.EqualFold(exe, "msedgewebview2.exe")
+}
+
+// trimProcessWorkingSets віддає ОС робочі набори нашого процесу і його
+// WebView2-нащадків. Повертає кількість процесів, які вдалось обробити.
 //
 // Ніколи не панікує і не повертає помилку: без цієї оптимізації лаунчер
 // працює як раніше, тож будь-яка відмова (права, закритий хендл) — тиха.
@@ -49,7 +58,7 @@ func trimProcessWorkingSets() (trimmed int) {
 	if r, _, _ := procEmptyWorkingSet.Call(uintptr(windows.CurrentProcess())); r != 0 {
 		trimmed++
 	}
-	pids := descendantPIDs(windows.GetCurrentProcessId(), trimTreeLimit)
+	pids := descendantPIDs(windows.GetCurrentProcessId(), trimTreeLimit, trimChildAllowed)
 	for _, pid := range pids {
 		h, err := windows.OpenProcess(
 			windows.PROCESS_SET_QUOTA|windows.PROCESS_QUERY_INFORMATION, false, pid)
@@ -65,10 +74,11 @@ func trimProcessWorkingSets() (trimmed int) {
 	return trimmed
 }
 
-// descendantPIDs повертає PID усіх нащадків root (рекурсивно), не більше
-// limit штук. Один знімок процесів через Toolhelp32 — без WMI (WMI на цьому
-// шляху коштував би сотні мілісекунд і власний COM-апартамент).
-func descendantPIDs(root uint32, limit int) []uint32 {
+// descendantPIDs повертає PID нащадків root (рекурсивно), для яких keep(exe)
+// істинне, не більше limit штук; дерево проходиться повністю. Один знімок
+// процесів через Toolhelp32 — без WMI (WMI на цьому шляху коштував би сотні
+// мілісекунд і власний COM-апартамент).
+func descendantPIDs(root uint32, limit int, keep func(exe string) bool) []uint32 {
 	snap, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
 	if err != nil {
 		return nil
@@ -76,6 +86,7 @@ func descendantPIDs(root uint32, limit int) []uint32 {
 	defer windows.CloseHandle(snap)
 
 	parentOf := make(map[uint32]uint32, 512)
+	exeOf := make(map[uint32]string, 512)
 	var e windows.ProcessEntry32
 	e.Size = uint32(unsafe.Sizeof(e))
 	if err := windows.Process32First(snap, &e); err != nil {
@@ -83,6 +94,7 @@ func descendantPIDs(root uint32, limit int) []uint32 {
 	}
 	for {
 		parentOf[e.ProcessID] = e.ParentProcessID
+		exeOf[e.ProcessID] = windows.UTF16ToString(e.ExeFile[:])
 		if err := windows.Process32Next(snap, &e); err != nil {
 			break
 		}
@@ -99,8 +111,11 @@ func descendantPIDs(root uint32, limit int) []uint32 {
 				continue
 			}
 			seen[pid] = true
-			out = append(out, pid)
 			grow = true
+			if !keep(exeOf[pid]) {
+				continue
+			}
+			out = append(out, pid)
 			if len(out) >= limit {
 				break
 			}

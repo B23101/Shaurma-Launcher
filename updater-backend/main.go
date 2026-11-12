@@ -1,14 +1,5 @@
 // updater.dll — апдейтер як C ABI-модуль (той самий контракт, що backend.dll).
 //
-// Раніше апдейтер був окремим Wails-застосунком (shrm-updater.exe), який
-// сам запускав launcher.exe окремим процесом і вигасав. Тепер:
-//   - updater.dll завантажує той самий shell.exe через LoadLibrary;
-//   - роботу він виконує в межах процесу shell'а (вікно "updater-splash"
-//     створює shell за generic window_create, UI-події йдуть через bridgeEmit);
-//   - коли апдейтер завершує перевірку/встановлення — він кличе
-//     bridgePhaseComplete(), і shell ВИВАНТАЖУЄ updater.dll, завантажує
-//     backend.dll і показує основний UI. Жодного запуску окремих exe.
-//
 // Self-update updater.dll: нова версія качається як updater.dll.new
 // (install.Apply ставить завантажені DLL/exe під .new — Windows тримає лок
 // на завантажену DLL), застосовується при НАСТУПНОМУ старті shell'а.
@@ -28,6 +19,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -51,6 +43,13 @@ type App struct {
 	// settings.AutoUpdate з БД лаунчера.
 	finalize bool
 	lang     string
+	// quick — запуск з ярлика збірки (shell: "shortcut":true). Splash не
+	// показується, поки справді немає що показувати (див. showSplash), а
+	// «порожні» сценарії не тримають екран мінімальний час.
+	quick bool
+	// splashShown — splash уже показано (quick-режим: shell створює його
+	// схованим, а ми показуємо лише при реальному оновленні/помилці).
+	splashShown atomic.Bool
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -76,6 +75,7 @@ func backend_init(configJSON *C.char, callbacks unsafe.Pointer) C.int {
 		Lang       string `json:"lang"`
 		Channel    string `json:"channel"`
 		Finalize   bool   `json:"finalize"`
+		Shortcut   bool   `json:"shortcut"`
 	}
 	_ = json.Unmarshal([]byte(C.GoString(configJSON)), &cfg)
 
@@ -93,6 +93,9 @@ func backend_init(configJSON *C.char, callbacks unsafe.Pointer) C.int {
 		channel:    channel,
 		finalize:   cfg.Finalize,
 		lang:       lang,
+		// Ручне оновлення (finalize) — користувач сам чекає екран
+		// оновлення, тож швидкий режим лише для звичайного старту.
+		quick: cfg.Shortcut && !cfg.Finalize,
 	}
 	appInstance = app
 	appValue = reflect.ValueOf(app)
@@ -231,6 +234,27 @@ func (a *App) CloseUpdater() {
 	bridgePhaseComplete()
 }
 
+// updaterSplashWindowID — ID вікна splash, яке створює shell
+// (shell/updater_phase.go: splashWindowID).
+const updaterSplashWindowID = "updater-splash"
+
+// slowCheckShowDelay — у швидкому режимі (ярлик) splash з'являється, лише
+// якщо перевірка триває довше за цей час (повільна мережа): інакше
+// користувач дивився б у порожнечу й не розумів, чому гра не стартує.
+const slowCheckShowDelay = 2500 * time.Millisecond
+
+// showSplash показує splash у швидкому режимі (shell створив його
+// схованим). Ідемпотентно; поза швидким режимом нічого не робить — там
+// shell сам показує splash одразу.
+func (a *App) showSplash() {
+	if !a.quick {
+		return
+	}
+	if a.splashShown.CompareAndSwap(false, true) {
+		bridgeWindowOp(updaterSplashWindowID, "show")
+	}
+}
+
 func (a *App) emit(name string, data any) {
 	b, err := json.Marshal(data)
 	if err != nil {
@@ -255,8 +279,15 @@ func (a *App) runUpdate() {
 	}
 
 	cb := core.Callbacks{
-		Lang: a.lang,
+		Lang:  a.lang,
+		Quick: a.quick,
 		OnStatus: func(s core.Status, msg string) {
+			// Швидкий режим (ярлик): екран оновлення показуємо лише коли
+			// справді є що показувати — качка, встановлення чи помилка.
+			switch s {
+			case core.StatusDownloading, core.StatusInstalling, core.StatusError:
+				a.showSplash()
+			}
 			a.emit("updater:status", map[string]any{
 				"status":  statusToString(s),
 				"message": msg,
@@ -284,6 +315,13 @@ func (a *App) runUpdate() {
 		},
 	}
 
+	// Швидкий режим: якщо перевірка затягнулась — показуємо splash, щоб
+	// користувач бачив, що лаунчер працює (а не «нічого не відбувається»).
+	if a.quick {
+		slow := time.AfterFunc(slowCheckShowDelay, a.showSplash)
+		defer slow.Stop()
+	}
+
 	// Поточна версія для напису "vX.Y.Z" (ядро теж читає маніфест —
 	// невелике дублювання свідоме, щоб не ускладнювати сигнатуру core.Run).
 	if local, err := manifest.Load(filepath.Join(a.installDir, "launcher-version.json")); err == nil {
@@ -298,7 +336,9 @@ func (a *App) runUpdate() {
 			"status":  "up_to_date",
 			"message": "Локальна збірка: оновлення вимкнено",
 		})
-		time.Sleep(250 * time.Millisecond)
+		if !a.quick {
+			time.Sleep(250 * time.Millisecond)
+		}
 		bridgePhaseComplete()
 		return
 	}
@@ -317,8 +357,11 @@ func (a *App) runUpdate() {
 	}
 
 	// Успіх: переходимо до backend.dll (phase_complete). Невелика затримка,
-	// щоб останній статус встиг відрендеритись на splash.
-	time.Sleep(250 * time.Millisecond)
+	// щоб останній статус встиг відрендеритись на splash. Якщо splash не
+	// показувався (швидкий запуск з ярлика) — рендерити нічого, йдемо одразу.
+	if !a.quick || a.splashShown.Load() {
+		time.Sleep(250 * time.Millisecond)
+	}
 	bridgePhaseComplete()
 }
 
