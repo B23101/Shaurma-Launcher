@@ -60,26 +60,6 @@ Pack Manager після успішної збірки сам зробить git 
 - [fix] Гардероб не показує білу модель без скіна: модель з'являється лише з текстурою, до цього — індикатор завантаження || hide the untextured wardrobe model behind a loading indicator
 - [perf] Шейдери 3D-переглядача компілюються асинхронно перед першим показом, тож відкриття гардероба не блокує інтерфейс || compile wardrobe viewer shaders asynchronously before the first frame
 
-## 2026-11-07 00:15
-- [feat] Додано в локальний Pack Manager підготовку ZIP із релізними файлами GitHub, перевіркою SHA-256 і поясненням для Microsoft || add Microsoft review bundle preparation to local pack manager
-
-## 2026-11-07 00:21
-- [fix] Відокремлено версію пакета Microsoft від нового випуску; замість неактивної кнопки показується пояснення некоректної версії, підтримано префікс v || fix Microsoft bundle version input and explain validation errors
-
-## 2026-11-07 00:24
-- [fix] Додано версію до назв ZIP і хеш-файлу Microsoft; звернення показується окремо в Pack Manager з копіюванням замість SUBMISSION.txt || version Microsoft bundle filenames and show a copyable submission message
-
-## 2026-11-07 00:30
-- [fix] Відновлено український текст UTF-8 у вкладці випуску та повідомленнях Pack Manager після пошкодження кодування || restore UTF-8 Ukrainian text in pack manager release panel and messages
-
-## 2026-11-07 12:40
-- [feat] Вкладка Microsoft: у ZIP лише ShaurmLauncher.exe, backend.dll і updater.dll плоско, з паролем infected; файли беруться з релізу GitHub без змін і звіряються з SHA256SUMS || add microsoft tab with flat password-protected zip of verified release binaries
-- [feat] Картка подання з копіюванням файлу, пароля, назви детекту й готового повідомлення в редакторі, без окремого файлу || add step-by-step submission card with copy buttons and editable message
-- [fix] Невдала підготовка пакета лишає теку failed замість схожої на готову; версія з префіксом v приймається || keep failed microsoft bundles apart and accept v-prefixed versions
-- [fix] Випуск не показує успіх, якщо установлювач або сигнал worker завершились збоєм || report installer and signal failures instead of success
-- [refactor] Введені у формах значення зберігаються у ui-state.json замість localStorage WebView || store form inputs in ui-state.json instead of webview localStorage
-
-
 ## 2026-11-07 15:23
 - [build] Оновлено installer/SECURITY-REVIEW.md: прибрано застарілі числа спрацювань і опис скриншота, додано нове посилання VirusTotal || update installer security review with current VirusTotal link
 
@@ -88,15 +68,6 @@ Pack Manager після успішної збірки сам зробить git 
 
 ## 2026-11-09 09:39
 - [build] У scripts/build-windows.ps1 увімкнено cgo і налаштовано C-компілятор під час збору ліцензій updater-backend; попереднє середовище відновлюється після перевірки || configure cgo and compiler for dependency license collection
-
-## 2026-11-09 11:25
-- [feat] Видалення акаунта відкладено на 7 днів: дані лишаються, акаунт заморожується, вхід через OAuth скасовує видалення; після строку вузол остаточно чистить акаунт раз на годину || defer account deletion by 7 days with restore on oauth sign-in
-- [fix] Остаточне видалення акаунта стирає запити в друзі, особисті чати з ним (повідомлення, закріплені, реакції, лічильники й прочитане в обох), блокування, ігровий час, статистику, «востаннє в мережі», P2P, тимчасові запрошення й коментарі || purge all account-related data on final deletion
-- [fix] Групи при видаленні акаунта: єдиний учасник — група видаляється повністю, інакше лідерство переходить наступному учаснику || transfer group leadership or delete empty groups on account deletion
-- [fix] Видалені повідомлення груп стираються з бази повністю (без службового рядка), видалена група одразу втрачає всі повідомлення || delete group messages physically instead of keeping tombstones
-- [fix] friend_invites чистяться: опрацьовані — через 7 днів, без відповіді — через 90 днів, сирітські одразу; додано ліміт 100 очікуючих запитів на вихідні й на вхідні та відмову для заморожених акаунтів || purge friend invites and cap pending requests per account
-- [fix] Лімітери в пам'яті самі прибирають прострочені ключі (hourRate — за часом, PerKeyLimiter — від 1024 ключів) || stop in-memory rate limiters from growing unbounded
-- [chore] Міграція 0021: колонка users.delete_after та індекси friend_invites; мінімальна схема вузла 21 || add migration 0021 for deferred account deletion
 
 ## 2026-11-09 17:53
 - [fix] Нативні HTML-підказки замінено кастомними підказками профілів; приховано повторення видимого тексту, збережено назви кнопок-іконок і додано закриття через Escape || replace native titles with shared custom tooltips
