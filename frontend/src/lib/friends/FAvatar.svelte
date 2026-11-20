@@ -26,6 +26,6 @@
   .fa.offline .fa-face img { filter: grayscale(.55) brightness(.85); }
   .fa-dot { position: absolute; right: -3px; bottom: -3px; width: 12px; height: 12px; border-radius: 50%; box-sizing: border-box; border: 2.5px solid var(--bg-panel); background: var(--text-dim); }
   .fa.online .fa-dot { background: var(--ff-ok); }
-  .fa.away .fa-dot { background: var(--ff-warn); }
+  .fa.away .fa-dot { background: var(--st-away, #a78bfa); }
   .fa.in_game .fa-dot { background: var(--ring); right: -4px; bottom: -4px; }
 </style>

@@ -44,6 +44,17 @@ type ProfileComment struct {
 	CanDelete bool           `json:"canDelete"`
 }
 
+// ProfileActivityEvent — подія profile:activity: друг залишив коментар (Kind=comment) або поставив
+// реакцію під коментарем (Kind=reaction) у моєму профілі. Text — текст коментаря (для реакції —
+// коментаря, під яким її поставили), Emoji — лише для реакції.
+type ProfileActivityEvent struct {
+	Kind      string `json:"kind"`
+	From      string `json:"from"`
+	CommentID int64  `json:"commentId"`
+	Text      string `json:"text,omitempty"`
+	Emoji     string `json:"emoji,omitempty"`
+}
+
 // ProfileComments — відповідь GET /friends/comments/{id}.
 type ProfileComments struct {
 	Comments []ProfileComment `json:"comments"`

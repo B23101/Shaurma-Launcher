@@ -10,20 +10,20 @@ import type { RemoteServer, RemoteResultEvent, RemoteConsoleEvent, SocialFriend,
 export const REMOTE_CODES: Record<string, string> = {
   not_allowed: 'Немає права на цю дію', not_friend: 'Ви більше не друзі', disabled: 'Власник призупинив доступ',
   rate_limited: 'Занадто часто — зачекайте', cooldown: 'Занадто часто — зачекайте', unavailable: 'Лаунчер друга офлайн',
-  players_online: 'На сервері є гравці — зупинку заблоковано', busy: 'Сервер зайнятий', no_session: 'Сесію консолі закрито',
+  players_online: 'На сервері є гравці — зупинку заблоковано', busy: 'Сервер зайнятий', no_session: 'Консоль закрито',
   bad_command: 'Некоректна команда', privileged: 'Ця команда заборонена власником', start_failed: 'Не вдалося запустити',
   stop_failed: 'Не вдалося зупинити', exec_failed: 'Не вдалося виконати команду', session_limit: 'Забагато відкритих консолей',
   already_running: 'Сервер уже працює', already_stopped: 'Сервер уже зупинено',
   not_running: 'Спершу запустіть сервер', p2p_failed: 'Не вдалося змінити P2P-адресу',
   accepted: 'Команду прийнято — чекаємо на сервер',
   // Лише в журналі власника (у відповідях другові їх не буває):
-  ok: 'Виконано', duplicate: 'Повторна сесія', mandate_invalid: 'Без підпису VPS — відхилено',
-  bad_envelope: 'Пошкоджена команда — відхилено', envelope_mismatch: 'Підроблена команда — відхилено',
-  no_vps_key: 'Ключ VPS не підтверджено — відхилено',
+  ok: 'Виконано', duplicate: 'Повторна сесія', mandate_invalid: 'Не вдалося підтвердити безпеку команди',
+  bad_envelope: 'Команду пошкоджено й відхилено', envelope_mismatch: 'Підроблена команда — відхилено',
+  no_vps_key: 'Не вдалося підтвердити безпеку з’єднання',
 }
 const REASONS: Record<string, string> = {
   revoked: 'Власник зняв право на консоль', owner_offline: 'Лаунчер друга вийшов з мережі', friend_gone: 'Дружбу розірвано',
-  expired: 'Сесія завершилась за часом', closed: 'Сесію закрито',
+  expired: 'Час доступу минув', closed: 'Сесію закрито',
 }
 
 export interface RemoteConsoleLine { i: number; t: string; l: string; x: string }

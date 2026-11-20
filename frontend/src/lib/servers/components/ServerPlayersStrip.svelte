@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../../i18n.svelte'
   import { tip as launcherTip } from '../../friends/tooltip'
 
   // ── «Гравці» — жива смуга над консоллю сервера ─────────────────────────
@@ -150,17 +151,17 @@
 <div class="sps" class:page bind:this={root}>
   <div class="sps-head">
     <i class="ti ti-users"></i>
-    <span class="sps-title">Гравці</span>
+    <span class="sps-title">{t('sps.title')}</span>
     <span class="sps-n">{players.length}</span>
   </div>
   {#if !page}
     <button class="sps-toggle" class:on={showTime} onclick={() => (showTime = !showTime)}
             use:launcherTip={"Скільки кожен гравець награв на сервері за весь час"} aria-expanded={showTime}>
-      <i class="ti ti-clock-hour-4"></i> Час гри
+      <i class="ti ti-clock-hour-4"></i> {t('sps.playTime')}
     </button>
   {/if}
   {#if !loaded}
-    <span class="sps-hint"><i class="ti ti-loader spin"></i> завантаження…</span>
+    <span class="sps-hint"><i class="ti ti-loader spin"></i> {t('sps.loading')}</span>
   {:else if players.length === 0}
     <span class="sps-hint">
       {running
@@ -183,18 +184,18 @@
   {/if}
 
   {#if showTime}
-    <div class="sps-pop" class:inline={page} role="dialog" aria-label="Час гри" transition:fly={{ y: page ? 0 : -6, duration: page ? 0 : 140 }}>
+    <div class="sps-pop" class:inline={page} role="dialog" aria-label={t('sps.playTime')} transition:fly={{ y: page ? 0 : -6, duration: page ? 0 : 140 }}>
       <div class="sps-pop-head">
         <i class="ti ti-clock-hour-4"></i>
-        <b>Час гри</b>
-        <span class="sps-pop-sub">за весь час на цьому сервері</span>
-        {#if !page}<button class="sps-pop-x" onclick={() => (showTime = false)} aria-label="Закрити"><i class="ti ti-x"></i></button>{/if}
+        <b>{t('sps.playTime')}</b>
+        <span class="sps-pop-sub">{t('sps.allTime')}</span>
+        {#if !page}<button class="sps-pop-x" onclick={() => (showTime = false)} aria-label={t('close')}><i class="ti ti-x"></i></button>{/if}
       </div>
       <div class="sps-pop-body">
         {#if !timeLoaded}
-          <span class="sps-hint"><i class="ti ti-loader spin"></i> читаю статистику світу…</span>
+          <span class="sps-hint"><i class="ti ti-loader spin"></i> {t('sps.reading')}</span>
         {:else if playtimes.length === 0}
-          <span class="sps-hint">Статистики ще немає — зʼявиться після першого збереження світу гравцем</span>
+          <span class="sps-hint">{t('sps.noStats')}</span>
         {:else}
           <div class="sps-grid">
             {#each playtimes as p (p.uuid || p.name)}

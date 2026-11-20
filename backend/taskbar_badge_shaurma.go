@@ -9,6 +9,8 @@ package main
 import (
 	"strconv"
 	"sync"
+
+	"shaurma-launcher-backend/internal/launchlog"
 )
 
 var taskbarBadge struct {
@@ -22,7 +24,10 @@ func (a *App) taskbarBadgeOnSocial(event string, payload any) {
 	if event != "friends:unread" {
 		return
 	}
-	snap, _ := payload.(map[string]int)
+	snap, ok := payload.(map[string]int)
+	if !ok {
+		launchlog.Warn("TaskbarBadge", "friends:unread має несподіваний тип %T", payload)
+	}
 	a.taskbarBadgeUpdate(snap)
 }
 
@@ -55,8 +60,10 @@ func (a *App) taskbarBadgeRefresh() {
 	}
 	changed := total != taskbarBadge.shown
 	taskbarBadge.shown = total
+	raw := len(taskbarBadge.unread)
 	taskbarBadge.mu.Unlock()
 	if changed {
+		launchlog.Info("TaskbarBadge", "число %d (діалогів з непрочитаним: %d, DND=%v, мут усіх=%v)", total, raw, s.NotifyDnd, s.ChatMuteAll)
 		bridgeWindowOp("main", "badge:"+strconv.Itoa(total))
 		applyTaskbarOverlay(total)
 	}

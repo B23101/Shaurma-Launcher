@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"shaurma-launcher-backend/internal/pathlink"
 	"strings"
 	"sync"
 	"time"
@@ -24,6 +25,8 @@ type Pack struct {
 	BackgroundPath string `json:"backgroundPath,omitempty"`
 	Icon           string `json:"icon,omitempty"`
 	Color          string `json:"color,omitempty"`
+	// Location — довільна тека збірки (поза installations); порожньо — стандартне місце.
+	Location string `json:"location,omitempty"`
 
 	MCVersion     string `json:"mcVersion"`
 	Loader        string `json:"loader"`
@@ -200,7 +203,8 @@ func (s *Store) load() map[string]Pack {
 		return out
 	}
 	for _, e := range entries {
-		if !e.IsDir() {
+		// Збірка в довільній теці — junction/symlink, який ReadDir не вважає текою.
+		if !e.IsDir() && !(pathlink.IsLink(filepath.Join(s.instancesDir, e.Name())) && isDir(filepath.Join(s.instancesDir, e.Name()))) {
 			continue
 		}
 		p := s.loadPack(e.Name())
@@ -800,4 +804,9 @@ func randomHex(n int) string {
 	b := make([]byte, n)
 	_, _ = rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+func isDir(p string) bool {
+	fi, err := os.Stat(p)
+	return err == nil && fi.IsDir()
 }

@@ -41,6 +41,7 @@
   // config тощо) і на будь-якій глибині, стартують ЗГОРНУТИМИ — так їх
   // виставляє buildTree(). Для файлів collapsed завжди false — вузол
   // просто не має дітей, тож нічого не впливає.
+  // svelte-ignore state_referenced_locally
   const isDir = node.type === 'directory'
 
   // isCollapsed — похідне ЯВНЕ boolean-значення для рендеру. НЕ читаємо

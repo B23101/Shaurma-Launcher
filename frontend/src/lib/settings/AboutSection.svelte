@@ -76,7 +76,7 @@
       </span>
       <div class="abt-title">
         <h2>{t('st.about.name')}</h2>
-        <p>{t('st.about.tagline')}</p>
+        
         <div class="abt-chips">
           <span class="abt-ver">v{version.replace(/^v/i, '')}</span>
           {#if isBeta}<span class="abt-chip beta"><i class="ti ti-flask"></i> {t('st.o.updateChannel.beta')}</span>{/if}
@@ -140,7 +140,7 @@
         <span class="abt-link-ic"><i class="ti {l.busy ? 'ti-loader-2 spin' : l.icon}"></i></span>
         <span class="abt-link-tx">
           <b>{l.title}</b>
-          <small>{l.desc}</small>
+          
         </span>
         <span class="abt-link-cta">{l.cta}<i class="ti ti-arrow-up-right"></i></span>
       </button>
@@ -184,7 +184,7 @@
   .abt-icon img { width: 66px; height: 66px; object-fit: contain; filter: drop-shadow(0 4px 8px rgba(0,0,0,.35)); }
   .abt-title { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
   .abt-title h2 { margin: 0; font: 800 28px/1.1 var(--font-ui); letter-spacing: -.4px; color: var(--text); }
-  .abt-title p { margin: 0; font: 500 13.5px/1.4 var(--font-ui); color: var(--text-mute); }
+  
   .abt-chips { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
   .abt-ver {
     padding: 4px 10px; border-radius: 999px; font: 700 12px/1 var(--font-mono);
@@ -247,7 +247,7 @@
   .abt-link-ic { width: 42px; height: 42px; flex: none; border-radius: 13px; display: grid; place-items: center; font-size: 21px; color: var(--tc); background: var(--tb); }
   .abt-link-tx { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .abt-link-tx b { font: 700 13.5px/1.2 var(--font-ui); color: var(--text); }
-  .abt-link-tx small { font: 400 12px/1.4 var(--font-ui); color: var(--text-mute); }
+  
   .abt-link-cta { display: inline-flex; align-items: center; gap: 3px; flex: none; font: 600 12px var(--font-ui); color: var(--tc); opacity: .85; white-space: nowrap; }
   .abt-link:hover:not(:disabled) .abt-link-cta { opacity: 1; }
   .abt-link-cta i { font-size: 14px; transition: transform .15s; }

@@ -21,22 +21,36 @@ package main
 // і підписує ним ВСІ профілі — і шаурмівські, і мойданські. Для гри це один
 // цілісний «сесійний сервер».
 //
-// join/hasJoined і Minecraft services йдуть напряму до Mojang.
-// Shaurma отримує лише запити профілів/скінів; невідомі маршрути відхиляємо.
+// ЩО КУДИ ЙДЕ. Проксі — це «ванільний» сесійний сервер з однією відмінністю:
+// скіни піратів беруться з Shaurma. Усе інше — як у справжньої гри:
 //
-// ХТО ЦЕЙ ГРАВЕЦЬ. Для чужих скінів клієнт питає профіль за UUID, а не за
-// ніком. Офлайн-UUID = MD5("OfflinePlayer:"+нік), назад його не порахувати,
-// тож проксі ВЧИТЬ ніки: власні акаунти лаунчера, пакетні запити
+//	join / hasJoined / minecraftservices (чат-ключ, privileges…)  → Mojang, з токеном
+//	профіль за UUID, ліцензійний (справжній Mojang-UUID, v4)       → Shaurma, якщо там є;
+//	                                                                 інакше Mojang НАПРЯМУ за UUID
+//	профіль за UUID, офлайн (UUIDv3 від ніка, пірат)               → Shaurma, якщо там є;
+//	                                                                 інакше Mojang за ніком (якщо відомий)
+//	пошук UUID за ніком (одиночний і пакетний)                     → Shaurma + Mojang (що не знайшла Shaurma)
+//
+// Так ліцензійні гравці бачать скіни піратів (їх віддає Shaurma), а пірати
+// бачать скіни ліцензійних (їх віддає Mojang). Токени гравця йдуть ЛИШЕ до
+// Mojang, Shaurma отримує тільки UUID/ніки.
+//
+// ХТО ЦЕЙ ГРАВЕЦЬ. Справжній Mojang-UUID питає Mojang сам — нік не потрібен.
+// Офлайн-UUID = MD5("OfflinePlayer:"+нік), назад його не порахувати, тож
+// проксі ВЧИТЬ ніки: власні акаунти лаунчера, пакетні запити
 // POST /api/profiles/minecraft та рядки логу гри («X joined the game»,
-// «[CHAT] <X>», «Setting user: X»). UUID→нік для відомих ніків — у таблиці.
-// Обмеження: гравець, нік якого лаунчер ще не бачив, лишається зі Steve.
+// «[CHAT] <X>», «Setting user: X»). Обмеження: пірат, нік якого лаунчер ще не
+// бачив, лишається зі Steve.
 //
-// DisableMojangSkinFallback вимикає лише додатковий пошук скінів у Mojang.
+// DisableMojangSkinFallback вимикає лише підбір скіна Mojang за НІКОМ для
+// офлайн-UUID. Запити за справжнім Mojang-UUID — це ванільна поведінка гри, їх
+// не чіпаємо.
 // При збої проксі ліцензійна гра стартує без інжектора. Прямий запасний
 // шлях до Shaurma дозволено лише для офлайн-акаунтів без справжніх токенів.
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/md5"
 	"crypto/rand"
@@ -46,6 +60,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -69,6 +84,9 @@ const (
 	mojangProfilesAPI = "https://api.mojang.com/users/profiles/minecraft/"
 	mojangSessionAPI  = "https://sessionserver.mojang.com/session/minecraft/profile/"
 	mojangServicesAPI = "https://api.minecraftservices.com/"
+	// Пакетний пошук UUID за ніками (до 10 за запит) — те, що ванільний клієнт
+	// використовує для SkullOwner-голів тощо.
+	mojangBulkNamesAPI = "https://api.minecraftservices.com/minecraft/profile/lookup/bulk/byname"
 
 	// Скільки тримати відповідь Mojang. Позитивна — довго (скін змінюється
 	// рідко), негативна — коротше, помилка/ліміт — дуже коротко, щоб не
@@ -78,6 +96,11 @@ const (
 	skinProxyTTLError   = 30 * time.Second
 
 	skinProxyMaxNicks = 4096
+	skinProxyMaxCache = 4096
+
+	// Скільки ніків за один пакетний запит ми готові віддати Mojang.
+	mojangBulkChunk = 10
+	mojangBulkMax   = 50
 )
 
 // ── Типи відповіді Yggdrasil ────────────────────────────────────────────
@@ -143,6 +166,7 @@ type skinProxy struct {
 	client      *http.Client
 	mojangAPI   string
 	mojangSess  string
+	mojangBulk  string // пакетний пошук ніків у Mojang; порожньо — лише Shaurma
 	srv         *http.Server
 	listenAddr  string
 	metadataTpl []byte
@@ -222,6 +246,7 @@ func (a *App) newSkinProxy() (*skinProxy, error) {
 		client:     &http.Client{Timeout: 8 * time.Second},
 		mojangAPI:  mojangProfilesAPI,
 		mojangSess: mojangSessionAPI,
+		mojangBulk: mojangBulkNamesAPI,
 		listenAddr: ln.Addr().String(),
 	}
 	p.srv = &http.Server{
@@ -293,7 +318,7 @@ func (p *skinProxy) metadataJSON() ([]byte, error) {
 	p.mu.Lock()
 	domains := append([]string(nil), p.domains...)
 	p.mu.Unlock()
-	domains = append(domains, "textures.minecraft.net", ".minecraft.net")
+	domains = append(domains, "textures.minecraft.net", ".minecraft.net", "127.0.0.1") // 127.0.0.1 — скін агента (ai_agent_game.go)
 	return json.Marshal(map[string]any{
 		"meta": map[string]any{
 			"serverName":              "Shaurma (local)",
@@ -305,6 +330,11 @@ func (p *skinProxy) metadataJSON() ([]byte, error) {
 			// з нашого API root, а не вимикати його. Ключ ми беремо у справжнього Mojang
 			// (див. forwardMojang), тож сервери з enforce-secure-profile його приймають.
 			"feature.enable_profile_key": true,
+			// Без цього authlib-injector підставляє заглушку замість служб Mojang
+			// (налаштування гравця, список друзів, blocklist, скарги): вибір не
+			// зберігається, і гра перепитує його щоразу. З прапорцем гра говорить
+			// зі справжнім Mojang, як без інжектора.
+			"feature.enable_mojang_anti_features": true,
 		},
 		"skinDomains":        domains,
 		"signaturePublickey": p.pubPEM,
@@ -405,6 +435,10 @@ func (p *skinProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_, _ = w.Write(m)
+	case r.Method == http.MethodGet && path == "/ai-skin.png":
+		w.Header().Set("Content-Type", "image/png")
+		w.Header().Set("Cache-Control", "max-age=3600")
+		_, _ = w.Write(aiAgentSkinPNG)
 	case r.Method == http.MethodGet && strings.HasPrefix(path, "/sessionserver/session/minecraft/profile/"):
 		p.handleProfile(w, strings.TrimPrefix(path, "/sessionserver/session/minecraft/profile/"))
 	case r.Method == http.MethodPost && path == "/api/profiles/minecraft":
@@ -413,6 +447,9 @@ func (p *skinProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		p.forwardMojang(w, r, "https://sessionserver.mojang.com/session/minecraft/join")
 	case r.Method == http.MethodGet && path == "/sessionserver/session/minecraft/hasJoined":
 		p.forwardMojang(w, r, "https://sessionserver.mojang.com/session/minecraft/hasJoined")
+	case r.Method == http.MethodGet && strings.HasPrefix(path, "/api/users/profiles/minecraft/"):
+		// Пошук UUID за ніком (моди на кшталт ukulib). Без токена і query: це публічний запит.
+		p.lookupNameMojang(w, r, strings.TrimPrefix(path, "/api/users/profiles/minecraft/"))
 	case strings.HasPrefix(path, "/minecraftservices/"):
 		// Сервіси Minecraft (player/certificates — чат-ключ профілю, publickeys,
 		// privileges тощо) НЕ належать Shaurma: їх має віддавати справжній Mojang
@@ -420,8 +457,44 @@ func (p *skinProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// enforce-secure-profile=true кажуть «Недійсний підпис публічного ключа».
 		p.forwardMojang(w, r, mojangServicesAPI+strings.TrimPrefix(path, "/minecraftservices/"))
 	default:
+		// Усе, чого проксі не знає, свідомо відкидається (токени не мають іти кудись навмання),
+		// але тепер це видно в лозі: клієнт, якому відмовили, часто просто перепитує (як екран «Список друзів»).
+		launchlog.Warn("SkinProxy", "невідомий запит відкинуто: %s %s", r.Method, path)
 		http.NotFound(w, r)
 	}
+}
+
+// lookupNameMojang — GET /api/users/profiles/minecraft/{нік} → публічний api.mojang.com без заголовків авторизації.
+func (p *skinProxy) lookupNameMojang(w http.ResponseWriter, r *http.Request, name string) {
+	if !skinNickValid.MatchString(name) {
+		http.Error(w, "invalid profile name", http.StatusBadRequest)
+		return
+	}
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, mojangProfilesAPI+name, nil)
+	if err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
+	req.Header.Set("Accept", "application/json")
+	client := *p.client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	resp, err := client.Do(req)
+	if err != nil {
+		launchlog.Warn("SkinProxy", "Mojang недоступний (пошук нікнейма): %v", err)
+		http.Error(w, "mojang: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 && resp.StatusCode < 400 {
+		http.Error(w, "redirect refused", http.StatusBadGateway)
+		return
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, io.LimitReader(resp.Body, 64<<10))
 }
 
 // forwardMojang — пересилка на справжній Mojang із передачею Authorization.
@@ -480,45 +553,86 @@ func (p *skinProxy) upstreamBase() string {
 	return p.upstream
 }
 
-// forward sends only the validated nickname batch; never session requests.
-func (p *skinProxy) forward(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.URL.Path != "/api/profiles/minecraft" {
-		http.NotFound(w, r)
-		return
-	}
+// postUpstreamBatch sends only the validated nickname batch to Shaurma; never
+// session requests, never credentials.
+func (p *skinProxy) postUpstreamBatch(ctx context.Context, names []string) (int, []byte, error) {
 	base := p.upstreamBase()
 	if base == "" {
-		http.Error(w, "upstream не задано", http.StatusBadGateway)
-		return
+		return 0, nil, errors.New("upstream не задано")
 	}
-	target := base + r.URL.Path
-	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, target, bytes.NewReader(body))
+	body, _ := json.Marshal(names)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/profiles/minecraft", bytes.NewReader(body))
 	if err != nil {
-		http.Error(w, "bad request", http.StatusBadRequest)
-		return
+		return 0, nil, err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
-	for _, h := range []string{"Content-Type", "Accept"} {
-		if v := r.Header.Get(h); v != "" {
-			req.Header.Set(h, v)
-		}
-	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		http.Error(w, "upstream: "+err.Error(), http.StatusBadGateway)
-		return
+		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	if ct := resp.Header.Get("Content-Type"); ct != "" {
-		w.Header().Set("Content-Type", ct)
-	}
-	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, io.LimitReader(resp.Body, 4<<20))
+	out, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	return resp.StatusCode, out, nil
 }
 
-// handleBatch — POST /api/profiles/minecraft ([ "нік", ... ]): вчимо ніки і
-// пересилаємо на Shaurma лише перевірений список ніків.
+type nameRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// mojangBulkLookup — ніки, яких не знає Shaurma, питаємо у справжнього Mojang
+// (так працює ванільна гра: голова за SkullOwner, пошук гравця за ніком).
+// Без токенів і без query. Збій Mojang — не помилка: повертаємо, що встигли.
+func (p *skinProxy) mojangBulkLookup(ctx context.Context, names []string) []nameRef {
+	if p.mojangBulk == "" || len(names) == 0 {
+		return nil
+	}
+	if len(names) > mojangBulkMax {
+		names = names[:mojangBulkMax]
+	}
+	client := *p.client
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	var out []nameRef
+	for i := 0; i < len(names); i += mojangBulkChunk {
+		end := i + mojangBulkChunk
+		if end > len(names) {
+			end = len(names)
+		}
+		body, _ := json.Marshal(names[i:end])
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.mojangBulk, bytes.NewReader(body))
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			launchlog.Warn("SkinProxy", "Mojang недоступний (пакетний пошук ніків): %v", err)
+			continue
+		}
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 256<<10))
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+		var got []nameRef
+		if json.Unmarshal(raw, &got) != nil {
+			continue
+		}
+		for _, g := range got {
+			if id := normalizeUUIDHex(g.ID); id != "" && skinNickValid.MatchString(g.Name) {
+				out = append(out, nameRef{ID: id, Name: g.Name})
+			}
+		}
+	}
+	return out
+}
+
+// handleBatch — POST /api/profiles/minecraft ([ "нік", ... ]): вчимо ніки,
+// питаємо Shaurma (піратів), а те, чого вона не знає, — справжній Mojang.
 func (p *skinProxy) handleBatch(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 64<<10))
 	var names []string
@@ -535,36 +649,114 @@ func (p *skinProxy) handleBatch(w http.ResponseWriter, r *http.Request) {
 	for _, n := range names {
 		p.learn(n)
 	}
-	body, _ = json.Marshal(names)
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	p.forward(w, r)
+
+	status, upBody, upErr := p.postUpstreamBatch(r.Context(), names)
+	if p.mojangBulk == "" {
+		// Лише Shaurma (старий режим / тести без Mojang).
+		if upErr != nil {
+			http.Error(w, "upstream: "+upErr.Error(), http.StatusBadGateway)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(status)
+		_, _ = w.Write(upBody)
+		return
+	}
+
+	found := []nameRef{}
+	if upErr == nil && status == http.StatusOK {
+		_ = json.Unmarshal(upBody, &found)
+		if found == nil {
+			found = []nameRef{}
+		}
+	} else if upErr != nil {
+		launchlog.Warn("SkinProxy", "Shaurma недоступна (пакетний пошук ніків): %v", upErr)
+	}
+	have := make(map[string]bool, len(found))
+	for _, f := range found {
+		have[strings.ToLower(f.Name)] = true
+	}
+	var missing []string
+	for _, n := range names {
+		if k := strings.ToLower(n); !have[k] {
+			have[k] = true // не питаємо двічі про дубль
+			missing = append(missing, n)
+		}
+	}
+	found = append(found, p.mojangBulkLookup(r.Context(), missing)...)
+	writeYgJSON(w, http.StatusOK, found)
 }
 
 // fetchUpstreamProfile — профіль із Shaurma. nil, якщо 204/404/помилка.
+// upstreamStaleTTL — скільки тримати останню відповідь сервера Шаурми на випадок, якщо він на
+// мить недоступний (перезапуск вузла, ліміт): гра лишається з вибором сервера (скін і плащ
+// Шаурми), а не провалюється у вигляд Mojang.
+const upstreamStaleTTL = 30 * time.Minute
+
+type upstreamEntry struct {
+	prof *ygProfile
+	at   time.Time
+}
+
+var (
+	upstreamLastMu sync.Mutex
+	upstreamLast   = map[string]upstreamEntry{}
+)
+
 func (p *skinProxy) fetchUpstreamProfile(uuidHex string) *ygProfile {
 	base := p.upstreamBase()
 	if base == "" {
 		return nil
 	}
+	for attempt := 1; attempt <= 3; attempt++ {
+		prof, status, err := p.fetchUpstreamOnce(base, uuidHex)
+		switch {
+		case prof != nil:
+			upstreamLastMu.Lock()
+			upstreamLast[uuidHex] = upstreamEntry{prof: prof, at: time.Now()}
+			upstreamLastMu.Unlock()
+			return prof
+		case err == nil && status == http.StatusNoContent:
+			// Сервер точно знає: такого гравця в Шаурмі немає — це не збій.
+			return nil
+		case err != nil:
+			launchlog.Warn("SkinProxy", "Shaurma недоступна (спроба %d/3): %v", attempt, err)
+		default:
+			launchlog.Warn("SkinProxy", "Shaurma відповіла HTTP %d (спроба %d/3)", status, attempt)
+		}
+		if attempt < 3 {
+			time.Sleep(time.Duration(attempt) * 700 * time.Millisecond)
+		}
+	}
+	upstreamLastMu.Lock()
+	e, ok := upstreamLast[uuidHex]
+	upstreamLastMu.Unlock()
+	if ok && time.Since(e.at) < upstreamStaleTTL {
+		launchlog.Warn("SkinProxy", "профіль %s: сервер не відповів — остання відповідь сервера Шаурми", uuidHex)
+		return e.prof
+	}
+	return nil
+}
+
+func (p *skinProxy) fetchUpstreamOnce(base, uuidHex string) (*ygProfile, int, error) {
 	req, err := http.NewRequest(http.MethodGet, base+"/sessionserver/session/minecraft/profile/"+uuidHex, nil)
 	if err != nil {
-		return nil
+		return nil, 0, err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
 	resp, err := p.client.Do(req)
 	if err != nil {
-		launchlog.Warn("SkinProxy", "Shaurma недоступна: %v", err)
-		return nil
+		return nil, 0, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil
+		return nil, resp.StatusCode, nil
 	}
 	var prof ygProfile
-	if json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&prof) != nil {
-		return nil
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&prof); err != nil {
+		return nil, resp.StatusCode, err
 	}
-	return &prof
+	return &prof, resp.StatusCode, nil
 }
 
 func (p *skinProxy) handleProfile(w http.ResponseWriter, rawUUID string) {
@@ -574,13 +766,26 @@ func (p *skinProxy) handleProfile(w http.ResponseWriter, rawUUID string) {
 		return
 	}
 
+	// Акаунти ШІ (Claude, Claude_2…) мають власний скін, який віддається локально, без Shaurma/Mojang.
+	if aiNick := p.nickFor(uuidHex); aiNick != "" && aiIsKnownAINick(aiNick) {
+		p.serveAIProfile(w, uuidHex, aiNick)
+		return
+	}
+
 	// Потік 1: Shaurma.
 	up := p.fetchUpstreamProfile(uuidHex)
 	merged := &texturesDoc{Textures: map[string]json.RawMessage{}}
 	nick := ""
+	// capeMode — вибір гравця на сервері Шаурми, лише два режими: shaurma (плащ із textures Шаурми;
+	// немає — без плаща) і mojang (плащ із профілю Mojang; немає там — без плаща).
+	// Порожньо — старий сервер, поведінка як раніше.
+	capeMode := ""
 	if up != nil {
 		nick = up.Name
 		for _, pr := range up.Properties {
+			if pr.Name == "shaurma:cape" {
+				capeMode = pr.Value
+			}
 			if pr.Name == "textures" {
 				if d := decodeTextures(pr.Value); d != nil {
 					merged.Timestamp = d.Timestamp
@@ -595,21 +800,51 @@ func (p *skinProxy) handleProfile(w http.ResponseWriter, rawUUID string) {
 	// Потік 2: Mojang — лише якщо Shaurma не дала СКІН.
 	source := "shaurma"
 	if _, hasSkin := merged.Textures["SKIN"]; !hasSkin {
-		if nick == "" {
-			nick = p.nickFor(uuidHex)
-		}
-		if nick != "" {
-			if md := p.mojangTextures(nick); md != nil {
-				for k, v := range md.Textures {
-					if _, have := merged.Textures[k]; !have { // плащ Shaurma не перетираємо
-						merged.Textures[k] = v
-					}
-				}
-				if merged.Timestamp == 0 {
-					merged.Timestamp = md.Timestamp
-				}
-				source = "mojang"
+		var md *texturesDoc
+		if isOfflineUUIDShape(uuidHex) {
+			// Пірат, якого Shaurma не знає: пробуємо ліцензійний скін за НІКОМ.
+			if nick == "" {
+				nick = p.nickFor(uuidHex)
 			}
+			if nick != "" {
+				md = p.mojangTextures(nick)
+			}
+		} else {
+			// Справжній Mojang-UUID (ліцензійний гравець): як у ванільній грі —
+			// профіль із Mojang напряму, нік не потрібен.
+			md = p.mojangTexturesByUUID(uuidHex)
+			if md != nil && nick == "" {
+				nick = md.ProfileName
+			}
+		}
+		if md != nil {
+			for k, v := range md.Textures {
+				if _, have := merged.Textures[k]; !have { // плащ Shaurma не перетираємо
+					merged.Textures[k] = v
+				}
+			}
+			if merged.Timestamp == 0 {
+				merged.Timestamp = md.Timestamp
+			}
+			source = "mojang"
+		}
+	}
+
+	switch capeMode {
+	case "mojang":
+		// Плащ — ЛИШЕ з профілю Mojang (на Mojang нічого не змінюється). Немає там плаща — без плаща.
+		delete(merged.Textures, "CAPE")
+		if !isOfflineUUIDShape(uuidHex) {
+			if md := p.mojangTexturesByUUID(uuidHex); md != nil {
+				if c, ok := md.Textures["CAPE"]; ok {
+					merged.Textures["CAPE"] = c
+				}
+			}
+		}
+	case "shaurma", "none": // "none" — сумісність зі старим сервером
+		// Плащ — ЛИШЕ з textures Шаурми; плащ Mojang не домішуємо. Немає — без плаща.
+		if up == nil || !shaurmaHasCape(up) {
+			delete(merged.Textures, "CAPE")
 		}
 	}
 
@@ -644,6 +879,20 @@ func (p *skinProxy) handleProfile(w http.ResponseWriter, rawUUID string) {
 	})
 }
 
+// shaurmaHasCape — чи є плащ у textures, які віддав сервер Шаурми.
+func shaurmaHasCape(up *ygProfile) bool {
+	for _, pr := range up.Properties {
+		if pr.Name == "textures" {
+			if d := decodeTextures(pr.Value); d != nil {
+				if _, ok := d.Textures["CAPE"]; ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 func (p *skinProxy) sign(value string) (string, error) {
 	h := sha1.Sum([]byte(value))
 	s, err := rsa.SignPKCS1v15(rand.Reader, p.key, crypto.SHA1, h[:])
@@ -655,20 +904,45 @@ func (p *skinProxy) sign(value string) (string, error) {
 
 // ── Mojang (потік 2) ────────────────────────────────────────────────────
 
+// isOfflineUUIDShape — UUIDv3 + варіант IETF: саме такий UUID генерує Java для
+// офлайн-акаунтів (UUID.nameUUIDFromBytes). Справжні Mojang-UUID — це v4.
+func isOfflineUUIDShape(hexs string) bool {
+	return len(hexs) == 32 && hexs[12] == '3' && strings.ContainsRune("89ab", rune(hexs[16]))
+}
+
 // mojangTextures — текстури ліцензійного гравця з таким ніком (nil — немає/збій).
-// Кеш + об'єднання одночасних запитів по одному ніку: сервер на 50 гравців не
-// має породжувати 50 однакових звернень до Mojang (ліміти API).
+// Це додатковий підбір для офлайн-UUID, його можна вимкнути в налаштуваннях.
 func (p *skinProxy) mojangTextures(nick string) *texturesDoc {
 	if !skinNickValid.MatchString(nick) {
 		return nil
 	}
-	key := strings.ToLower(nick)
-
 	p.mu.Lock()
-	if p.disableMojangFallback {
-		p.mu.Unlock()
+	disabled := p.disableMojangFallback
+	p.mu.Unlock()
+	if disabled {
 		return nil
 	}
+	return p.cachedMojang(strings.ToLower(nick), func() (*texturesDoc, time.Duration) {
+		return p.fetchMojang(nick)
+	})
+}
+
+// mojangTexturesByUUID — текстури за справжнім Mojang-UUID. Налаштування
+// DisableMojangSkinFallback сюди не застосовується: це звичайний запит
+// ванільної гри, без нього ліцензійні гравці стали б Steve.
+func (p *skinProxy) mojangTexturesByUUID(uuidHex string) *texturesDoc {
+	if normalizeUUIDHex(uuidHex) == "" {
+		return nil
+	}
+	return p.cachedMojang("uuid:"+uuidHex, func() (*texturesDoc, time.Duration) {
+		return p.fetchMojangProfile(uuidHex)
+	})
+}
+
+// cachedMojang — кеш + об'єднання одночасних запитів по одному ключу: сервер на
+// 50 гравців не має породжувати 50 однакових звернень до Mojang (ліміти API).
+func (p *skinProxy) cachedMojang(key string, fetch func() (*texturesDoc, time.Duration)) *texturesDoc {
+	p.mu.Lock()
 	if e, ok := p.cache[key]; ok && time.Since(e.at) < e.ttl {
 		p.mu.Unlock()
 		return e.doc
@@ -688,13 +962,23 @@ func (p *skinProxy) mojangTextures(nick string) *texturesDoc {
 		// Завжди звільняємо чекальників, навіть при паніці в fetch.
 		_ = recover()
 		p.mu.Lock()
+		if len(p.cache) >= skinProxyMaxCache {
+			for k, e := range p.cache { // спершу прострочене, потім — усе
+				if time.Since(e.at) >= e.ttl {
+					delete(p.cache, k)
+				}
+			}
+			if len(p.cache) >= skinProxyMaxCache {
+				p.cache = map[string]mojangEntry{}
+			}
+		}
 		p.cache[key] = mojangEntry{doc: doc, at: time.Now(), ttl: ttl}
 		delete(p.inflight, key)
 		c.doc = doc
 		p.mu.Unlock()
 		close(c.done)
 	}()
-	doc, ttl = p.fetchMojang(nick)
+	doc, ttl = fetch()
 	return doc
 }
 
@@ -718,16 +1002,25 @@ func (p *skinProxy) fetchMojang(nick string) (*texturesDoc, time.Duration) {
 	if json.Unmarshal(idBody, &id) != nil || normalizeUUIDHex(id.ID) == "" {
 		return nil, skinProxyTTLError
 	}
+	// 2) UUID → профіль із textures
+	return p.fetchMojangProfile(normalizeUUIDHex(id.ID))
+}
 
-	// 2) UUID → профіль із textures (без підпису Mojang: ми підписуємо самі)
-	resp2, err := p.client.Get(p.mojangSess + normalizeUUIDHex(id.ID))
+// fetchMojangProfile — UUID → профіль із textures (без підпису Mojang: ми
+// підписуємо самі, бо injector підміняє ключ перевірки на ключ проксі).
+func (p *skinProxy) fetchMojangProfile(uuidHex string) (*texturesDoc, time.Duration) {
+	resp2, err := p.client.Get(p.mojangSess + uuidHex)
 	if err != nil {
 		return nil, skinProxyTTLError
 	}
 	profBody, _ := io.ReadAll(io.LimitReader(resp2.Body, 256<<10))
 	resp2.Body.Close()
-	if resp2.StatusCode != http.StatusOK {
-		return nil, skinProxyTTLError
+	switch resp2.StatusCode {
+	case http.StatusOK:
+	case http.StatusNoContent, http.StatusNotFound:
+		return nil, skinProxyTTLMissing // такого профілю в Mojang немає
+	default:
+		return nil, skinProxyTTLError // 429/5xx — спробуємо пізніше
 	}
 	var prof ygProfile
 	if json.Unmarshal(profBody, &prof) != nil {
@@ -739,9 +1032,31 @@ func (p *skinProxy) fetchMojang(nick string) (*texturesDoc, time.Duration) {
 		}
 		d := decodeTextures(pr.Value)
 		if d == nil || len(d.Textures) == 0 {
-			return nil, skinProxyTTLMissing // ліцензія є, власного скіна немає
+			return nil, skinProxyTTLMissing // профіль є, власного скіна немає
+		}
+		if d.ProfileName == "" {
+			d.ProfileName = prof.Name
 		}
 		return d, skinProxyTTLFound
 	}
 	return nil, skinProxyTTLMissing
+}
+
+// serveAIProfile — профіль акаунта ШІ з локальним підписаним скіном (PNG віддається маршрутом /ai-skin.png).
+func (p *skinProxy) serveAIProfile(w http.ResponseWriter, uuidHex, nick string) {
+	skin, _ := json.Marshal(map[string]string{"url": fmt.Sprintf("http://127.0.0.1:%d/ai-skin.png", p.port)})
+	doc := &texturesDoc{Timestamp: time.Now().UnixMilli(), ProfileID: uuidHex, ProfileName: nick,
+		Textures: map[string]json.RawMessage{"SKIN": skin}}
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	value := base64.StdEncoding.EncodeToString(raw)
+	sig, err := p.sign(value)
+	if err != nil {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	writeYgJSON(w, http.StatusOK, ygProfile{ID: uuidHex, Name: nick, Properties: []ygProp{{Name: "textures", Value: value, Signature: sig}}})
 }

@@ -212,9 +212,12 @@ type authKeyResponse struct {
 // сам звертається до Headscale Admin API своїм секретом
 // (env.HEADSCALE_API_KEY, ніколи не потрапляє в клієнт) — лаунчер
 // отримує лише готовий, вже короткоживучий ключ.
-func (c *LobbyClient) RequestAuthKey(ctx context.Context) (string, error) {
+//
+// role — "host" (потрібен акаунт Шаурми) або "guest": вузол отримує відповідний тег, а ACL мережі
+// пускає лише гість → хост.
+func (c *LobbyClient) RequestAuthKey(ctx context.Context, role string) (string, error) {
 	var out authKeyResponse
-	if err := c.doJSON(ctx, http.MethodPost, "/p2p/auth-key", nil, &out); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/p2p/auth-key", map[string]string{"role": role}, &out); err != nil {
 		return "", err
 	}
 	if out.AuthKey == "" {
@@ -264,7 +267,7 @@ func (c *LobbyClient) doJSONH(ctx context.Context, method, path string, hdr map[
 		req.Header.Set(k, v)
 	}
 
-	launchlog.Debug(compLobby, "[%s] → %s %s%s тіло=%s токен=%s", rid, method, c.baseURL, path, bodyLog, maskSecret(c.token))
+	launchlog.Debug(compLobby, "[%s] → %s %s%s тіло=%s токен=%s авторизація=%s", rid, method, c.baseURL, path, bodyLog, maskSecret(c.token), describeAuth(req.Header))
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -325,11 +328,12 @@ func (c *LobbyClient) doJSONH(ctx context.Context, method, path string, hdr map[
 			Status: resp.StatusCode, Code: apiErr.Error, Message: msg, Text: text,
 			HostName: apiErr.HostName, Limit: apiErr.Limit, Scope: apiErr.Scope,
 			Access: apiErr.Access,
+			Source: classifyFailureSource(resp.StatusCode, resp.Header, apiErr.Error, msg),
 		}
 		// 404 на join/host-update — очікувана ситуація (адреса протухла), але
 		// у лозі це все одно має бути видно з кодом помилки сервера.
-		launchlog.Warn(compLobby, "[%s] ✗ %s %s → HTTP %d (%s) код=%q повідомлення=%q тіло=%s | %s ⇒ %s",
-			rid, method, path, resp.StatusCode, sw, apiErr.Error, msg, snippet(data, 400), tm, explainLobbyErr(rerr))
+		launchlog.Warn(compLobby, "[%s] ✗ %s %s → HTTP %d (%s) код=%q повідомлення=%q тіло=%s джерело=%q %s авторизація=[%s] | %s ⇒ %s",
+			rid, method, path, resp.StatusCode, sw, apiErr.Error, msg, snippet(data, 400), rerr.Source, edgeInfo(resp.Header), describeAuth(req.Header), tm, explainLobbyErr(rerr))
 		return rerr
 	}
 

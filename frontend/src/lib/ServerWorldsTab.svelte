@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n.svelte'
   import { tip as launcherTip } from './friends/tooltip'
 
   // ── Світи сервера + бекапи ────────────────────────────────────────────
@@ -183,13 +184,13 @@
 
   async function restoreBackup(world: string, b: BackupInfo) {
     if (running) {
-      toast('Спочатку зупиніть сервер — відновлення світу під живим процесом неможливе', 'error')
+      toast('Зупиніть сервер перед відновленням світу', 'error')
       return
     }
     const proceed = await confirmDialog(
       `Відновити світ «${world}»?`,
-      `Поточний стан світу буде замінено бекапом від ${fmtDate(b.created)}. Перед відновленням бекенд автоматично створить копію поточного стану (pre-restore).`,
-      { confirmLabel: 'Відновити', cancelLabel: 'Скасувати', danger: true },
+      `Світ буде замінено копією від ${fmtDate(b.created)}.`,
+      { confirmLabel: 'Відновити', cancelLabel: t('cancel'), danger: true },
     )
     if (!proceed) return
     try {
@@ -202,7 +203,7 @@
     const proceed = await confirmDialog(
       'Видалити бекап?',
       `Бекап «${b.name}» буде видалено назавжди.`,
-      { confirmLabel: 'Видалити', cancelLabel: 'Скасувати', danger: true },
+      { confirmLabel: 'Видалити', cancelLabel: t('cancel'), danger: true },
     )
     if (!proceed) return
     try {
@@ -280,14 +281,14 @@
   <header class="swt-head">
     <span class="swt-head-ic"><i class="ti ti-world"></i></span>
     <div class="swt-head-txt">
-      <h3>Світи та бекапи</h3>
+      <h3>{t('swt.title')}</h3>
       <p>
         {worlds.length} {plural(worlds.length, ['світ', 'світи', 'світів'])}
         · {totalBackups} {plural(totalBackups, ['копія', 'копії', 'копій'])}
         {#if totalBackupsMB > 0}· {fmtSize(totalBackupsMB)}{/if}
       </p>
     </div>
-    <button class="swt-ibtn" onclick={loadWorlds} use:launcherTip={"Оновити список світів"} aria-label="Оновити список світів">
+    <button class="swt-ibtn" onclick={loadWorlds} use:launcherTip={t('swt.refreshAria')} aria-label={t('swt.refreshAria')}>
       <i class="ti ti-refresh" class:spin={loading}></i>
     </button>
   </header>
@@ -295,7 +296,7 @@
   {#if running}
     <div class="swt-banner" role="status">
       <i class="ti ti-player-play-filled"></i>
-      <span><b>Сервер працює.</b> Бекап створити можна, а відновити — лише після зупинки сервера.</span>
+      <span><b>{t('swt.running')}</b> {t('swt.stopToRestore')}</span>
     </div>
   {/if}
 
@@ -306,13 +307,13 @@
         <button class="swt-auto-main" onclick={() => (autoOpen = !autoOpen)} aria-expanded={autoOpen}>
           <span class="swt-auto-ic"><i class="ti ti-clock-play"></i></span>
           <span class="swt-auto-txt">
-            <b>Авто-бекап</b>
+            <b>{t('swt.auto')}</b>
             <small>{autoSummary}</small>
           </span>
           <i class="ti ti-chevron-down swt-chev" class:open={autoOpen}></i>
         </button>
         <div class="toggle" class:on={autoCfg.enabled} role="switch" aria-checked={autoCfg.enabled}
-             aria-label="Увімкнути авто-бекапи" tabindex="0"
+             aria-label={t('swt.autoAria')} tabindex="0"
              onclick={() => (autoCfg!.enabled = !autoCfg!.enabled)}
              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); autoCfg!.enabled = !autoCfg!.enabled } }}></div>
       </div>
@@ -321,25 +322,25 @@
         <div class="swt-auto-body" transition:slide={{ duration: 180 }}>
           <div class="swt-grid" class:dim={!autoCfg.enabled}>
             <label class="swt-field">
-              <span>Як часто</span>
+              <span>{t('swt.every')}</span>
               <SelectField value={String(autoCfg.intervalMin)} options={intervalOptions}
                            onchange={(v) => (autoCfg!.intervalMin = Number(v))} minWidth="100%"
                            ariaLabel="Інтервал авто-бекапів" disabled={!autoCfg.enabled} />
             </label>
             <label class="swt-field">
-              <span>Максимум на добу</span>
+              <span>{t('swt.maxDay')}</span>
               <SelectField value={String(autoCfg.maxPerDay)} options={maxPerDayOptions}
                            onchange={(v) => (autoCfg!.maxPerDay = Number(v))} minWidth="100%"
                            ariaLabel="Ліміт авто-бекапів на добу" disabled={!autoCfg.enabled} />
             </label>
             <label class="swt-field">
-              <span>Скільки зберігати</span>
+              <span>{t('swt.keep')}</span>
               <SelectField value={String(autoCfg.keepCount)} options={keepCountOptions}
                            onchange={(v) => (autoCfg!.keepCount = Number(v))} minWidth="100%"
                            ariaLabel="Скільки бекапів лишити" disabled={!autoCfg.enabled} />
             </label>
             <label class="swt-field">
-              <span>Видаляти старі</span>
+              <span>{t('swt.prune')}</span>
               <SelectField value={String(autoCfg.keepDays)} options={keepDaysOptions}
                            onchange={(v) => (autoCfg!.keepDays = Number(v))} minWidth="100%"
                            ariaLabel="Видаляти бекапи старші за N днів" disabled={!autoCfg.enabled} />
@@ -351,30 +352,30 @@
           <div class="swt-opts" class:dim={!autoCfg.enabled}>
             <div class="swt-opt">
               <span class="swt-opt-ic"><i class="ti ti-player-stop"></i></span>
-              <span class="swt-opt-txt"><b>При зупинці сервера</b><small>Найнадійніший знімок світу</small></span>
+              <span class="swt-opt-txt"><b>{t('swt.onStop')}</b></span>
               <div class="toggle" class:on={!!autoCfg.backupOnStop} role="switch" aria-checked={!!autoCfg.backupOnStop}
-                   aria-label="Бекап при зупинці сервера" tabindex="0"
+                   aria-label={t('swt.onStopAria')} tabindex="0"
                    onclick={() => (autoCfg!.backupOnStop = !autoCfg!.backupOnStop)}
                    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); autoCfg!.backupOnStop = !autoCfg!.backupOnStop } }}></div>
             </div>
             <div class="swt-opt">
               <span class="swt-opt-ic"><i class="ti ti-player-play"></i></span>
-              <span class="swt-opt-txt"><b>При запуску сервера</b><small>Стан «як було до сесії»</small></span>
+              <span class="swt-opt-txt"><b>{t('swt.onStart')}</b></span>
               <div class="toggle" class:on={!!autoCfg.backupOnStart} role="switch" aria-checked={!!autoCfg.backupOnStart}
-                   aria-label="Бекап при запуску сервера" tabindex="0"
+                   aria-label={t('swt.onStartAria')} tabindex="0"
                    onclick={() => (autoCfg!.backupOnStart = !autoCfg!.backupOnStart)}
                    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); autoCfg!.backupOnStart = !autoCfg!.backupOnStart } }}></div>
             </div>
           </div>
-          <p class="swt-note"><i class="ti ti-info-circle"></i> Перший бекап — через інтервал після старту. Копії лежать у <b>.shaurma/backups</b> поруч зі світом.</p>
+          <p class="swt-note"><i class="ti ti-info-circle"></i> Копії зберігаються <b>на цьому диску</b>.</p>
         </div>
       {/if}
 
       {#if cfgDirty}
         <div class="swt-savebar" transition:slide={{ duration: 150 }}>
-          <span><i class="ti ti-point-filled"></i> Є незбережені зміни</span>
+          <span><i class="ti ti-point-filled"></i> {t('swt.dirty')}</span>
           <div>
-            <button class="btn btn-ghost btn-sm" onclick={cancelAutoCfg} disabled={cfgSaving}>Скасувати</button>
+            <button class="btn btn-ghost btn-sm" onclick={cancelAutoCfg} disabled={cfgSaving}>{t('cancel')}</button>
             <button class="btn btn-primary btn-sm" onclick={saveAutoCfg} disabled={cfgSaving}>
               {#if cfgSaving}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-device-floppy"></i>{/if} Зберегти
             </button>
@@ -396,7 +397,7 @@
           <i class="ti ti-loader spin"></i>
         {/if}
         <b>{backupProgress.world}</b>
-        {#if backupProgress.auto}<span class="swt-chip">авто</span>{/if}
+        {#if backupProgress.auto}<span class="swt-chip">{t('swt.autoChip')}</span>{/if}
         <span class="swt-prog-msg">
           {#if backupProgress.stage === 'error'}
             {backupProgress.error || 'помилка'}
@@ -420,12 +421,12 @@
 
   <!-- ── Світи ── -->
   {#if loading}
-    <div class="swt-state"><i class="ti ti-loader spin"></i> Завантаження…</div>
+    <div class="swt-state"><i class="ti ti-loader spin"></i> {t('loading')}</div>
   {:else if worlds.length === 0}
     <div class="swt-state">
       <span class="swt-state-ic"><i class="ti ti-world-off"></i></span>
-      <b>Світів ще немає</b>
-      <span class="swt-hint">Світ зʼявиться тут після першого запуску сервера (level-name з server.properties).</span>
+      <b>{t('swt.noWorlds')}</b>
+      <span class="swt-hint">{t('swt.noWorldsHint')}</span>
     </div>
   {:else}
     <div class="swt-list">
@@ -439,7 +440,7 @@
               <span class="swt-info">
                 <span class="swt-name">
                   {w.name}
-                  {#if w.name.toLowerCase() === 'world'}<span class="swt-chip ok">основний</span>{/if}
+                  {#if w.name.toLowerCase() === 'world'}<span class="swt-chip ok">{t('swt.main')}</span>{/if}
                 </span>
                 <span class="swt-meta">{fmtSize(w.sizeMB)} · змінено {fmtAgo(w.modified)}</span>
               </span>
@@ -456,9 +457,9 @@
               <i class="ti ti-chevron-down swt-chev" class:open={expanded[w.name]}></i>
             </button>
             <button class="btn btn-primary btn-sm swt-create" onclick={() => createBackup(w.name)} disabled={!!busy}
-                    use:launcherTip={"Створити бекап цього світу зараз"}>
+                    use:launcherTip={"Створити копію світу"}>
               {#if busy === w.name}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-device-floppy"></i>{/if}
-              <span>Бекап</span>
+              <span>{t('swt.backup')}</span>
             </button>
           </div>
 
@@ -469,8 +470,8 @@
               {:else if list.length === 0}
                 <div class="swt-empty">
                   <span class="swt-state-ic"><i class="ti ti-archive-off"></i></span>
-                  <b>Бекапів поки немає</b>
-                  <span class="swt-hint">Створіть першу копію, перш ніж щось міняти у світі.</span>
+                  <b>{t('swt.noBackups')}</b>
+                  <span class="swt-hint">{t('swt.noBackupsHint')}</span>
                 </div>
               {:else}
                 <ol class="swt-tl">
@@ -481,8 +482,12 @@
                         <div class="swt-bk-top">
                           <span class="swt-bk-when">{fmtDay(b.created)}</span>
                           <span class="swt-bk-ago">{fmtAgo(b.created)}</span>
-                          {#if i === 0}<span class="swt-chip ok">найновіший</span>{/if}
-                          <span class="swt-chip" class:hand={!b.auto}>{b.auto ? 'авто' : 'вручну'}</span>
+                          {#if i === 0}<span class="swt-chip ok">{t('swt.newest')}</span>{/if}
+                          {#if b.createdBy}
+                            <span class="swt-chip" use:launcherTip={t('swt.aiMade') + (b.createdBy === 'ai-agent' ? '' : ': ' + b.createdBy)}><i class="ti ti-robot"></i> {t('aiShort')}</span>
+                          {:else}
+                            <span class="swt-chip" class:hand={!b.auto}>{b.auto ? t('swt.autoChip') : 'вручну'}</span>
+                          {/if}
                         </div>
                         <div class="swt-bk-meta">
                           <span>{fmtSize(b.sizeMB)}</span>
@@ -496,7 +501,7 @@
                                 use:launcherTip={running ? 'Зупиніть сервер для відновлення' : 'Відновити світ з цього бекапу'}>
                           <i class="ti ti-history"></i> Відновити
                         </button>
-                        <button class="swt-ibtn danger" onclick={() => deleteBackup(w.name, b)} use:launcherTip={"Видалити бекап"} aria-label="Видалити бекап">
+                        <button class="swt-ibtn danger" onclick={() => deleteBackup(w.name, b)} use:launcherTip={t('swt.deleteAria')} aria-label={t('swt.deleteAria')}>
                           <i class="ti ti-trash"></i>
                         </button>
                       </div>
@@ -587,7 +592,7 @@
   .swt-opt-ic { width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; font-size: 14px; color: var(--text-mute); background: var(--hover); flex-shrink: 0; }
   .swt-opt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .swt-opt-txt b { font: 600 12.5px/1.2 var(--font-ui); color: var(--text); }
-  .swt-opt-txt small { font: 400 11.5px/1.3 var(--font-ui); color: var(--text-dim); }
+  
   .swt-note { display: flex; align-items: center; gap: 6px; margin: 0; font: 400 11.5px/1.4 var(--font-ui); color: var(--text-dim); }
   .swt-note b { font-family: var(--font-mono); font-weight: 600; color: var(--text-mute); }
 

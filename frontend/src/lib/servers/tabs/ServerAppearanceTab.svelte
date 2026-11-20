@@ -23,19 +23,24 @@
     onUpdated?: (s: ServerView) => void
   } = $props()
 
+  // svelte-ignore state_referenced_locally
   let editName = $state(srv.name)
+  // svelte-ignore state_referenced_locally
   let editNotes = $state(srv.notes || '')
+  // svelte-ignore state_referenced_locally
   let editColor = $state(srv.color || '#ff8a00')
   let savingKey = $state('')
 
   // ── ID (тека) сервера ──
   const currentFolder = $derived(srv.dir.split(/[\\/]/).filter(Boolean).pop() ?? '')
+  // svelte-ignore state_referenced_locally
   let editFolder = $state(currentFolder)
   let folderCheck = $state<{ free: boolean; folder: string } | null>(null)
   let folderBusy = $state(false)
   const folderChanged = $derived(editFolder.trim() !== '' && editFolder.trim() !== currentFolder)
 
   // ── Вигляд ──
+  // svelte-ignore state_referenced_locally
   let iconName = $state(srv.icon ?? '')
   let launcherSrcPath = $state('')
   let savingIcon = $state(false)
@@ -129,6 +134,7 @@
   }
 
   let appearanceTimer: ReturnType<typeof setTimeout> | undefined
+  // svelte-ignore state_referenced_locally
   let lastSavedAppearance = { color: srv.color || '#ff8a00', icon: srv.icon ?? '' }
 
   async function saveAppearance() {
@@ -219,7 +225,7 @@
     <div class="row col" data-skey="id">
       <div class="rl-name">{t('servers.settings.folderId')} <span class="muted">{isRunning ? t('servers.appearance.stopFirst') : ''}</span></div>
       <div class="sat-inline">
-        <input class="input mono" style="flex:1" bind:value={editFolder} disabled={isRunning} placeholder="id-сервера" />
+        <input class="input mono" style="flex:1" bind:value={editFolder} disabled={isRunning} placeholder={t('sa.idPh')} />
         <button class="btn btn-ghost btn-sm" disabled={isRunning || !folderChanged || folderBusy || (!!folderCheck && !folderCheck.free)} onclick={renameFolder}>
           {folderBusy ? '…' : t('servers.appearance.idChange')}
         </button>
@@ -284,7 +290,7 @@
         </label>
         <input id="srv-icon-file" type="file" accept="image/*" hidden onchange={pickIcon} />
         {#if srv.iconData}
-          <button class="btn btn-ghost btn-sm" onclick={resetIcon} use:launcherTip={t('servers.settings.appearanceReset')}><i class="ti ti-trash"></i></button>
+          <button aria-label={t('servers.settings.appearanceReset')} class="btn btn-ghost btn-sm" onclick={resetIcon} use:launcherTip={t('servers.settings.appearanceReset')}><i class="ti ti-trash"></i></button>
         {/if}
       </div>
     </div>

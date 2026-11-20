@@ -54,7 +54,7 @@
             {#if bio}
               <p class="fpm-bio">{bio}</p>
             {:else}
-              <p class="fpm-bio empty">Так друзі побачать ваше біо</p>
+              <p class="fpm-bio empty">{t('prof.bioPreview')}</p>
             {/if}
           </div>
         </section>

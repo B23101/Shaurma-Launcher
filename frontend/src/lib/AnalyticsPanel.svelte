@@ -50,6 +50,7 @@
   // activeAccountName (немає акаунтів) = сумарно по всіх. Нік — стабільний
   // ключ: навіть якщо гравець вийшов з акаунта і зайшов заново (або інший
   // акаунт на той самий нік), аналітика лишається прив'язаною.
+  // svelte-ignore state_referenced_locally
   let selAccountName = $state(activeAccountName || '')
   let liveSummary = $state<AnalyticsSummary | null>(null)
   let liveLoading = $state(false)
@@ -139,8 +140,11 @@
   let monthFmt: Intl.DateTimeFormat | null = null
   let dayFmt: Intl.DateTimeFormat | null = null
   try {
+    // svelte-ignore state_referenced_locally
     dateFmt = new Intl.DateTimeFormat(lang, { day: '2-digit', month: '2-digit' })
+    // svelte-ignore state_referenced_locally
     monthFmt = new Intl.DateTimeFormat(lang, { month: 'short' })
+    // svelte-ignore state_referenced_locally
     dayFmt = new Intl.DateTimeFormat(lang, { weekday: 'short' })
   } catch {
     dateFmt = new Intl.DateTimeFormat('uk', { day: '2-digit', month: '2-digit' })

@@ -114,7 +114,7 @@
     </div>
     <div class="row-label">
       <div class="rl-name">{t('createPack.icon')}</div>
-      <div class="rl-sub">{t('createPack.icon.hint')}</div>
+
     </div>
   </div>
 

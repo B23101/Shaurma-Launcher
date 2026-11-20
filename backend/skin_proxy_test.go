@@ -29,13 +29,21 @@ func texturesValueFor(t *testing.T, textures map[string]string) string {
 type proxyFixture struct {
 	p          *skinProxy
 	mojangHits atomic.Int32
+	mojangURL  string
+	// Ліцензійні гравці зі справжнім (v4) UUID: uuid → нік, uuid → URL скіна.
+	realNames map[string]string
+	realSkins map[string]string
+	realCapes map[string]string // uuid → URL плаща Mojang
+	// Імена, які мойданський bulk-пошук побачив у запитах.
+	bulkAsked []string
+	bulkKnown map[string]string // нік → uuid
 }
 
 // newProxyFixture: підроблені Shaurma (profiles: uuid → профіль) і Mojang
 // (mojangSkins: нік → URL скіна; відсутній нік = немає ліцензії).
 func newProxyFixture(t *testing.T, shaurma map[string]ygProfile, mojangSkins map[string]string) *proxyFixture {
 	t.Helper()
-	fx := &proxyFixture{}
+	fx := &proxyFixture{realNames: map[string]string{}, realSkins: map[string]string{}, realCapes: map[string]string{}, bulkKnown: map[string]string{}}
 
 	sh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		const prefix = "/api/yggdrasil/sessionserver/session/minecraft/profile/"
@@ -52,6 +60,26 @@ func newProxyFixture(t *testing.T, shaurma map[string]ygProfile, mojangSkins map
 	mj := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fx.mojangHits.Add(1)
 		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/bulk":
+			var asked []string
+			_ = json.NewDecoder(r.Body).Decode(&asked)
+			fx.bulkAsked = append(fx.bulkAsked, asked...)
+			out := []map[string]string{}
+			for _, n := range asked {
+				if id, ok := fx.bulkKnown[n]; ok {
+					out = append(out, map[string]string{"id": id, "name": n})
+				}
+			}
+			_ = json.NewEncoder(w).Encode(out)
+		case strings.HasPrefix(r.URL.Path, "/session/minecraft/profile/") && fx.realNames[strings.TrimPrefix(r.URL.Path, "/session/minecraft/profile/")] != "":
+			id := strings.TrimPrefix(r.URL.Path, "/session/minecraft/profile/")
+			tex := map[string]string{"SKIN": fx.realSkins[id]}
+			if c := fx.realCapes[id]; c != "" {
+				tex["CAPE"] = c
+			}
+			_ = json.NewEncoder(w).Encode(ygProfile{ID: id, Name: fx.realNames[id], Properties: []ygProp{{
+				Name: "textures", Value: texturesValueFor(t, tex),
+			}}})
 		case strings.HasPrefix(r.URL.Path, "/users/profiles/minecraft/"):
 			nick := strings.TrimPrefix(r.URL.Path, "/users/profiles/minecraft/")
 			if _, ok := mojangSkins[nick]; !ok {
@@ -78,6 +106,7 @@ func newProxyFixture(t *testing.T, shaurma map[string]ygProfile, mojangSkins map
 		t.Fatal(err)
 	}
 	pub, _ := pubPEMOf(key)
+	fx.mojangURL = mj.URL
 	fx.p = &skinProxy{
 		key: key, pubPEM: pub,
 		upstream:   sh.URL + yggdrasilAPIPath,
@@ -269,5 +298,209 @@ func TestSkinProxyRejectsUntrustedHost(t *testing.T) {
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("host %s: status %d", host, rec.Code)
 		}
+	}
+}
+
+// ── Маршрутизація: ліцензійні (справжній Mojang-UUID) і пірати ──────────
+
+// Справжній v4-UUID, якого Shaurma не знає → профіль напряму з Mojang, без жодного ніка.
+func TestSkinProxy_LicensedPlayerComesFromMojangByRealUUID(t *testing.T) {
+	const real = "069a79f444e94726a5befca90e38aaf5" // v4
+	fx := newProxyFixture(t, nil, nil)
+	fx.realNames[real] = "Notch"
+	fx.realSkins[real] = "https://textures.minecraft.net/texture/notch"
+	// Навіть коли додатковий підбір за ніком вимкнено: це ванільний запит гри.
+	fx.p.disableMojangFallback = true
+
+	code, prof := getProfile(t, fx.p, real)
+	if code != 200 {
+		t.Fatalf("код %d", code)
+	}
+	if got := texturesOf(t, prof)["SKIN"]; got != "https://textures.minecraft.net/texture/notch" {
+		t.Fatalf("скін не з Mojang: %q", got)
+	}
+	if prof.ID != real || prof.Name != "Notch" {
+		t.Fatalf("профіль має віддаватись під справжнім UUID і нікі Mojang: %+v", prof)
+	}
+	verifySig(t, fx.p, prof)
+}
+
+// Shaurma знає цей UUID (акаунт пов'язаний) → скін Shaurma, Mojang не питаємо.
+func TestSkinProxy_RealUUIDKnownToShaurmaStaysWithShaurma(t *testing.T) {
+	const real = "069a79f444e94726a5befca90e38aaf5"
+	fx := newProxyFixture(t, map[string]ygProfile{
+		real: {ID: real, Name: "Notch", Properties: []ygProp{{Name: "textures",
+			Value: texturesValueFor(t, map[string]string{"SKIN": "https://shaurma.example/tex/n.png"})}}},
+	}, nil)
+	fx.realNames[real] = "Notch"
+	fx.realSkins[real] = "https://textures.minecraft.net/texture/notch"
+
+	_, prof := getProfile(t, fx.p, real)
+	if got := texturesOf(t, prof)["SKIN"]; got != "https://shaurma.example/tex/n.png" {
+		t.Fatalf("скін не з Shaurma: %q", got)
+	}
+	if fx.mojangHits.Load() != 0 {
+		t.Fatal("Mojang не мав питатись, коли Shaurma дала скін")
+	}
+}
+
+// Невідомий і Shaurma, і Mojang → 204 (гра покаже стандартний скін за UUID); відповідь кешується.
+func TestSkinProxy_RealUUIDUnknownEverywhere(t *testing.T) {
+	fx := newProxyFixture(t, nil, nil)
+	for i := 0; i < 3; i++ {
+		if code, _ := getProfile(t, fx.p, "11111111111141118111111111111111"); code != http.StatusNoContent {
+			t.Fatalf("очікував 204, код %d", code)
+		}
+	}
+	if n := fx.mojangHits.Load(); n != 1 {
+		t.Fatalf("негативна відповідь має кешуватись: звернень до Mojang %d, очікував 1", n)
+	}
+}
+
+func TestIsOfflineUUIDShape(t *testing.T) {
+	if !isOfflineUUIDShape(offlineUUIDHex("Notch")) {
+		t.Fatal("офлайн-UUID не розпізнано")
+	}
+	if isOfflineUUIDShape("069a79f444e94726a5befca90e38aaf5") {
+		t.Fatal("справжній Mojang-UUID (v4) прийнято за офлайн")
+	}
+}
+
+// Пакетний пошук: піратів віддає Shaurma, решту (ліцензійних) — Mojang; Mojang питаємо лише про те, чого не знає Shaurma.
+func TestSkinProxy_BatchMergesShaurmaAndMojang(t *testing.T) {
+	sh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":"` + offlineUUIDHex("Pirate") + `","name":"Pirate"}]`))
+	}))
+	t.Cleanup(sh.Close)
+	fx := newProxyFixture(t, nil, nil)
+	fx.p.upstream = sh.URL + yggdrasilAPIPath
+	fx.p.mojangBulk = fx.mojangURL + "/bulk"
+	fx.bulkKnown["Notch"] = "069a79f444e94726a5befca90e38aaf5"
+
+	req := httptest.NewRequest("POST", "http://127.0.0.1:1/api/profiles/minecraft", strings.NewReader(`["Pirate","Notch","Nobody"]`))
+	rec := httptest.NewRecorder()
+	fx.p.handleBatch(rec, req)
+	if rec.Code != 200 {
+		t.Fatalf("код %d", rec.Code)
+	}
+	var got []nameRef
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]string{}
+	for _, g := range got {
+		ids[g.Name] = g.ID
+	}
+	if ids["Pirate"] != offlineUUIDHex("Pirate") || ids["Notch"] != "069a79f444e94726a5befca90e38aaf5" || len(ids) != 2 {
+		t.Fatalf("очікував Pirate (Shaurma) + Notch (Mojang), отримав %v", ids)
+	}
+	if strings.Join(fx.bulkAsked, ",") != "Notch,Nobody" {
+		t.Fatalf("Mojang мав питатись лише про невідомих Shaurma: %v", fx.bulkAsked)
+	}
+}
+
+// Shaurma впала → пакетний пошук усе одно працює через Mojang (ванільна поведінка не ламається).
+func TestSkinProxy_BatchSurvivesShaurmaOutage(t *testing.T) {
+	sh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(500) }))
+	t.Cleanup(sh.Close)
+	fx := newProxyFixture(t, nil, nil)
+	fx.p.upstream = sh.URL + yggdrasilAPIPath
+	fx.p.mojangBulk = fx.mojangURL + "/bulk"
+	fx.bulkKnown["Notch"] = "069a79f444e94726a5befca90e38aaf5"
+
+	rec := httptest.NewRecorder()
+	fx.p.handleBatch(rec, httptest.NewRequest("POST", "http://127.0.0.1:1/api/profiles/minecraft", strings.NewReader(`["Notch"]`)))
+	if rec.Code != 200 || !strings.Contains(rec.Body.String(), "Notch") {
+		t.Fatalf("код %d, тіло %s", rec.Code, rec.Body.String())
+	}
+}
+
+// Плащі Шаурми: сервер каже, яке джерело плаща обрав гравець (властивість shaurma:cape).
+func TestSkinProxy_ShaurmaCapeModes(t *testing.T) {
+	const licensed = "0f1e2d3c4b5a49788796a5b4c3d2e1f0" // v4
+	const mojangCape = "https://textures.minecraft.net/texture/mojangcape"
+	const shaurmaCape = "https://vps.example/api/yggdrasil/texture/shaurmacape.png"
+	const shaurmaSkin = "https://vps.example/api/yggdrasil/texture/skin.png"
+	cases := []struct {
+		mode     string
+		shTex    map[string]string
+		wantCape string
+	}{
+		{"mojang", map[string]string{"SKIN": shaurmaSkin}, mojangCape},
+		{"mojang", map[string]string{"SKIN": shaurmaSkin, "CAPE": shaurmaCape}, mojangCape},
+		{"shaurma", map[string]string{"SKIN": shaurmaSkin, "CAPE": shaurmaCape}, shaurmaCape},
+		{"shaurma", map[string]string{"SKIN": shaurmaSkin}, ""},
+	}
+	for _, c := range cases {
+		fx := newProxyFixture(t, map[string]ygProfile{licensed: {ID: licensed, Name: "Lic", Properties: []ygProp{
+			{Name: "textures", Value: texturesValueFor(t, c.shTex)},
+			{Name: "shaurma:cape", Value: c.mode},
+		}}}, nil)
+		fx.realNames[licensed] = "Lic"
+		fx.realSkins[licensed] = "https://textures.minecraft.net/texture/mojangskin"
+		fx.realCapes[licensed] = mojangCape
+		code, prof := getProfile(t, fx.p, licensed)
+		if code != http.StatusOK {
+			t.Fatalf("%s: status %d", c.mode, code)
+		}
+		tex := texturesOf(t, prof)
+		if tex["CAPE"] != c.wantCape {
+			t.Errorf("mode %s (%v): CAPE=%q want %q", c.mode, c.shTex, tex["CAPE"], c.wantCape)
+		}
+		if tex["SKIN"] != shaurmaSkin {
+			t.Errorf("mode %s: SKIN=%q", c.mode, tex["SKIN"])
+		}
+		for _, pr := range prof.Properties {
+			if pr.Name == "shaurma:cape" {
+				t.Error("service property leaked to the game")
+			}
+		}
+		verifySig(t, fx.p, prof)
+	}
+}
+
+// Mojang-режим, а в Mojang плаща немає — у грі без плаща (плащ Шаурми не підставляється).
+func TestSkinProxy_MojangModeWithoutMojangCape(t *testing.T) {
+	const licensed = "0f1e2d3c4b5a49788796a5b4c3d2e1f0"
+	fx := newProxyFixture(t, map[string]ygProfile{licensed: {ID: licensed, Name: "Lic", Properties: []ygProp{
+		{Name: "textures", Value: texturesValueFor(t, map[string]string{"SKIN": "https://vps.example/s.png", "CAPE": "https://vps.example/c.png"})},
+		{Name: "shaurma:cape", Value: "mojang"},
+	}}}, nil)
+	fx.realNames[licensed] = "Lic"
+	fx.realSkins[licensed] = "https://textures.minecraft.net/texture/mojangskin"
+	_, prof := getProfile(t, fx.p, licensed)
+	if c := texturesOf(t, prof)["CAPE"]; c != "" {
+		t.Fatalf("плащ має бути відсутній, а є %q", c)
+	}
+}
+
+// Вузол Шаурми на мить недоступний (перезапуск) — інжектор повторює запит, а якщо сервер
+// так і не відповів, бере його останню відповідь, а не вигляд Mojang.
+func TestSkinProxy_UpstreamHiccupKeepsShaurmaCape(t *testing.T) {
+	const id = "0f1e2d3c4b5a49788796a5b4c3d2e1f0"
+	const cape = "https://vps.example/api/yggdrasil/texture/cape.png"
+	var mode atomic.Int32 // 0 — 503 один раз, потім 200; 2 — завжди 503
+	var hits atomic.Int32
+	prof := ygProfile{ID: id, Name: "Lic", Properties: []ygProp{
+		{Name: "textures", Value: texturesValueFor(t, map[string]string{"SKIN": "https://vps.example/s.png", "CAPE": cape})},
+		{Name: "shaurma:cape", Value: "shaurma"},
+	}}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := hits.Add(1)
+		if mode.Load() == 2 || n == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(prof)
+	}))
+	defer srv.Close()
+	fx := newProxyFixture(t, nil, nil)
+	fx.p.configure(srv.URL, nil)
+	if _, got := getProfile(t, fx.p, id); texturesOf(t, got)["CAPE"] != cape {
+		t.Fatalf("after retry: %v", texturesOf(t, got))
+	}
+	mode.Store(2)
+	if _, got := getProfile(t, fx.p, id); texturesOf(t, got)["CAPE"] != cape {
+		t.Fatalf("server down: expected last Shaurma answer, got %v", texturesOf(t, got))
 	}
 }

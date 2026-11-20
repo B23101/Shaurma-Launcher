@@ -100,19 +100,19 @@
         <input class="input mono" bind:value={pathDraft} onkeydown={(e: any) => { if (e.key === 'Enter') { onPathInput?.(pathDraft.trim()); editPath = false } if (e.key === 'Escape') editPath = false }} aria-label={t('wz.files.where')} />
       {:else}
         <b class="mono" use:launcherTip={appDir}>{appDir || '…'}</b>
-        <small>{freeGB > 0 ? t('wz.files.free', { n: freeGB }) : t('wz.files.whereD')}</small>
+        {#if freeGB > 0}<small>{t('wz.files.free', { n: freeGB })}</small>{/if}
       {/if}
     </div>
     <div class="f-btns">
       {#if editPath}
-        <button class="btn btn-primary btn-sm" onclick={() => { onPathInput?.(pathDraft.trim()); editPath = false }}><i class="ti ti-check"></i></button>
+        <button class="btn btn-primary btn-sm" aria-label={t('save')} onclick={() => { onPathInput?.(pathDraft.trim()); editPath = false }}><i class="ti ti-check"></i></button>
       {:else}
         <button class="btn btn-ghost btn-sm" onclick={() => { pathDraft = appDir; editPath = true }} use:launcherTip={t('wz.files.type')} aria-label={t('wz.files.type')}><i class="ti ti-pencil"></i></button>
         <button class="btn btn-ghost btn-sm" onclick={() => onBrowse?.()}><i class="ti ti-folder-open"></i> {t('wz.game.change')}</button>
       {/if}
     </div>
   </div>
-  <div class="note"><i class="ti ti-info-circle"></i> {t('wz.files.note')}</div>
+  
 
   <div class="label mig-head">
     <span>{t('wz.files.migrate')}</span>
@@ -121,7 +121,7 @@
   {#if scanning}
     <div class="scan"><span class="mini-spin"></span> {t('wz.files.scanning')}</div>
   {:else if launchers.length === 0}
-    <div class="empty"><i class="ti ti-mood-smile"></i><div><b>{t('wz.files.none')}</b><small>{t('wz.files.noneD')}</small></div></div>
+    <div class="empty"><i class="ti ti-mood-smile"></i><div><b>{t('wz.files.none')}</b></div></div>
   {:else}
     {#each launchers as l, li}
       <div class="lch" style="--i:{li}">
@@ -157,8 +157,8 @@
   .fs { margin-top: 18px; }
   .fs > .label:first-child { margin-top: 0; }
   .cnt { font-family: var(--font-mono); color: var(--text-dim); }
-  .note { display: flex; gap: 7px; align-items: flex-start; font-size: 11.5px; color: var(--text-mute); margin-top: 8px; line-height: 1.45; }
-  .note i { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+  
+  
   .mono { font-family: var(--font-mono); }
   .mini-spin { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(var(--orange-rgb), .3); border-top-color: var(--orange); animation: sp .7s linear infinite; vertical-align: middle; }
   .mini-spin.light { border-color: rgba(255, 255, 255, .35); border-top-color: #fff; }
@@ -178,7 +178,7 @@
 
   .scan, .empty { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 14px; background: var(--bg-card); border: 1px dashed var(--border-hi); font-size: 12.5px; color: var(--text-mute); }
   .empty i { font-size: 24px; color: var(--orange); }
-  .empty div { display: flex; flex-direction: column; } .empty b { color: var(--text); font-size: 13px; } .empty small { font-size: 11.5px; }
+  .empty div { display: flex; flex-direction: column; } .empty b { color: var(--text); font-size: 13px; } 
 
   .lch { margin-bottom: 10px; animation: pop .45s cubic-bezier(.22, 1, .36, 1) backwards; animation-delay: calc(.2s + var(--i) * .08s); }
   .lch-head { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }

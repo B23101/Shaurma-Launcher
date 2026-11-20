@@ -386,8 +386,8 @@
   <div class="topbar">
     <div class="brand"><img class="brand-ico" src={appIcon} alt="" />{t('brand.title')}</div>
     <div class="ctrls">
-      <button class="ctrl" use:launcherTip={t('win.minimize')} onclick={() => Window.Minimise()}><i class="ti ti-minus"></i></button>
-      <button class="ctrl close" use:launcherTip={t('wiz.closeTitle')} onclick={closeWizard}><i class="ti ti-x"></i></button>
+      <button aria-label={t('win.minimize')} class="ctrl" use:launcherTip={t('win.minimize')} onclick={() => Window.Minimise()}><i class="ti ti-minus"></i></button>
+      <button aria-label={t('wiz.closeTitle')} class="ctrl close" use:launcherTip={t('wiz.closeTitle')} onclick={closeWizard}><i class="ti ti-x"></i></button>
     </div>
   </div>
 
@@ -415,7 +415,7 @@
       <div class="progress" style="--p:{((step - 1) / (LAST - 1)) * 100}%">
         <div class="pr-fill"></div>
         {#each STEPS as s, i}
-          <button class="pr-step" class:act={i + 1 === step} class:done={i + 1 < step}
+          <button aria-label={t('wz.step.' + s.id)} class="pr-step" class:act={i + 1 === step} class:done={i + 1 < step}
                   disabled={i + 1 > step && step !== LAST} use:launcherTip={t('wz.step.' + s.id)} onclick={() => goto(i + 1)}>
             <i class="ti {i + 1 < step ? 'ti-check' : s.icon}"></i>
           </button>
@@ -429,7 +429,7 @@
 
             {#if cur.id === 'welcome'}
               <h1>{t('wz.welcome.title')}</h1>
-              <p class="sub">{t('wz.welcome.sub')}</p>
+              
               <div class="lang-list">
                 {#each [{ v: 'uk', l: 'language.uk' }, { v: 'en', l: 'language.en' }, { v: 'auto', l: 'language.auto' }] as o, i}
                   <button class="lang" class:sel={wiz.language === o.v} style="--i:{i}" onclick={() => pickLang(o.v)}>
@@ -450,7 +450,7 @@
 
             {:else if cur.id === 'look'}
               <h1>{t('wz.look.title')}</h1>
-              <p class="sub">{t('wz.look.sub')}</p>
+              
               <div class="label">{t('wz.look.theme')}</div>
               <div class="theme-grid">
                 {#each THEMES as th, i}
@@ -488,8 +488,8 @@
                 {/each}
               </div>
               <div class="rows">
-                {@render row('ti-sparkles', t('wz.look.anim'), t('wz.look.animD'), opt.animations, () => set('animations', !opt.animations))}
-                {@render row('ti-feather', t('wz.look.perf'), t('wz.look.perfD'), opt.performance, () => set('performance', !opt.performance))}
+                {@render row('ti-sparkles', t('wz.look.anim'), '', opt.animations, () => set('animations', !opt.animations))}
+                {@render row('ti-feather', t('wz.look.perf'), '', opt.performance, () => set('performance', !opt.performance))}
               </div>
 
             {:else if cur.id === 'account'}
@@ -504,7 +504,7 @@
 
             {:else if cur.id === 'game'}
               <h1>{t('wz.game.title')}</h1>
-              <p class="sub">{t('wz.game.sub')}</p>
+              
               <div class="sys">
                 <div style="--i:0"><i class="ti ti-cpu"></i><span>{t('wz.game.cpu')}</span><b>{sysInfo.cpuCount || '—'}</b></div>
                 <div style="--i:1"><i class="ti ti-database"></i><span>{t('wz.game.ram')}</span><b>{totalGB || '—'} {t('wz.unit.gb')}</b></div>
@@ -551,7 +551,7 @@
                 { value: 'quit', label: t('wz.exit.quit') },
               ], opt.gameExitAction, (v) => set('gameExitAction', v), t('wz.game.afterExit'))}
               <div class="rows">
-                {@render row('ti-terminal-2', t('wz.game.crash'), t('wz.game.crashD'), opt.showConsoleOnCrash, () => set('showConsoleOnCrash', !opt.showConsoleOnCrash))}
+                {@render row('ti-terminal-2', t('wz.game.crash'), '', opt.showConsoleOnCrash, () => set('showConsoleOnCrash', !opt.showConsoleOnCrash))}
               </div>
               <button class="disclose" class:open={showAdvanced} onclick={() => (showAdvanced = !showAdvanced)}>
                 <i class="ti ti-chevron-right"></i> {t('wz.game.jvm')}
@@ -564,10 +564,10 @@
 
             {:else if cur.id === 'notify'}
               <h1>{t(hasShaurma ? 'wz.notify.title' : 'wz.notify.titleLocal')}</h1>
-              <p class="sub">{t(hasShaurma ? 'wz.notify.sub' : 'wz.notify.subLocal')}</p>
+              
               <div class="rows">
-                {@render row('ti-bell', t('wz.notify.on'), t('wz.notify.onD'), opt.notifyEnabled, () => set('notifyEnabled', !opt.notifyEnabled))}
-                {@render row('ti-moon-stars', t('wz.notify.dnd'), t('wz.notify.dndD'), opt.notifyDnd, () => set('notifyDnd', !opt.notifyDnd), !opt.notifyEnabled)}
+                {@render row('ti-bell', t('wz.notify.on'), '', opt.notifyEnabled, () => set('notifyEnabled', !opt.notifyEnabled))}
+                {@render row('ti-moon-stars', t('wz.notify.dnd'), '', opt.notifyDnd, () => set('notifyDnd', !opt.notifyDnd), !opt.notifyEnabled)}
               </div>
               <div class="label" class:dim={!opt.notifyEnabled}>{t('wz.notify.dur')}</div>
               <div class:dim={!opt.notifyEnabled}>
@@ -584,14 +584,14 @@
               {#if hasShaurma}
                 <div class="label">{t('wz.notify.friends')}</div>
                 <div class="rows">
-                  {@render row('ti-world-share', t('wz.notify.p2p'), t('wz.notify.p2pD'), opt.p2p, () => set('p2p', !opt.p2p))}
+                  {@render row('ti-world-share', t('wz.notify.p2p'), '', opt.p2p, () => set('p2p', !opt.p2p))}
                   {#if !opt.p2p}
                     <div class="warn-box" transition:fly={{ y: -6, duration: 240 }}>
                       <i class="ti ti-alert-triangle"></i>
-                      <div><b>{t('wz.p2pOff.title')}</b><small>{t('wz.p2pOff.text')}</small></div>
+                      <div><b>{t('wz.p2pOff.title')}</b></div>
                     </div>
                   {/if}
-                  {@render row('ti-cloud-check', t('wz.notify.cloud'), t('wz.notify.cloudD'), opt.cloudTime, () => set('cloudTime', !opt.cloudTime))}
+                  {@render row('ti-cloud-check', t('wz.notify.cloud'), '', opt.cloudTime, () => set('cloudTime', !opt.cloudTime))}
                 </div>
               {:else}
                 <div class="note-box"><i class="ti ti-info-circle"></i> {tp('wz.notify.noAccount')}</div>
@@ -599,7 +599,7 @@
 
             {:else if cur.id === 'behavior'}
               <h1>{t('wz.beh.title')}</h1>
-              <p class="sub">{t('wz.beh.sub')}</p>
+              
               <div class="label">{t('wz.beh.startup')}</div>
               {@render seg([
                 { value: 'never', label: t('wz.startup.never') },
@@ -612,7 +612,7 @@
                 { value: 'tray', label: t('wz.close.tray'), icon: 'ti-layout-bottombar' },
               ], opt.closeAction, (v) => set('closeAction', v), t('wz.beh.close'))}
               <div class="rows">
-                {@render row('ti-refresh', t('wz.beh.update'), t('wz.beh.updateD'), opt.autoUpdate, () => set('autoUpdate', !opt.autoUpdate))}
+                {@render row('ti-refresh', t('wz.beh.update'), '', opt.autoUpdate, () => set('autoUpdate', !opt.autoUpdate))}
               </div>
 
             {:else if cur.id === 'done'}
@@ -620,7 +620,7 @@
               <p class="sub">{t('wz.done.sub')}</p>
               <div class="first-pack">
                 <div class="fp-art" aria-hidden="true"><i class="ti ti-package"></i><span class="fp-plus"><i class="ti ti-plus"></i></span></div>
-                <div class="fp-t"><b>{t('wz.first.title')}</b><small>{t('wz.first.text')}</small></div>
+                <div class="fp-t"><b>{t('wz.first.title')}</b></div>
                 <button class="btn btn-primary" disabled={finishing} onclick={() => finish(true)}><i class="ti ti-wand"></i> {t('wz.first.btn')}</button>
               </div>
               <div class="sum">
@@ -907,7 +907,7 @@
   }
   .warn-box i { color: #eab308; font-size: 18px; flex-shrink: 0; margin-top: 1px; }
   .warn-box div { display: flex; flex-direction: column; gap: 2px; }
-  .warn-box b { font-size: 12.5px; } .warn-box small { font-size: 11.5px; color: var(--text-mute); line-height: 1.45; }
+  .warn-box b { font-size: 12.5px; } 
 
   .first-pack {
     display: flex; align-items: center; gap: 14px; margin-bottom: 14px; padding: 14px 16px; border-radius: 16px;
@@ -918,7 +918,7 @@
   .fp-plus { position: absolute; right: -5px; bottom: -5px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; color: #fff; background: var(--orange); box-shadow: 0 0 0 3px var(--bg-window); animation: fp-pulse 2s ease-in-out infinite 2s; }
   @keyframes fp-pulse { 0%, 100% { transform: scale(1) } 50% { transform: scale(1.15) } }
   .fp-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .fp-t b { font-size: 14px; } .fp-t small { font-size: 12px; color: var(--text-mute); line-height: 1.4; }
+  .fp-t b { font-size: 14px; } 
 
   /* ── Підсумок ── */
   .sum { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

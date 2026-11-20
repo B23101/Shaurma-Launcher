@@ -140,7 +140,9 @@ export function sanitizeHtml(html: string, opts: SanitizeOptions = {}): string {
 					const name = attr.name.toLowerCase()
 					if (name.startsWith('on') || name === 'style' || name === 'srcdoc' ||
 						name === 'formaction' || name === 'xlink:href' || name === 'xmlns' ||
-						name === 'autoplay' || name === 'data-src') {
+						name === 'autoplay' || name.startsWith('data-')) {
+						// data-* з чужого HTML — геть: лаунчер сам ставить data-yt на
+						// постери відео, і підроблений атрибут не має до них дійти.
 						child.removeAttribute(attr.name)
 						continue
 					}

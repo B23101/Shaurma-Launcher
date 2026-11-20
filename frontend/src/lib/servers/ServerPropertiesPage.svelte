@@ -48,6 +48,7 @@
   } = $props()
 
   const OVERVIEW = '__overview'
+  const safetyKeys = new Set(['online-mode', 'enable-rcon', 'rcon.password', 'sync-chunk-writes', 'hardcore', 'enforce-secure-profile', 'log-ips', 'enable-query', 'management-server-enabled', 'management-server-host', 'management-server-secret', 'management-server-tls-enabled', 'management-server-allowed-origins', 'management-server-tls-keystore-password'])
   // Ключі швидких налаштувань на «Огляді» (показуємо лише ті, що є у файлі
   // і не прибрані у версії сервера).
   const QUICK_KEYS = ['motd', 'max-players', 'gamemode', 'difficulty', 'white-list', 'online-mode', 'view-distance', 'simulation-distance', 'pvp', 'allow-flight']
@@ -417,14 +418,17 @@
         {#if entry.newWorldOnly}<span class="st-tag" use:launcherTip={t('servers.props.newWorldOnlyHint')}><i class="ti ti-world-plus"></i> {t('servers.props.newWorldOnly')}</span>{/if}
         {#if !entry.known}<span class="st-tag">{t('servers.props.unknownKey')}</span>{/if}
       </div>
-      {#if hint}<div class="st-row-hint">{hint}</div>{/if}
-      <div class="spp-sub">
-        <code>{entry.key}</code>
-        {#if defText && canResetDefault(entry)}
-          <span aria-hidden="true">·</span>
-          <button class="spp-def" use:launcherTip={t('servers.props.useDefault')} onclick={() => setValue(entry, entry.default ?? '')}>{defText}</button>
-        {/if}
-      </div>
+      {#if hint && safetyKeys.has(entry.key)}<div class="st-row-hint">{hint}</div>{/if}
+      <details class="spp-details">
+        <summary>{t('share.details')}</summary>
+        {#if hint && !safetyKeys.has(entry.key)}<p class="st-row-hint">{hint}</p>{/if}
+        <div class="spp-sub">
+          <code>{entry.key}</code>
+          {#if defText && canResetDefault(entry)}
+            <button class="spp-def" use:launcherTip={t('servers.props.useDefault')} onclick={() => setValue(entry, entry.default ?? '')}>{defText}</button>
+          {/if}
+        </div>
+      </details>
       {#if err}<div class="spp-err"><i class="ti ti-alert-circle"></i> {err}</div>{/if}
     </div>
 
@@ -497,7 +501,7 @@
     </button>
     <div class="spp-title">
       <b>{t('servers.props.title')}</b>
-      <span><span class="mono">server.properties</span>{serverName ? ` · ${serverName}` : ''}{propsDoc?.mcVersion ? ` · ${propsDoc.mcVersion}` : ''}</span>
+      <span>{serverName}{propsDoc?.mcVersion ? ` · ${propsDoc.mcVersion}` : ''}</span>
     </div>
     {#if propsDoc}
       <div class="st-search">
@@ -568,22 +572,16 @@
             {:else if tab === OVERVIEW}
               <div class="st-sec-head">
                 <h2>{t('servers.props.overview')}</h2>
-                <p>{t('servers.props.insightsDesc')}</p>
+
               </div>
 
-              <div class="spp-stats">
-                <div class="spp-stat"><b>{entries.length}</b><span>{t('servers.props.stat.total')}</span></div>
-                <div class="spp-stat" class:hot={dirty}><b>{dirtyEntries.length}</b><span>{t('servers.props.stat.changed')}</span></div>
-                <div class="spp-stat" class:bad={invalidAll.length > 0}><b>{invalidAll.length}</b><span>{t('servers.props.stat.errors')}</span></div>
-                <div class="spp-stat"><b>{legacyCount}</b><span>{t('servers.props.stat.inactive')}</span></div>
-              </div>
-
+              {#if insights.some(i => i.level !== 'info' || i.id === 'query')}
               <SCard icon="ti-stethoscope" tone={insights.some(i => i.level === 'error') ? 'red' : insights.some(i => i.level === 'warn') ? 'yellow' : 'green'}
                      title={t('servers.props.insights')}>
                 {#if insights.length === 0}
                   <div class="st-pad spp-ok"><i class="ti ti-circle-check"></i> {t('servers.props.insightsNone')}</div>
                 {:else}
-                  {#each insights as ins (ins.id)}
+                  {#each insights.filter(i => i.level !== 'info' || i.id === 'query') as ins (ins.id)}
                     <button class="spp-ins {ins.level}" onclick={() => ins.key && jumpTo(ins.key)} disabled={!ins.key}>
                       <i class="ti {insightIcon[ins.level]}"></i>
                       <span>{ins.text}</span>
@@ -593,8 +591,9 @@
                 {/if}
               </SCard>
 
+              {/if}
               {#if quickEntries.length > 0}
-                <SCard icon="ti-bolt" title={t('servers.props.quick')} desc={t('servers.props.quickDesc')}>
+                <SCard icon="ti-bolt" title={t('servers.props.quick')} >
                   {#each quickEntries as entry (entry.key)}
                     {@render propRow(entry, false)}
                   {/each}
@@ -614,7 +613,7 @@
                 <div class="st-sec-head spp-sec-head">
                   <div>
                     <h2>{t(`props.group.${group.id}`)}</h2>
-                    <p>{group.id === PROP_LEGACY ? t('servers.props.legacyNote', { v: propsDoc.mcVersion || '—' }) : t(`props.groupDesc.${group.id}`)}</p>
+                    {#if group.id === PROP_LEGACY}<p>{t('servers.props.legacyNote', { v: propsDoc.mcVersion || '—' })}</p>{/if}
                   </div>
                   {#if groupResettable(group.id) > 0}
                     <button class="btn btn-ghost btn-sm" onclick={() => resetGroupDefaults(group.id)} use:launcherTip={t('servers.props.resetGroupHint')}>
@@ -652,6 +651,11 @@
 </div>
 
 <style>
+  .spp-details { margin-top: 4px; font-size: 12px; color: var(--text-mute); }
+  .spp-details summary { cursor: pointer; width: fit-content; }
+  .spp-details summary:focus-visible { outline: 2px solid var(--orange); outline-offset: 3px; }
+  .spp-details p { margin: 6px 0; }
+
   /* Макет, картки, рядки й контроли — спільні з налаштуваннями лаунчера (settings.css, .st-*).
      Тут лише те, чого там немає: маркери меню, зведення, аналіз, сегменти зі словами, панель збереження. */
   .spp { height: 100%; min-height: 0; }
@@ -678,10 +682,10 @@
   /* ── Зведення ── */
   .spp-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 16px; }
   .spp-stat { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: var(--r-lg); background: var(--bg-card); border: 1px solid var(--border); }
-  .spp-stat b { font-size: 22px; font-weight: 800; line-height: 1.1; }
+  
   .spp-stat span { font-size: 12px; color: var(--text-mute); }
-  .spp-stat.hot b { color: var(--pcol, var(--orange)); }
-  .spp-stat.bad b { color: var(--red); }
+  
+  
   @media (max-width: 760px) { .spp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
   /* ── Аналіз ── */

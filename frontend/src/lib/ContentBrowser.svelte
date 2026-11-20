@@ -128,12 +128,16 @@
   const contentTypes = $derived(
     serverContext ? allContentTypes.filter(c => c.id === (serverContext.kind === 'plugins' ? 'plugin' : 'mod')) : allContentTypes
   )
+  // svelte-ignore state_referenced_locally
   const initialProjectType = packContext?.projectType
   let activeType = $state(
+    // svelte-ignore state_referenced_locally
     serverContext
+      // svelte-ignore state_referenced_locally
       ? (serverContext.kind === 'plugins' ? 'plugin' : 'mod')
       : initialProjectType && ['mod', 'resourcepack', 'shader', 'datapack'].includes(initialProjectType)
       ? initialProjectType
+      // svelte-ignore state_referenced_locally
       : (packContext ? 'mod' : 'modpack')
   )
 
@@ -651,10 +655,12 @@
   // Вибрана збірка-фільтр: '' = без фільтра (вільний пошук, встановлення
   // через діалог вибору збірки). Не порожня = версія/лоадер закріплені
   // за збіркою, сумісний лише контент, встановлення одразу в неї.
+  // svelte-ignore state_referenced_locally
   let packFilterId = $state(packContext?.id ?? '')
   // Ціль встановлення у браузері: збірка чи сервер. Може бути 'servers' і
   // без вибраного сервера (користувач лише розкрив список), але коли
   // serverContext заданий — режим завжди 'servers'.
+  // svelte-ignore state_referenced_locally
   let pickMode = $state<'packs' | 'servers'>(serverContext ? 'servers' : 'packs')
   // Перемикач «Збірки ↔ Сервери» має сенс лише коли є сервери, що тримають
   // поточний вид контенту (моди → мод-ядра, плагіни → плагін-ядра). Інакше
@@ -2209,6 +2215,7 @@
   {@const mode = displayMode}
   {@const srcName = item.source === 'curseforge' ? 'CurseForge' : 'Modrinth'}
   {@const srcIcon = item.source === 'curseforge' ? curseforgeIcon : modrinthIcon}
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
   <div class="cb-card" onclick={() => openEntry(item)} role="button" tabindex="0">
     {#if mode === 'grid'}
       <!-- Банер (Modrinth featured_gallery / CurseForge screenshot); без нього — градієнт -->
@@ -2278,7 +2285,7 @@
            У режимі «Сітка» ряд лежить поверх банера й з'являється при наведенні. -->
       <div class="cb-card-actions">
         <!-- Зірочка закладки: клік НЕ відкриває сторінку проєкту і НЕ запускає встановлення. -->
-        <button
+        <button aria-label={bookmarkedKeys.has(bmKey) ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
           class="cb-bookmark-btn"
           class:on={bookmarkedKeys.has(bmKey)}
           use:launcherTip={bookmarkedKeys.has(bmKey) ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
@@ -2289,7 +2296,7 @@
         {#if item.type !== 'modpack'}
           <!-- Модпаки НЕ додаються в колекції: модпак — сама окрема збірка.
                Бекенд теж відхиляє modpack в AddToCollection. -->
-          <button
+          <button aria-label={t('browser.saved.addToCollection')}
             class="cb-bookmark-btn"
             use:launcherTip={t('browser.saved.addToCollection')}
             onclick={(e) => openAddToCollectionMenu(e, item)}
@@ -2298,7 +2305,7 @@
           </button>
         {/if}
         {#if opts?.removable}
-          <button
+          <button aria-label={t('browser.saved.removeFromCollection')}
             class="cb-bookmark-btn"
             use:launcherTip={t('browser.saved.removeFromCollection')}
             onclick={(e) => { e.stopPropagation(); removeFromOpenCollection(item) }}
@@ -2475,6 +2482,7 @@
           <div class="cb-collections-grid">
             {#each collectionsList as c (c.id)}
               {@const cIcon = c.icon || 'ti-folder'}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="cb-collection-card" style="--pcol:{c.color || '#7b4dff'}" onclick={() => openCollection(c.id)} role="button" tabindex="0">
                 <div class="cb-collection-icon">
                   <i class="ti {cIcon}"></i>
@@ -2482,10 +2490,10 @@
                 <div class="cb-collection-name">{c.name}</div>
                 <div class="cb-collection-count">{t('browser.saved.itemCount', { count: c.itemCount })}</div>
                 <div class="cb-collection-actions">
-                  <button class="btn btn-ghost btn-xs" onclick={(e: Event) => { e.stopPropagation(); renameCollectionPrompt(c) }} use:launcherTip={t('browser.saved.renameCollection')}>
+                  <button aria-label={t('browser.saved.renameCollection')} class="btn btn-ghost btn-xs" onclick={(e: Event) => { e.stopPropagation(); renameCollectionPrompt(c) }} use:launcherTip={t('browser.saved.renameCollection')}>
                     <i class="ti ti-pencil"></i>
                   </button>
-                  <button class="btn btn-ghost btn-xs cb-collection-delete" onclick={(e: Event) => { e.stopPropagation(); deleteCollectionPrompt(c) }} use:launcherTip={t('browser.saved.deleteCollectionBtn')}>
+                  <button aria-label={t('browser.saved.deleteCollectionBtn')} class="btn btn-ghost btn-xs cb-collection-delete" onclick={(e: Event) => { e.stopPropagation(); deleteCollectionPrompt(c) }} use:launcherTip={t('browser.saved.deleteCollectionBtn')}>
                     <i class="ti ti-trash"></i>
                   </button>
                 </div>
@@ -2514,7 +2522,7 @@
             onblur={() => { commitSearchToHistory(); setTimeout(() => { showSearchHistory = false }, 160) }}
           />
           {#if query}
-            <button class="cb-search-clear" use:launcherTip={t('browser.clearSearch')} onclick={() => { cancelLiveSearch(); query = ''; doSearch(1) }}><i class="ti ti-x"></i></button>
+            <button aria-label={t('browser.clearSearch')} class="cb-search-clear" use:launcherTip={t('browser.clearSearch')} onclick={() => { cancelLiveSearch(); query = ''; doSearch(1) }}><i class="ti ti-x"></i></button>
           {/if}
           {#if showSearchHistory && !query && searchHistoryForType.length > 0}
             <div class="cb-search-history">
@@ -2525,6 +2533,7 @@
                 </button>
               </div>
               {#each searchHistoryForType as item (item.query + '|' + item.projectType)}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
                 <div
                   class="cb-search-history-item"
                   onmousedown={(e: Event) => e.preventDefault()}
@@ -2535,7 +2544,7 @@
                   <i class="ti ti-history"></i>
                   <span class="cb-search-history-q">{item.query}</span>
                   <span class="cb-search-history-count">{item.resultCount}</span>
-                  <button class="cb-search-history-remove" onmousedown={(e: Event) => e.preventDefault()} onclick={(e: Event) => removeSearchHistoryItem(item, e)}>
+                  <button class="cb-search-history-remove" aria-label={t('delete')} onmousedown={(e: Event) => e.preventDefault()} onclick={(e: Event) => removeSearchHistoryItem(item, e)}>
                     <i class="ti ti-x"></i>
                   </button>
                 </div>
@@ -3142,6 +3151,7 @@
     {:else if modpackDialog.versions.length === 0}
       <div class="cb-empty sm"><i class="ti ti-mood-sad"></i><div>{t('browser.update.noVersions')}</div></div>
     {:else}
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label class="cb-dlg-label">{t('browser.project.tab.versions')}</label>
       <SelectField
         value={modpackDialog.selectedVersionId}
@@ -3250,6 +3260,7 @@
     width="480px"
     onclose={() => (collectionEditDialog = null)}
   >
+    <!-- svelte-ignore a11y_label_has_associated_control -->
     <label class="cb-col-label">{t('browser.saved.collectionNamePlaceholder')}</label>
     <input
       class="cb-collection-name-input"
@@ -3263,6 +3274,7 @@
     <!-- Іконка + колір колекції (як у збірок): без цього колекції були
          всі однаковими сірими папками, на відміну від збірок, де колір і
          іконку можна обрати. -->
+    <!-- svelte-ignore a11y_label_has_associated_control -->
     <label class="cb-col-label">{t('browser.saved.color')}</label>
     <div class="cb-col-colors">
       {#each cbColorPresets as col (col)}
@@ -3281,6 +3293,7 @@
       </label>
     </div>
 
+    <!-- svelte-ignore a11y_label_has_associated_control -->
     <label class="cb-col-label">{t('browser.saved.icon')}</label>
     <div class="cb-col-picker">
       <PresetIconPicker
@@ -3304,6 +3317,7 @@
      цього меню не існувало взагалі — AddToCollection на бекенді був
      готовий, а спосіб його викликати з UI був відсутній. -->
 {#if addToCollectionMenu}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="ctx-menu" style="left:{addToCollectionMenu.x}px;top:{addToCollectionMenu.y}px" onclick={(e) => e.stopPropagation()}>
     {#if loadingCollections}
       <div class="ctx-hint"><i class="ti ti-loader spin"></i> {t('loading')}</div>
@@ -3355,6 +3369,7 @@
 	        </div>
 	      {/if}
 	      {#if dlg.target === 'server'}
+	        <!-- svelte-ignore a11y_label_has_associated_control -->
 	        <label class="cb-dlg-label">{t('browser.target.pickServerForCollection')}</label>
 	        <!-- Колекція може містити і моди, і плагіни — показуємо всі сервери,
 	             що тримають хоч щось (мод-ядра та плагін-ядра); vanilla — ні. -->
@@ -3369,6 +3384,7 @@
 	        />
 	      {:else}
 
+	      <!-- svelte-ignore a11y_label_has_associated_control -->
 	      <label class="cb-dlg-label">{t('browser.saved.pickPackForCollection')}</label>
 	      <!-- Вибір збірки — тим самим PackPicker, що й решта лаунчера:
 	           з папками «Моїх збірок», іконками та loader·mc підписом, а не
@@ -3824,7 +3840,7 @@
     font-size: 11.5px; line-height: 1.5;
     color: var(--text-mute);
     margin-top: 4px;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden;
   }
   .cb-card-meta { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
@@ -4306,7 +4322,7 @@
   .cb-wrap[data-view='compact'] .cb-card-ic { width: 44px; height: 44px; min-width: 44px; }
   .cb-wrap[data-view='compact'] .cb-card-name { gap: 8px; }
   .cb-wrap[data-view='compact'] .cb-card-title { flex: 0 1 auto; font-size: 13.5px; }
-  .cb-wrap[data-view='compact'] .cb-card-desc { margin-top: 0; font-size: 12px; -webkit-line-clamp: 1; }
+  .cb-wrap[data-view='compact'] .cb-card-desc { margin-top: 0; font-size: 12px; -webkit-line-clamp: 1; line-clamp: 1; }
   .cb-card-sub {
     display: flex; align-items: center; gap: 12px; margin-top: 2px;
     font: 500 11.5px/1 var(--font-ui); color: var(--text-dim);

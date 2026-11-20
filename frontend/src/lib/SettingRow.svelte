@@ -154,6 +154,7 @@
   </div>
 
   {#if def.type === 'bool'}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="toggle" class:on={!!value} onclick={() => setVal(!value)}></div>
 
   {:else if def.type === 'select'}
@@ -162,6 +163,7 @@
       <i class="ti ti-chevron-down tr"></i>
       <button class="sel-trigger" aria-label={t(def.label)} onclick={(e) => { e.stopPropagation(); ddOpen = !ddOpen }}></button>
       {#if ddOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="dd-menu" bind:this={ddMenuEl} onclick={(e) => e.stopPropagation()}>
           {#each def.options ?? [] as opt}
             <button class="dd-item" class:sel={value === opt.value} onclick={() => pick(opt)}>
@@ -175,18 +177,18 @@
   {:else if def.type === 'language'}
     <div class="lang-grid" style="min-width:260px">
       {#each def.options ?? [] as opt}
-        <div class="lang-opt" class:sel={value === opt.value} onclick={() => setVal(opt.value)}>
+        <button type="button" aria-pressed={value === opt.value} class="lang-opt" class:sel={value === opt.value} onclick={() => setVal(opt.value)}>
           <div class="flag">{LANG_FLAGS[opt.value] ?? '🌐'}</div>
           <div class="ln">{t(opt.label)}</div>
-        </div>
+        </button>
       {/each}
       <!-- Імпортовані (спільнотні) мови — з localStorage. Кожна показується
            окремою плиткою в тій самій сітці, з назвою з JSON-файлу. -->
       {#each Object.values(getCustomLanguages()) as cl}
-        <div class="lang-opt" class:sel={value === cl.code} onclick={() => setVal(cl.code)}>
+        <button type="button" aria-pressed={value === cl.code} class="lang-opt" class:sel={value === cl.code} onclick={() => setVal(cl.code)}>
           <div class="flag">🌍</div>
           <div class="ln">{cl.name}</div>
-        </div>
+        </button>
       {/each}
     </div>
 
@@ -202,10 +204,10 @@
           : (a?.gradient
               ? `linear-gradient(135deg, ${a.main}, ${a.deep})`
               : (a?.main ?? '#888'))}
-        <div class="accent-opt" class:sel={value === opt.value} style="background:{sw}"
+        <button type="button" aria-pressed={value === opt.value} class="accent-opt" class:sel={value === opt.value} style="background:{sw}"
              use:launcherTip={t(opt.label)} onclick={() => setVal(opt.value)}>
           {#if value === opt.value}<i class="ti ti-check"></i>{/if}
-        </div>
+        </button>
       {/each}
     </div>
 
@@ -241,6 +243,7 @@
     {@const max = def.max ?? 16384}
     {@const step = def.step ?? 512}
     <div class="ram-ctl">
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="ram-track" style="width:150px"
            onclick={(e: any) => onchange(ramFromPoint(e, e.currentTarget as HTMLElement))}
            onpointerdown={ramDragStart} onpointermove={ramDragMove}

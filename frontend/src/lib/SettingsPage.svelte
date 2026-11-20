@@ -15,10 +15,12 @@
   import MinecraftDefaultsTab from './MinecraftDefaultsTab.svelte'
   import MigrationSettingsWidget from './MigrationSettingsWidget.svelte'
   import AccessSettingsWidget from './AccessSettingsWidget.svelte'
+  import AIAgentSection from './settings/AIAgentSection.svelte'
   import AccountProfilePanel from './AccountProfilePanel.svelte'
   import AccountPrivacy from './AccountPrivacy.svelte'
   import SCard from './settings/SCard.svelte'
   import Setting from './settings/Setting.svelte'
+  import WindowSizePicker from './WindowSizePicker.svelte'
   import AccountsCard from './settings/AccountsCard.svelte'
   import AutoPacksCard from './settings/AutoPacksCard.svelte'
   import FoldersSection from './settings/FoldersSection.svelte'
@@ -262,6 +264,10 @@
     }
     return consoleFontStack(settings.consoleFontFamily || 'mono')
   }
+  // Масштаб інтерфейсу: повзунок показує значення під час тягнення, а
+  // зберігає (і змінює зум вікна) лише на відпусканні — без «стрибків» під курсором.
+  let uiScaleDraft = $state(100)
+  $effect(() => { uiScaleDraft = settings.uiScale ?? 100 })
   const consolePx = $derived(Math.max(9, Math.min(24, settings.consoleFontSize || 12)))
   const consoleNeedsFile = $derived(
     settings.consoleFontFamily === 'custom' ||
@@ -326,7 +332,7 @@
       <div class="st-panel">
         <div class="st-sec-head">
           <h2>{t(section.titleKey)}</h2>
-          <p>{t(section.descKey)}</p>
+
         </div>
 
         <!-- ═══════════════ ЗАГАЛЬНІ ═══════════════ -->
@@ -336,7 +342,7 @@
             <div class="st-row" data-setting-key="x:importLang">
               <div class="st-row-text">
                 <div class="st-row-name">{t('st.x.importLang')}</div>
-                <div class="st-row-hint">{t('st.x.importLang.d')}</div>
+                
               </div>
               <div class="st-row-ctl"><button class="btn btn-ghost btn-sm" onclick={importLanguageFile}><i class="ti ti-upload"></i> {t('st.importLang.btn')}</button></div>
             </div>
@@ -363,7 +369,7 @@
             {@render row('startupMode')}
           </SCard>
 
-          <SCard icon="ti-app-window" tone="violet" title={t('st.c.window')} desc={t('st.c.window.d')}>
+          <SCard icon="ti-app-window" tone="violet" title={t('st.c.window')} desc="">
             {@render row('closeAction')}
             {@render row('minimizeAction')}
           </SCard>
@@ -379,10 +385,28 @@
                 themeCustomBg={settings.themeCustomBg} themeCustomCard={settings.themeCustomCard} themeCustomText={settings.themeCustomText}
                 onchange={(k, v) => updateSetting(k, v)} />
             </div>
+            <div class="st-row" data-setting-key="uiScale">
+              <div class="st-row-text">
+                <div class="st-row-name">{t('st.k.uiScale')}</div>
+                <div class="st-row-hint">{t('st.k.uiScale.d')}</div>
+              </div>
+              <div class="st-row-ctl">
+                <div class="st-slider">
+                  <input type="range" min="70" max="150" step="5" value={uiScaleDraft} aria-label={t('st.k.uiScale')}
+                         oninput={(e) => (uiScaleDraft = Number((e.currentTarget as HTMLInputElement).value))}
+                         onchange={(e) => updateSetting('uiScale', Number((e.currentTarget as HTMLInputElement).value))} />
+                  <span class="st-slider-val mono">{uiScaleDraft}%</span>
+                  {#if (settings.uiScale ?? 100) !== 100}
+                    <button type="button" class="st-iconbtn" aria-label={t('st.reset')} use:launcherTip={t('st.reset')}
+                            onclick={() => { uiScaleDraft = 100; updateSetting('uiScale', 100) }}><i class="ti ti-arrow-back-up"></i></button>
+                  {/if}
+                </div>
+              </div>
+            </div>
           </SCard>
 
           {#if settings.theme === 'custom'}
-            <SCard id="x:customTheme" icon="ti-color-swatch" tone="violet" title={t('st.c.customTheme')} desc={t('st.c.customTheme.d')}>
+            <SCard id="x:customTheme" icon="ti-color-swatch" tone="violet" title={t('st.c.customTheme')} desc="">
               <div class="st-pad">
                 <ThemeStudio
                   bg={settings.themeCustomBg} card={settings.themeCustomCard} text={settings.themeCustomText}
@@ -407,7 +431,7 @@
 
           <SCard icon="ti-layout-sidebar" title={t('st.c.sidebar')}>
             <div class="st-row" data-setting-key="sidebarOnlyPinned">
-              <div class="st-row-text"><div class="st-row-name">{t('st.k.sidebarOnlyPinned')}</div><div class="st-row-hint">{t('st.k.sidebarOnlyPinned.d')}</div></div>
+              <div class="st-row-text"><div class="st-row-name">{t('st.k.sidebarOnlyPinned')}</div></div>
               <div class="st-row-ctl"><button type="button" class="st-switch" class:on={sidebarOnlyPinned} role="switch" aria-checked={sidebarOnlyPinned}
                 aria-label={t('st.k.sidebarOnlyPinned')} onclick={toggleSidebarOnlyPinned}></button></div>
             </div>
@@ -432,7 +456,7 @@
               </div>
             </div>
             <div class="st-row" data-setting-key="x:sidebarHideCreate">
-              <div class="st-row-text"><div class="st-row-name">{t('st.x.sidebarHideCreate')}</div><div class="st-row-hint">{t('st.x.sidebarHideCreate.d')}</div></div>
+              <div class="st-row-text"><div class="st-row-name">{t('st.x.sidebarHideCreate')}</div></div>
               <div class="st-row-ctl">
                 <div class="st-seg labeled" role="radiogroup" aria-label={t('st.x.sidebarHideCreate')}>
                   {#each SB_HIDE_MODES as m (m.id)}
@@ -443,7 +467,7 @@
               </div>
             </div>
             <div class="st-row" data-setting-key="x:sidebarHideSwitch">
-              <div class="st-row-text"><div class="st-row-name">{t('st.x.sidebarHideSwitch')}</div><div class="st-row-hint">{t('st.x.sidebarHideSwitch.d')}</div></div>
+              <div class="st-row-text"><div class="st-row-name">{t('st.x.sidebarHideSwitch')}</div></div>
               <div class="st-row-ctl">
                 <div class="st-seg labeled" role="radiogroup" aria-label={t('st.x.sidebarHideSwitch')}>
                   {#each SB_HIDE_MODES as m (m.id)}
@@ -460,7 +484,7 @@
           <SCard icon="ti-layout-grid" tone="blue" title={t('st.c.pages')}>
             {@render row('packBannerFull')}
             <div class="st-row" data-setting-key="x:contentView">
-              <div class="st-row-text"><div class="st-row-name">{t('st.x.contentView')}</div><div class="st-row-hint">{t('st.x.contentView.d')}</div></div>
+              <div class="st-row-text"><div class="st-row-name">{t('st.x.contentView')}</div></div>
               <div class="st-row-ctl">
                 <div class="st-seg" role="radiogroup" aria-label={t('st.x.contentView')}>
                   {#each DISPLAY_MODES as m (m.id)}
@@ -481,11 +505,12 @@
 
         <!-- ═══════════════ СПОВІЩЕННЯ ═══════════════ -->
         {:else if settingsTab === 'notifications'}
-          <SCard icon="ti-bell" tone="blue" title={t('st.c.notify')} desc={t('st.c.notify.d')}>
+          <SCard icon="ti-bell" tone="blue" title={t('st.c.notify')} desc="">
             {@render row('notifyEnabled')}
             {@render row('notifyDurationSec', { unit: t('st.unit.sec'), disabled: !settings.notifyEnabled })}
             {@render row('notifyDnd')}
             {@render row('chatMuteAll')}
+            {@render row('notifyProfileActivity')}
           </SCard>
 
         <!-- ═══════════════ АКАУНТИ ═══════════════ -->
@@ -505,13 +530,21 @@
 
         <!-- ═══════════════ ГРА ═══════════════ -->
         {:else if settingsTab === 'game'}
-          <SCard icon="ti-window-maximize" tone="orange" title={t('st.c.window')} desc={t('st.c.gameWindow.d')}>
+          <SCard icon="ti-window-maximize" tone="orange" title={t('st.c.window')} desc="">
             {@render row('fullscreen')}
-            {@render row('windowWidth', { unit: 'px', disabled: !!settings.fullscreen })}
-            {@render row('windowHeight', { unit: 'px', disabled: !!settings.fullscreen })}
+            <div class="st-row stack" class:off={!!settings.fullscreen} data-setting-key="windowWidth">
+              <div class="st-row-text">
+                <div class="st-row-name">{t('window.size')}</div>
+                <div class="st-row-hint">{t('window.sizeHint')}</div>
+              </div>
+              <div class="st-row-ctl" data-setting-key="windowHeight">
+                <WindowSizePicker width={settings.windowWidth || 854} height={settings.windowHeight || 480} disabled={!!settings.fullscreen}
+                  onchange={(w, h) => { updateSetting('windowWidth', w); updateSetting('windowHeight', h) }} />
+              </div>
+            </div>
           </SCard>
 
-          <SCard icon="ti-app-window" tone="violet" title={t('st.c.whilePlaying')} desc={t('st.c.whilePlaying.d')}>
+          <SCard icon="ti-app-window" tone="violet" title={t('st.c.whilePlaying')} desc="">
             {@render row('gameLaunchAction')}
             {@render row('gameLaunchDelaySec', { unit: t('st.unit.sec'), sub: true })}
             {@render row('gameExitAction')}
@@ -524,7 +557,7 @@
             {@render row('tempModsDeleteByDefault')}
           </SCard>
 
-          <SCard icon="ti-server" tone="green" title={t('st.c.serverChecks')} desc={t('st.c.serverChecks.d')}>
+          <SCard icon="ti-server" tone="green" title={t('st.c.serverChecks')} desc="">
             {@render row('showServerWarnings')}
             {#if settings.showServerWarnings}
               {@render row('serverWarnIgnoreRam', { invert: true, sub: true })}
@@ -549,6 +582,7 @@
             {@render row('maxRAM')}
           </SCard>
           <SCard icon="ti-coffee" tone="orange" title={t('st.c.jvm')}>
+            {@render row('javaProvider')}
             {@render row('javaArgs')}
           </SCard>
           <SCard icon="ti-device-desktop-bolt" tone="violet" title={t('st.c.gpu')}>
@@ -633,6 +667,9 @@
           </SCard>
 
         <!-- ═══════════════ ПРИВАТНІСТЬ ТА СЕРВІСИ ═══════════════ -->
+        {:else if settingsTab === 'aiagent'}
+          <AIAgentSection />
+
         {:else if settingsTab === 'privacy'}
           <div id="settings-account-privacy" data-setting-key="x:privacy"><AccountPrivacy /></div>
           <SCard icon="ti-hanger" tone="blue" title={t('st.c.skins')}>

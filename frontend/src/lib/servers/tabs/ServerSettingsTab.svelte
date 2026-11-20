@@ -51,10 +51,15 @@
   // 4096 МБ → «4 ГБ», 1536 МБ → «1.5 ГБ», 512 МБ → «512 МБ».
   const fmtRam = (mb: number) => mb >= 1024 ? `${+(mb / 1024).toFixed(2)} ГБ` : `${mb} МБ`
 
+  // svelte-ignore state_referenced_locally
   let editRAM = $state(srv.ramMB)
+  // svelte-ignore state_referenced_locally
   let editJvmArgs = $state(srv.jvmArgs || '')
+  // svelte-ignore state_referenced_locally
   let editProgramArgs = $state(srv.programArgs || '')
+  // svelte-ignore state_referenced_locally
   let editJavaMajor = $state(srv.javaMajor)
+  // svelte-ignore state_referenced_locally
   let editPort = $state(srv.port || 25565)
   let coreModalOpen = $state(false)
 
@@ -216,7 +221,7 @@
     <div class="st-row" class:sst-dirty={dirtyJava} data-skey="java">
       <div class="st-row-text">
         <div class="st-row-name">Java</div>
-        <div class="st-row-hint">{t('servers.settings.javaDesc')}</div>
+        
         {#if srv.javaInstalled === false}
           <div class="sst-note warn"><i class="ti ti-alert-triangle"></i> {t('servers.settings.javaNotInstalled')}</div>
         {/if}
@@ -252,7 +257,7 @@
     <div class="st-row stack" class:sst-dirty={dirtyRAM} data-skey="ram">
       <div class="st-row-text">
         <div class="st-row-name">{t('servers.settings.ram')}</div>
-        <div class="st-row-hint">{t('servers.settings.ramDesc')}</div>
+        
       </div>
       <div class="st-row-ctl">
         <div class="st-slider">
@@ -264,18 +269,18 @@
   </SCard>
 
   <!-- АРГУМЕНТИ ЗАПУСКУ (блоками, як у налаштуваннях збірки) -->
-  <SCard icon="ti-terminal-2" title={t('servers.settings.args')} desc={t('servers.settings.argsDesc')}>
+  <SCard icon="ti-terminal-2" title={t('servers.settings.args')} >
     <div class="st-row stack" class:sst-dirty={dirtyJvm} data-skey="args">
       <div class="st-row-text">
         <div class="st-row-name">{t('servers.settings.jvmArgs')}</div>
-        <div class="st-row-hint">{t('servers.settings.jvmArgsDesc')}</div>
+        
       </div>
       <div class="st-row-ctl"><JvmArgsEditor value={editJvmArgs} onchange={(v: string) => editJvmArgs = v} /></div>
     </div>
     <div class="st-row stack" class:sst-dirty={dirtyProgram}>
       <div class="st-row-text">
         <div class="st-row-name">{t('servers.settings.programArgs')}</div>
-        <div class="st-row-hint">{t('servers.settings.programArgsDesc')}</div>
+        
       </div>
       <div class="st-row-ctl"><JvmArgsEditor value={editProgramArgs} onchange={(v: string) => editProgramArgs = v} placeholder="--nogui" /></div>
     </div>
@@ -283,7 +288,7 @@
 
   <!-- server.properties — окрема сторінка -->
   {#if !isVelocity}
-    <SCard icon="ti-adjustments-horizontal" title={t('servers.settings.propsCta.title')} desc={t('servers.settings.propsCta.desc')}>
+    <SCard icon="ti-adjustments-horizontal" title={t('servers.settings.propsCta.title')} >
       {#snippet actions()}
         <button class="btn btn-ghost btn-sm" onclick={onOpenProperties} data-testid="server-properties-open">{t('servers.settings.propsCta.open')} <i class="ti ti-arrow-right"></i></button>
       {/snippet}

@@ -12,7 +12,7 @@
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
-  import { createWardrobeViewer, type WardrobeViewerHandle } from './wardrobe3d'
+  import type { WardrobeViewerHandle } from './wardrobe3d'
   import { PROFILE_COLORS, normalizeBio, bioLength, safeColor } from './friends/profileStyle'
   import { accountPrefs, setAccountPref, resetAccountPrefs, type AccountToggleKey, type WidgetLine } from './accountPrefs.svelte'
   import type { Account, ShaurmaProfile, SocialPrivacy, SocialState } from './types'
@@ -137,6 +137,7 @@
     let timer: ReturnType<typeof setTimeout> | undefined
     const boot = async () => {
       try {
+        const { createWardrobeViewer } = await import('./wardrobe3d')
         const v = await createWardrobeViewer(el)
         if (dead) { v.dispose(); return }
         viewer = v
@@ -222,7 +223,7 @@
   ]
 
   const STATUS_COLOR: Record<string, string> = {
-    online: '#22c55e', in_game: '#ff8a00', away: '#f59e0b', dnd: '#ef4444',
+    online: '#22c55e', in_game: '#ff8a00', away: '#a78bfa', dnd: '#ef4444',
     invisible: '#9ca3af', offline: '#6b7280', connecting: '#eab308',
   }
   const accKind = $derived(

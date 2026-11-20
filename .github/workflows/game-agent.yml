@@ -1,0 +1,92 @@
+# Shaurma Game Agent (game-agent/): тести → jar → звіти → (на вимогу) публікація релізу "game-agent".
+#
+# Агент — окремий компонент: його оновлення НЕ пов'язані з релізами лаунчера. Лаунчер завантажує
+# shaurma-game-agent.jar та .sha256 з релізу з тегом "game-agent" цього репозиторію (інструмент
+# update_game_agent / кнопка в налаштуваннях) і перевіряє https, SHA-256, структуру jar.
+#
+# Усе запускається від імені акаунта, який натиснув Run workflow / зробив push; ключів підпису тут немає.
+# Публікація — лише вручну (workflow_dispatch + publish=true) з гілки main.
+name: game-agent
+
+on:
+  pull_request:
+    paths:
+      - "game-agent/**"
+      - ".github/workflows/game-agent.yml"
+  push:
+    branches: [main]
+    paths:
+      - "game-agent/**"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the jar to the "game-agent" release (main only)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Build and test (JDK 17 toolchain, Java 8 bytecode)
+        working-directory: game-agent
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          java -version
+          mvn -B -ntp verify
+      - name: Verify the jar (manifest, no foreign code) and write SHA-256
+        working-directory: game-agent/target
+        run: |
+          unzip -p shaurma-game-agent.jar META-INF/MANIFEST.MF | tr -d '\r' | grep -q '^Premain-Class: dev.shaurma.agent.Agent$'
+          unzip -p shaurma-game-agent.jar META-INF/MANIFEST.MF | tr -d '\r' | grep -q '^Can-Retransform-Classes: true$'
+          if unzip -Z1 shaurma-game-agent.jar | grep -Ev '^(META-INF/|dev/shaurma/|dev/$)' | grep -q .; then
+            echo "Unexpected entries in the jar:"; unzip -Z1 shaurma-game-agent.jar | grep -Ev '^(META-INF/|dev/shaurma/|dev/$)'; exit 1
+          fi
+          sha256sum shaurma-game-agent.jar | tee shaurma-game-agent.jar.sha256
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: game-agent-jar
+          path: |
+            game-agent/target/shaurma-game-agent.jar
+            game-agent/target/shaurma-game-agent.jar.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: game-agent-test-reports
+          path: game-agent/target/surefire-reports/
+          if-no-files-found: warn
+
+  publish:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: game-agent-jar
+          path: dist
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-path: dist/shaurma-game-agent.jar
+      - name: Publish to the "game-agent" release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          cd dist
+          gh release view game-agent >/dev/null 2>&1 || gh release create game-agent \
+            --title "Shaurma Game Agent" --prerelease \
+            --notes "Rolling release of the Shaurma Game Agent component (independent of launcher versions)."
+          gh release upload game-agent shaurma-game-agent.jar shaurma-game-agent.jar.sha256 --clobber

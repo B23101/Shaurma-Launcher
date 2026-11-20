@@ -101,7 +101,7 @@
              placeholder={t('nickname')} value={nick}
              oninput={(e: any) => onInput(e.target.value)}
              onkeydown={(e: any) => e.key === 'Enter' && submit()} />
-      <button class="btn btn-ghost" use:launcherTip={t('nick.random')} disabled={rolling || busy} onclick={roll}>
+      <button aria-label={t('nick.random')} class="btn btn-ghost" use:launcherTip={t('nick.random')} disabled={rolling || busy} onclick={roll}>
         <i class="ti ti-dice-5 {rolling ? 'nc-spin' : ''}"></i>
       </button>
     </div>

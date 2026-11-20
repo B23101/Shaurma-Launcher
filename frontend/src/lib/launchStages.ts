@@ -6,13 +6,18 @@
 import { t } from './i18n.svelte'
 import type { LaunchProgress } from './types'
 
-export const LAUNCH_STAGES: { key: string; color: string }[] = [
-  { key: 'checking', color: 'var(--yellow)' },
-  { key: 'mod_sources', color: 'var(--violet)' },
-  { key: 'worker_update', color: 'var(--blue)' },
-  { key: 'java', color: 'var(--red)' },
-  { key: 'loader', color: 'var(--green)' }
+// icon — іконка процесу (Tabler), weight — частка стадії в загальному барі:
+// перевірка й джерела модів майже миттєві, тож основний «вантаж» бару —
+// файли збірки, Java і лоадер.
+export const LAUNCH_STAGES: { key: string; color: string; icon: string; weight: number }[] = [
+  { key: 'checking',      color: 'var(--yellow)', icon: 'ti-shield-check',   weight: 5 },
+  { key: 'mod_sources',   color: 'var(--violet)', icon: 'ti-puzzle',         weight: 5 },
+  { key: 'worker_update', color: 'var(--blue)',   icon: 'ti-cloud-download', weight: 35 },
+  { key: 'java',          color: 'var(--red)',    icon: 'ti-coffee',         weight: 20 },
+  { key: 'loader',        color: 'var(--green)',  icon: 'ti-tool',           weight: 35 }
 ]
+
+const LAUNCH_WEIGHT_TOTAL = LAUNCH_STAGES.reduce((n, s) => n + s.weight, 0)
 
 export function launchStageLabel(stage?: string): string {
   switch (stage) {
@@ -33,15 +38,35 @@ export function launchStageIndex(stage?: string): number {
   return LAUNCH_STAGES.findIndex(x => x.key === stage)
 }
 
-// Загальний % барів запуску: кожна стадія = слот (25%), пройдені = повні
-// слоти, поточна = її % від слота (без % — пів слота, щоб бар «жив»).
+export function launchStageIcon(stage?: string): string {
+  return LAUNCH_STAGES.find(s => s.key === stage)?.icon ?? 'ti-rocket'
+}
+
+// Відрізок бару (0-100), який займає стадія: [start, end].
+export function launchStageSpan(stage?: string): { start: number; end: number } {
+  const idx = launchStageIndex(stage)
+  if (idx < 0) return { start: 0, end: 0 }
+  let before = 0
+  for (let i = 0; i < idx; i++) before += LAUNCH_STAGES[i].weight
+  return {
+    start: (before / LAUNCH_WEIGHT_TOTAL) * 100,
+    end: ((before + LAUNCH_STAGES[idx].weight) / LAUNCH_WEIGHT_TOTAL) * 100
+  }
+}
+
+// Чи відомий реальний % поточної стадії (бекенд шле -1, коли невідомий).
+export function launchStageKnown(lp?: LaunchProgress | null): boolean {
+  return !!lp && launchStageIndex(lp.stage) >= 0 && (lp.percent ?? -1) >= 0
+}
+
+// Загальний % запуску: пройдені стадії = їхні повні ваги, поточна = її
+// реальний % від своєї ваги. Коли % стадії невідомий, бар стоїть на початку
+// стадії (нічого не вигадуємо) — рух «в процесі» малює сам компонент.
 export function launchStagePct(lp?: LaunchProgress | null): number {
-  const pct = lp?.percent ?? -1
-  const idx = lp ? launchStageIndex(lp.stage) : -1
-  if (idx < 0) return 0
-  const slot = 100 / LAUNCH_STAGES.length
-  const within = pct >= 0 ? Math.min(pct, 100) : 50
-  return Math.min(100, Math.round(idx * slot + (within / 100) * slot))
+  if (!lp || launchStageIndex(lp.stage) < 0) return 0
+  const { start, end } = launchStageSpan(lp.stage)
+  const within = launchStageKnown(lp) ? Math.min(lp.percent as number, 100) : 0
+  return Math.min(100, Math.round(start + (within / 100) * (end - start)))
 }
 
 // Підпис стадії якання файлів збірки (sync:progress): «Завантаження…»,

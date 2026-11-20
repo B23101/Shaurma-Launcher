@@ -215,11 +215,12 @@
 <div class="pss">
   <div class="pss-head">
     <span class="pss-title"><i class="ti ti-pin"></i> {t('pinnedServers.title')} <span class="pss-count">{servers.length}</span></span>
-    <button class="pss-refresh" onclick={() => onPingAll()} use:launcherTip={t('pack.servers.pingAll')}>
+    <button aria-label={t('pack.servers.pingAll')} class="pss-refresh" onclick={() => onPingAll()} use:launcherTip={t('pack.servers.pingAll')}>
       <i class="ti {pinging ? 'ti-loader spin' : 'ti-refresh'}"></i>
     </button>
   </div>
 
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="pss-list" class:pss-list-compact={compact} ondragover={pssGridDragOver} ondrop={pssGridDrop} ondragend={pssDragEnd}>
     {#each servers as ps, psi (ps.packId + '|' + ps.address)}
       {@const pr = pings[ps.address]}
@@ -231,6 +232,7 @@
       {@const isDragging = dragKey === key}
       {@const isDropTarget = dragOverKey === key && dragKey !== key}
 
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="pss-row"
         class:pss-compact={compact}
@@ -282,33 +284,34 @@
               <span class="pss-c-state"><i class="ti ti-loader spin"></i></span>
             {/if}
           </div>
-          <button class="pss-c-menu-btn" onclick={(e: any) => toggleMenu(e, ps.address)} use:launcherTip={t('pinnedServers.menu')}>
+          <button aria-label={t('pinnedServers.menu')} class="pss-c-menu-btn" onclick={(e: any) => toggleMenu(e, ps.address)} use:launcherTip={t('pinnedServers.menu')}>
             <i class="ti ti-dots-vertical"></i>
           </button>
           {#if openMenu === ps.address && menuPos}
             <Portal>
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
               <div
                 class="dropdown-menu pss-dropdown pss-dropdown-portal"
                 class:open-up={menuPos.openUp}
                 style="left:{menuPos.left}px; top:{menuPos.top}px"
                 onclick={(e: any) => e.stopPropagation()}
               >
-                <div class="dd-item" onclick={() => menuAction(() => onJoin(ps.packId, ps.address))}>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onJoin(ps.packId, ps.address))}>
                   <i class="ti ti-player-play"></i> {t('pack.servers.join')}
-                </div>
-                <div class="dd-item" onclick={() => menuAction(() => onCopy(ps.address))}>
+                </button>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onCopy(ps.address))}>
                   <i class="ti ti-copy"></i> {t('pinnedServers.copyAddress')}
-                </div>
-                <div class="dd-item" onclick={() => menuAction(() => onOpenPack(ps.packId))}>
+                </button>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onOpenPack(ps.packId))}>
                   <i class="ti ti-puzzle"></i> {t('pinnedServers.openPack')}
-                </div>
-                <div class="dd-item" onclick={() => menuAction(() => onPing(ps.address))}>
+                </button>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onPing(ps.address))}>
                   <i class="ti ti-wifi"></i> {t('pinnedServers.ping')}
-                </div>
+                </button>
                 <div class="dd-sep"></div>
-                <div class="dd-item danger" onclick={() => menuAction(() => onUnpin(ps.packId, ps.address))}>
+                <button type="button" class="dd-item danger" onclick={() => menuAction(() => onUnpin(ps.packId, ps.address))}>
                   <i class="ti ti-pin"></i> {t('pinnedServers.unpin')}
-                </div>
+                </button>
               </div>
             </Portal>
           {/if}
@@ -346,6 +349,7 @@
         </div>
 
         <!-- Бейдж збірки -->
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="pss-pack" use:launcherTip={t('pinnedServers.fromPack')} onclick={() => onOpenPack(ps.packId)}>
           {#if packIconSrc}
             <img src={packIconSrc} alt="" />
@@ -384,30 +388,31 @@
 
         <!-- Меню ⋯ -->
         <div class="pss-menu-wrap">
-          <button class="pss-btn" onclick={(e: any) => toggleMenu(e, ps.address)} use:launcherTip={t('pinnedServers.menu')}>
+          <button aria-label={t('pinnedServers.menu')} class="pss-btn" onclick={(e: any) => toggleMenu(e, ps.address)} use:launcherTip={t('pinnedServers.menu')}>
             <i class="ti ti-dots-vertical"></i>
           </button>
           {#if openMenu === ps.address && menuPos}
             <Portal>
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
               <div
                 class="dropdown-menu pss-dropdown pss-dropdown-portal"
                 class:open-up={menuPos.openUp}
                 style="left:{menuPos.left}px; top:{menuPos.top}px"
                 onclick={(e: any) => e.stopPropagation()}
               >
-                <div class="dd-item" onclick={() => menuAction(() => onCopy(ps.address))}>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onCopy(ps.address))}>
                   <i class="ti ti-copy"></i> {t('pinnedServers.copyAddress')}
-                </div>
-                <div class="dd-item" onclick={() => menuAction(() => onOpenPack(ps.packId))}>
+                </button>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onOpenPack(ps.packId))}>
                   <i class="ti ti-puzzle"></i> {t('pinnedServers.openPack')}
-                </div>
-                <div class="dd-item" onclick={() => menuAction(() => onPing(ps.address))}>
+                </button>
+                <button type="button" class="dd-item" onclick={() => menuAction(() => onPing(ps.address))}>
                   <i class="ti ti-wifi"></i> {t('pinnedServers.ping')}
-                </div>
+                </button>
                 <div class="dd-sep"></div>
-                <div class="dd-item danger" onclick={() => menuAction(() => onUnpin(ps.packId, ps.address))}>
+                <button type="button" class="dd-item danger" onclick={() => menuAction(() => onUnpin(ps.packId, ps.address))}>
                   <i class="ti ti-pin"></i> {t('pinnedServers.unpin')}
-                </div>
+                </button>
               </div>
             </Portal>
           {/if}

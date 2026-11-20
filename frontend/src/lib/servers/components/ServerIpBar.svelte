@@ -74,5 +74,5 @@
     font-size: 11px; cursor: pointer; padding: 2px; border-radius: 4px;
   }
   .sip-copy:hover { color: var(--text); background: var(--hover); }
-  .sip-copy.danger:hover { color: var(--red); }
+  
 </style>

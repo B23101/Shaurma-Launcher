@@ -121,6 +121,8 @@
 .st-row.stack { flex-direction: column; align-items: stretch; gap: 12px; }
 .st-row.stack .st-row-ctl { max-width: none; width: 100%; flex-wrap: wrap; }
 .st-row-ctl.wrap { flex-wrap: wrap; justify-content: flex-end; }
+.st-row { transition: background .15s; }
+.st-row:not(.stack):not(.off):hover { background: rgba(127, 127, 127, .045); }
 .st-row.off { opacity: .45; pointer-events: none; }
 .st-row.sub { padding-left: 40px; background: rgba(127, 127, 127, .04); }
 
@@ -201,7 +203,7 @@ textarea.st-input { height: auto; padding: 9px 12px; resize: vertical; line-heig
 /* картки вибору (режими, суть яких не вгадати з назви) */
 .st-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; width: 100%; }
 .st-choice {
-  display: flex; align-items: flex-start; gap: 11px; padding: 12px 13px; text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 11px; padding: 12px 13px; min-height: 48px; text-align: left; cursor: pointer;
   border: 1px solid var(--border-hi); border-radius: var(--r-md); background: var(--bg-input);
   color: var(--text); font-family: inherit; transition: border-color .15s, background .15s;
 }

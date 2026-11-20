@@ -12,7 +12,7 @@
   function close() { onclose(); void s.load() }
 </script>
 
-<UiModal {open} onclose={close} icon="ti-lock" title={t('social.priv.title')} subtitle={t('ff.priv.sub')} width="540px" zIndex={1000001}>
+<UiModal {open} onclose={close} icon="ti-lock" title={t('social.priv.title')} subtitle="" width="540px" zIndex={1000001}>
   {#if open}<AccountPrivacy />{/if}
   {#snippet footer()}
     <button class="btn btn-primary btn-sm" onclick={close}>{t('ff.done')}</button>

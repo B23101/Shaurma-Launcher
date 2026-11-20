@@ -577,7 +577,7 @@
   .px-opts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-left: 20px; }
   .px-opts .st-pill { padding: 6px 11px; font-size: 12px; }
   .px-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-mute); }
-  .px-field input.num { width: 70px; }
+  
   .px-field.grow { flex: 1; min-width: 200px; }
   .px-field.grow input { flex: 1; min-width: 0; }
   .px-wide { width: 280px; max-width: 100%; }

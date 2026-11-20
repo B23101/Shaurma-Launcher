@@ -81,7 +81,8 @@
   <div class="scr-widget-stack">
     {#each cards as c (c.id)}
       <div class="scr-widget">
-        <button class="scr-widget-close" onclick={() => dismiss(c.id)} use:launcherTip={t('widget.dismiss')}><i class="ti ti-x"></i></button>
+        <button aria-label={t('widget.dismiss')} class="scr-widget-close" onclick={() => dismiss(c.id)} use:launcherTip={t('widget.dismiss')}><i class="ti ti-x"></i></button>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="scr-widget-thumb" onclick={() => openEdit(c)}>
           {#if c.thumb}
             <img src={c.thumb} alt={c.entry.fileName} />

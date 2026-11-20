@@ -136,6 +136,12 @@ func (inst *Installer) EnsureLoader(loader, mcVersion, loaderVersion string) (st
 	// і фонове передзавантаження «після створення збірки».
 	inst.runMu.Lock()
 	defer inst.runMu.Unlock()
+	// Поза циклом запуску (фонове передзавантаження) — свій відлік з нуля.
+	inst.lastPctMu.Lock()
+	if !inst.holdPct {
+		inst.lastPct = 0
+	}
+	inst.lastPctMu.Unlock()
 	// Валідація існування версії ПЕРЕД встановленням (Prism-стиль) — АЛЕ
 	// лише коли лоадер реально встановлюється. Для вже встановленого
 	// (профіль на диску) мережева перевірка мета-API — зайвий HTTP-запит з
@@ -438,6 +444,17 @@ func (inst *Installer) installForge(mcVersion, loaderVersion string, neoforge bo
 	inst.log(fmt.Sprintf("Завантаження %s installer...", name))
 	inst.reportInstallProgress("loader", 5, fmt.Sprintf("Завантаження %s installer...", name))
 	installerPath := filepath.Join(inst.baseDir, "installers", name+"-"+fullVer+".jar")
+	// База підказок з VPS: правильні дзеркала/sha1 (допомагає, коли офіційний
+	// maven недоступний або у кеші лежить пошкоджений installer).
+	if hint, ok := inst.loaderHintFor(name, fullVer); ok {
+		installerURLs = append(installerURLs, hint.InstallerURLs...)
+		if want := strings.ToLower(strings.TrimSpace(hint.InstallerSHA1)); len(want) == 40 && isHex(want) {
+			if got, err := sha1OfFile(installerPath); err == nil && got != want {
+				inst.log("installer " + name + " не збігається з базою VPS — завантажую заново.")
+				os.Remove(installerPath)
+			}
+		}
+	}
 	if err := inst.downloadIfMissingAny(installerURLs, installerPath); err != nil {
 		return "", fmt.Errorf("download %s installer: %w", name, err)
 	}
@@ -578,6 +595,27 @@ func (inst *Installer) checkForgeInstalled(mcVersion, loaderVersion string, neof
 		clientJar = filepath.Join(inst.baseDir, "libraries", "net", "minecraftforge", "forge", fullVer, "forge-"+fullVer+"-client.jar")
 	}
 	if fi, err := os.Stat(clientJar); err != nil || fi.Size() == 0 {
+		// Якщо сам version.json оголошує jar, який створюють processors
+		// (forge:<ver>:client/slim/extra/srg), а його на диску немає, —
+		// install НЕ завершений, навіть якщо поряд лежить universal/shim jar
+		// (їх качає ensureLibraries ще до processors, тож після обірваної
+		// установки вони є, а client.jar — ні). Без цієї перевірки запасний
+		// шлях нижче хибно визнавав лоадер встановленим, processors ніколи
+		// не запускались, і гра падала з "Could not find .forge_patched_minecraft".
+		for i := range vj.Libraries {
+			lib := &vj.Libraries[i]
+			if !isProcessorOutputLibrary(lib.Name) {
+				continue
+			}
+			rel := lib.Downloads.Artifact.Path
+			if rel == "" {
+				rel = gradlePath(lib.Name)
+			}
+			outPath := filepath.Join(inst.baseDir, "libraries", filepath.FromSlash(rel))
+			if fi, err := os.Stat(outPath); err != nil || fi.Size() == 0 {
+				return "", false
+			}
+		}
 		// Не всі Forge-версії генерують forge-*-client.jar:
 		//   · 1.8.9/1.7.10 — клієнтом є universal jar (version.json має
 		//     "jar": mcVersion — сам client.jar лишається ванилла);
@@ -616,6 +654,11 @@ func (inst *Installer) checkForgeInstalled(mcVersion, loaderVersion string, neof
 		return "", false
 	} else {
 		zr.Close()
+	}
+	// Вміст, а не лише «валідний zip»: patched jar мусить мати sha1 з інсталера
+	// (або бази VPS). Інакше гра падає у FieldToMethodTransformer.
+	if !inst.verifyPatchedLoaderJar(clientJar, realMcVersion, loaderVersion, neoforge) {
+		return "", false
 	}
 	return profileID, true
 }
@@ -916,6 +959,21 @@ func isForgeArtifactName(name string) bool {
 		strings.HasPrefix(name, "net.neoforged:neoforge:")
 }
 
+// isProcessorOutputLibrary — чи бібліотека є ВИХІДНИМ файлом processors
+// інсталера Forge/NeoForge (forge-<ver>-client.jar та ін.), а не артефактом
+// maven. Такі jar'и генеруються локально binpatch-ем, тому качати їх не
+// можна (404). Координати з "@ext" (zip/txt) — окремі артефакти, їх не чіпаємо.
+func isProcessorOutputLibrary(name string) bool {
+	if !isForgeArtifactName(name) || strings.Contains(name, "@") {
+		return false
+	}
+	switch gradleClassifier(name) {
+	case "client", "slim", "extra", "srg":
+		return true
+	}
+	return false
+}
+
 // gradleClassifier повертає classifier з maven-координати
 // group:artifact:version[:classifier] (порожньо, якщо його немає).
 func gradleClassifier(name string) string {
@@ -1192,7 +1250,9 @@ func (inst *Installer) runForgeProcessors(zr *zip.ReadCloser, installerPath stri
 		"LIBRARY_DIR":       libsDir,
 		"MINECRAFT_VERSION": mcpVersion,
 		"MINECRAFT_JAR":     mcJar,
+		"__CACHE_KEY":       strings.TrimSuffix(filepath.Base(installerPath), filepath.Ext(installerPath)),
 	}
+	var doneOutputs []map[string]string
 	for key, datum := range profile.Data {
 		v := datum.Client
 		if v == "" {
@@ -1359,7 +1419,8 @@ func (inst *Installer) runForgeProcessors(zr *zip.ReadCloser, installerPath stri
 			// відсутніми client-*-srg.jar/-extra.jar/forge-*-client.jar —
 			// саме ці три файли й вимагає ModLauncher на старті гри.
 			if ok, missing := inst.processorOutputsValid(proc.Outputs, vars); !ok {
-				lastErr = fmt.Errorf("processor %s відпрацював, але очікуваний файл не з'явився: %s", proc.Jar, missing)
+				inst.purgeBadProcessorOutputs(proc.Outputs, vars)
+				lastErr = fmt.Errorf("processor %s відпрацював, але очікуваний файл не з'явився або має хибний хеш: %s", proc.Jar, missing)
 				if retry < maxRetries {
 					continue
 				}
@@ -1367,12 +1428,14 @@ func (inst *Installer) runForgeProcessors(zr *zip.ReadCloser, installerPath stri
 			}
 
 			lastErr = nil
+			doneOutputs = append(doneOutputs, proc.Outputs)
 			break // success
 		}
 		if lastErr != nil {
 			return lastErr
 		}
 	}
+	recordProcessorOutputs(doneOutputs, inst, vars)
 	return nil
 }
 
@@ -1578,13 +1641,23 @@ func (inst *Installer) resolveProcValue(literal string, vars map[string]string, 
 				// за MCP/loader-версією (vars["MINECRAFT_VERSION"] — унікальна
 				// для кожного install_profile.json), щоб різні версії ніколи
 				// не ділили один і той самий кеш.
-				cacheKey := vars["MINECRAFT_VERSION"]
+				//
+				// Ключ = ім'я самого installer.jar (forge-26.3-66.1.9): MCP-версія
+				// однакова у Forge і NeoForge для одного MC, і спільний кеш
+				// підсовував чужий binpatch (краш у FieldToMethodTransformer).
+				cacheKey := vars["__CACHE_KEY"]
+				if cacheKey == "" {
+					cacheKey = vars["MINECRAFT_VERSION"]
+				}
 				if cacheKey == "" {
 					cacheKey = "unknown"
 				}
 				tmp := filepath.Join(inst.forgeCacheDir, sanitizeTempKey(cacheKey), filepath.FromSlash(pathInZip))
-				if _, err := os.Stat(tmp); err == nil {
-					return tmp
+				if st, err := os.Stat(tmp); err == nil {
+					if uint64(st.Size()) == f.UncompressedSize64 {
+						return tmp
+					}
+					os.Remove(tmp) // розмір не збігається з інсталером — застарілий кеш
 				}
 				rc, err := f.Open()
 				if err != nil {

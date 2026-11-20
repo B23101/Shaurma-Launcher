@@ -204,10 +204,20 @@ func (a *App) GetFriendLook(nickname string) (*model.ActiveLook, error) {
 	if err != nil || !found {
 		return nil, err
 	}
-	return &model.ActiveLook{
+	look := &model.ActiveLook{
 		SkinDataURL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(png),
 		SlimArms:    slim,
-	}, nil
+	}
+	// Плащ друга — з того самого профілю гри, що бачить гра (Шаурма або Mojang).
+	a.applyGameCape(look, offlineUUIDHex(nickname), func() string {
+		if p, err := a.wardrobe.LookupPlayer(nickname); err == nil && p != nil && p.CapeURL != "" {
+			if d, err := a.wardrobe.CapeDataURL(p.CapeURL); err == nil {
+				return d
+			}
+		}
+		return ""
+	})
+	return look, nil
 }
 
 // activeMatchingPresetFromSkinServer — хук для App.GetWardrobeActivePresetID.

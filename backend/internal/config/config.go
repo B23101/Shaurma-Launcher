@@ -45,6 +45,8 @@ var DefaultSettings = model.Settings{
 	ConsoleAI:              true,
 	ConsoleAIKey:           "",
 	ConsoleFontSize:        12,
+	UIScale:                100,
+	JavaProvider:           "mojang",
 	ConsoleFontFamily:      "mono",
 	ConsoleFontMode:        "all",
 	ConsoleInfoFont:        "mono",
@@ -143,12 +145,16 @@ var DefaultSettings = model.Settings{
 	ChatMuteAll:       false,
 	ChatMuteSound:     false,
 	MutedChats:        []string{},
+	// Коментарі й реакції в профілі сповіщають, поки користувач не вимкне.
+	NotifyProfileActivity: true,
 }
 
 type Manager struct {
 	mu       sync.RWMutex
 	settings model.Settings
 	accounts []model.Account
+	// agentAccounts — внутрішні акаунти ШІ-агента (лише в пам'яті, див. SetAgentAccount).
+	agentAccounts []model.Account
 	st       *store.Store // SQLite-сховище (nil = працюємо в пам'яті)
 	dir      string
 	// installDir — РЕАЛЬНА тека встановлення лаунчера (та, куди користувач
@@ -826,6 +832,11 @@ func (m *Manager) loadSettings() error {
 		if _, ok := rawMap["chatMuteSound"]; !ok {
 			m.settings.ChatMuteSound = DefaultSettings.ChatMuteSound
 		}
+		// Сповіщення про профіль: дефолт true, тож відсутній ключ у старому settings.json
+		// не має стати мовчазним false.
+		if _, ok := rawMap["notifyProfileActivity"]; !ok {
+			m.settings.NotifyProfileActivity = DefaultSettings.NotifyProfileActivity
+		}
 		if m.settings.MutedChats == nil {
 			m.settings.MutedChats = []string{}
 		}
@@ -980,6 +991,13 @@ func (m *Manager) normalize() {
 	if s.ConsoleFontSize <= 0 {
 		s.ConsoleFontSize = DefaultSettings.ConsoleFontSize
 	}
+	if s.UIScale == 0 {
+		s.UIScale = DefaultSettings.UIScale
+	}
+	s.UIScale = ClampUIScale(s.UIScale)
+	if !ValidJavaProvider(s.JavaProvider) {
+		s.JavaProvider = DefaultSettings.JavaProvider
+	}
 	if s.ConsoleFontFamily == "" {
 		s.ConsoleFontFamily = DefaultSettings.ConsoleFontFamily
 	}
@@ -1126,10 +1144,40 @@ func (m *Manager) SaveAccounts() error {
 func (m *Manager) GetAccounts() []model.Account {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if len(m.agentAccounts) > 0 {
+		// Внутрішні акаунти ШІ-агента: видимі коду запуску/консолі, але не в UI і не на диску.
+		out := make([]model.Account, 0, len(m.accounts)+len(m.agentAccounts))
+		out = append(out, m.accounts...)
+		return append(out, m.agentAccounts...)
+	}
 	if m.accounts == nil {
 		return []model.Account{}
 	}
 	return m.accounts
+}
+
+// GetUserAccounts — лише акаунти гравця (без внутрішніх акаунтів ШІ-агента); для UI.
+func (m *Manager) GetUserAccounts() []model.Account {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.accounts == nil {
+		return []model.Account{}
+	}
+	return m.accounts
+}
+
+// SetAgentAccount реєструє внутрішній акаунт ШІ-агента ТІЛЬКИ в пам'яті: не пишеться в
+// accounts.json, не стає активним, не показується в списку акаунтів лаунчера.
+func (m *Manager) SetAgentAccount(a model.Account) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i := range m.agentAccounts {
+		if m.agentAccounts[i].ID == a.ID {
+			m.agentAccounts[i] = a
+			return
+		}
+	}
+	m.agentAccounts = append(m.agentAccounts, a)
 }
 
 // GetAccountByID повертає акаунт за ID (для відновлення сесії гри після
@@ -1139,6 +1187,11 @@ func (m *Manager) GetAccountByID(id string) (model.Account, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	for _, a := range m.accounts {
+		if a.ID == id {
+			return a, true
+		}
+	}
+	for _, a := range m.agentAccounts {
 		if a.ID == id {
 			return a, true
 		}
@@ -1646,4 +1699,31 @@ func normalizeSidebarHide(v string) string {
 		return v
 	}
 	return ""
+}
+
+// Межі масштабу інтерфейсу: менше 70% тексти стають нечитними, більше 150%
+// лаунчер не влазить у мінімальне вікно.
+const (
+	UIScaleMin = 70
+	UIScaleMax = 150
+)
+
+// ClampUIScale тримає масштаб у розумних межах.
+func ClampUIScale(v int) int {
+	if v < UIScaleMin {
+		return UIScaleMin
+	}
+	if v > UIScaleMax {
+		return UIScaleMax
+	}
+	return v
+}
+
+// ValidJavaProvider — чи відомий провайдер Java (для налаштувань лаунчера).
+func ValidJavaProvider(p string) bool {
+	switch p {
+	case "mojang", "adoptium", "zulu":
+		return true
+	}
+	return false
 }

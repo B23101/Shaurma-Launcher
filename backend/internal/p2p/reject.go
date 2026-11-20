@@ -69,6 +69,7 @@ const (
 	RejBadAddress                    // адреса введена не у форматі <код>.play.<суфікс>
 	RejInternal                      // внутрішня помилка лаунчера
 	RejP2PDisabled                   // гравець сам вимкнув P2P у своєму лаунчері
+	RejGateDenied                    // шлюз Шаурми/Cloudflare відсік запит лаунчера (403 без пояснення) — не рішення власника
 	rejMax                           // службова межа — завжди остання
 )
 
@@ -94,6 +95,7 @@ var rejectKeys = [...]string{
 	RejBadAddress:       "badAddress",
 	RejInternal:         "internal",
 	RejP2PDisabled:      "p2pDisabled",
+	RejGateDenied:       "gateDenied",
 }
 
 // RejectKey — стабільний ключ причини ("hostOffline", …); для логів і перекладів.
@@ -137,6 +139,7 @@ var builtinRejectTexts = map[string]map[string]string{
 		"badAddress":       "Невірна P2P-адреса. Перевірте, чи ввели її повністю.",
 		"internal":         "Внутрішня помилка лаунчера. Спробуйте ще раз.",
 		"p2pDisabled":      "Ви вимкнули систему P2P у лаунчері. Щоб зайти на сервер друга, увімкніть «Гру через інтернет» у налаштуваннях лаунчера.",
+		"gateDenied":       "Сервер Шаурми відхилив запит вашого лаунчера (це не рішення власника сервера). Оновіть лаунчер і спробуйте ще раз; якщо не допомогло — повідомте розробників.",
 	},
 	"en": {
 		"hostOffline":      "The host is offline right now. Try again later.",
@@ -158,10 +161,11 @@ var builtinRejectTexts = map[string]map[string]string{
 		"badAddress":       "Invalid P2P address. Check that you typed it in full.",
 		"internal":         "Internal launcher error. Please try again.",
 		"p2pDisabled":      "You turned off P2P in the launcher. To join a friend's server, turn on online play in the launcher settings.",
+		"gateDenied":       "The Shaurma server rejected your launcher's request (this is not the server owner's decision). Update the launcher and try again; if it persists, contact the developers.",
 	},
 }
 
-// maxRejectTexts — скільки ключів приймаємо від фронтенду за раз (ключів у нас 19).
+// maxRejectTexts — скільки ключів приймаємо від фронтенду за раз (ключів у нас 20).
 const maxRejectTexts = 64
 
 var (

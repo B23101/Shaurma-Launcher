@@ -170,6 +170,9 @@ type Installer struct {
 	// бар стрибав би назад і виглядав «завислим/ламаним»).
 	lastPct   int
 	lastPctMu sync.Mutex
+	// holdPct — йде цикл «лоадер + версія» (BeginInstallCycle): EnsureVersion
+	// не скидає % посеред циклу, тож бар не стрибає назад після лоадера.
+	holdPct bool
 
 	// runMu — серіалізація важких операцій встановлення (EnsureLoader/
 	// EnsureVersion) на СПІЛЬНОМУ інстансі. З'явився для фонових
@@ -271,6 +274,24 @@ func (inst *Installer) SetInstallProgressHandler(f InstallProgressFunc) { inst.i
 // перевизначення з відновленням у app.go).
 func (inst *Installer) InstallProgressHandler() InstallProgressFunc { return inst.installProgress }
 
+// BeginInstallCycle починає новий цикл встановлення (EnsureLoader, потім
+// EnsureVersion): % стартує з нуля і до EndInstallCycle лише зростає. Без
+// скидання тут лоадер успадковував 100% з попереднього запуску (спільний
+// Installer), і бар показував «100%», поки Forge ще встановлювався.
+func (inst *Installer) BeginInstallCycle() {
+	inst.lastPctMu.Lock()
+	inst.lastPct = 0
+	inst.holdPct = true
+	inst.lastPctMu.Unlock()
+}
+
+// EndInstallCycle завершує цикл, розпочатий BeginInstallCycle.
+func (inst *Installer) EndInstallCycle() {
+	inst.lastPctMu.Lock()
+	inst.holdPct = false
+	inst.lastPctMu.Unlock()
+}
+
 func (inst *Installer) reportInstallProgress(stage string, pct int, msg string) {
 	// Монотонність: новий % не може бути меншим за попередній (див. lastPct).
 	inst.lastPctMu.Lock()
@@ -308,7 +329,9 @@ func (inst *Installer) ensureVersionStart(versionID string) (*VersionJSON, error
 	// для InheritsFrom йде через ensureVersionInner, щоб СЕРЕДИНІ циклу
 	// прогрес не скидався (бар лишається монотонним через увесь ланцюг).
 	inst.lastPctMu.Lock()
-	inst.lastPct = 0
+	if !inst.holdPct {
+		inst.lastPct = 0
+	}
 	inst.lastPctMu.Unlock()
 	// Скидаємо прапорець скасування від попереднього запуску («Стоп» на
 	// старій качці не повинен вбити нову): інакше EnsureVersion, викликаний
@@ -623,6 +646,15 @@ func (inst *Installer) ensureLibraries(vjson *VersionJSON) error {
 		// jar'а на maven-repo нема, download впаде 404 (саме це падало до
 		// фікса). Такі бібліотеки обробляються лише в natives-проході нижче.
 		if lib.Downloads.Artifact.Path == "" && lib.Downloads.Classifiers != nil {
+			continue
+		}
+		// Forge/NeoForge: client/slim/extra/srg jar створюють processors
+		// інсталера (крок ПІСЛЯ цього ensure), на жодному maven їх немає —
+		// спроба качати з maven дає "HTTP 404" і ламає встановлення
+		// (напр. net.minecraftforge:forge:26.3-66.1.9:client). Пропускаємо:
+		// файл з'явиться після runForgeProcessors, а його наявність
+		// перевіряє checkForgeInstalled.
+		if isProcessorOutputLibrary(lib.Name) {
 			continue
 		}
 		// Fabric/Quilt meta: downloads.artifact порожній — резолвимо з

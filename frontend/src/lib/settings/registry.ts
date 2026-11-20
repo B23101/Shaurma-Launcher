@@ -14,7 +14,7 @@
 export type SectionId =
   | 'general' | 'appearance' | 'notifications' | 'account'
   | 'game' | 'java' | 'defaults' | 'console'
-  | 'downloads' | 'privacy'
+  | 'downloads' | 'privacy' | 'aiagent'
   | 'folders' | 'storage' | 'about'
 
 export interface SectionDef {
@@ -59,6 +59,7 @@ export const navGroups: NavGroup[] = [
     sections: [
       sec('downloads', 'ti-download', 'online'),
       sec('privacy', 'ti-shield-lock', 'online'),
+      sec('aiagent', 'ti-robot', 'online'),
     ],
   },
   {
@@ -115,6 +116,7 @@ export const searchItems: SearchItem[] = [
   ...I('appearance', 'theme', [
     ['x:theme', 'тема theme темна світла dark light oled система'],
     ['x:accent', 'акцент колір accent color градієнт'],
+    ['uiScale', 'масштаб інтерфейсу розмір зум zoom scale ui більше менше'],
   ]),
   ...I('appearance', 'customTheme', [
     ['themeCustomBg', 'фон background колір власна тема custom'],
@@ -146,6 +148,7 @@ export const searchItems: SearchItem[] = [
     ['notifyDurationSec', 'тривалість секунди час показу'],
     ['notifyDnd', 'dnd не турбувати тиша'],
     ['chatMuteAll', 'чат mute вимкнути чат'],
+    ['notifyProfileActivity', 'профіль коментар реакція сповіщення'],
   ]),
 
   // ── Акаунти ──
@@ -155,7 +158,7 @@ export const searchItems: SearchItem[] = [
   // ── Гра ──
   ...I('game', 'window', [
     ['fullscreen', 'повний екран fullscreen'],
-    ['windowWidth', 'ширина вікна width resolution роздільна'],
+    ['windowWidth', 'розмір вікна ширина шаблон 1280 1920 width resolution роздільна'],
     ['windowHeight', 'висота вікна height resolution роздільна'],
   ]),
   ...I('game', 'whilePlaying', [
@@ -187,7 +190,10 @@ export const searchItems: SearchItem[] = [
 
   // ── Java та запуск ──
   ...I('java', 'memory', [['maxRAM', 'ram оперативка оперативна пам\'ять memory xmx гб mb']]),
-  ...I('java', 'jvm', [['javaArgs', 'jvm аргументи java args xmx флаги']]),
+  ...I('java', 'jvm', [
+    ['javaProvider', 'провайдер java adoptium temurin zulu azul mojang jre jdk'],
+    ['javaArgs', 'jvm аргументи java args xmx флаги'],
+  ]),
   ...I('java', 'gpu', [['useDedicatedGPU', 'gpu відеокарта nvidia amd ноутбук дискретна']]),
   ...I('java', 'commands', [
     ['preLaunchCommand', 'команда перед запуском pre-launch'],
@@ -252,12 +258,50 @@ export const searchItems: SearchItem[] = [
   ...I('folders', 'folders', [['x:folders', 'теки шляхи папка збірок кешу логів java каталог']]),
   ...I('folders', 'shortcuts', [['x:shortcuts', 'ярлики робочий стіл пуск shortcut']]),
 
+  // ── ШІ-агент ──
+  ...I('aiagent', 'aiConnection', [
+    ['x:aiEnable', 'ai agent mcp claude cursor ші агент нейромережа увімкнути вимкнути підключення сервер'],
+    ['x:aiCommand', 'claude code команда термінал mcp add підключити'],
+    ['x:aiConfig', 'json mcp.json claude desktop cursor конфіг'],
+    ['x:aiToken', 'токен пароль доступ bearer новий перегенерувати безпека'],
+  ]),
+  ...I('aiagent', 'aiPerms', [
+    ['x:aiEditPolicy', 'зміни моїх даних копія оригінал редагувати поточну питати підтвердження безпека захист політика'],
+    ['x:aiPreset', 'набір прав лише читання безпечний повний пресет дозволи permissions'],
+    ['x:aiPermMods', 'моди контент шейдери ресурспаки текстури датапаки shaders resourcepacks datapacks встановлювати оновлювати вимикати відкат міграція mods modrinth curseforge'],
+    ['x:aiPermBuildSettings', 'ram java аргументи jvm пресет графіки активний шейдер iris ресурспак options.txt конфіги автовхід автовиправлення налаштування збірок'],
+    ['x:aiPermCreate', 'створення збірок копія дублювати модпак нова збірка'],
+    ['x:aiPermDeleteOwn', 'видалення видаляти власні збірки агента прибрати'],
+    ['x:aiPermStyle', 'оформлення назва опис колір іконка сортування закріплення папки порядок збірок стиль'],
+    ['x:aiPermLaunch', 'запуск запускати зупиняти гру тест у світі world test краш'],
+    ['x:aiPermSnapshots', 'знімки світів бекап резервна копія світ снапшот'],
+    ['x:aiPermServers', 'сервери проксі velocity paper команди консоль server мережа'],
+    ['x:aiPermGameControl', 'керування грою скріншот клавіші миша камера чат fps гра бот агент game control screenshot'],
+    ['x:aiPermLauncherSettings', 'налаштування лаунчера глобальні java аргументи завантажити java'],
+  ]),
+  ...I('aiagent', 'aiAsk', [
+    ['x:aiAskBulk', 'питати масові зміни оновлення всіх модів міграція модпак підтвердження'],
+    ['x:aiAskServerCreate', 'питати створення сервера eula копія сервера підтвердження'],
+    ['x:aiAskDelete', 'питати видалення збірки підтвердження'],
+    ['x:aiAskLauncherSettings', 'питати налаштування лаунчера java підтвердження'],
+    ['x:aiAskGameControl', 'питати керування грою скріншоти клавіші миша чат один раз за сеанс підтвердження'],
+    ['x:aiAskLaunch', 'питати запуск гри тест у світі підтвердження'],
+    ['x:aiAskCommands', 'питати команди консолі сервера чат підтвердження'],
+    ['x:aiAskCreateBuild', 'питати створення нової збірки підтвердження'],
+  ]),
+  ...I('aiagent', 'aiBehavior', [
+    ['x:aiIndicator', 'плашка індикатор куток що робить агент показувати'],
+    ['x:aiLock', 'блокування збірки секунди тайм-аут редагування lock'],
+    ['x:aiPort', 'порт сервер mcp 47615 адреса'],
+  ]),
+
   // ── Сховище ──
   ...I('storage', 'usage', [['x:storageUsage', 'місце на диску кеш очистити розмір']]),
   ...I('storage', 'storagePacks', [['x:storagePacks', 'встановлені збірки розмір видалити']]),
   ...I('storage', 'cleanup', [
     ['x:cleanup', 'очищення зайві версії java бібліотеки асети сироти'],
     ['cleanupAfterPackDelete', 'видалення збірки авто очищення версії'],
+    ['hashOldPacks', 'хешувати моди старих збірок дедуплікація хеш місце диск'],
   ]),
 
   // ── Про лаунчер ──

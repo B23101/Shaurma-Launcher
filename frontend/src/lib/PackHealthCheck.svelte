@@ -156,7 +156,7 @@
         <div class="hc-subtitle">{packName}</div>
       {/if}
     </div>
-    <button class="icon-btn hc-refresh" onclick={runCheck} disabled={loading} use:launcherTip={t('health.recheck')}>
+    <button aria-label={t('health.recheck')} class="icon-btn hc-refresh" onclick={runCheck} disabled={loading} use:launcherTip={t('health.recheck')}>
       <i class="ti {loading ? 'ti-loader spin' : 'ti-refresh'}"></i>
     </button>
   </div>
@@ -253,7 +253,7 @@
 
 <style>
   .hc { display: flex; flex-direction: column; gap: 16px; }
-  .hc-modal { /* нічого особливого — UiModal дає padding */ }
+  /* .hc-modal: нічого особливого — UiModal дає padding */
 
   /* ── Шапка ── */
   .hc-header {

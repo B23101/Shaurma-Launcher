@@ -28,7 +28,7 @@
   })
 
   const ring = $derived(friendColor(color))
-  const statusRing = $derived(status === 'online' ? '#22c55e' : status === 'in_game' ? '#ff8a00' : status === 'away' ? '#f59e0b' : ring)
+  const statusRing = $derived(status === 'online' ? '#22c55e' : status === 'in_game' ? '#ff8a00' : status === 'away' ? '#a78bfa' : ring)
   const initial = $derived((nickname || '?').trim().charAt(0).toUpperCase() || '?')
 </script>
 
@@ -73,5 +73,5 @@
   }
   .fav-dot.online { background: #22c55e; }
   .fav-dot.in_game { background: #ff8a00; }
-  .fav-dot.away { background: #f59e0b; }
+  .fav-dot.away { background: var(--st-away, #a78bfa); }
 </style>

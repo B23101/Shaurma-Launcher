@@ -14,21 +14,30 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"math"
 	"runtime"
 	"strconv"
 	"syscall"
 	"unsafe"
+
+	"shaurma-launcher-backend/internal/launchlog"
 )
 
 var (
-	gdi32dll              = syscall.NewLazyDLL("gdi32.dll")
-	user32overlay         = syscall.NewLazyDLL("user32.dll")
-	procCreateBitmap      = gdi32dll.NewProc("CreateBitmap")
-	procDeleteObject      = gdi32dll.NewProc("DeleteObject")
-	procCreateIconIndirec = user32overlay.NewProc("CreateIconIndirect")
-	procDestroyIcon       = user32overlay.NewProc("DestroyIcon")
+	gdi32dll               = syscall.NewLazyDLL("gdi32.dll")
+	user32overlay          = syscall.NewLazyDLL("user32.dll")
+	procCreateBitmap       = gdi32dll.NewProc("CreateBitmap")
+	procCreateDIBSection   = gdi32dll.NewProc("CreateDIBSection")
+	procCreateCompatibleDC = gdi32dll.NewProc("CreateCompatibleDC")
+	procDeleteDC           = gdi32dll.NewProc("DeleteDC")
+	procSelectObject       = gdi32dll.NewProc("SelectObject")
+	procCreateFont         = gdi32dll.NewProc("CreateFontW")
+	procSetTextColor       = gdi32dll.NewProc("SetTextColor")
+	procSetBkMode          = gdi32dll.NewProc("SetBkMode")
+	procDrawText           = user32overlay.NewProc("DrawTextW")
+	procDeleteObject       = gdi32dll.NewProc("DeleteObject")
+	procCreateIconIndirec  = user32overlay.NewProc("CreateIconIndirect")
+	procDestroyIcon        = user32overlay.NewProc("DestroyIcon")
 )
 
 const overlaySize = 32 // 32×32: Windows сама зменшує до 16 при 100% масштабі й лишає чіткість на HiDPI
@@ -42,25 +51,29 @@ type iconInfo struct {
 	hbmColor uintptr
 }
 
+type bitmapInfoHeader struct {
+	size            uint32
+	width           int32
+	height          int32
+	planes          uint16
+	bitCount        uint16
+	compression     uint32
+	imageSize       uint32
+	xPelsPerMeter   int32
+	yPelsPerMeter   int32
+	colorsUsed      uint32
+	colorsImportant uint32
+}
+
+type bitmapInfo struct {
+	header bitmapInfoHeader
+	colors [1]uint32
+}
+
 func (t *itaskbarList3) setOverlayIcon(hwnd, hicon uintptr, desc *uint16) error {
 	r, _, _ := syscall.SyscallN(t.lpVtbl.setOverlayIcon, uintptr(unsafe.Pointer(t)), hwnd, hicon,
 		uintptr(unsafe.Pointer(desc)))
 	return hresultErr(uint32(r))
-}
-
-// Шрифт 3×5: кожен рядок — 3 біти (старший = лівий піксель).
-var overlayGlyphs = map[rune][5]uint8{
-	'0': {0b111, 0b101, 0b101, 0b101, 0b111},
-	'1': {0b010, 0b110, 0b010, 0b010, 0b111},
-	'2': {0b111, 0b001, 0b111, 0b100, 0b111},
-	'3': {0b111, 0b001, 0b111, 0b001, 0b111},
-	'4': {0b101, 0b101, 0b111, 0b001, 0b001},
-	'5': {0b111, 0b100, 0b111, 0b001, 0b111},
-	'6': {0b111, 0b100, 0b111, 0b101, 0b111},
-	'7': {0b111, 0b001, 0b001, 0b001, 0b001},
-	'8': {0b111, 0b101, 0b111, 0b101, 0b111},
-	'9': {0b111, 0b101, 0b111, 0b001, 0b111},
-	'+': {0b000, 0b010, 0b111, 0b010, 0b000},
 }
 
 // overlayLabel — що писати в кружку: 1..99, далі «99+».
@@ -72,7 +85,7 @@ func overlayLabel(n int) string {
 }
 
 // renderOverlayBGRA малює кружок із текстом у premultiplied BGRA (формат 32-бітних іконок із альфою).
-func renderOverlayBGRA(label string) []byte {
+func renderOverlayBGRA() []byte {
 	const size = overlaySize
 	px := make([]byte, size*size*4)
 	// Червоний кружок зі згладженим краєм.
@@ -89,49 +102,80 @@ func renderOverlayBGRA(label string) []byte {
 			px[i+3] = byte(255 * a)
 		}
 	}
-	// Масштаб за довжиною тексту, щоб вміщалось у кружок.
-	scale := 4
-	switch len(label) {
-	case 2:
-		scale = 3
-	case 3:
-		scale = 2
-	}
-	gap := scale
-	w := len(label)*3*scale + (len(label)-1)*gap
-	h := 5 * scale
-	x0, y0 := (size-w)/2, (size-h)/2
-	for ci, ch := range label {
-		glyph, ok := overlayGlyphs[ch]
-		if !ok {
-			continue
-		}
-		gx := x0 + ci*(3*scale+gap)
-		for row := 0; row < 5; row++ {
-			for col := 0; col < 3; col++ {
-				if glyph[row]&(1<<(2-col)) == 0 {
-					continue
-				}
-				for dy := 0; dy < scale; dy++ {
-					for dx := 0; dx < scale; dx++ {
-						i := ((y0+row*scale+dy)*size + gx + col*scale + dx) * 4
-						px[i], px[i+1], px[i+2], px[i+3] = 255, 255, 255, 255
-					}
-				}
-			}
-		}
-	}
 	return px
+}
+
+func renderOverlayLabel(bitmap uintptr, label string) error {
+	dc, _, _ := procCreateCompatibleDC.Call(0)
+	if dc == 0 {
+		return fmt.Errorf("CreateCompatibleDC")
+	}
+	defer procDeleteDC.Call(dc)
+	oldBitmap, _, _ := procSelectObject.Call(dc, bitmap)
+	if oldBitmap == 0 || oldBitmap == ^uintptr(0) {
+		return fmt.Errorf("SelectObject(bitmap)")
+	}
+	defer procSelectObject.Call(dc, oldBitmap)
+
+	height := int32(20)
+	if len(label) == 2 {
+		height = 16
+	} else if len(label) >= 3 {
+		height = 12
+	}
+	font, _, _ := procCreateFont.Call(
+		uintptr(uint32(-height)), 0, 0, 0, 700, 0, 0, 0,
+		1, 0, 0, 4 /*ANTIALIASED_QUALITY*/, 0, 0,
+	)
+	if font == 0 {
+		return fmt.Errorf("CreateFontW")
+	}
+	defer procDeleteObject.Call(font)
+	oldFont, _, _ := procSelectObject.Call(dc, font)
+	if oldFont == 0 || oldFont == ^uintptr(0) {
+		return fmt.Errorf("SelectObject(font)")
+	}
+	defer procSelectObject.Call(dc, oldFont)
+	procSetBkMode.Call(dc, 1 /*TRANSPARENT*/)
+	procSetTextColor.Call(dc, 0x00FFFFFF)
+	text, _ := syscall.UTF16PtrFromString(label)
+	rect := struct{ left, top, right, bottom int32 }{0, 0, overlaySize, overlaySize}
+	flags := uintptr(0x1 | 0x4 | 0x20) // DT_CENTER | DT_VCENTER | DT_SINGLELINE
+	if drawn, _, _ := procDrawText.Call(dc, uintptr(unsafe.Pointer(text)), uintptr(len(label)), uintptr(unsafe.Pointer(&rect)), flags); drawn == 0 {
+		return fmt.Errorf("DrawTextW")
+	}
+	return nil
 }
 
 // makeOverlayIcon створює HICON; викликач мусить викликати DestroyIcon.
 func makeOverlayIcon(n int) (uintptr, error) {
-	px := renderOverlayBGRA(overlayLabel(n))
-	color, _, _ := procCreateBitmap.Call(overlaySize, overlaySize, 1, 32, uintptr(unsafe.Pointer(&px[0])))
+	label := overlayLabel(n)
+	px := renderOverlayBGRA()
+	bmi := bitmapInfo{header: bitmapInfoHeader{
+		size: uint32(unsafe.Sizeof(bitmapInfoHeader{})), width: overlaySize,
+		height: -overlaySize, planes: 1, bitCount: 32, imageSize: uint32(len(px)),
+	}}
+	var dibBits unsafe.Pointer
+	color, _, _ := procCreateDIBSection.Call(0, uintptr(unsafe.Pointer(&bmi)), 0 /*DIB_RGB_COLORS*/, uintptr(unsafe.Pointer(&dibBits)), 0, 0)
 	if color == 0 {
-		return 0, fmt.Errorf("CreateBitmap(color)")
+		return 0, fmt.Errorf("CreateDIBSection(color)")
 	}
 	defer procDeleteObject.Call(color)
+	if dibBits == nil {
+		return 0, fmt.Errorf("CreateDIBSection returned no pixel buffer")
+	}
+	dibPixels := unsafe.Slice((*byte)(dibBits), len(px))
+	copy(dibPixels, px)
+	alpha := make([]byte, len(px)/4)
+	for i := range alpha {
+		alpha[i] = dibPixels[i*4+3]
+	}
+	if err := renderOverlayLabel(color, label); err != nil {
+		return 0, err
+	}
+	for i, a := range alpha {
+		dibPixels[i*4+3] = a
+	}
 	mask := make([]byte, overlaySize*overlaySize/8) // усе 0: видимість задає альфа кольорової частини
 	hmask, _, _ := procCreateBitmap.Call(overlaySize, overlaySize, 1, 1, uintptr(unsafe.Pointer(&mask[0])))
 	if hmask == 0 {
@@ -154,7 +198,7 @@ func setTaskbarOverlay(n int) bool {
 	}
 	hwnd := mainWindowHwnd()
 	if hwnd == 0 {
-		log.Printf("taskbar badge: головне вікно не знайдено")
+		launchlog.Warn("TaskbarBadge", "головне вікно не знайдено (n=%d)", n)
 		return false
 	}
 	// Та сама вимога, що й в updateTaskbarProgress: CoInitialize → виклики → Release на ОДНОМУ OS-потоці.
@@ -162,7 +206,7 @@ func setTaskbarOverlay(n int) bool {
 	defer runtime.UnlockOSThread()
 	iface, coOwned, err := newTaskbarIface()
 	if err != nil {
-		log.Printf("taskbar badge: ITaskbarList3: %v", err)
+		launchlog.Warn("TaskbarBadge", "ITaskbarList3: %v", err)
 		uninitializeComIfOwned(coOwned)
 		return false
 	}
@@ -171,21 +215,29 @@ func setTaskbarOverlay(n int) bool {
 		uninitializeComIfOwned(coOwned)
 	}()
 	if n <= 0 {
-		return logOverlayErr(iface.setOverlayIcon(hwnd, 0, nil))
+		ok := logOverlayErr(iface.setOverlayIcon(hwnd, 0, nil))
+		if ok {
+			launchlog.Info("TaskbarBadge", "бейдж прибрано (hwnd=0x%X)", hwnd)
+		}
+		return ok
 	}
 	hicon, err := makeOverlayIcon(n)
 	if err != nil {
-		log.Printf("taskbar badge: %v", err)
+		launchlog.Warn("TaskbarBadge", "створення іконки: %v", err)
 		return false
 	}
 	defer procDestroyIcon.Call(hicon) // панель завдань тримає власну копію
 	desc, _ := syscall.UTF16PtrFromString("Непрочитані повідомлення: " + strconv.Itoa(n))
-	return logOverlayErr(iface.setOverlayIcon(hwnd, hicon, desc))
+	ok := logOverlayErr(iface.setOverlayIcon(hwnd, hicon, desc))
+	if ok {
+		launchlog.Info("TaskbarBadge", "бейдж показано: %d (hwnd=0x%X)", n, hwnd)
+	}
+	return ok
 }
 
 func logOverlayErr(err error) bool {
 	if err != nil {
-		log.Printf("taskbar badge: SetOverlayIcon: %v", err)
+		launchlog.Warn("TaskbarBadge", "SetOverlayIcon: %v", err)
 		return false
 	}
 	return true

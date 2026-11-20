@@ -108,6 +108,7 @@
   const sortedPacks = $derived([...storagePacks].sort((a, b) => b.bytes - a.bytes))
   const packsTotal = $derived(storagePacks.reduce((a, p) => a + p.bytes, 0))
   const cleanupDef = $derived(settingsSchema.find((d) => d.key === 'cleanupAfterPackDelete'))
+  const hashDef = $derived(settingsSchema.find((d) => d.key === 'hashOldPacks'))
 </script>
 
 <!-- ══ Скільки місця займає лаунчер ══ -->
@@ -197,7 +198,7 @@
             <span class="sp-name">{sp.name}</span>
             <span class="sp-size">{fmtBytes(sp.bytes)}</span>
             <span class="sp-badge">{t('st.storage.played', { t: fmtPlaytime(sp.playSeconds) })}</span>
-            <button class="icon-btn danger" use:launcherTip={t('st.delete')} onclick={() => deletePackFromStorage(sp.id)}><i class="ti ti-trash"></i></button>
+            <button aria-label={t('st.delete')} class="icon-btn danger" use:launcherTip={t('st.delete')} onclick={() => deletePackFromStorage(sp.id)}><i class="ti ti-trash"></i></button>
           </div>
         {/each}
       </div>
@@ -313,6 +314,9 @@
   </div>
   {#if cleanupDef}
     <Setting def={cleanupDef} value={(settings as any)[cleanupDef.key]} onchange={(v) => updateSetting(cleanupDef.key, v)} />
+  {/if}
+  {#if hashDef}
+    <Setting def={hashDef} value={(settings as any)[hashDef.key]} onchange={(v) => updateSetting(hashDef.key, v)} />
   {/if}
 </SCard>
 

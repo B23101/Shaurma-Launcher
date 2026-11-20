@@ -56,7 +56,7 @@
       <div class="st-row">
         <div class="st-row-text">
           <div class="st-row-name">{f.name} {#if f.custom}<span class="st-tag on" style="margin-left:6px">{t('st.folders.custom')}</span>{/if}</div>
-          <div class="st-row-hint">{f.desc}</div>
+          
           <div class="st-path" use:launcherTip={f.path}>{f.path}</div>
         </div>
         <div class="st-row-ctl">

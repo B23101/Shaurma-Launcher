@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Shaurma Game Agent: один jar (-javaagent) для Minecraft 1.16.5+ і ВСІХ лоадерів (також ваніла).
+     Працює на рівні JVM/LWJGL-GLFW, тому не залежить ні від версії гри, ні від лоадера.
+     Збірка: mvn -B verify  →  target/shaurma-game-agent.jar (+ target/surefire-reports/). -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>dev.shaurma</groupId>
+  <artifactId>shaurma-game-agent</artifactId>
+  <version>1.0.0</version>
+  <packaging>jar</packaging>
+  <name>Shaurma Game Agent</name>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Байткод Java 8: агент має завантажуватись у будь-якій JVM, яку використовує гра (8, 16, 17, 21, 25). -->
+    <maven.compiler.release>8</maven.compiler.release>
+    <asm.version>9.7.1</asm.version>
+  </properties>
+
+  <dependencies>
+    <!-- ASM (BSD-3-Clause) — вшивається у jar з перейменованим пакетом, щоб не конфліктувати з ASM лоадерів. -->
+    <dependency>
+      <groupId>org.ow2.asm</groupId>
+      <artifactId>asm</artifactId>
+      <version>${asm.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.2</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>shaurma-game-agent</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.2.5</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.5.3</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <relocations>
+                <relocation>
+                  <pattern>org.objectweb.asm</pattern>
+                  <shadedPattern>dev.shaurma.agent.shaded.asm</shadedPattern>
+                </relocation>
+              </relocations>
+              <filters>
+                <filter>
+                  <artifact>*:*</artifact>
+                  <excludes>
+                    <exclude>META-INF/MANIFEST.MF</exclude>
+                    <exclude>META-INF/*.SF</exclude>
+                    <exclude>META-INF/*.DSA</exclude>
+                    <exclude>META-INF/*.RSA</exclude>
+                    <exclude>module-info.class</exclude>
+                  </excludes>
+                </filter>
+              </filters>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <manifestEntries>
+                    <Premain-Class>dev.shaurma.agent.Agent</Premain-Class>
+                    <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                    <Can-Redefine-Classes>false</Can-Redefine-Classes>
+                    <Implementation-Title>Shaurma Game Agent</Implementation-Title>
+                    <Implementation-Version>${project.version}</Implementation-Version>
+                  </manifestEntries>
+                </transformer>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

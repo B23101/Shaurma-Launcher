@@ -15,6 +15,7 @@ import (
 	"shaurma-launcher-backend/internal/crashguard"
 	"strings"
 	"sync"
+	"time"
 
 	"shaurma-launcher-backend/internal/social"
 )
@@ -414,7 +415,12 @@ func socialViewCovers(peerAccountID string) bool {
 }
 
 // socialWindowActive — активність головного вікна → статус «відійшов» (internal/social).
+// Лише там, де не вдається міряти простій ПК: інакше «відійшов» визначає social_idle_shaurma.go,
+// і неактивне вікно лаунчера на статус не впливає.
 func (a *App) socialWindowActive(active bool) {
+	if socialIdleSupported() {
+		return
+	}
 	if svc := currentSocialService(); svc != nil {
 		svc.SetWindowActive(active)
 	}
@@ -496,6 +502,40 @@ func (a *App) notifyFromSocial(event string, payload any) {
 		if nick := a.socialNickname(ev.From); nick != "" {
 			go a.notifyServerInvite(ev, nick) // стан кімнати — мережевий запит
 		}
+
+	case "profile:activity":
+		// Коментар або реакція друга в моєму профілі. Окремий вимикач у Налаштування → Сповіщення
+		// (поверх загального NotifyEnabled/DND, які вже перевірені вище).
+		ev, ok := payload.(social.ProfileActivityEvent)
+		if !ok || ev.From == "" || (ev.Kind != "comment" && ev.Kind != "reaction") {
+			return
+		}
+		if !a.cfg.GetSettings().NotifyProfileActivity {
+			return
+		}
+		// Друг може швидко перебирати реакції — не частіше одного тосту на друга й тип за 15 с.
+		if !notifyThrottleAllow("profile:"+ev.Kind+":"+ev.From, 15*time.Second) {
+			return
+		}
+		nick := a.socialNickname(ev.From)
+		if nick == "" {
+			return // нік невідомий (не друг) — не показуємо
+		}
+		p := NotifyPayload{
+			Kind:      "event",
+			Event:     "profile_" + ev.Kind,
+			Title:     nick,
+			AccountID: ev.From,
+			TS:        time.Now().UnixMilli(),
+			ID:        fmt.Sprintf("profile-%s-%d-%s-%d", ev.Kind, ev.CommentID, ev.From, time.Now().UnixMilli()),
+		}
+		if ev.Kind == "comment" {
+			p.Body = notifyPreviewText(ev.Text)
+		} else {
+			p.Body = ev.Emoji
+			p.Sub = notifyPreviewText(ev.Text) // коментар, під яким поставили реакцію
+		}
+		a.pushNotify(p)
 
 	case "friends:update":
 		st, ok := payload.(social.State)

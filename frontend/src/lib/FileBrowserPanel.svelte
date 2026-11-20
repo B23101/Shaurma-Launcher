@@ -364,6 +364,7 @@
                 <div class="ce-line" class:err={ceErrLine === i + 1}>{@html lineHtml}</div>
               {/each}
             </div>
+            <!-- svelte-ignore a11y_autofocus -->
             <textarea
               class="ce-ta mono"
               bind:this={ceTaEl}
@@ -400,7 +401,7 @@
   <div class="fp-sticky" style={`--mt-top:${stickyTop}px`}>
     <div class="toolbar">
       <div class="breadcrumb">
-        <button class="crumb-btn" class:active={curPath === ''} onclick={() => navigate('')} use:launcherTip={t('files.navigateUp')}>
+        <button aria-label={t('files.navigateUp')} class="crumb-btn" class:active={curPath === ''} onclick={() => navigate('')} use:launcherTip={t('files.navigateUp')}>
           <i class="ti ti-home"></i>
         </button>
         {#each crumbs as crumb, i (crumb)}
@@ -434,9 +435,9 @@
         ariaLabel={t('files.sortName')}
       />
       <span class="fp-count">{visibleEntries.length}</span>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={goUp} disabled={!curPath} use:launcherTip={t('files.navigateUp')}><i class="ti ti-arrow-up"></i></button>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={reload} use:launcherTip={t('files.refresh')}><i class="ti ti-refresh"></i></button>
-      <button class="btn btn-ghost btn-sm icon-tb" onclick={openCreateFile} use:launcherTip={t('files.createFile')}><i class="ti ti-file-plus"></i></button>
+      <button aria-label={t('files.navigateUp')} class="btn btn-ghost btn-sm icon-tb" onclick={goUp} disabled={!curPath} use:launcherTip={t('files.navigateUp')}><i class="ti ti-arrow-up"></i></button>
+      <button aria-label={t('files.refresh')} class="btn btn-ghost btn-sm icon-tb" onclick={reload} use:launcherTip={t('files.refresh')}><i class="ti ti-refresh"></i></button>
+      <button aria-label={t('files.createFile')} class="btn btn-ghost btn-sm icon-tb" onclick={openCreateFile} use:launcherTip={t('files.createFile')}><i class="ti ti-file-plus"></i></button>
       <button class="btn btn-primary btn-sm" onclick={openCreateFolder}><i class="ti ti-folder-plus"></i> {t('files.createFolder')}</button>
     </div>
   </div>
@@ -453,6 +454,7 @@
     <div class="fp-list-scroll">
       <div class="fp-list">
         {#each visibleEntries as entry (entry.path)}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div class="fp-row" onclick={() => openEntry(entry)}>
             <div class="fp-ic">
               {#if entry.isDir}
@@ -467,15 +469,17 @@
               <div class="fp-ename">{entry.name}</div>
               <div class="fp-emeta">{entry.isDir ? t('files.open') : fmtSize(entry.size)} · {fmtModified(entry.modified)}</div>
             </div>
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="fp-actions" onclick={(e: any) => e.stopPropagation()}>
               {#if !entry.isDir}
-                <button class="icon-btn" use:launcherTip={t('files.open')} onclick={() => openEntry(entry)}><i class="ti ti-eye"></i></button>
+                <button aria-label={t('files.open')} class="icon-btn" use:launcherTip={t('files.open')} onclick={() => openEntry(entry)}><i class="ti ti-eye"></i></button>
               {/if}
               <div class="row-menu-wrap">
                 <button class="icon-btn" onclick={(e: MouseEvent) => toggleRowMenu(entry.path, e)} use:launcherTip={t('files.moreActions')} aria-label={t('files.moreActions')} aria-expanded={menuFor === entry.path}>
                   <i class="ti ti-dots-vertical"></i>
                 </button>
                 {#if menuFor === entry.path}
+                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                   <div class="row-menu" onclick={(e: MouseEvent) => e.stopPropagation()}>
                     <button onclick={() => { closeRowMenu(); revealEntry(entry) }}><i class="ti ti-folder-open"></i> {t('files.reveal')}</button>
                     <button onclick={() => { closeRowMenu(); copyPath(entry) }}><i class="ti ti-link"></i> {t('files.copyPath')}</button>
@@ -506,6 +510,7 @@
     onclose={() => prompt = null}
   >
       <div class="rl-name" style="margin-bottom:8px">{pr.label}</div>
+      <!-- svelte-ignore a11y_autofocus -->
       <input class="input mono" value={promptValue} oninput={(e: any) => promptValue = e.target.value}
              onkeydown={(e: any) => { if (e.key === 'Enter') submitPrompt() }}
              autofocus />
@@ -681,5 +686,5 @@
     transition:background .15s, color .15s; flex-shrink:0; font-size:14px;
   }
   .icon-btn:hover { background:var(--hover-strong); color:var(--text); }
-  .icon-btn.del:hover { background:rgba(239,68,68,.15); color:var(--red); }
+  
 </style>

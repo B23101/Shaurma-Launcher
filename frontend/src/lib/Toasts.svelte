@@ -32,6 +32,7 @@
 {#if toasts.length > 0}
   <div class="toast-stack" class:stack-top={toastAnchor.pos === 'top'}>
     {#each toasts as t (t.id)}
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
       <div class="toast toast-{t.kind}" role="status" onclick={() => dismissToast(t.id)}>
         <span class="toast-ico"><i class="ti {icons[t.kind] ?? 'ti-info-circle'}"></i></span>
         <span class="toast-msg">{t.message}</span>
@@ -91,7 +92,7 @@
     border-radius: 12px;
     background: var(--bg-card);
     border: 1px solid var(--border-hi);
-    box-shadow: 0 18px 40px rgba(0, 0, 0, .6);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, .38);
     font-size: 12.5px;
     font-weight: 600;
     cursor: pointer;

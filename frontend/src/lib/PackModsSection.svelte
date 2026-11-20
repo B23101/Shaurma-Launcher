@@ -1204,6 +1204,7 @@
 
 <div class="mods" bind:this={rootEl}>
   <!-- ═══ Тулбар ═══ -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="mods-toolbar" onclick={closeRowMenu} style={`--mt-top:${stickyTop}px`}>
     <div class="mt-group mt-group-main">
       <SearchField bind:value={search} placeholder={t('mods.search')} />
@@ -1288,6 +1289,7 @@
   </div>
 
   <!-- ═══ Список модів ═══ -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="mods-dropzone" class:drag={dragOver}
        ondragover={(e: DragEvent) => { e.preventDefault(); dragOver = true }}
        ondragleave={() => dragOver = false}
@@ -1325,7 +1327,7 @@
               <i class="ti ti-search"></i>
               <input value={dupSearch} placeholder={t('mods.dupSearch')}
                      oninput={(e: any) => dupSearch = e.target.value} />
-              {#if dupSearch}<button class="dup-search-clear" onclick={() => dupSearch = ''} use:launcherTip={t('mods.dupSearchClear')}><i class="ti ti-x"></i></button>{/if}
+              {#if dupSearch}<button aria-label={t('mods.dupSearchClear')} class="dup-search-clear" onclick={() => dupSearch = ''} use:launcherTip={t('mods.dupSearchClear')}><i class="ti ti-x"></i></button>{/if}
             </div>
             {#if filteredDupGroups.length === 0}
               <div class="dup-empty">
@@ -1351,7 +1353,7 @@
                       <div class="dup-group-sub">{t('mods.dupGroupSub', { n: g.length, version: g[0].version || '' })}</div>
                     </div>
                     <span class="dup-group-count">{matched.length}×{#if matched.length < g.length} <i class="ti ti-filter" use:launcherTip={t('mods.dupGroupFiltered', { n: g.length })}></i>{/if}</span>
-                    <button class="icon-btn del dup-group-del" onclick={() => deleteDupGroup(g)}
+                    <button aria-label={t('mods.dupGroupDelete')} class="icon-btn del dup-group-del" onclick={() => deleteDupGroup(g)}
                             disabled={bulkWorking} use:launcherTip={t('mods.dupGroupDelete')}>
                       <i class="ti ti-trash"></i>
                     </button>
@@ -1362,7 +1364,7 @@
                       <div class="dup-file rise-in" class:keep={isKeep} style="animation-delay:{Math.min(fi,6)*25}ms">
                         <!-- Радіо-«лишити»: користувач сам обирає, яку копію
                              зберегти, замість автозбереження найновішої. -->
-                        <button class="dup-file-keep" class:on={isKeep}
+                        <button aria-label={t('mods.dupKeepThis')} class="dup-file-keep" class:on={isKeep}
                                 onclick={() => setDupKeep(g[0].id, f.fileName)}
                                 use:launcherTip={t('mods.dupKeepThis')}>
                           <i class="ti {isKeep ? 'ti-circle-check' : 'ti-circle'}"></i>
@@ -1372,7 +1374,7 @@
                         <span class="dup-file-meta">{f.version || f.installedDate || ''}</span>
                         {#if isKeep}<span class="dup-keep-badge">{t('mods.dupKeep')}</span>{/if}
                         <!-- Видалити саме цей файл (вибір «те чи те»). -->
-                        <button class="dup-file-del" onclick={() => deleteDupFile(g, f)} disabled={bulkWorking}
+                        <button aria-label={t('mods.delete')} class="dup-file-del" onclick={() => deleteDupFile(g, f)} disabled={bulkWorking}
                                 use:launcherTip={t('mods.delete')}><i class="ti ti-trash"></i></button>
                       </div>
                     {/each}
@@ -1414,7 +1416,7 @@
                     <i class="ti ti-download"></i>
                   {/if}
                 </button>
-                <button class="suggest-mod-dismiss" onclick={() => dismissSuggested(s.depId)} use:launcherTip={t('mods.suggested.dismiss')}>
+                <button aria-label={t('mods.suggested.dismiss')} class="suggest-mod-dismiss" onclick={() => dismissSuggested(s.depId)} use:launcherTip={t('mods.suggested.dismiss')}>
                   <i class="ti ti-x"></i>
                 </button>
               </div>
@@ -1494,6 +1496,11 @@
                     <i class="ti ti-copy"></i> {t('mods.duplicate')}
                   </span>
                 {/if}
+                {#if m.hashed}
+                  <span class="badge hashed" use:launcherTip={t('mods.hashedHint')}>
+                    <i class="ti ti-fingerprint"></i> {t('mods.hashed')}
+                  </span>
+                {/if}
                 {#if m.incompatible}
                   <span class="badge incompat" use:launcherTip={t('mods.incompatibleHint', { loader: m.incompatibleReason ?? '' })}>
                     <i class="ti ti-plug-x"></i> {t('mods.incompatible')}
@@ -1531,23 +1538,24 @@
 
             <div class="mod-acts">
               {#if m.hasUpdate && !m.sourceKind}
-                <button class="icon-btn upd" onclick={() => updateOne(m)} use:launcherTip={t('mods.updateOne')}><i class="ti ti-refresh"></i></button>
+                <button aria-label={t('mods.updateOne')} class="icon-btn upd" onclick={() => updateOne(m)} use:launcherTip={t('mods.updateOne')}><i class="ti ti-refresh"></i></button>
               {/if}
               <div class="toggle" class:on={m.enabled} class:locked={!!m.sourceKind} role="switch" aria-checked={m.enabled} tabindex="0"
                    onclick={() => toggleMod(m)}
                    onkeydown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') toggleMod(m) }}
                    use:launcherTip={m.enabled ? t('mods.disable') : t('mods.enable')}></div>
-              <button class="icon-btn" onclick={() => openVersion(m)} disabled={!!m.sourceKind} use:launcherTip={t('mods.changeVersion')}>
+              <button aria-label={t('mods.changeVersion')} class="icon-btn" onclick={() => openVersion(m)} disabled={!!m.sourceKind} use:launcherTip={t('mods.changeVersion')}>
                 <i class="ti ti-versions"></i>
               </button>
               <button class="icon-btn del" onclick={() => deleteMod(m)} disabled={deleting === m.fileName || !!m.sourceKind} use:launcherTip={t('mods.delete')}>
                 {#if deleting === m.fileName}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-trash"></i>{/if}
               </button>
                 <div class="row-menu-wrap">
-                <button class="icon-btn" onclick={(e: any) => toggleRowMenu(m.fileName, e)} use:launcherTip={t('mods.moreActions')}>
+                <button aria-label={t('mods.moreActions')} class="icon-btn" onclick={(e: any) => toggleRowMenu(m.fileName, e)} use:launcherTip={t('mods.moreActions')}>
                   <i class="ti ti-dots-vertical"></i>
                 </button>
                 {#if menuFor === m.fileName}
+                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                   <div class="row-menu" onclick={(e: any) => e.stopPropagation()}>
                     <button onclick={() => { closeRowMenu(); revealMod(m.fileName) }}>
                       <i class="ti ti-folder"></i> {t('mods.revealInFolder')}
@@ -1606,7 +1614,7 @@
       <button class="btn btn-ghost btn-sm bulk-del" onclick={bulkDelete} disabled={bulkWorking}>
         <i class="ti ti-trash"></i> {t('mods.delete')}
       </button>
-      <button class="bulk-clear" onclick={clearSelection} use:launcherTip={t('mods.clearSelection')}><i class="ti ti-x"></i></button>
+      <button aria-label={t('mods.clearSelection')} class="bulk-clear" onclick={clearSelection} use:launcherTip={t('mods.clearSelection')}><i class="ti ti-x"></i></button>
     </div>
   {/if}
 </div>
@@ -1654,6 +1662,7 @@
               {#each versionOpts as v, i (v.id || v.url)}
                 {@const key = v.id || v.url}
                 {@const isCurrent = v.isCurrent || v.versionNumber === versionMod.version}
+                <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                 <div class="ver-row rise-in" class:current={isCurrent} class:active={key === (selectedVersionKey || versionOpts[0]?.id || versionOpts[0]?.url)}
                      style="animation-delay:{Math.min(i,20)*18}ms"
                      onclick={() => selectedVersionKey = key}>
@@ -1884,7 +1893,7 @@
                   <div class="bk-sub">{b.version} · {fmtDate(b.date)}</div>
                 </div>
                 {#if b.sourceUrl}
-                  <button class="btn btn-ghost btn-sm" onclick={() => copyBackupSource(b)} use:launcherTip={t('mods.backupSource')}>
+                  <button aria-label={t('mods.backupSource')} class="btn btn-ghost btn-sm" onclick={() => copyBackupSource(b)} use:launcherTip={t('mods.backupSource')}>
                     <i class="ti ti-link"></i>
                   </button>
                 {/if}
@@ -2115,6 +2124,7 @@
     0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
     50% { box-shadow: 0 0 0 3px rgba(239,68,68,.25); }
   }
+  .badge.hashed { background: rgba(99,102,241,.15); color: #818cf8; }
   .badge.dup { background: rgba(239,68,68,.15); color: #ef4444; }
 
   .mod-ic {
@@ -2161,8 +2171,8 @@
 
   .badge { font-size: var(--fs-min); font-weight: 700; padding: 2px 7px; border-radius: 5px; font-family: var(--font-mono); letter-spacing: .3px; }
   .badge.upd { background: rgba(16,185,129,.15); color: var(--green); }
-  .badge.dep { background: rgba(245,158,11,.15); color: var(--yellow); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
-  .badge.dep:hover { background: rgba(245,158,11,.25); }
+  
+  
   .badge.off { background: var(--bg-input); color: var(--text-mute); border: 1px solid var(--border); }
 
   .mod-acts { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
@@ -2256,15 +2266,12 @@
     background: var(--bg-panel); border: 1px solid var(--border);
     padding: 2px 7px; border-radius: 999px;
   }
-  .vr-date { font-size: var(--fs-min); color: var(--text-dim); }
+  
   .vr-current { font-size: var(--fs-min); font-weight: 700; color: var(--green); }
-  .vr-icon { color: var(--orange); font-size: 15px; }
+  
   .md-working { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-mute); margin-right: auto; }
-  .md-close {
-    background: none; border: none; color: var(--text-dim); font-size: 16px;
-    cursor: pointer; padding: 4px; border-radius: 6px; line-height: 1;
-  }
-  .md-close:hover { color: var(--text); background: var(--hover); }
+  
+  
 
   /* ── Оновити всі ── */
   .ua-list { display: flex; flex-direction: column; gap: 5px; max-height: 300px; overflow-y: auto; }
@@ -2424,10 +2431,10 @@
     color: var(--text); font-size: 12.5px; text-align: left; cursor: pointer;
   }
   .row-menu button:hover { background: var(--hover); }
-  .row-menu button.danger { color: var(--red); }
-  .row-menu button.danger:hover { background: rgba(239,68,68,.12); }
+  
+  
   .row-menu button:disabled { opacity: .5; cursor: default; }
-  .row-menu-sep { height: 1px; background: var(--border); margin: 3px 2px; }
+  
 
   /* ── Дроп-зона списку модів (drag&drop jar у вікно) ── */
   .mods-dropzone { position: relative; border-radius: var(--r-md); transition: background .15s; }

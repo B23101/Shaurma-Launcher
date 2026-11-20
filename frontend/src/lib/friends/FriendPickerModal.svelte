@@ -64,7 +64,9 @@
     App.GroupRequest('list').catch(() => {})
     return off
   })
+  // svelte-ignore state_referenced_locally
   let friends = $state<SocialFriend[]>(given ?? [])
+  // svelte-ignore state_referenced_locally
   let loading = $state(!given)
   let loggedIn = $state(true)
   let query = $state('')
@@ -168,7 +170,7 @@
 
 {#snippet foot()}
   <span class="fp-count">{max > 0 ? `Вибрано ${chosen.size} з ${max}` : ''}{max > 0 ? ' · ' : ''}{t('friendPicker.count', { n: chosen.size, online: onlineCount })}</span>
-  {#if onback}<button class="btn btn-ghost" onclick={onback} disabled={busy}><i class="ti ti-arrow-left"></i> Назад</button>{/if}
+  {#if onback}<button class="btn btn-ghost" onclick={onback} disabled={busy}><i class="ti ti-arrow-left"></i> {t('back')}</button>{/if}
   <button class="btn btn-ghost" onclick={close} disabled={busy}>{t('cancel')}</button>
   <button class="btn btn-primary" onclick={confirm} disabled={(!selectedGroup && chosen.size === 0) || busy}>
     {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-check"></i>{/if} {confirmLabel || t('friendPicker.add')}

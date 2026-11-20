@@ -32,7 +32,7 @@
   // БЕЗПЕКА ВІДОБРАЖЕННЯ. Нік, назва збірки й адреса сервера санітизовані на
   // бекенді, але UI не довіряє наосліп: жодного {@html}, адреса показується
   // текстом, помилки — перекладом за кодом, а не сирим текстом сервера.
-  import { onMount, tick, untrack } from 'svelte'
+  import { onMount, onDestroy, tick, untrack } from 'svelte'
   import { fly, fade, scale, slide } from 'svelte/transition'
   import { cubicOut } from 'svelte/easing'
   import { App, on } from '../wails'
@@ -41,7 +41,7 @@ import { windowActive } from '../windowActive.svelte'
   import { t } from '../i18n.svelte'
   import { lastSeenText } from './lastSeen'
   import { tip } from './tooltip'
-  import { parseModMessage, loadHidden, saveHidden } from './modShare'
+  import { parseModMessage, loadHidden, saveHidden, loadClearedUpTo, saveClearedUpTo } from './modShare'
   import { confirmDialog } from '../toast.svelte'
   import ModCard from './ModCard.svelte'
   import ShareCard from './ShareCard.svelte'
@@ -147,6 +147,7 @@ import { windowActive } from '../windowActive.svelte'
 
   let messages = $state<Msg[]>([])
   let hidden = $state<Set<number>>(new Set())
+  let clearedUpTo = $state(0)
   let loading = $state(true)
   let loadingMore = $state(false)
   let hasMore = $state(false)
@@ -288,11 +289,24 @@ import { windowActive } from '../windowActive.svelte'
       css: (t: number, u: number) => `opacity:${t};transform:translateX(${p.dir * u * 40}px) scale(${0.96 + 0.04 * t});height:${h * t}px;overflow:hidden;`,
     }
   }
+  // Скелетон не штовхає нові рядки: на час зникання виймаємо його з потоку й розчиняємо поверх них.
+  function skelOut(node: HTMLElement) {
+    node.style.position = 'absolute'
+    node.style.top = node.offsetTop + 'px'
+    node.style.left = '0'
+    node.style.right = '0'
+    node.style.pointerEvents = 'none'
+    return reduceMotion() ? { duration: 0 } : { duration: 220, easing: cubicOut, css: (t: number) => `opacity:${t}` }
+  }
   function playIntro() {
     intro = true
     if (introTimer) clearTimeout(introTimer)
-    introTimer = setTimeout(() => { intro = false }, 1000)
+    introTimer = setTimeout(() => { intro = false }, 1100)
   }
+  // Перші ~0.5с після відкриття: панель закріплених з'являється без анімації й не штовхає стрічку.
+  let settledUi = $state(false)
+  let settledTimer: ReturnType<typeof setTimeout> | undefined
+  onDestroy(() => { clearTimeout(settledTimer) })
   function flySend() {
     sendFly = true
     if (sendFlyTimer) clearTimeout(sendFlyTimer)
@@ -494,7 +508,20 @@ import { windowActive } from '../windowActive.svelte'
     (lastSeenText(peer?.presence?.lastSeenAt) || t('social.status.offline')))
 
   // ── Рядки стрічки: роздільники днів + групування за відправником ─────────
-  const visible = $derived(messages.filter(m => !(m.id > 0 && hidden.has(m.id))))
+  const visible = $derived(messages.filter(m => !(m.id > 0 && (hidden.has(m.id) || m.id <= clearedUpTo))))
+  // Старіші повідомлення вже очищені — далі вгору не підвантажуємо.
+  const canLoadOlder = $derived(hasMore && !(clearedUpTo > 0 && messages.some(m => m.id > 0 && m.id <= clearedUpTo)))
+
+  // «Очистити чат»: ховає в себе все, що є зараз; у співрозмовника лишається.
+  async function clearChat() {
+    const last = messages.reduce((mx, m) => (m.id > mx ? m.id : mx), 0)
+    if (!last) return
+    const ok = await confirmDialog(t('social.chat.clearTitle'), t('social.chat.clearDesc', { name: chatName }),
+      { confirmLabel: t('social.chat.clearConfirm'), cancelLabel: t('cancel'), danger: true })
+    if (!ok) return
+    clearedUpTo = last
+    saveClearedUpTo(me, chatId, last)
+  }
   const selectedMsgs = $derived(visible.filter(m => selected.has(m.key)))
   const dayKey = (ts: number) => { const d = new Date(ts); return `${d.getFullYear()}.${d.getMonth()}.${d.getDate()}` }
   const ctlOf = (m: Msg) => (m.bodyType === 'text' && !m.decryptFailed ? parseShareCtl(m.text) : null)
@@ -597,7 +624,7 @@ import { windowActive } from '../windowActive.svelte'
     if (settling || loading) return
     if (group && near && !hasNewer) markReadUpToLatest()
     // Нескінченна прокрутка: ближче до верху — підвантажуємо старіше, до низу — новіше.
-    if (el.scrollTop < 240 && hasMore && !loadingMore) loadHistory(cursorOf(messages[0]), true)
+    if (el.scrollTop < 240 && canLoadOlder && !loadingMore) loadHistory(cursorOf(messages[0]), true)
     if (near && hasNewer && !loadingNewer) loadNewer()
   }
   // Новий рядок «виїжджає» (slide ~280мс), тому scrollHeight росте кілька кадрів. Нативний
@@ -739,6 +766,8 @@ import { windowActive } from '../windowActive.svelte'
       reapplyPosition()
       onScroll()
       markReadUpToLatest()
+      clearTimeout(settledTimer)
+      settledTimer = setTimeout(() => { settledUi = true }, 500)
     } catch (e) {
       toast(errText(e), 'error')
     } finally {
@@ -855,6 +884,7 @@ import { windowActive } from '../windowActive.svelte'
   // ── Підписки на події ────────────────────────────────────────────────────
   onMount(() => {
     hidden = loadHidden(me, chatId)
+    clearedUpTo = loadClearedUpTo(me, chatId)
     loadLatest()
     const ro = new ResizeObserver(() => reapplyPosition())
     if (inner) ro.observe(inner)
@@ -1438,6 +1468,9 @@ import { windowActive } from '../windowActive.svelte'
   // Швидке запрошення цього друга у вже відкритий доступ (без нового IP).
   let openInvites = $state<TempInvite[]>([])
   let quickMenu = $state(false)
+  // Меню «⋯» у шапці (сповіщення / профіль / налаштування групи).
+  let moreMenu = $state(false)
+  function onWinDownMore(e: PointerEvent) { if (moreMenu && !(e.target as HTMLElement | null)?.closest('.sc-hmenu')) moreMenu = false }
   let quickBusy = $state(false)
   async function loadOpenInvites() {
     try { openInvites = (await App.ListTempInvites()) ?? [] } catch { openInvites = [] }
@@ -1501,7 +1534,7 @@ import { windowActive } from '../windowActive.svelte'
   const liveStateOf = (inv: Invite) => tiStates[clean(inv.serverAddr).toLowerCase()]
   const tempOf = (inv: Invite) => { const s = liveStateOf(inv); return s && !s.permanent ? s : undefined }
   const permOf = (inv: Invite) => { const s = liveStateOf(inv); return s && s.permanent ? s : undefined }
-  const tiKind = (k: string) => (k === 'lan' ? 'LAN-світ' : k === 'modded' ? 'Сервер з модами' : 'Сервер')
+  const tiKind = (k: string) => (k === 'lan' ? t('kind.lan') : k === 'modded' ? t('kind.modded') : t('kind.server'))
 
   // Збірка вже запущена на цьому акаунті — бекенд віддає "…already running…". Це не збій,
   // а підказка: замість сирої англійської помилки копіюємо адресу, щоб гравець просто
@@ -1613,6 +1646,8 @@ import { windowActive } from '../windowActive.svelte'
 {/snippet}
 
 
+<svelte:window onpointerdown={onWinDownMore} />
+
 <div class="sc">
   <!-- Заголовок діалогу -->
   <div class="sc-head">
@@ -1686,18 +1721,44 @@ import { windowActive } from '../windowActive.svelte'
          повідомлення лишаються в чаті). Стан видно кольором і іконкою
          вимкненого дзвінка; блокування гравця — у його ПРОФІЛІ (клік по
          аватарці/імені в шапці), а не в чаті. -->
-    {#if group}
-      <button class="sc-hbtn" onclick={() => group.toggleMute()} aria-label={t(group.muted ? 'groups.unmute' : 'groups.mute')} use:tip={t(group.muted ? 'groups.unmute' : 'groups.mute')}><i class="ti {group.muted ? 'ti-bell-off' : 'ti-bell'}"></i></button>
-      <button class="sc-hbtn" onclick={() => group.onSettings()} use:tip={t('groups.settings.open')} aria-label={t('groups.settings.open')}>
-        <i class="ti ti-settings"></i>
+    <div class="sc-hmenu">
+      <button class="sc-hbtn sc-hbtn-more" class:on={group ? group.muted : chatMuted} onclick={() => (moreMenu = !moreMenu)}
+              aria-haspopup="menu" aria-expanded={moreMenu} use:tip={t('friends.more')} aria-label={t('friends.more')}>
+        <i class="ti ti-dots-vertical"></i>
       </button>
-    {:else}
-      <button class="sc-hbtn" class:on={chatMuted} data-testid="chat-mute-btn" disabled={muteBusy}
-              onclick={toggleMute} use:tip={chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')}
-              aria-label={chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')} aria-pressed={chatMuted}>
-        <i class="ti {chatMuted ? 'ti-bell-off' : 'ti-bell'}"></i>
-      </button>
-    {/if}
+      {#if moreMenu}
+        <div class="sc-more-menu" role="menu" transition:fly={{ y: -6, duration: 150 }}>
+          {#if group}
+            <button role="menuitem" onclick={() => { moreMenu = false; group.toggleMute() }}>
+              <i class="ti {group.muted ? 'ti-bell-off' : 'ti-bell'}"></i><span>{t(group.muted ? 'groups.unmute' : 'groups.mute')}</span>
+            </button>
+            <button role="menuitem" onclick={() => { moreMenu = false; group.onMembers() }}>
+              <i class="ti ti-users"></i><span>{t('groups.members.title')}</span>
+            </button>
+            <button role="menuitem" onclick={() => { moreMenu = false; group.onSettings() }}>
+              <i class="ti ti-settings"></i><span>{t('groups.settings.open')}</span>
+            </button>
+          {:else}
+            <button role="menuitem" data-testid="chat-mute-btn" disabled={muteBusy} onclick={() => { moreMenu = false; toggleMute() }}>
+              <i class="ti {chatMuted ? 'ti-bell-off' : 'ti-bell'}"></i><span>{chatMuted ? t('social.chat.unmuteTip') : t('social.chat.muteTip')}</span>
+            </button>
+            {#if onOpenProfile}
+              <button role="menuitem" onclick={() => { moreMenu = false; onOpenProfile?.() }}>
+                <i class="ti ti-info-circle"></i><span>{t('ff.profile.open')}</span>
+              </button>
+            {/if}
+            <button role="menuitem" disabled={!visible.length} onclick={() => { moreMenu = false; clearChat() }}>
+              <i class="ti ti-eraser"></i><span>{t('social.chat.clear')}</span>
+            </button>
+            {#if friendsStore}
+              <button role="menuitem" class="danger" onclick={() => { moreMenu = false; friendsStore.blockPeer(peer) }}>
+                <i class="ti ti-ban"></i><span>{t('social.profile.block')}</span>
+              </button>
+            {/if}
+          {/if}
+        </div>
+      {/if}
+    </div>
   </div>
   {#if showTempInvite}
     <TempInviteModal friends={group || allFriends.length ? allFriends : [peer]} preselect={group ? '' : peer.accountId} preselectGroup={group?.id ?? ''} onclose={() => { showTempInvite = false; loadOpenInvites(); setTimeout(refreshTempStates, 1500) }} />
@@ -1739,7 +1800,7 @@ import { windowActive } from '../windowActive.svelte'
        onwheel={userTookOver} ontouchstart={userTookOver} onpointerdown={userTookOver} onkeydown={userTookOver}>
    <div class="sc-inner" bind:this={inner}>
     {#if loading}
-      <div class="sc-skel" aria-busy="true" in:fade={{ duration: 160 }}>
+      <div class="sc-skel" aria-busy="true" in:fade={{ duration: 200 }} out:skelOut>
         <span class="sr-only">{t('social.chat.loadingHistory')}</span>
         {#each [46, 64, 38, 72, 52, 34] as w, i}
           <div class="sk-row" class:own={i % 3 === 1} style="--sd:{i * 90}ms">
@@ -1749,7 +1810,7 @@ import { windowActive } from '../windowActive.svelte'
         {/each}
       </div>
     {:else}
-      {#if hasMore}
+      {#if canLoadOlder}
         <button class="sc-more" onclick={() => loadHistory(cursorOf(messages[0]), true)} disabled={loadingMore}>
           {#if loadingMore}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-chevrons-up"></i>{/if}
           {t('social.chat.loadOlder')}
@@ -1766,7 +1827,7 @@ import { windowActive } from '../windowActive.svelte'
 
       {#each rows as row, idx (row.key)}
        <div class="sc-it" class:intro data-key={row.key}
-            style={intro ? `--d:${Math.max(0, 10 - (rows.length - idx)) * 32}ms` : undefined}
+            style={intro ? `--d:${Math.max(0, 10 - (rows.length - idx)) * 28}ms` : undefined}
             in:rowIn={{ on: row.kind === 'msg' && !!row.m.fresh && row.m.from !== me }}
             out:rowOut={{ dir: row.kind === 'msg' && row.m.from === me ? 1 : -1 }}>
         {#if row.kind === 'day'}
@@ -2095,6 +2156,7 @@ import { windowActive } from '../windowActive.svelte'
 
   <!-- Поле вводу -->
   <div class="sc-foot" class:off={peerStatus === 'offline'}>
+   <div class="sc-form">
     <textarea
       bind:this={ta}
       class="sc-input"
@@ -2110,6 +2172,7 @@ import { windowActive } from '../windowActive.svelte'
             use:tip={t('social.chat.send')} aria-label={t('social.chat.send')}>
       <i class="ti ti-send"></i>
     </button>
+   </div>
   </div>
   {/if}
 </div>
@@ -2149,7 +2212,7 @@ import { windowActive } from '../windowActive.svelte'
   .sc { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; }
 
   /* ── Шапка ── */
-  .sc-head { display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 11px 16px; border-bottom: 1px solid var(--border);
+  .sc-head { position: relative; z-index: 30; display: flex; align-items: center; gap: 10px; flex-shrink: 0; padding: 11px 16px; border-bottom: 1px solid var(--border);
     background: linear-gradient(135deg, color-mix(in srgb, var(--bg-panel) 94%, var(--orange) 6%), var(--bg-panel)); }
   .sc-back { width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; background: var(--hover); border: 0; border-radius: 9px; color: var(--text-mute); cursor: pointer; transition: background .14s, color .14s, transform .12s; }
   .sc-back:hover { background: var(--hover-strong); color: var(--text); } .sc-back:active { transform: scale(.92); }
@@ -2163,7 +2226,7 @@ import { windowActive } from '../windowActive.svelte'
   .sc-av.xs { width: 20px; height: 20px; border-radius: 6px; font-size: 10px; } .sc-av.xs img { border-radius: 6px; }
   .sc-av.md { width: 40px; height: 40px; border-radius: 12px; } .sc-av.md img { border-radius: 12px; }
   .sc-st { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--bg-panel); background: var(--text-dim); transition: background .25s; }
-  .sc-st.online { background: #22c55e; } .sc-st.in_game { background: var(--orange); animation: sc-pulse 2s ease-in-out infinite; } .sc-st.away { background: #eab308; }
+  .sc-st.online { background: #22c55e; } .sc-st.in_game { background: var(--orange); animation: sc-pulse 2s ease-in-out infinite; } .sc-st.away { background: var(--st-away, #a78bfa); }
   @keyframes sc-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(var(--orange-rgb), .55); } 50% { box-shadow: 0 0 0 5px rgba(var(--orange-rgb), 0); } }
   .sc-who { flex: 1; min-width: 0; }
   .sc-name { font: 750 13.5px/1.25 var(--font-ui); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2188,6 +2251,16 @@ import { windowActive } from '../windowActive.svelte'
   /* Мут діалогу (кнопка дзвінка): увімкнено → червоний, іконка виключеного дзвінка. */
   .sc-hbtn.on { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, transparent); background: color-mix(in srgb, var(--red) 10%, transparent); }
   .sc-hbtn.on:hover:not(:disabled) { color: color-mix(in srgb, var(--red) 80%, #fff); background: color-mix(in srgb, var(--red) 16%, transparent); }
+  /* Окремий клас: .sc-more — це кнопка «Старіші повідомлення» нижче, її рамка й
+     :active-transform ламали меню (подвійна рамка, меню падало під повідомлення). */
+  .sc-hmenu { position: relative; flex: 0 0 auto; }
+  .sc-more-menu button.danger, .sc-more-menu button.danger i { color: var(--red); }
+  .sc-more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; width: 210px; display: flex; flex-direction: column; gap: 2px; padding: 6px; border-radius: 14px;
+    background: var(--bg-card); border: 1px solid var(--border-hi); box-shadow: 0 16px 36px rgba(0, 0, 0, .5); }
+  .sc-more-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text); font: 500 12.5px var(--font-ui); text-align: left; cursor: pointer; }
+  .sc-more-menu button:hover:not(:disabled) { background: var(--hover-strong); }
+  .sc-more-menu button:disabled { opacity: .5; cursor: default; }
+  .sc-more-menu button i { font-size: 16px; flex: 0 0 auto; color: var(--orange); }
   .sc-qi { position: relative; flex: 0 0 auto; }
   /* Меню — як .st-menu у налаштуваннях: ті самі фон, рамка, радіус і рядки. */
   .sc-qi-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 240px; display: flex; flex-direction: column; gap: 1px; padding: 4px; border-radius: 12px; background: var(--bg-card); border: 1px solid var(--border-hi); box-shadow: 0 12px 32px rgba(0,0,0,.4); }
@@ -2207,7 +2280,7 @@ import { windowActive } from '../windowActive.svelte'
 
   /* ── Стрічка ── */
   .sc-msgs { container: scm / inline-size; flex: 1; min-height: 0; overflow-y: auto; padding: 26px 16px 8px; overflow-anchor: none; }
-  .sc-inner { display: flex; flex-direction: column; min-height: 100%; }
+  .sc-inner { position: relative; display: flex; flex-direction: column; min-height: 100%; }
   .sc-more-new { align-self: center; display: flex; align-items: center; gap: 6px; padding: 8px; color: var(--text-dim); font: 600 11px/1 var(--font-ui); }
   .sc-newdiv { display: flex; align-items: center; gap: 10px; margin: 12px 0 4px; color: var(--orange); font: 750 var(--fs-min)/1 var(--font-ui); }
   .sc-newdiv::before, .sc-newdiv::after { content: ''; flex: 1; height: 1px; background: rgba(var(--orange-rgb), .35); }
@@ -2236,7 +2309,7 @@ import { windowActive } from '../windowActive.svelte'
   .sc-reply-ic { flex: 0 0 auto; align-self: center; width: 22px; height: 22px; display: grid; place-items: center; margin-left: -2px; border-radius: 7px; font-size: 14px; color: var(--orange); background: rgba(var(--orange-rgb), .16); }
   .sc-reply-body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .sc-reply-body b { font: 750 12px/1.25 var(--font-ui); color: color-mix(in srgb, var(--orange) 55%, var(--text)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sc-reply-t { font: 500 12.5px/1.35 var(--font-ui); color: var(--text); opacity: .88; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+  .sc-reply-t { font: 500 12.5px/1.35 var(--font-ui); color: var(--text); opacity: .88; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
   .sc-reply.missing { opacity: .75; }
   .sc-reply.missing::before { background: var(--text-dim); }
   .sc-reply.missing .sc-reply-ic { color: var(--text-dim); background: var(--hover); }
@@ -2487,10 +2560,15 @@ import { windowActive } from '../windowActive.svelte'
   @media (prefers-reduced-motion: reduce) { .rd-sk-av, .rd-sk-line { animation: none; } }
   .sc-msgs.selecting { user-select: none; }
   .sc-menu { transform-origin: top left; }
-  .sc-it.intro { animation: sc-rise .45s cubic-bezier(.2,.9,.3,1) both; animation-delay: var(--d, 0ms); }
-  @keyframes sc-rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  /* Відкриття діалогу: рядки м'яко «спливають» знизу каскадом (як було), але без різкості:
+     менший зсув, довша плавна крива, а розділювач дня не анімується вдруге всередині рядка. */
+  .sc-it.intro { animation: sc-rise .5s cubic-bezier(.16,1,.3,1) both; animation-delay: var(--d, 0ms); }
+  @keyframes sc-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  .sc-it.intro .sc-day, .sc-it.intro .sc-newdiv { animation: none; }
   .sc-day, .sc-newdiv { animation: sc-fade-up .38s ease both; }
   @keyframes sc-fade-up { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .sc-av img { animation: sc-img-in .18s ease-out both; }
+  @keyframes sc-img-in { from { opacity: 0; } to { opacity: 1; } }
   .sc-row:not(.own):not(.selecting) .sc-bub:hover { border-color: var(--border-hi); }
   .sc-row.own:not(.selecting) .sc-bub:hover { filter: brightness(1.08); }
   /* скелетон завантаження історії */
@@ -2506,7 +2584,7 @@ import { windowActive } from '../windowActive.svelte'
   .sc-spam i { color: #eab308; font-size: 14px; }
 
   @media (prefers-reduced-motion: reduce) {
-    .sc-row.fresh .sc-bub, .sc-row.flash .sc-bub, .sc-bub.failed, .sc-st.in_game, .sc-empty-ic, .tk, .sc-it.intro, .sc-day, .sc-newdiv, .sk-row, .sk-av, .sk-bub, .sc-chk, .sc-send.fly i { animation: none !important; }
+    .sc-row.fresh .sc-bub, .sc-row.flash .sc-bub, .sc-bub.failed, .sc-st.in_game, .sc-empty-ic, .tk, .sc-it.intro, .sc-day, .sc-newdiv, .sc-av img, .sk-row, .sk-av, .sk-bub, .sc-chk, .sc-send.fly i { animation: none !important; }
   }
   .sc-handle { margin-left: 6px; font: 500 11px/1 var(--font-mono); color: var(--text-mute); }
 </style>

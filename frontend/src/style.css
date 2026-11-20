@@ -1,4 +1,13 @@
-﻿@import '@tabler/icons-webfont/dist/tabler-icons.min.css';
+@import '@tabler/icons-webfont/dist/tabler-icons.min.css';
+
+/* Native controls retain the appearance of the existing selectable rows. */
+:where(button.ctx-item, button.dd-item, button.chip, button.loader-opt, button.lang-opt, button.accent-opt) {
+  appearance: none; font: inherit; color: inherit; text-align: inherit; background: none; border: 0;
+}
+:where(button.ctx-item, button.dd-item) { width: 100%; text-align: left; }
+:where(button.ctx-item, button.dd-item, button.chip, button.loader-opt, button.lang-opt, button.accent-opt):focus-visible {
+  outline: 2px solid var(--orange); outline-offset: 2px;
+}
 
 /* ── Заповнені (filled) іконки Tabler ────────────────────────────────────
    tabler-icons.min.css (контурний шрифт) НЕ містить жодного гліфа
@@ -15,9 +24,9 @@
   font-style: normal;
   font-weight: 400;
   font-display: block;
-  src: url("../node_modules/@tabler/icons-webfont/dist/fonts/tabler-icons-filled.woff2?v3.46.0") format("woff2"),
-       url("../node_modules/@tabler/icons-webfont/dist/fonts/tabler-icons-filled.woff?v3.46.0") format("woff"),
-       url("../node_modules/@tabler/icons-webfont/dist/fonts/tabler-icons-filled.ttf?v3.46.0") format("truetype");
+  /* Лише woff2: WebView2 (Windows) і WebKitGTK (Linux) його підтримують, а
+     .woff/.ttf того самого шрифта лише роздували інсталятор на кілька МБ. */
+  src: url("../node_modules/@tabler/icons-webfont/dist/fonts/tabler-icons-filled.woff2?v3.46.0") format("woff2");
 }
 .ti-star-filled { font-family: "tabler-icons-filled" !important; }
 .ti-star-filled:before { content: "\f6a6"; }
@@ -110,6 +119,7 @@ select option { background:var(--bg-panel); color:var(--text); }
   --blue-rgb:    59, 130, 246; /* для rgba(var(--blue-rgb), .x) — оновлення лаунчера (синє, не помаранчеве) */
   --red:         #ef4444;
   --yellow:      #f59e0b;
+  --st-away:     #a78bfa; /* статус «відійшов» — фіолетовий, щоб не плутався з помаранчевим «у грі» */
   --r-sm: 8px;  --r-md: 10px;  --r-lg: 16px;  --r-xl: 24px;
   /* Найменший розмір тексту в інтерфейсі. Нижче 11px текст нечитабельний на
      ноутбуках зі шкалою Windows 100% (дрібні підписи, бейджі, kbd-підказки). */
@@ -1510,7 +1520,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 /* Кружок акаунта = мій статус (як у Discord): в мережі / відійшов (півмісяць) / не турбувати
    (риска) / невидимий (порожнє коло) / у грі / немає зʼєднання. */
 .ua-net { width:9px; height:9px; right:0; bottom:0; overflow:hidden; transition:background .2s; }
-.ua-net.away { background:#eab308; }
+.ua-net.away { background:var(--st-away); }
 .ua-net.away::after { content:""; position:absolute; top:-2px; left:-2px; width:7px; height:7px; border-radius:50%; background:var(--bg-panel); }
 .ua-net.dnd { background:var(--red); }
 .ua-net.dnd::after { content:""; position:absolute; left:2px; right:2px; top:50%; height:2px; margin-top:-1px; border-radius:1px; background:var(--bg-panel); }
@@ -1547,7 +1557,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .um-chip:disabled { opacity:.6; cursor:default; }
 .um-chip.dnd { border-color:rgba(239,68,68,.4); color:var(--red); background:rgba(239,68,68,.08); }
 .um-chip.game { border-color:rgba(var(--orange-rgb),.45); color:var(--orange); background:rgba(var(--orange-rgb),.1); }
-.um-chip.away { border-color:rgba(234,179,8,.4); color:#eab308; background:rgba(234,179,8,.09); }
+.um-chip.away { border-color:rgba(167,139,250,.4); color:var(--st-away); background:rgba(167,139,250,.1); }
 /* Офлайн — не кнопка, а констатація: вибирати статус, коли немає з'єднання,
    безглуздо, тож чип лише показує стан (без hover-стрілки й без кліку). */
 .um-chip.off { cursor:default; opacity:.85; }
@@ -1557,7 +1567,7 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .um-chev { font-size:11px; opacity:.65; }
 .um-dot { width:7px; height:7px; border-radius:50%; background:var(--green); flex:0 0 auto; box-shadow:0 0 0 2px rgba(16,185,129,.18); }
 .um-dot.dnd { background:var(--red); box-shadow:0 0 0 2px rgba(239,68,68,.18); }
-.um-dot.away { background:#eab308; box-shadow:0 0 0 2px rgba(234,179,8,.18); }
+.um-dot.away { background:var(--st-away); box-shadow:0 0 0 2px rgba(167,139,250,.2); }
 .um-dot.in_game { background:var(--orange); box-shadow:0 0 0 2px rgba(var(--orange-rgb),.2); }
 /* Звук сповіщень чату: маленька іконка поруч зі статусом. Приглушено —
    червона й помітна без наведення (щоб «лаунчер мовчить» було видно). */
@@ -2238,6 +2248,9 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .btn-violet:hover { background:#561bc6; }
 .btn-danger { background:transparent; color:var(--red); border:1px solid rgba(239,68,68,.4); }
 .btn-danger:hover { background:rgba(239,68,68,.1); border-color:var(--red); }
+/* Тиха небезпека: нейтральна кнопка, червоніє лише при наведенні — для повторюваних дій у списках. */
+.btn-danger-quiet { background:transparent; color:var(--text-mute); border:1px solid var(--border-hi); }
+.btn-danger-quiet:hover:not(:disabled) { background:rgba(239,68,68,.1); color:var(--red); border-color:rgba(239,68,68,.45); }
 .btn-warning { background:rgba(245,158,11,.15); color:var(--yellow); border:1px solid rgba(245,158,11,.35); }
 .btn-warning:hover { background:rgba(245,158,11,.25); }
 .btn-info { background:rgba(59,130,246,.15); color:var(--blue); border:1px solid rgba(59,130,246,.35); }
@@ -2725,65 +2738,152 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
   }
   .inst-progress .ip-actions { display:flex; gap:8px; margin-top:12px; }
 
-/* ── Прогрес-бар стадій запуску (launch:progress) ───────────────────────
-   ОДНА лінія (не сегменти), що росте крізь стадії; колір змінюється разом
-   зі стадією (checking=жовтий, worker_update=синій, java=червоний,
-   loader=зелений). Зверху — стадії-кроки, під баром — назва + % стадії. */
+/* ── Прогрес запуску (launch:progress) ──────────────────────────────────
+   Зверху — кроки-процеси: іконка в кружку (галочка = пройдений, кільце =
+   активний; кільце заповнюється реальним % стадії). Нижче ОДНА лінія за
+   вагою стадій, колір змінюється разом зі стадією (checking=жовтий,
+   mod_sources=фіолетовий, worker_update=синій, java=червоний, loader=
+   зелений). Якщо % стадії ще невідомий — лінія стоїть на початку стадії,
+   а в решті її відрізка біжить «скан» (.lp-scan), без вигаданих відсотків. */
 .scroll-slot { display:flow-root; }
 .launch-prog {
-  background:var(--bg-card); border:1px solid var(--border-hi);
-  border-radius:var(--r-lg); padding:14px 20px; margin-bottom:18px;
+  --lp-c:var(--orange);
+  background:
+    radial-gradient(560px 130px at 0% 0%, color-mix(in srgb, var(--lp-c) 9%, transparent), transparent 70%),
+    var(--bg-card);
+  border:1px solid var(--border-hi);
+  border-radius:var(--r-lg); padding:16px 20px 14px; margin-bottom:18px;
+  transition:border-color .3s;
 }
-.launch-prog .lp-stages { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+.launch-prog.err { border-color:rgba(239,68,68,.35); }
+/* Шапка: велика іконка поточного етапу з кільцем-прогресом, назва + крок,
+   жива підказка, час, % і «Скасувати». */
+.launch-prog .lp-head { display:flex; align-items:center; gap:14px; margin-bottom:14px; min-width:0; }
+.launch-prog .lp-hico {
+  position:relative; flex:none; width:44px; height:44px; border-radius:14px;
+  display:grid; place-items:center; font-size:21px;
+  color:var(--seg-color);
+  background:color-mix(in srgb, var(--seg-color) 14%, var(--bg-input));
+  border:1px solid color-mix(in srgb, var(--seg-color) 35%, transparent);
+  box-shadow:0 6px 18px color-mix(in srgb, var(--seg-color) 18%, transparent);
+  transition:color .3s, background .3s, border-color .3s;
+}
+.launch-prog .lp-hico i { animation:lp-pop .35s var(--ease-out); }
+@keyframes lp-pop { from { transform:scale(.6); opacity:0; } to { transform:none; opacity:1; } }
+.launch-prog .lp-htext { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
+.launch-prog .lp-title { display:flex; align-items:center; gap:8px; font-size:15px; font-weight:800; color:var(--text); }
+.launch-prog .lp-step {
+  font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-mute);
+  padding:1px 7px; border-radius:999px; background:var(--bg-input); border:1px solid var(--border);
+}
+.launch-prog .lp-msg {
+  min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-size:12px; font-weight:600; color:var(--text-mute);
+}
+.launch-prog .lp-time {
+  flex:none; display:flex; align-items:center; gap:5px;
+  font-family:var(--font-mono); font-size:12px; font-weight:700; color:var(--text-mute);
+}
+.launch-prog .lp-time i { font-size:14px; }
+.launch-prog .lp-cancel {
+  flex:none; display:flex; align-items:center; gap:6px; cursor:pointer;
+  padding:7px 12px; border-radius:var(--r-md); font-size:12px; font-weight:700;
+  color:var(--text-dim); background:var(--bg-input); border:1px solid var(--border);
+  transition:color .2s, background .2s, border-color .2s;
+}
+.launch-prog .lp-cancel:hover:not(:disabled) { color:var(--red); border-color:rgba(239,68,68,.45); background:rgba(239,68,68,.08); }
+.launch-prog .lp-cancel:disabled { cursor:default; opacity:.75; }
+/* Кроки-процеси під баром: степер, пройдені кроки з'єднані кольоровою лінією. */
+.launch-prog .lp-stages {
+  list-style:none; margin:12px 0 0; padding:0;
+  display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:0;
+}
 .launch-prog .lp-stage {
-  display:flex; align-items:center; gap:5px;
-  font-size:var(--fs-min); font-weight:700; color:var(--text-dim);
-  padding:4px 9px; border-radius:20px;
-  background:var(--bg-input); border:1px solid var(--border);
-  opacity:.55; transition:opacity .25s, color .25s, border-color .25s;
+  position:relative; display:flex; flex-direction:column; align-items:center; gap:6px; min-width:0;
+  font-size:var(--fs-min); font-weight:700; color:var(--text-dim); text-align:center;
+  transition:color .25s;
 }
-.launch-prog .lp-stage i { font-size:12px; }
-.launch-prog .lp-stage.passed { color:var(--seg-color); opacity:.85; }
-.launch-prog .lp-stage.passed i { color:var(--seg-color); }
-.launch-prog .lp-stage.active {
-  opacity:1; color:var(--seg-color); border-color:var(--seg-color);
-  background:rgba(255,255,255,.03);
-  box-shadow:0 0 12px color-mix(in srgb, var(--seg-color) 30%, transparent);
+.launch-prog .lp-stage + .lp-stage::before {
+  content:''; position:absolute; top:13px; right:calc(50% + 17px); width:calc(100% - 34px); height:2px;
+  border-radius:2px; background:var(--border); transition:background .3s;
 }
-.launch-prog .lp-stage.active i { color:var(--seg-color); }
+.launch-prog .lp-stage.passed + .lp-stage::before,
+.launch-prog .lp-stage.passed + .lp-stage.active::before {
+  background:linear-gradient(90deg, color-mix(in srgb, var(--seg-color) 60%, transparent), var(--seg-color));
+}
+.launch-prog .lp-name { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding:0 4px; }
+.launch-prog .lp-ico {
+  position:relative; flex:none; width:28px; height:28px; border-radius:50%;
+  display:grid; place-items:center; font-size:14px;
+  background:var(--bg-input); color:var(--text-dim); border:1px solid var(--border);
+  transition:background .25s, color .25s, border-color .25s, box-shadow .25s;
+}
+.launch-prog .lp-stage.passed { color:var(--text-mute); }
+.launch-prog .lp-stage.passed .lp-ico {
+  background:color-mix(in srgb, var(--seg-color) 18%, transparent); color:var(--seg-color);
+  border-color:color-mix(in srgb, var(--seg-color) 40%, transparent);
+}
+.launch-prog .lp-stage.active { color:var(--text); }
+.launch-prog .lp-stage.active .lp-ico {
+  background:color-mix(in srgb, var(--seg-color) 22%, transparent); color:var(--seg-color);
+  border-color:var(--seg-color);
+  box-shadow:0 0 0 4px color-mix(in srgb, var(--seg-color) 14%, transparent);
+}
+@media (max-width: 640px) {
+  .launch-prog .lp-name { display:none; }
+  .launch-prog .lp-time { display:none; }
+}
+/* Обвідка-прогрес навколо великої іконки (SVG по контуру заокругленого квадрата). */
+.launch-prog .lp-ring { position:absolute; inset:-4px; width:52px; height:52px; overflow:visible; pointer-events:none; }
+.launch-prog .lp-ring rect { fill:none; stroke-width:3; }
+.launch-prog .lp-ring-trk { stroke:color-mix(in srgb, var(--seg-color) 22%, transparent); }
+.launch-prog .lp-ring-val {
+  stroke:var(--seg-color); stroke-linecap:round;
+  filter:drop-shadow(0 0 4px color-mix(in srgb, var(--seg-color) 60%, transparent));
+  transition:stroke-dasharray .45s var(--ease-out), stroke .3s;
+}
+.launch-prog .lp-ring-val.run { animation:lp-ring-run 1.3s linear infinite; }
+@keyframes lp-ring-run { to { stroke-dashoffset:-100; } }
 .launch-prog .lp-bar {
-  height:10px; border-radius:6px; overflow:hidden;
+  position:relative; height:8px; border-radius:999px; overflow:hidden;
   background:var(--bg-input); border:1px solid var(--border);
-  position:relative;
 }
 .launch-prog .lp-fill {
-  height:100%; border-radius:6px; background:var(--seg-color);
-  transition:width .45s ease, background .45s ease;
-  box-shadow:0 0 12px color-mix(in srgb, var(--seg-color) 40%, transparent);
+  position:absolute; inset:0 auto 0 0; z-index:1; border-radius:inherit;
+  background:linear-gradient(90deg, color-mix(in srgb, var(--lp-c) 70%, var(--bg-input)), var(--lp-c));
+  box-shadow:0 0 12px color-mix(in srgb, var(--lp-c) 45%, transparent);
+  transition:width .45s var(--ease-out), background .45s;
 }
-.launch-prog .lp-fill.indet {
-  width:100% !important;
-  background-image:repeating-linear-gradient(45deg, var(--seg-color) 0 10px, transparent 10px 20px);
-  background-size:200% 100%;
-  animation:lp-slide .9s linear infinite;
-  box-shadow:none;
+.launch-prog .lp-scan { position:absolute; top:0; bottom:0; overflow:hidden; }
+.launch-prog .lp-scan::before {
+  content:''; position:absolute; inset:0 auto 0 0; width:45%;
+  background:linear-gradient(90deg, transparent, color-mix(in srgb, var(--lp-c) 50%, transparent), transparent);
+  animation:lp-scan 1.3s ease-in-out infinite;
 }
-@keyframes lp-slide { to { background-position:-40px 0; } }
-.launch-prog .lp-label {
-  margin-top:9px; font-size:12px; font-weight:700; color:var(--text-mute);
-  display:flex; align-items:center; gap:8px;
-  /* Висота під пілюлю «%» — щоб поява/зникнення відсотка не смикала блок */
-  min-height:24px;
+@keyframes lp-scan { from { transform:translateX(-100%); } to { transform:translateX(230%); } }
+/* Межі стадій на лінії — тонкі проміжки кольору картки. */
+.launch-prog .lp-tick {
+  position:absolute; top:0; bottom:0; z-index:2; width:2px; margin-left:-1px;
+  background:var(--bg-card);
 }
-.launch-prog .lp-label i { color:var(--orange); font-size:15px; }
-.launch-prog .lp-label.lp-error { color:var(--red); }
-.launch-prog .lp-label.lp-error i { color:var(--red); }
 .launch-prog .lp-pct {
-  margin-left:auto; font-family:var(--font-mono); font-size:13px; font-weight:800;
-  color:var(--orange); background:rgba(var(--orange-rgb),.1); border:1px solid rgba(var(--orange-rgb),.25);
-  padding:1px 9px; border-radius:20px; letter-spacing:.3px;
+  margin-left:auto; flex:none; font-family:var(--font-mono); font-size:13px; font-weight:800;
+  color:var(--lp-c); letter-spacing:.3px; padding:1px 9px; border-radius:999px;
+  background:color-mix(in srgb, var(--lp-c) 12%, transparent);
+  border:1px solid color-mix(in srgb, var(--lp-c) 30%, transparent);
 }
-.launch-prog .lp-label.lp-error .lp-pct { display:none; }
+/* Кільце — це індикатор стану, тож у режимах без анімацій лишається живим
+   (як .spin); декоративний «скан» у них стоїть статично. */
+html[data-animations="off"] .launch-prog .lp-ring-val.run,
+html[data-performance-mode="on"] .launch-prog .lp-ring-val.run { animation-duration:1.3s !important; }
+html[data-animations="off"] .launch-prog .lp-scan::before,
+html[data-performance-mode="on"] .launch-prog .lp-scan::before {
+  animation:none !important; width:100%;
+  background:color-mix(in srgb, var(--lp-c) 22%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .launch-prog .lp-scan::before { animation:none; width:100%; background:color-mix(in srgb, var(--lp-c) 22%, transparent); }
+}
 
 
 .play-big {
@@ -3106,6 +3206,17 @@ button.sp-st:focus-visible, button.it-st:focus-visible { outline:2px solid var(-
 .pack-hero-full .ib-tag {
   font-size:var(--fs-min); font-weight:600; padding:3px 9px; border-radius:999px;
   background:rgba(255,138,0,.16); border:1px solid rgba(255,138,0,.35); color:var(--orange);
+}
+/* Єдині чипи шапки збірки: однакова висота й радіус для версії, тегів і позначок.
+   Теги користувача — нейтральні (скло); акцент лишається за позначками стану (ШІ, Захешовано). */
+.inst-banner .ib-badges > *,
+.pack-hero-full .ib-badges > * {
+  display:inline-flex; align-items:center; gap:5px; box-sizing:border-box;
+  height:24px; padding:0 9px; border-radius:8px; font-size:11px; line-height:1; white-space:nowrap;
+}
+.inst-banner .ib-badges > .ib-tag:not(.ib-ai):not(.ib-hashed),
+.pack-hero-full .ib-badges > .ib-tag:not(.ib-ai):not(.ib-hashed) {
+  background:rgba(0,0,0,.4); border:1px solid rgba(255,255,255,.14); color:rgba(255,255,255,.88);
 }
 .inst-banner .ib-title .ib-ic,
 .pack-hero-full .ib-title .ib-ic {
@@ -3809,26 +3920,8 @@ button.sw { appearance:none; -webkit-appearance:none; }
 .page-view { animation:page-view-in .26s cubic-bezier(.22,.61,.36,1) backwards; }
 /* Сторінки, що монтуються прямо під .content (гардероб, друзі, налаштування,
    аналітика, браузер контенту) не мали жодної анімації — з'являлись різко.
-   Той самий fade. Без View Transitions; з ними (html[data-vt]) цим
-   займається cross-fade нижче, щоб не було подвійної анімації. */
+   Той самий fade. */
 .content > :not(.page-view):not([hidden]) { animation:page-view-in .22s cubic-bezier(.22,.61,.36,1) backwards; }
-/* Під час View Transition власний fade сторінки вимкнено ТРИВАЛІСТЮ 0s, а не
-   `animation:none`: зміна animation-name після завершення переходу
-   перезапускала б fade (сторінка «блимала» вдруге). Зміна тривалості вже
-   завершеної анімації її не перезапускає. */
-html[data-vt] .page-view,
-html[data-vt] .content > * { animation-duration:0s !important; animation-delay:0s !important; }
-
-/* View Transitions: ковзає лише область вмісту (.content); sidebar і
-   верхня панель не «розчиняються». Ім'я ставиться лише на час переходу,
-   щоб постійний view-transition-name не створював зайвий контекст. */
-html[data-vt] .content { view-transition-name:page-content; }
-::view-transition-old(root), ::view-transition-new(root) { animation:none; mix-blend-mode:normal; }
-/* Однакова тривалість і крива для старого й нового знімка — сума непрозорості
-   лишається ~1 (cross-fade), без «провалу» у порожнечу посередині. */
-::view-transition-group(page-content) { animation-duration:.22s; }
-::view-transition-old(page-content),
-::view-transition-new(page-content) { animation-duration:.22s; animation-timing-function:ease-in-out; }
 @keyframes page-view-in {
   0%   { opacity:0; }
   100% { opacity:1; }
@@ -4814,7 +4907,7 @@ html[data-theme="light"] .hl-f { color:#b91c1c; }
    при наведенні нічого не підміняється. */
 .user-meta .ue-status { margin-top:0; font-weight:500; color:var(--text-mute); }
 .user-meta .ue-status.online, .user-meta .ue-status.on { color:var(--green); }
-.user-meta .ue-status.away { color:#eab308; }
+.user-meta .ue-status.away { color:var(--st-away); }
 .user-meta .ue-status.dnd { color:var(--red); }
 .user-meta .ue-status.in_game, .user-meta .ue-status.off { color:var(--orange); }
 .sidebar-footer .dot-btn { width:30px; height:30px; border-radius:10px; background:rgba(255,255,255,.04); }
@@ -5220,3 +5313,9 @@ html[data-performance-mode="on"] .inst-tile:hover .it-ic { transform:none; }
 .tabbar.tb-slide.tbf > .tab-btn.tbf-ico > :not(i),
 .tabbar.tb-slide.tbf > .tab-btn.tbf-ico > .sv-tab-out { display:none; }
 .tabbar.tb-slide.tbf > .tab-btn.tbf-ico > i { font-size:16px; }
+
+/* Стан «збіркою керує ШІ» у сайдбарі та «Моїх збірках» (AIAgent): іконка + остання дія. */
+.ai-state-ic { color: var(--orange); animation: ai-state-pulse 1.4s ease-in-out infinite; }
+.ai-state-txt { color: var(--orange); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@keyframes ai-state-pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .ai-state-ic { animation: none; } }

@@ -428,6 +428,7 @@
     {@const pr = pings[s.address]}
     {@const isDragging = dragAddress === s.address}
     {@const isDropTarget = dragOverAddress === s.address && dragAddress !== s.address}
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="srv-card"
       class:online={pr?.online === true}
@@ -553,6 +554,7 @@
 
         <div class="divider"></div>
         <div class="field">
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label>{t('pack.servers.resourcePacks')}</label>
           <div class="rl-sub" style="margin-bottom:8px">{t('pack.servers.resourcePacksHint')}</div>
           <div class="seg">

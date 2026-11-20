@@ -13,6 +13,10 @@ type SkinPreset struct {
 	CapeURL   string `json:"capeUrl,omitempty"`    // джерело плаща на Mojang (для оновлення кешу)
 	Source    string `json:"source"`               // "local" | "mojang-copy" | "default"
 	SourceNick string `json:"sourceNick,omitempty"` // нік гравця, якщо Source == "mojang-copy"
+	// CapeSystem — звідки плащ пресету: "mojang" (CapeURL), "shaurma" (ShaurmaCapeID; "" = без плаща)
+	// або "" — старий пресет, вибір плаща на сервері Шаурми не змінюється.
+	CapeSystem    string `json:"capeSystem,omitempty"`
+	ShaurmaCapeID string `json:"shaurmaCapeId,omitempty"`
 	CreatedAt int64  `json:"createdAt"`
 }
 

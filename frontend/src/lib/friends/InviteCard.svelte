@@ -67,7 +67,7 @@
       <div class="ic-stats">
         <span class="ic-stat"><i class="ti ti-cube"></i> {version || '—'}</span>
         <span class="ic-stat"><i class="ti ti-users"></i> {max ? `${players}/${max}` : '—'}</span>
-        <span class="ic-stat"><i class="ti ti-lock"></i> лише за запрошенням</span>
+        <span class="ic-stat"><i class="ti ti-lock"></i> {t('inv.card.inviteOnly')}</span>
       </div>
     {:else if perm && !dead}
       <div class="ic-stats">
@@ -87,7 +87,7 @@
     {#if dead}
       <div class="ic-note bad" data-testid="chat-invite-dead"><i class="ti ti-circle-x"></i> {deadText}</div>
     {:else if host}
-      <div class="ic-note"><i class="ti ti-broadcast"></i> Ваш світ відкрито для друзів</div>
+      <div class="ic-note"><i class="ti ti-broadcast"></i> {t('inv.card.open')}</div>
     {:else if canJoin || !own}
       <div class="ic-acts">
         {#if canJoin}

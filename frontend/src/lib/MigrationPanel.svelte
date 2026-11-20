@@ -169,10 +169,11 @@
 
         <div class="mp-list">
           {#each visibleTransferableUnique as it (it.sourceFileName)}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="mp-item selectable" class:sel={flow.selected.has(it.sourceFileName)} onclick={() => flow.toggle(it.sourceFileName)}>
               <button
                 type="button"
-                role="checkbox"
+                role="checkbox" aria-label={it.sourceFileName}
                 aria-checked={flow.selected.has(it.sourceFileName)}
                 class="mp-check"
                 class:checked={flow.selected.has(it.sourceFileName)}
@@ -336,7 +337,7 @@
     display: flex; align-items: center; gap: 8px; margin-top: 4px;
     font-size: 12px; color: var(--text); cursor: pointer; user-select: none;
   }
-  .mp-after-create input { accent-color: var(--orange); cursor: pointer; }
+  
 
   .mono { font-family: var(--font-mono); }
 </style>

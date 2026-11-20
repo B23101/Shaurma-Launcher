@@ -165,10 +165,13 @@
 
 {#if open}
   <Portal>
+<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
 <div class="modal-overlay search-overlay" onclick={onclose}>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_interactive_supports_focus -->
     <div class="global-search" onclick={(e: any) => e.stopPropagation()} role="dialog" aria-label={t('topbar.search')}>
       <div class="gs-input-row">
         <i class="ti ti-search"></i>
+        <!-- svelte-ignore a11y_autofocus -->
         <input autofocus placeholder={t('globalSearch.placeholder')} bind:value={query} onkeydown={onKey}
                role="combobox" aria-expanded="true" aria-controls="gs-results" aria-autocomplete="list" />
         {#if query}
@@ -217,6 +220,7 @@
           <div class="gs-group">
             <div class="gs-group-title"><i class="ti ti-bolt"></i> {t('globalSearch.scope.actions')}<span class="gs-count">{actionHits.length}</span></div>
             {#each actionHits as a (a.id)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(onaction, a.id)}>
                 <div class="gs-ic"><i class="ti {a.icon}"></i></div>
                 <div class="gs-name">{@render hl(a.label)}</div>
@@ -232,6 +236,7 @@
             {#each packs as bv (bv.build.id)}
               {@const sic = packAsset(bv.build.iconUrl)}
               {@const folder = folderOf.get(bv.build.id)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongopack, bv.build.id)}>
                 <div class="gs-ic" class:has-icon={!!sic} style="--pcol:{bv.build.color || 'var(--orange)'}">
                   {#if sic}<img src={sic} alt="" loading="eager"/>{:else}<i class="ti {bv.build.icon || 'ti-puzzle'}"></i>{/if}
@@ -249,6 +254,7 @@
           <div class="gs-group">
             <div class="gs-group-title"><i class="ti ti-shirt"></i> {t('globalSearch.wardrobe')}<span class="gs-count">{presetResults.length}</span></div>
             {#each presetResults as p (p.id)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongopreset, p.id)}>
                 <div class="gs-wardrobe">
                   {#if presetHeads[p.id]}<span class="gs-head" style="background-image:url('{presetHeads[p.id]}')"></span>{/if}
@@ -267,6 +273,7 @@
           <div class="gs-group">
             <div class="gs-group-title"><i class="ti ti-settings"></i> {t('globalSearch.settings')}<span class="gs-count">{settingsResults.length}</span></div>
             {#each settingsResults as sd (sd.key)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongosettings, sd)}>
                 <div class="gs-ic"><i class="ti ti-adjustments"></i></div>
                 <div class="gs-text">
@@ -290,6 +297,7 @@
               <div class="gs-empty small">{t('globalSearch.browserEmpty')}</div>
             {/if}
             {#each browser as be (be.source + be.id)}
+              <!-- svelte-ignore a11y_click_events_have_key_events -->
               <div class="gs-item" data-gs-nav role="option" aria-selected="false" tabindex="-1" onclick={go(ongobrowser, be)}>
                 <div class="gs-ic" class:has-icon={!!be.iconUrl}>
                   {#if be.iconUrl}<img src={be.iconUrl} alt="" loading="lazy"/>{:else}<i class="ti ti-package"></i>{/if}

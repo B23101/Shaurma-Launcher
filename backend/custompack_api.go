@@ -113,6 +113,10 @@ type CustomPackFormParams struct {
 	MaxRAMMB        int    `json:"maxRamMb"`
 	UseSeparateJava bool   `json:"useSeparateJava"`
 	JavaPath        string `json:"javaPath"`
+	// JavaProvider — провайдер Java саме для цієї збірки ("" = як у лаунчері).
+	JavaProvider string `json:"javaProvider"`
+	// Location — довільна тека для нової збірки (порожньо — стандартна).
+	Location string `json:"location"`
 }
 
 func (p CustomPackFormParams) toCreateParams() custompack.CreateParams {
@@ -133,6 +137,7 @@ func (p CustomPackFormParams) toCreateParams() custompack.CreateParams {
 		MaxRAMMB:          p.MaxRAMMB,
 		UseSeparateJava:   p.UseSeparateJava,
 		JavaPath:          p.JavaPath,
+		Location:          p.Location,
 	}
 }
 
@@ -154,6 +159,12 @@ func (a *App) CreateCustomPack(p CustomPackFormParams) (custompack.Pack, error) 
 	pack, err := custompack.Create(a.customPacks, a.cfg.InstancesDir(), p.toCreateParams())
 	if err != nil {
 		return custompack.Pack{}, err
+	}
+	// Провайдер Java, обраний при створенні, живе в конфігу збірки.
+	if p.JavaProvider != "" && java.ValidProvider(p.JavaProvider) {
+		cfg := a.cfg.GetInstanceConfig(pack.ID)
+		cfg.JavaProviderOverride = p.JavaProvider
+		_ = a.cfg.SaveInstanceConfig(cfg)
 	}
 	// РAM з форми збірки → per-instance конфіг. Тепер сіємо конфіг одразу при
 	// створенні.
@@ -1319,4 +1330,9 @@ func (a *App) CheckCustomPackIDChange(oldID, newID string) CustomPackIDCheck {
 		suggested = custompack.UniqueIDPackage(a.buildsReg.AllIDs(), id)
 	}
 	return CustomPackIDCheck{ID: id, Exists: exists, Suggested: suggested}
+}
+
+// PickPackFolder відкриває діалог вибору теки для нової збірки.
+func (a *App) PickPackFolder() (string, error) {
+	return bridgeDialogOpenFile("Оберіть теку для збірки (порожню або нову)", true, nil), nil
 }

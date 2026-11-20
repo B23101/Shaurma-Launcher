@@ -46,6 +46,14 @@ type buildSkinSnapshot struct {
 	// не було (при поверненні активний плащ знімається).
 	CapeID  string `json:"capeId,omitempty"`
 	HasCape bool   `json:"hasCape"`
+	// Вибір плаща на сервері Шаурми ДО застосування (джерело mojang|shaurma і плащ) —
+	// повертається після гри так само, як скін Mojang.
+	HasShaurmaCape bool   `json:"hasShaurmaCape,omitempty"`
+	// ShaurmaSkin — акаунт без ліцензії: скін живе на сервері Шаурми (SkinPNG — його попередній
+	// скін звідти; порожній — скіна не було, повертати нічого).
+	ShaurmaSkin bool `json:"shaurmaSkin,omitempty"`
+	ShaurmaSource  string `json:"shaurmaSource,omitempty"`
+	ShaurmaCapeID  string `json:"shaurmaCapeId,omitempty"`
 	// CreatedAt — коли знято снапшот (для діагностики).
 	CreatedAt int64 `json:"createdAt"`
 }
@@ -106,12 +114,24 @@ func (a *App) applyBuildSkinBeforeLaunch(buildID string, account model.Account, 
 	if icfg.SkinPresetID == "" {
 		return nil
 	}
-	if !account.IsLicensed {
-		return fmt.Errorf("скіна збірки потребує ліцензійний (Microsoft) акаунт — пропущено")
-	}
+	licensed := account.IsLicensed || account.Type == "microsoft"
 
-	// 1. Снапшот поточного вигляду акаунта.
-	skinPNG, slim, capeID, hasCape, err := a.wardrobe.SnapshotActiveLook(account.ID)
+	// 1. Снапшот поточного вигляду акаунта: ліцензійний — з Mojang, пірат — зі скіна Шаурми.
+	var (
+		skinPNG          []byte
+		slim, hasCape    bool
+		capeID           string
+		err              error
+	)
+	if licensed {
+		skinPNG, slim, capeID, hasCape, err = a.wardrobe.SnapshotActiveLook(account.ID)
+	} else {
+		var found bool
+		skinPNG, slim, found, err = a.fetchSkinServerLook(account.Username)
+		if !found {
+			skinPNG = nil
+		}
+	}
 	if err != nil {
 		// Не змогли зняти снапшот — без нього не можна гарантувати
 		// повернення; застосовувати пресет без снапшота небезпечно
@@ -127,6 +147,15 @@ func (a *App) applyBuildSkinBeforeLaunch(buildID string, account model.Account, 
 		CapeID:    capeID,
 		HasCape:   hasCape,
 		CreatedAt: time.Now().Unix(),
+
+		ShaurmaSkin: !licensed,
+	}
+	// Пресет із системою плаща (Шаурма/Mojang) — запам'ятовуємо поточний вибір на сервері.
+	preset, hasPreset := a.presetByID(account.Username, icfg.SkinPresetID)
+	if hasPreset && preset.CapeSystem != "" {
+		if st, err := a.GetShaurmaCapesFor(account.ID); err == nil {
+			snap.HasShaurmaCape, snap.ShaurmaSource, snap.ShaurmaCapeID = true, st.Source, st.Active
+		}
 	}
 	// ПЕРЕД застосуванням знімаємо снапшот: якщо гра вже йде (перезапуск
 	// тієї самої збірки), попередній restore з минулого виходу міг ще
@@ -143,11 +172,31 @@ func (a *App) applyBuildSkinBeforeLaunch(buildID string, account model.Account, 
 
 	// 2. Застосовуємо пресет (ретраї на мережу/429/5xx).
 	if err := withSkinRetries(4, 2*time.Second, func() error {
+		if !licensed {
+			_, err := a.applyPresetToSkinServer(account.ID, icfg.SkinPresetID)
+			return err
+		}
 		return a.wardrobe.ApplyPreset(account.ID, icfg.SkinPresetID)
 	}); err != nil {
 		return fmt.Errorf("скіна збірки: не вдалося застосувати пресет: %w", err)
 	}
+	// 3. Плащ пресету (Шаурма або Mojang) — серверу, ДО старту гри: саме його віддасть інжектор.
+	if hasPreset && preset.CapeSystem != "" {
+		if err := a.applyPresetCape(account.ID, preset); err != nil {
+			return fmt.Errorf("скіна збірки: плащ не збережено на сервері Шаурми: %w", err)
+		}
+	}
 	return nil
+}
+
+// presetByID — пресет гардероба акаунта за id.
+func (a *App) presetByID(username, presetID string) (model.SkinPreset, bool) {
+	for _, p := range a.wardrobe.ListPresets(username) {
+		if p.ID == presetID {
+			return p, true
+		}
+	}
+	return model.SkinPreset{}, false
 }
 
 // restoreBuildSkinAfterExit повертає акаунту попередній скін і плащ після
@@ -201,7 +250,23 @@ func (a *App) restoreBuildSkinAfterExit(buildID, accountID string) {
 			BuildID: buildID, AccountID: accountID,
 			Status: "restoring", Attempt: attempt, MaxAttempts: maxAttempts, RestoreOnExit: true,
 		})
-		return a.wardrobe.RestoreLook(accountID, skinPNG, snap.Slim, snap.CapeID, snap.HasCape)
+		if snap.ShaurmaSkin {
+			if len(skinPNG) > 0 {
+				model := "classic"
+				if snap.Slim {
+					model = "slim"
+				}
+				if err := a.uploadSkinFor(accountID, base64.StdEncoding.EncodeToString(skinPNG), model); err != nil {
+					return err
+				}
+			}
+		} else if err := a.wardrobe.RestoreLook(accountID, skinPNG, snap.Slim, snap.CapeID, snap.HasCape); err != nil {
+			return err
+		}
+		if snap.HasShaurmaCape {
+			return a.SelectShaurmaCapeFor(accountID, snap.ShaurmaSource, snap.ShaurmaCapeID)
+		}
+		return nil
 	})
 	if err == errSessionRestarted {
 		// Новий запуск володіє снапшотом — чистимо трекер, його не чіпаємо.

@@ -364,6 +364,7 @@
 {:else}
   <div class="gal-grid">
     {#each entries as entry, i (entry.fileName)}
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="gal-card rise-in" use:lazyThumb={entry} style="animation-delay:{Math.min(i, 8) * 20}ms" onclick={() => openEditor(entry)} oncontextmenu={(e) => openCtx(e, entry)}>
         <div class="gal-thumb">
           {#if thumbCache[thumbKey(entry)]}
@@ -376,7 +377,7 @@
           <div class="gal-title" use:launcherTip={entry.title || entry.fileName}>{entry.title || entry.fileName}</div>
           <div class="gal-date">{fmtDate(entry.modified)}</div>
         </div>
-        <button class="gal-more" use:launcherTip={t('gallery.editDetails')} onclick={(e: any) => { e.stopPropagation(); openCtx(e, entry) }}>
+        <button aria-label={t('gallery.editDetails')} class="gal-more" use:launcherTip={t('gallery.editDetails')} onclick={(e: any) => { e.stopPropagation(); openCtx(e, entry) }}>
           <i class="ti ti-dots-vertical"></i>
         </button>
       </div>
@@ -386,31 +387,32 @@
 
 <!-- ── Контекстне меню ── -->
 {#if ctxMenu}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="ctx-menu" style="left:{ctxMenu.x}px;top:{ctxMenu.y}px" oncontextmenu={(e) => e.preventDefault()}>
-    <div class="ctx-item" onclick={() => ctxAction('open', ctxMenu!.entry)}>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('open', ctxMenu!.entry)}>
       <i class="ti ti-edit"></i> {t('gallery.edit')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('copy', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('copy', ctxMenu!.entry)}>
       <i class="ti ti-copy"></i> {t('gallery.copy')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('copyPath', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('copyPath', ctxMenu!.entry)}>
       <i class="ti ti-link"></i> {t('gallery.copyPath')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('reveal', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('reveal', ctxMenu!.entry)}>
       <i class="ti ti-folder-open"></i> {t('gallery.reveal')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('openViewer', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('openViewer', ctxMenu!.entry)}>
       <i class="ti ti-photo-search"></i> {t('gallery.openInViewer')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('details', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('details', ctxMenu!.entry)}>
       <i class="ti ti-notes"></i> {t('gallery.editDetails')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('rename', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('rename', ctxMenu!.entry)}>
       <i class="ti ti-pencil"></i> {t('gallery.rename')}
-    </div>
-    <div class="ctx-item danger" onclick={() => ctxAction('delete', ctxMenu!.entry)}>
+    </button>
+    <button type="button" class="ctx-item danger" onclick={() => ctxAction('delete', ctxMenu!.entry)}>
       <i class="ti ti-trash"></i> {t('gallery.delete')}
-    </div>
+    </button>
   </div>
 {/if}
 

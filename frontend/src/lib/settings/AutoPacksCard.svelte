@@ -64,6 +64,6 @@
         </div>
       </div>
     {/each}
-    <div class="st-pad"><div class="st-note"><i class="ti ti-info-circle"></i> {t('st.autopacks.footer')}</div></div>
+    <div class="st-pad"></div>
   {/if}
 </SCard>

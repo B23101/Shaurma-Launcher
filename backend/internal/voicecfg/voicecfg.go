@@ -359,15 +359,15 @@ func Evaluate(sols []Solution, serverPort int, udpOn bool, userPort int, isProxy
 
 	if len(active) == 0 {
 		if len(sols) > 0 {
-			add("voice_disabled_mod", SevWarn, "Голосовий мод є, але вимкнений (.disabled) — голосу на сервері не буде.")
+			add("voice_disabled_mod", SevWarn, "Увімкни мод голосового чату.")
 		}
 		if udpOn {
-			add("udp_no_voice_mod", SevWarn, "UDP-тунель увімкнено, але на сервері не знайдено Simple Voice Chat / Plasmo Voice — тунелю нема що проксіювати.")
+			add("udp_no_voice_mod", SevWarn, "Для голосового чату встанови Simple Voice Chat або Plasmo Voice.")
 		}
 		return v
 	}
 	if !udpOn {
-		add("voice_found_udp_off", SevWarn, active[0].Name+" встановлено, але голос через P2P вимкнено — друзі зайдуть, та не почують одне одного. Увімкни UDP.")
+		add("voice_found_udp_off", SevWarn, active[0].Name+" встановлено; увімкни голосовий чат для друзів.")
 	}
 	if len(active) > 1 {
 		if active[0].Port == active[1].Port {

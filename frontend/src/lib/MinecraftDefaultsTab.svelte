@@ -340,10 +340,11 @@
   <div class="card">
     <div class="card-head">
       <div class="ci violet"><i class="ti ti-settings"></i></div>
-      <div class="ctw"><div class="ct">{t('settings.tab.defaults')}</div><div class="cd">{t('defaults.enableHint')}</div></div>
+      <div class="ctw"><div class="ct">{t('settings.tab.defaults')}</div></div>
     </div>
     <div class="row">
-      <div class="row-label"><div class="rl-name">{t('defaults.enable')}</div><div class="rl-sub">{t('defaults.enableHint')}</div></div>
+      <div class="row-label"><div class="rl-name">{t('defaults.enable')}</div></div>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="toggle" class:on={d.enabled} onclick={() => { d.enabled = !d.enabled; markChanged() }}></div>
     </div>
   </div>
@@ -366,7 +367,7 @@
         />
       </div>
       <div class="row">
-        <div class="row-label"><div class="rl-name">{t('defaults.guiscale')}</div><div class="rl-sub">{t('defaults.guiscaleHint')}</div></div>
+        <div class="row-label"><div class="rl-name">{t('defaults.guiscale')}</div></div>
         <SelectField
           value={String(d.guiScale)}
           options={guiScaleOptions.map(opt => ({
@@ -441,10 +442,12 @@
       </div>
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('defaults.fullscreen')}</div></div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="toggle" class:on={d.fullscreen} onclick={() => { d.fullscreen = !d.fullscreen; markChanged() }}></div>
       </div>
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('defaults.vsync')}</div></div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="toggle" class:on={d.enableVsync} onclick={() => { d.enableVsync = !d.enableVsync; markChanged() }}></div>
       </div>
       <div class="row">
@@ -465,10 +468,12 @@
       </div>
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('defaults.autojump')}</div></div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="toggle" class:on={d.autoJump} onclick={() => { d.autoJump = !d.autoJump; markChanged() }}></div>
       </div>
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('defaults.invertyMouse')}</div></div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="toggle" class:on={d.invertYMouse} onclick={() => { d.invertYMouse = !d.invertYMouse; markChanged() }}></div>
       </div>
       <div class="row">
@@ -498,6 +503,7 @@
       </div>
       <div class="row">
         <div class="row-label"><div class="rl-name">{t('defaults.darkMojang')}</div></div>
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="toggle" class:on={d.darkMojangStudiosBackground} onclick={() => { d.darkMojangStudiosBackground = !d.darkMojangStudiosBackground; markChanged() }}></div>
       </div>
     </div>

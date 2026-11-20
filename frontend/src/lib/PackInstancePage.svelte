@@ -24,6 +24,8 @@
   import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import UiModal from './UiModal.svelte'
+  import AIEditWindow from './AIEditWindow.svelte'
+  import { aiBusyLabel } from './aiAgentEdit.svelte'
   import { packAsset } from './packAssets.svelte'
   import { registerPendingConfig, clearPendingConfig } from './pendingConfigFlush'
   import { getPackUI, setPackUI, readContentScroll, restoreContentScroll, anchorScroll } from './uiState'
@@ -45,7 +47,7 @@
   import BlockedModsWarning from './BlockedModsWarning.svelte'
   import type { PackIndexEntry, InstanceConfig, InstanceServer, Settings, BuildView, Account, BuildKind, LaunchProgress, BrowserVersionView, BlockedModInfo } from './types'
   import type { PackRow, PackFolderRow, PackPickerItem } from './PackPicker.svelte'
-  import { LAUNCH_STAGES, launchStageLabel, downloadStageLabel } from './launchStages'
+  import { LAUNCH_STAGES, launchStageLabel, launchStagePct, launchStageKnown, launchStageSpan, launchStageIcon, downloadStageLabel } from './launchStages'
 
   let {
     pack,
@@ -59,6 +61,7 @@
     // розкриваються як у sidebar (App.svelte будує через customLayoutItems).
     packPicker = null,
     runningAccounts = [],
+    aiRunning = false,
     headOf = () => '',
     launchProgress = null,
     // Помилка встановлення (з App.svelte, download:error/installer:log) —
@@ -135,6 +138,8 @@
     // Акаунти, у яких ця збірка ЗАРАЗ запущена на ІНШИХ акаунтах (крім
     // поточного — він і так бачить кнопку «Стоп») — голови під банером.
     runningAccounts?: Account[]
+    // Гра запущена ШІ-агентом (внутрішній акаунт агента) — значок робота на кнопці без жодних кліків.
+    aiRunning?: boolean
     // Голова скіна акаунта (data URL) — передає батьківська App.svelte.
     headOf?: (a: Account) => string
     // Активний акаунт лаунчера (для «Скіна збірки»).
@@ -851,10 +856,10 @@
   // Стадії та підписи — у спільному модулі launchStages.ts (однакові
   // кольори/назви в sidebar, тайлах «Мої збірки» і консолі).
 
-  // Реальний (не сегментний) прогрес-бар запуску: ОДНА лінія, яка росте
-  // крізь стадії (кожна стадія = слот бару), а колір змінюється разом зі
-  // стадією (жовтий → синій → червоний → зелений). Коли бекенд не знає
-  // відсотка поточної стадії — бар показує рухомі «стрічки» (indeterminate).
+  // Прогрес-бар запуску: ОДНА лінія, що росте крізь стадії (кожна стадія —
+  // відрізок бару за її вагою), колір змінюється разом зі стадією. Бар
+  // показує лише реальний %: коли бекенд ще не знає % поточної стадії,
+  // бар стоїть на початку її відрізка, а в решті відрізка біжить «скан».
   const launchStageIndex = $derived(
     LAUNCH_STAGES.findIndex(x => x.key === launchProgress?.stage)
   )
@@ -863,19 +868,35 @@
   )
   // Колір заповнення бару: при помилці — червоний, інакше колір стадії.
   const launchBarColor = $derived(launchError ? 'var(--red)' : launchStageColor)
-  const lpPercent = $derived.by(() => {
-    if (launchError) return 100
-    if (launchStageIndex < 0) return 0
-    const slot = 100 / LAUNCH_STAGES.length
-    const base = launchStageIndex * slot
-    const pct = launchProgress?.percent ?? -1
-    const within = pct >= 0 ? Math.min(pct, 100) : 0
-    return Math.min(100, Math.round(base + (within / 100) * slot))
-  })
+  const lpKnown = $derived(launchStageKnown(launchProgress))
+  const lpPercent = $derived(launchError ? 100 : launchStagePct(launchProgress))
+  const lpSpanEnd = $derived(launchStageSpan(launchProgress?.stage).end)
   const lpIndeterminate = $derived(
-    !!launchProgress && !launchProgress.done &&
-    (launchProgress.percent ?? -1) < 0 && !launchError
+    !!launchProgress && !launchProgress.done && !lpKnown && !launchError
   )
+  // «Скасувати» під час підготовки запуску: бекенд зупиняється на найближчій
+  // точці перевірки між етапами; до того кнопка показує «Скасовуємо…».
+  let stopReq = $state(false)
+  function requestLaunchStop() {
+    if (stopReq) return
+    stopReq = true
+    cancelGameInstall(pack.id)
+  }
+  // Скільки триває підготовка запуску (лічильник у шапці панелі).
+  let launchStartedMs = 0
+  let launchElapsed = $state(0)
+  $effect(() => {
+    if (!isLaunching) { stopReq = false; launchStartedMs = 0; launchElapsed = 0; return }
+    if (!launchStartedMs) launchStartedMs = Date.now()
+    const tick = () => { launchElapsed = Math.floor((Date.now() - launchStartedMs) / 1000) }
+    tick()
+    const timer = setInterval(tick, 1000)
+    return () => clearInterval(timer)
+  })
+  const fmtLaunchElapsed = (sec: number) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
+
+  // Короткий підпис стадії для кроку (без трикрапки в кінці).
+  const stageShort = (key: string) => launchStageLabel(key).replace(/(…|\.{3})$/, '')
 
   // Підпис стадії якання файлів — downloadStageLabel з launchStages.ts.
 
@@ -928,6 +949,21 @@
   // heroTitleGone — велика назва банера заїхала під тулбар (показуємо чип).
   let heroStuck = $state(false)
   let heroTitleGone = $state(false)
+  // Хто створив збірку: порожньо — користувач; інакше ШІ-агент (реєстр у бекенді).
+  let aiAuthor = $state('')
+  // Кількість «захешованих» модів (дедуплікація старих збірок) → бейдж у шапці.
+  let hashedCount = $state(0)
+  $effect(() => {
+    const id = pack?.id
+    if (!id) { hashedCount = 0; return }
+    App.GetPackHashedCount(id).then((n: number) => { if (pack?.id === id) hashedCount = n || 0 }).catch(() => { hashedCount = 0 })
+  })
+  const aiBusy = $derived(pack?.id ? aiBusyLabel(pack.id) : null)
+  $effect(() => {
+    const id = pack?.id
+    if (!id) { aiAuthor = ''; return }
+    App.GetAIAgentBuildAuthor(id).then((v: string) => { if (pack?.id === id) aiAuthor = v || '' }).catch(() => { aiAuthor = '' })
+  })
   function updateHeroStuck() {
     const bar = toolbarEl
     if (!bar) return
@@ -1032,6 +1068,9 @@
   })
 </script>
 
+<!-- Вікно «ШІ-агент редагує збірку» (блокує правки гравця на час роботи агента). -->
+{#if pack?.id}<AIEditWindow packId={pack.id} />{/if}
+
 <!-- Єдиний рядок дій: «Назад» зліва, решта кнопок СПРАВА, і «⋯» з
      «Грати» в ОДНОМУ рядку поряд одне з одним.
 
@@ -1067,31 +1106,37 @@
       <button class="btn btn-ghost btn-sm" onclick={() => App.OpenPackConsole(pack.id)} use:launcherTip={t('pack.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
       {#if kind === 'custom'}
         <button class="btn btn-ghost btn-sm" onclick={() => exportOpen = true} use:launcherTip={t('pack.export')}><i class="ti ti-package-export"></i> {t('pack.export')}</button>
-        {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} use:launcherTip={"Поділитися з друзями"}><i class="ti ti-share-3"></i> Поділитися</button>{/if}
+        {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} use:launcherTip={t('shareFriends.tip')}><i class="ti ti-share-3"></i> {t('shareFriends.btn')}</button>{/if}
       {/if}
       <div class="menu-wrap">
         <button class="btn btn-ghost btn-sm" onclick={(e: any) => { e.stopPropagation(); actionsOpen = !actionsOpen }} use:launcherTip={t('pack.moreActions')} aria-label={t('pack.moreActions')} aria-expanded={actionsOpen}><i class="ti ti-dots-vertical"></i></button>
         {#if actionsOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div class="dropdown-menu" onclick={(e: any) => e.stopPropagation()}>
             {#if kind === 'shaurma' || isSourcePack}
-              <div class="dd-item" onclick={() => { actionsOpen = false; handleUpdate() }}>
+              <button type="button" class="dd-item" onclick={() => { actionsOpen = false; handleUpdate() }}>
                 <i class="ti ti-refresh"></i> {t('pack.update')}
-              </div>
+              </button>
             {/if}
             {#if kind === 'custom'}
-              <div class="dd-item" onclick={() => { actionsOpen = false; exportOpen = true }}>
+              <button type="button" class="dd-item" onclick={() => { actionsOpen = false; exportOpen = true }}>
                 <i class="ti ti-package-export"></i> {t('pack.export')}
-              </div>
+              </button>
             {/if}
             <div class="dd-sep"></div>
-            <div class="dd-item danger" onclick={() => { actionsOpen = false; onDelete(pack.id) }}>
+            <button type="button" class="dd-item danger" onclick={() => { actionsOpen = false; onDelete(pack.id) }}>
               <i class="ti ti-trash"></i> {t('pack.delete')}
-            </div>
+            </button>
           </div>
         {/if}
       </div>
-      {#if isThisPackRunning}
-        <button class="btn btn-danger" onclick={onStop}>
+      {#if aiBusy}
+        <button class="btn btn-ghost ai-busy-btn" disabled use:launcherTip={t('ai.state.tip')}>
+          <i class="ti ti-robot"></i> <span class="ai-busy-txt">{aiBusy}</span>
+        </button>
+      {:else if isThisPackRunning}
+        <button class="btn btn-danger" onclick={onStop} use:launcherTip={aiRunning ? t('ai.state.running') : ''}>
+          {#if aiRunning}<i class="ti ti-robot ai-run-ico"></i>{/if}
           <i class="ti ti-player-stop"></i> {t('pack.stop')}
           {#if settings.showSessionTime && sessionStartedAt && sessionStartedAt > 0}
             <span class="btn-time">{fmtSessionTime(sessionNow)}</span>
@@ -1115,7 +1160,8 @@
         {@const lstage = launchProgress?.stage}
         <button
           class="btn btn-danger play-launch-btn launch-stop-btn"
-          onclick={() => cancelGameInstall(pack.id)}
+          onclick={requestLaunchStop}
+        disabled={stopReq}
           use:launcherTip={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
         >
           <i class="ti ti-square"></i>
@@ -1141,6 +1187,8 @@
           <div class="ib-name">{pack.name}</div>
           <div class="ib-badges">
             <span class="badge-mc"><i class="ti ti-cube"></i> {pack.mc_version} · {pack.loader_type}</span>
+            {#if hashedCount > 0}<span class="ib-tag ib-hashed" use:launcherTip={t('pack.hashedBadgeHint', { n: hashedCount })}><i class="ti ti-fingerprint"></i> {t('pack.hashedBadge')}</span>{/if}
+            {#if aiAuthor}<span class="ib-tag ib-ai" use:launcherTip={t('pack.aiMade') + (aiAuthor === 'ai-agent' ? '' : ': ' + aiAuthor)}><i class="ti ti-robot"></i> {t('aiShort')}</span>{/if}
             {#if pack.tags?.length}
               {#each pack.tags as tag}<span class="ib-tag">{tag}</span>{/each}
             {/if}
@@ -1256,36 +1304,42 @@
   <button class="btn btn-ghost btn-sm" onclick={() => App.OpenPackConsole(pack.id)} use:launcherTip={t('pack.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
   {#if installed && kind === 'custom'}
     <button class="btn btn-ghost btn-sm" onclick={() => exportOpen = true} use:launcherTip={t('pack.export')}><i class="ti ti-package-export"></i> {t('pack.export')}</button>
-    {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} use:launcherTip={"Поділитися з друзями"}><i class="ti ti-share-3"></i> Поділитися</button>{/if}
+    {#if canShare}<button class="btn btn-ghost btn-sm" onclick={() => shareOpen = true} use:launcherTip={t('shareFriends.tip')}><i class="ti ti-share-3"></i> {t('shareFriends.btn')}</button>{/if}
   {/if}
   {#if installed}
     <div class="menu-wrap">
       <button class="btn btn-ghost btn-sm" onclick={(e: any) => { e.stopPropagation(); actionsOpen = !actionsOpen }} use:launcherTip={t('pack.moreActions')} aria-label={t('pack.moreActions')} aria-expanded={actionsOpen}><i class="ti ti-dots-vertical"></i></button>
       {#if actionsOpen}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <div class="dropdown-menu" onclick={(e: any) => e.stopPropagation()}>
           {#if kind === 'shaurma' || isSourcePack}
             <!-- «Оновити» — лише там, де є що оновлювати: Шаурма-збірки
                  (remote-версія) або кастомні, імпортовані з Modrinth/
                  CurseForge (для них відкривається список версій). У
                  звичайної локальної збірки оновлення немає. -->
-            <div class="dd-item" onclick={() => { actionsOpen = false; handleUpdate() }}>
+            <button type="button" class="dd-item" onclick={() => { actionsOpen = false; handleUpdate() }}>
               <i class="ti ti-refresh"></i> {t('pack.update')}
-            </div>
+            </button>
           {/if}
           {#if kind === 'custom'}
-            <div class="dd-item" onclick={() => { actionsOpen = false; exportOpen = true }}>
+            <button type="button" class="dd-item" onclick={() => { actionsOpen = false; exportOpen = true }}>
               <i class="ti ti-package-export"></i> {t('pack.export')}
-            </div>
+            </button>
           {/if}
           <div class="dd-sep"></div>
-          <div class="dd-item danger" onclick={() => { actionsOpen = false; onDelete(pack.id) }}>
+          <button type="button" class="dd-item danger" onclick={() => { actionsOpen = false; onDelete(pack.id) }}>
             <i class="ti ti-trash"></i> {t('pack.delete')}
-          </div>
+          </button>
         </div>
       {/if}
     </div>
-    {#if isThisPackRunning}
-      <button class="btn btn-danger" onclick={onStop}>
+    {#if aiBusy}
+      <button class="btn btn-ghost ai-busy-btn" disabled use:launcherTip={t('ai.state.tip')}>
+        <i class="ti ti-robot"></i> <span class="ai-busy-txt">{aiBusy}</span>
+      </button>
+    {:else if isThisPackRunning}
+      <button class="btn btn-danger" onclick={onStop} use:launcherTip={aiRunning ? t('ai.state.running') : ''}>
+        {#if aiRunning}<i class="ti ti-robot ai-run-ico"></i>{/if}
         <i class="ti ti-player-stop"></i> {t('pack.stop')}
         {#if settings.showSessionTime && sessionStartedAt && sessionStartedAt > 0}
           <span class="btn-time">{fmtSessionTime(sessionNow)}</span>
@@ -1323,7 +1377,8 @@
       {@const lstage = launchProgress?.stage}
       <button
         class="btn btn-danger play-launch-btn launch-stop-btn"
-        onclick={() => cancelGameInstall(pack.id)}
+        onclick={requestLaunchStop}
+        disabled={stopReq}
         use:launcherTip={lstage && lstage !== 'checking' ? `${t('pack.stop')} · ${launchStageLabel(lstage)}` : t('pack.stop')}
       >
         <i class="ti ti-square"></i>
@@ -1396,7 +1451,7 @@
                  контенту або порожня ручна) раніше не мала способу
                  видалитись зі сторінки — «⋯» ховалось усередині
                  {#if installed}. Тепер видалення доступне і тут. -->
-            <button class="btn btn-ghost btn-lg" onclick={() => onDelete(pack.id)} use:launcherTip={t('pack.delete')}>
+            <button aria-label={t('pack.delete')} class="btn btn-ghost btn-lg" onclick={() => onDelete(pack.id)} use:launcherTip={t('pack.delete')}>
               <i class="ti ti-trash"></i>
             </button>
           {/if}
@@ -1416,6 +1471,8 @@
         <div class="ib-name">{pack.name}</div>
         <div class="ib-badges">
           <span class="badge-mc"><i class="ti ti-cube"></i> {pack.mc_version} · {pack.loader_type}</span>
+            {#if hashedCount > 0}<span class="ib-tag ib-hashed" use:launcherTip={t('pack.hashedBadgeHint', { n: hashedCount })}><i class="ti ti-fingerprint"></i> {t('pack.hashedBadge')}</span>{/if}
+            {#if aiAuthor}<span class="ib-tag ib-ai" use:launcherTip={t('pack.aiMade') + (aiAuthor === 'ai-agent' ? '' : ': ' + aiAuthor)}><i class="ti ti-robot"></i> {t('aiShort')}</span>{/if}
           {#if pack.tags?.length}
             {#each pack.tags as tag}<span class="ib-tag">{tag}</span>{/each}
           {/if}
@@ -1455,35 +1512,61 @@
 
 <div class="scroll-slot" use:anchorScroll>
 {#if isLaunching || launchError}
-  <!-- Прогрес-бар запуску як в HTML-макеті: ОДНА лінія, що росте крізь
-       стадії (перевірка → файли збірки → Java → лоадер), а колір змінюється
-       разом зі стадією. Зверху — стадії-кроки (галочка = пройдена, спінер =
-       активна), під баром — жива назва стадії та % поточної стадії. -->
-  <div class="launch-prog" transition:slide={{ duration: 260, easing: cubicOut }}>
-    <div class="lp-stages">
+  <!-- Прогрес запуску: зверху кроки-процеси з іконками (галочка = пройдений,
+       кільце навколо іконки = активний; кільце заповнюється реальним % стадії),
+       нижче ОДНА лінія за вагою стадій, під нею — жива назва стадії та % бару. -->
+  <div class="launch-prog" class:err={!!launchError} style="--lp-c:{launchBarColor}" transition:slide={{ duration: 260, easing: cubicOut }}>
+    <div class="lp-head">
+      <span class="lp-hico" style="--seg-color:{launchBarColor}">
+        {#if !launchError}
+          <!-- Обвідка по контуру іконки: заповнюється реальним % етапу; поки % невідомий — біжить відрізок. -->
+          <svg class="lp-ring" viewBox="0 0 52 52" aria-hidden="true">
+            <rect class="lp-ring-trk" x="2" y="2" width="48" height="48" rx="16" pathLength="100" />
+            <rect class="lp-ring-val" class:run={!lpKnown} x="2" y="2" width="48" height="48" rx="16" pathLength="100"
+              style="stroke-dasharray:{lpKnown ? Math.max(1, Math.min(launchProgress?.percent ?? 0, 100)) : 22} 100" />
+          </svg>
+        {/if}
+        <i class="ti {launchError ? 'ti-alert-triangle' : launchStageIcon(launchProgress?.stage)}"></i>
+      </span>
+      <div class="lp-htext">
+        <div class="lp-title">
+          <span>{launchError ? t('pack.launchErrorTitle') : stageShort(launchProgress?.stage ?? 'checking')}</span>
+          {#if !launchError && launchStageIndex >= 0}<span class="lp-step">{launchStageIndex + 1}/{LAUNCH_STAGES.length}</span>{/if}
+        </div>
+        {#if !launchError}
+          <div class="lp-msg" title={launchProgress?.message || ''}>{launchProgress?.message || launchStageLabel(launchProgress?.stage)}</div>
+        {/if}
+      </div>
+      {#if !launchError}
+        <span class="lp-time" aria-label={t('launch.elapsed')}><i class="ti ti-clock"></i>{fmtLaunchElapsed(launchElapsed)}</span>
+        {#if lpKnown}<span class="lp-pct">{lpPercent}%</span>{/if}
+        <button class="lp-cancel" disabled={stopReq} onclick={requestLaunchStop}>
+          <i class="ti {stopReq ? 'ti-loader spin' : 'ti-x'}"></i>
+          <span>{stopReq ? t('launch.cancelling') : t('cancel')}</span>
+        </button>
+      {/if}
+    </div>
+    <div class="lp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow={lpKnown || launchError ? lpPercent : undefined} aria-busy={!launchError}>
+      <div class="lp-fill" style="width:{lpPercent}%"></div>
+      {#if lpIndeterminate}
+        <div class="lp-scan" style="left:{lpPercent}%;width:{Math.max(0, lpSpanEnd - lpPercent)}%"></div>
+      {/if}
+      {#each LAUNCH_STAGES.slice(0, -1) as s}
+        <span class="lp-tick" style="left:{launchStageSpan(s.key).end}%"></span>
+      {/each}
+    </div>
+    <ol class="lp-stages">
       {#each LAUNCH_STAGES as s, i}
         {@const active = i === launchStageIndex}
         {@const passed = launchStageIndex >= 0 && i < launchStageIndex}
-        <div class="lp-stage" class:active class:passed style="--seg-color:{s.color}">
-          {#if active && !launchError}<i class="ti ti-loader spin"></i>
-          {:else if passed}<i class="ti ti-check"></i>
-          {:else}<i class="ti ti-circle"></i>{/if}
-          <span>{launchStageLabel(s.key)}</span>
-        </div>
+        <li class="lp-stage" class:active class:passed style="--seg-color:{s.color}" aria-current={active ? 'step' : undefined}>
+          <span class="lp-ico"><i class="ti {passed ? 'ti-check' : s.icon}"></i></span>
+          <span class="lp-name">{stageShort(s.key)}</span>
+        </li>
       {/each}
-    </div>
-    <div class="lp-bar">
-      <div class="lp-fill" class:indet={lpIndeterminate} style="--seg-color:{launchBarColor};width:{lpPercent}%"></div>
-    </div>
+    </ol>
     {#if launchError}
       <ErrorPanel title={t('pack.launchErrorTitle')} message={launchError} />
-    {:else}
-      <div class="lp-label">
-        <i class="ti ti-loader spin"></i> {launchProgress?.message || launchStageLabel(launchProgress?.stage)}
-        {#if launchProgress && launchProgress.percent != null && launchProgress.percent >= 0}
-          <span class="lp-pct">{launchProgress.percent}%</span>
-        {/if}
-      </div>
     {/if}
   </div>
 {/if}
@@ -1605,6 +1688,7 @@
     onUpdate={update}
     packId={pack.id}
     packName={pack.name}
+    mcVersion={pack.mc_version}
     repairing={repairing}
     reinstalling={reinstalling}
     onRepair={repairPack}
@@ -1855,6 +1939,18 @@
     transition: background-color .22s ease, border-color .22s ease, box-shadow .22s ease;
   }
   :global(.pack-toolbar.pt-full .pt-spacer) { flex: 1 1 0; min-width: 0; }
+  /* Тулбар не переносить «Грати» на другий рядок: на вузькому вікні другорядні кнопки
+     стискаються до іконок (підказки лишаються), рядок завжди один. */
+  :global(.pack-toolbar.pt-full) { container-type: inline-size; flex-wrap: nowrap; }
+  :global(.pack-toolbar.pt-full > .pt-id) { min-width: 0; flex: 0 1 auto; }
+  :global(.pack-toolbar.pt-full > .btn) { flex: none; }
+  @container (max-width: 1060px) {
+    :global(.pack-toolbar.pt-full > .btn.btn-ghost:not(:first-child)) { font-size: 0; gap: 0; padding-left: 10px; padding-right: 10px; }
+    :global(.pack-toolbar.pt-full > .btn.btn-ghost:not(:first-child) i) { font-size: 16px; }
+  }
+  @container (max-width: 560px) {
+    :global(.pack-toolbar.pt-full) { flex-wrap: wrap; }
+  }
   :global(.pack-toolbar.pt-full.pt-stuck) {
     background: color-mix(in srgb, var(--bg-app) 82%, transparent);
     backdrop-filter: blur(14px);
@@ -1925,15 +2021,8 @@
      тулбаром сторінки (висота залежить від вікна, а не від кількості
      рядків лога — термінал скролиться всередині, а пошук/дії завжди
      видимі). Той самий підхід, що окреме вікно консолі. */
-  .console-tab-wrap {
-    display: flex; flex-direction: column;
-    margin-bottom: 4px;
-  }
-  .console-tab-wrap :global(.gc) {
-    height: calc(100vh - var(--ct-top, 40px) - 24px);
-    min-height: 300px;
-    max-height: calc(100vh - var(--ct-top, 40px) - 24px);
-  }
+  
+  
   }
   .upd-v-row {
     display: flex; flex-direction: column; gap: 6px; text-align: left;
@@ -1966,4 +2055,12 @@
   @media (max-height: 760px) {
     :global(.pack-hero-full) { min-height: 236px; gap: 16px; padding-bottom: 16px; }
   }
+  :global(.ib-ai) { display: inline-flex; align-items: center; gap: 4px; color: var(--orange); background: rgba(var(--orange-rgb), .14); border: 1px solid rgba(var(--orange-rgb), .4); }
+  :global(.ib-hashed) { display: inline-flex; align-items: center; gap: 4px; color: #818cf8; background: rgba(99,102,241,.14); border: 1px solid rgba(99,102,241,.4); }
+  :global(.ai-busy-btn) { color: var(--orange); border: 1px solid rgba(var(--orange-rgb), .45); background: rgba(var(--orange-rgb), .1); max-width: 280px; cursor: default; }
+  :global(.ai-busy-btn .ai-busy-txt) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :global(.ai-run-ico) { animation: ai-busy-pulse 1.4s ease-in-out infinite; }
+  :global(.ai-busy-btn .ti-robot) { animation: ai-busy-pulse 1.4s ease-in-out infinite; }
+  @keyframes ai-busy-pulse { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { :global(.ai-busy-btn .ti-robot) { animation: none; } }
 </style>

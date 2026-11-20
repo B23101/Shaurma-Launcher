@@ -234,11 +234,11 @@
   .fpm-ava > span { font: 800 30px/1 var(--font-ui); }
   .fpm-ava.ing { box-shadow: 0 10px 26px rgba(0,0,0,.35), 0 0 0 2px rgba(var(--orange-rgb), .55); }
   .fpm-dot { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; border-radius: 50%; border: 3px solid var(--bg-panel); background: var(--text-dim); }
-  .fpm-dot.online { background: var(--ff-ok, #22c55e); } .fpm-dot.away { background: var(--ff-warn, #eab308); } .fpm-dot.in_game { background: var(--orange); }
+  .fpm-dot.online { background: var(--ff-ok, #22c55e); } .fpm-dot.away { background: var(--st-away, #a78bfa); } .fpm-dot.in_game { background: var(--orange); }
 
   .fpm-name { margin-top: 2px; max-width: 100%; font: 800 18px/1.15 var(--font-ui); color: var(--text); overflow-wrap: anywhere; text-align: center; }
   .fpm-status { max-width: 100%; font: 600 11.5px/1.3 var(--font-ui); color: var(--text-dim); text-align: center; overflow-wrap: anywhere; }
-  .fpm-status.online { color: var(--ff-ok, #22c55e); } .fpm-status.away { color: var(--ff-warn, #eab308); }
+  .fpm-status.online { color: var(--ff-ok, #22c55e); } .fpm-status.away { color: var(--st-away, #a78bfa); }
   .fpm-status.in_game { color: var(--pc, var(--orange)); }
 
   .fpm-badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 2px; }

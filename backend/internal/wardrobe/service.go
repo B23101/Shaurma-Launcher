@@ -599,3 +599,26 @@ func (s *Service) RemoteSkinDataURL(skinURL string) (string, error) {
 	}
 	return "data:image/png;base64," + base64.StdEncoding.EncodeToString(data), nil
 }
+
+// SetPresetCapeSystem задає пресету систему плаща: mojang (плащ Mojang із CapeURL, як було) або
+// shaurma (плащ каталогу Шаурми за id; порожній id — без плаща). Сам плащ Шаурми призначає сервер.
+func (s *Service) SetPresetCapeSystem(username, presetID, system, shaurmaCapeID string) (model.SkinPreset, error) {
+	if system != "mojang" && system != "shaurma" {
+		return model.SkinPreset{}, errors.New("wardrobe: unknown cape system")
+	}
+	if len(shaurmaCapeID) > 32 {
+		return model.SkinPreset{}, errors.New("wardrobe: bad cape id")
+	}
+	for _, p := range s.store.List(username) {
+		if p.ID != presetID {
+			continue
+		}
+		p.CapeSystem = system
+		p.ShaurmaCapeID = ""
+		if system == "shaurma" {
+			p.ShaurmaCapeID = shaurmaCapeID
+		}
+		return s.store.Save(username, p)
+	}
+	return model.SkinPreset{}, errors.New("wardrobe: preset not found")
+}

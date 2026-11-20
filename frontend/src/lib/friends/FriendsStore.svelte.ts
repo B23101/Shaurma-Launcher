@@ -55,16 +55,21 @@ export const LIST_W_MAX = 400
 /** Ширина згорнутого списку (рейка) — рівно як у головного sidebar. */
 export const LIST_W_RAIL = 68
 
+// Останній знімок і голови переживають перемонтування розділу «Друзі»: повернення в розділ
+// малює список одразу (без спінера й «вискакування» аватарів), а свіжі дані підміняють його тихо.
+let lastState: SocialState | null = null
+const headsCache: Record<string, string> = {}
+
 export class FriendsStore {
   // ── Стан ──────────────────────────────────────────────────────────────
-  st = $state<SocialState>(structuredClone(EMPTY))
-  loading = $state(true)
+  st = $state<SocialState>(lastState ? structuredClone(lastState) : structuredClone(EMPTY))
+  loading = $state(!lastState)
   /** Перший знімок уже показано — далі рядки, що з'являються, анімуються. */
   ready = $state(false)
   busy = $state('')
   /** Мої ВИХІДНІ запити в друзі: видно, кому надіслано, і можна скасувати. */
   sent = $state<SocialInvite[]>([])
-  heads = $state<Record<string, string>>({})
+  heads = $state<Record<string, string>>({ ...headsCache })
   search = $state('')
   /** Швидкий фільтр за статусом (чіпи над списком). */
   statusFilter = $state<'all' | 'online' | 'in_game'>('all')
@@ -278,7 +283,7 @@ export class FriendsStore {
     const tick = setInterval(() => { this.nowTick = Date.now() }, 30_000)
 
     const offs = [
-      on('friends:update', (s: SocialState) => { this.st = normalize(s); this.#applyServerActivity(this.st); this.loading = false; this.#markReady() }),
+      on('friends:update', (s: SocialState) => { this.st = normalize(s); lastState = structuredClone($state.snapshot(this.st)); this.#applyServerActivity(this.st); this.loading = false; this.#markReady() }),
       // Після підключення сервер одразу шле знімок із часом активності; історію питаємо лише для діалогів, яких він не знає
       // (це робить syncActivity у списку чатів після friends:update).
       on('friends:conn', (c: SocialConn) => { this.st.conn = c; if (c === 'online') this.#activityVerified.clear() }),
@@ -318,6 +323,7 @@ export class FriendsStore {
   async load(force = false) {
     try {
       this.st = normalize(force ? await App.RefreshFriends() : await App.GetFriendsState())
+      lastState = structuredClone($state.snapshot(this.st))
       this.#applyServerActivity(this.st)
     } catch (e) {
       toast(this.errText(e), 'error')
@@ -381,7 +387,7 @@ export class FriendsStore {
       const name = this.#headQueue.shift()!
       this.#headActive++
       App.GetAccountHead('', name, false)
-        .then((h) => { if (typeof h === 'string' && h.startsWith('data:image/')) this.heads[name] = h })
+        .then((h) => { if (typeof h === 'string' && h.startsWith('data:image/')) { this.heads[name] = h; headsCache[name] = h } })
         .catch(() => {})
         .finally(() => { this.#headActive--; this.#pumpHeads() })
     }

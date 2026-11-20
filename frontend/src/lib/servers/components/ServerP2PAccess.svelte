@@ -191,10 +191,10 @@
   {#if tab === 'access'}
     <!-- Режим можна міняти ЗАВЖДИ (і до запуску сервера, і до появи адреси): він
          зберігається в кімнаті й застосується, коли хостинг підніметься. -->
-      <div class="spa-hint">
+      {#if hosting || !sub}<div class="spa-hint">
         <i class="ti ti-info-circle"></i>
-        {#if hosting}{t('servers.p2p.access.liveHint')}{:else if !sub}{t('servers.p2p.access.noAddrHint')}{:else}{t('servers.p2p.access.offlineHint')}{/if}
-      </div>
+        {#if hosting}{t('servers.p2p.access.liveHint')}{:else}{t('servers.p2p.access.noAddrHint')}{/if}
+      </div>{/if}
 
       <div class="spa-modes">
         {#each MODES as m}
@@ -204,7 +204,7 @@
               {#if current === m.id}<i class="ti ti-circle-check-filled spa-mode-ok"></i>{/if}
             </span>
             <b>{t(`servers.p2p.access.${m.id}`)}</b>
-            <span>{t(`servers.p2p.access.${m.id}.desc`)}</span>
+            
           </button>
         {/each}
       </div>

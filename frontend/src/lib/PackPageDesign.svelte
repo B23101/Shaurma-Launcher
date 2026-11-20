@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n.svelte'
   import { tip as launcherTip } from './friends/tooltip'
 
   import { untrack, type Snippet } from 'svelte'
@@ -88,7 +89,7 @@
   {/if}
   {#if html}
     <div class="design-switch"><button type="button" onclick={toggle} aria-pressed={enabled} use:launcherTip={"Перемкнути оформлення сторінки"}>{enabled ? 'Стандартний дизайн' : 'Дизайн збірки'}</button></div>
-    {#if enabled && !full}<iframe class="design-art" use:launcherTip={"Оформлення збірки"} srcdoc={html} sandbox="" tabindex="-1" aria-hidden="true"></iframe>{/if}
+    {#if enabled && !full}<iframe title={t('pack.design')} class="design-art" use:launcherTip={t('pack.design')} srcdoc={html} sandbox="" tabindex="-1" aria-hidden="true"></iframe>{/if}
   {/if}
   <div class="design-content">{@render children()}</div>
 </div>

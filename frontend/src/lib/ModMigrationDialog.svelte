@@ -43,6 +43,7 @@
 
   const isPort = $derived(mode === 'port')
 
+  // svelte-ignore state_referenced_locally
   let targetPackId = $state(packId)
 
   // Аналіз, живі рядки, вибір модів — спільний стан (modMigrationFlow).
@@ -157,6 +158,7 @@
       <!-- ═══ Вибір збірок (компактні SelectField-дропдауни) ═══ -->
       <div class="mig-selectors">
         <div class="mig-sel">
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="mig-sel-label">{t('mods.migrateFrom')}</label>
           <PackChooser
             packs={sourceChoices}
@@ -169,6 +171,7 @@
         </div>
         <div class="mig-arrow" aria-hidden="true"><i class="ti ti-arrow-right"></i></div>
         <div class="mig-sel">
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="mig-sel-label">{t('mods.migrateTo')}</label>
           <PackChooser
             packs={targetChoices}
@@ -259,6 +262,7 @@
         <div class="mig-list">
           {#each flow.liveUnique as it, ri (it.sourceFileName)}
             {@const canSelect = !flow.analyzing && flow.report && flow.isTransferable(it)}
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
             <div
               class={'mig-row st-' + it.status}
               style="--ri:{Math.min(ri, 12)}"
@@ -272,7 +276,7 @@
               {#if canSelect}
                 <button
                   type="button"
-                  role="checkbox"
+                  role="checkbox" aria-label={it.sourceFileName}
                   aria-checked={flow.selected.has(it.sourceFileName)}
                   class="mig-check"
                   class:checked={flow.selected.has(it.sourceFileName)}

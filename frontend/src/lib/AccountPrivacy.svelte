@@ -137,8 +137,6 @@
 <div class="ap" data-testid="account-privacy">
   {#if loaded && !loggedIn}
     <div class="ap-warn"><i class="ti ti-plug-off"></i> {t('acc.modal.priv.need')}</div>
-  {:else}
-    <p class="ap-note"><i class="ti ti-shield-check"></i> {t('acc.modal.priv.note')}</p>
   {/if}
 
   <section class="st-card ap-card" class:ap-off={off}>
@@ -146,7 +144,7 @@
     <div class="st-card-body">
       <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('social.priv.status')}</div><div class="st-row-hint">{t('social.priv.statusHint')}</div></div>
         <SelectField value={norm(priv?.showStatusTo)} options={showOpts} ariaLabel={t('social.priv.status')} minWidth="124px" disabled={off} onchange={(v: string) => savePriv({ showStatusTo: v as any })} /></div>
-      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('social.priv.server')}</div><div class="st-row-hint">{t('social.priv.serverHint')}</div></div>
+      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('social.priv.server')}</div></div>
         <SelectField value={norm(priv?.showServerTo)} options={showOpts} ariaLabel={t('social.priv.server')} minWidth="124px" disabled={off} onchange={(v: string) => savePriv({ showServerTo: v as any })} /></div>
       <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('acc.modal.priv.profile')}</div><div class="st-row-hint">{t('acc.modal.priv.profileHint')}</div></div>
         <SelectField value={profVis || 'friends'} options={whoOpts} ariaLabel={t('acc.modal.priv.profile')} minWidth="124px" disabled={off || profVis === ''} onchange={saveProfile} /></div>
@@ -162,7 +160,7 @@
         <SelectField value={priv?.whoCanMessage ?? 'friends'} options={whoOpts} ariaLabel={t('social.priv.whoMsg')} minWidth="124px" disabled={off} onchange={(v: string) => savePriv({ whoCanMessage: v as any })} /></div>
       <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('groups.priv.whoAdd')}</div><div class="st-row-hint">{t('groups.priv.whoAddHint')}</div></div>
         <SelectField value={whoAdd || 'friends'} options={whoOpts} ariaLabel={t('groups.priv.whoAdd')} minWidth="124px" disabled={off || whoAdd === ''} onchange={saveWhoAdd} /></div>
-      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('social.priv.requests')}</div><div class="st-row-hint">{t('social.priv.requestsHint')}</div></div>
+      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('social.priv.requests')}</div></div>
         <SelectField value={priv?.friendRequests ?? 'everyone'} options={reqOpts} ariaLabel={t('social.priv.requests')} minWidth="124px" disabled={off} onchange={(v: string) => savePriv({ friendRequests: v as any })} /></div>
     </div>
   </section>
@@ -170,9 +168,9 @@
   <section class="st-card ap-card">
     <div class="st-card-head"><div class="st-card-ic violet"><i class="ti ti-bell"></i></div><div class="st-card-tx"><h3>{t('ff.priv.notifs')}</h3></div></div>
     <div class="st-card-body">
-      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('ff.priv.muteAll')}</div><div class="st-row-hint">{t('ff.priv.muteAllHint')}</div></div>
+      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('ff.priv.muteAll')}</div></div>
         <button class="st-switch" class:on={!muteAll} role="switch" aria-checked={!muteAll} aria-label={t('ff.priv.muteAll')} disabled={busy === 'mute'} onclick={toggleMuteAll}></button></div>
-      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('ff.priv.sound')}</div><div class="st-row-hint">{t('ff.priv.soundHint')}</div></div>
+      <div class="st-row"><div class="st-row-text"><div class="st-row-name">{t('ff.priv.sound')}</div></div>
         <button class="st-switch" class:on={!muteSound} role="switch" aria-checked={!muteSound} aria-label={t('ff.priv.sound')} disabled={busy === 'sound'} onclick={toggleSound}></button></div>
     </div>
   </section>
@@ -198,7 +196,7 @@
   .ap { display: flex; flex-direction: column; gap: 12px; }
   .ap-card .st-row { padding: 12px 18px; min-height: 54px; }
   .ap-off { opacity: .6; pointer-events: none; }
-  .ap-note { display: flex; gap: 8px; margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-mute); }
+  
   .ap-warn { display: flex; gap: 10px; align-items: center; padding: 10px 12px; border-radius: var(--r-md); font-size: 12px; border: 1px solid rgba(245,158,11,.4); background: rgba(245,158,11,.09); }
   .ap-empty { color: var(--text-dim); min-height: 0; }
   @media (max-width: 520px) { .ap-card .st-row { flex-wrap: wrap; } }

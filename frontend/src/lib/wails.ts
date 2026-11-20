@@ -204,6 +204,17 @@ export const App = {
   ClearCache: (): Promise<void> => call('ClearCache'),
   CompleteSetup: (s: Settings): Promise<void> => call('CompleteSetup', s),
   DetectJava: (): Promise<string> => call('DetectJava'),
+  InspectJava: (path: string, mcVersion: string): Promise<import('./types').JavaCheck> => call('InspectJava', path, mcVersion),
+  BrowseJavaExe: (): Promise<string> => call('BrowseJavaExe'),
+  GetShaurmaCapes: (): Promise<import('./types').ShaurmaCapes> => call('GetShaurmaCapes'),
+  GetShaurmaCapesFor: (accountId: string): Promise<import('./types').ShaurmaCapes> => call('GetShaurmaCapesFor', accountId),
+  SelectShaurmaCapeFor: (accountId: string, source: string, capeId: string): Promise<void> => call('SelectShaurmaCapeFor', accountId, source, capeId),
+  RedeemShaurmaCapeFor: (accountId: string, code: string): Promise<import('./types').CapeRedeemResult> => call('RedeemShaurmaCapeFor', accountId, code),
+  ExportWardrobeSkinPNG: (dataUrl: string, name: string): Promise<string> => call('ExportWardrobeSkinPNG', dataUrl, name),
+  SelectShaurmaCape: (source: string, capeId: string): Promise<void> => call('SelectShaurmaCape', source, capeId),
+  RedeemShaurmaCape: (code: string): Promise<import('./types').CapeRedeemResult> => call('RedeemShaurmaCape', code),
+  SetWardrobePresetCape: (accountId: string, presetId: string, system: string, shaurmaCapeId: string): Promise<import('./types').SkinPreset> =>
+    call('SetWardrobePresetCape', accountId, presetId, system, shaurmaCapeId),
   DownloadPack: (id: string): Promise<void> => call('DownloadPack', id),
   // М'яка зупинка качки збірки: прогрес зберігається, кнопка стає «Продовжити».
   PauseDownload: (packID: string): Promise<void> => call('PauseDownload', packID),
@@ -296,6 +307,7 @@ export const App = {
   ToggleMod: (instanceID: string, fileName: string, enabled: boolean): Promise<void> => call('ToggleMod', instanceID, fileName, enabled),
   // ── Менеджер модів (вкладка «Моди») ──
   ScanModsFull: (packID: string): Promise<ModEntry[]> => call('ScanModsFull', packID),
+  GetPackHashedCount: (packID: string): Promise<number> => call('GetPackHashedCount', packID),
   // ScanModsWithCachedUpdates — скан з диска + вже ВІДОМИЙ (закешований)
   // статус оновлень, без походу в мережу. Використовується при звичайному
   // відкритті сторінки модів, щоб не бити Modrinth/CurseForge щоразу.
@@ -579,6 +591,29 @@ export const App = {
   GetStorageUsage: (): Promise<StorageInfo> => call('GetStorageUsage'),
   // Список встановлених збірок з розмірами (швидке видалення у «Пам'ять і кеш»).
   GetStoragePacks: (): Promise<StoragePackEntry[]> => call('GetStoragePacks'),
+  // ── ШІ-агент: локальний MCP-сервер (ai_agent_api.go) ──
+  GetAIAgentStatus: (): Promise<any> => call('GetAIAgentStatus'),
+  SetAIAgentEnabled: (enabled: boolean): Promise<any> => call('SetAIAgentEnabled', enabled),
+  SetAIAgentAllowWrite: (allow: boolean): Promise<any> => call('SetAIAgentAllowWrite', allow),
+  DisconnectAIAgent: (): Promise<any> => call('DisconnectAIAgent'),
+  AllowAIAgentAgain: (): Promise<any> => call('AllowAIAgentAgain'),
+  RegenerateAIAgentToken: (): Promise<any> => call('RegenerateAIAgentToken'),
+  GetAIAgentBuildAuthor: (packID: string): Promise<string> => call('GetAIAgentBuildAuthor', packID),
+  GetAIAgentEditSessions: (): Promise<any[]> => call('GetAIAgentEditSessions'),
+  DismissAIAgentEdit: (packID: string): Promise<void> => call('DismissAIAgentEdit', packID),
+  SetAIAgentPermission: (category: string, allowed: boolean): Promise<any> => call('SetAIAgentPermission', category, allowed),
+  SetAIAgentPreset: (preset: string): Promise<any> => call('SetAIAgentPreset', preset),
+  SetAIAgentPort: (port: number): Promise<any> => call('SetAIAgentPort', port),
+  SetAIAgentLockSeconds: (sec: number): Promise<any> => call('SetAIAgentLockSeconds', sec),
+  SetAIAgentEditPolicy: (policy: string): Promise<any> => call('SetAIAgentEditPolicy', policy),
+  SetAIAgentAsk: (key: string, ask: boolean): Promise<any> => call('SetAIAgentAsk', key, ask),
+  SetAIAgentProtectUserData: (protect: boolean): Promise<any> => call('SetAIAgentProtectUserData', protect),
+  SetAIAgentShowIndicator: (show: boolean): Promise<any> => call('SetAIAgentShowIndicator', show),
+  SetAIAgentAutoUpdate: (on: boolean): Promise<any> => call('SetAIAgentAutoUpdate', on),
+  SetAIAgentMaxClients: (n: number): Promise<any> => call('SetAIAgentMaxClients', n),
+  GetAIGameAgentStatus: (): Promise<any> => call('GetAIGameAgentStatus'),
+  UpdateAIGameAgent: (): Promise<any> => call('UpdateAIGameAgent'),
+  GetAIAgentActivity: (): Promise<any> => call('GetAIAgentActivity'),
   // Очистити логи лаунчера + логів/краш-репортів усіх збірок.
   ClearPackLogs: (): Promise<void> => call('ClearPackLogs'),
   // ── Тихий журнал помилок лаунчера (launcher_errors.go) ──
@@ -1488,4 +1523,5 @@ export const Window = {
   UnMinimise: (): Promise<void> => RtWindow.UnMinimise() as Promise<void>,
   Hide: (): Promise<void> => RtWindow.Hide() as Promise<void>,
   Show: (): Promise<void> => RtWindow.Show() as Promise<void>,
+  SetZoom: (zoom: number): Promise<void> => (RtWindow as any).SetZoom(zoom) as Promise<void>,
 }

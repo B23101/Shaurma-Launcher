@@ -315,6 +315,8 @@ func dispatchLaunchToBackend() {
 
 func main() {
 	handleP2PFirewallCommand()
+	// Консольна команда для ШІ: запустити лаунчер у фоні й дочекатись MCP (ai_start.go).
+	handleAIStartCommand()
 	// Краш-лог shell-процесу — ПЕРШЕ, до будь-якої іншої роботи (crashlog.go).
 	initCrashLog()
 

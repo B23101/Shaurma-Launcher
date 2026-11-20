@@ -23,6 +23,7 @@ import (
 var notifyEventKinds = map[string]bool{
 	"download_done": true, "install_failed": true, "action_needed": true,
 	"friend_request": true,
+	"profile_comment": true, "profile_reaction": true,
 	"share_build":    true, "share_server": true, "share_mod": true,
 	"invite_temp": true, "invite_perm": true,
 	"server_started": true, "server_stopped": true,

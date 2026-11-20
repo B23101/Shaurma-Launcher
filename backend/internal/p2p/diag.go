@@ -48,6 +48,23 @@ func explainLobbyErr(err error) string {
 	if errors.Is(err, ErrAddressNotFound) {
 		return "адреси НЕМАЄ в lobby: її ніколи не створювали, вона протухла (30 днів без активності) або гравець ввів її з помилкою"
 	}
+	var le *LobbyError
+	if errors.As(err, &le) {
+		switch {
+		case le.IsGateDenied():
+			src := le.Source
+			if src == "" {
+				src = "невідомо"
+			}
+			return "403 БЕЗ пояснення (код=" + le.Code + ", джерело: " + src + "): відсікання ШЛЮЗУ/Cloudflare ще до P2P-логіки, " +
+				"а НЕ рішення власника кімнати. Перевірте на VPS ALLOW_TOKENLESS_GEN2 / LAUNCHER_TOKEN_SHA256, " +
+				"у Cloudflare — Security → Events по /p2p/join/, а в клієнті — чи йдуть X-Shaurma-Client-Gen / X-Shaurma-Entitlement (див. «авторизація=» у рядку запиту)"
+		case le.Status == 403 && errors.Is(le, ErrNotAllowed):
+			return "VPS відмовив за режимом/списками кімнати (p2p_not_allowed): це рішення власника кімнати, режим доступу=" + le.Access
+		case le.Status == 401:
+			return "VPS вимагає вхід в акаунт Шаурми (401): JWT відсутній або протермінований — перезайдіть в акаунт"
+		}
+	}
 	m := strings.ToLower(err.Error())
 	switch {
 	case strings.Contains(m, "не налаштований на сервері"):
@@ -55,7 +72,7 @@ func explainLobbyErr(err error) string {
 	case strings.Contains(m, "забагато спроб"):
 		return "lobby обмежив запити з цього IP (rate-limit) — зачекати кілька хвилин"
 	case strings.Contains(m, "http 401"), strings.Contains(m, "http 403"):
-		return "lobby ВІДХИЛИВ токен лаунчера (401/403): токен застарів/недійсний — оновіть лаунчер або перезайдіть в акаунт"
+		return "lobby відповів 401/403 — причину дивіться за кодом і джерелом у рядку запиту до lobby"
 	case strings.Contains(m, "http 5"):
 		return "помилка на боці сервера lobby (5xx) — повторити пізніше / перевірити Worker"
 	case strings.Contains(m, "запит до lobby"):

@@ -67,7 +67,7 @@
                    value={ramMb} oninput={(e: any) => ramMb = Number(e.target.value)}
                    style="width:100%;accent-color:var(--orange);margin-top:6px" />
             <div style="display:flex;justify-content:space-between;font-size:var(--fs-min);color:var(--text-mute);margin-top:2px">
-              <span>1 ГБ</span><span>{Math.round(ramMax / 1024)} ГБ</span>
+              <span>{t('ram.gbVal', { v: 1 })}</span><span>{t('ram.gbVal', { v: Math.round(ramMax / 1024) })}</span>
             </div>
           </div>
 

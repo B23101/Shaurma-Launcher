@@ -62,12 +62,14 @@
 
   // ── Іконка / колір / налаштування ──
   let copyIcon = $state(true)
+  // svelte-ignore state_referenced_locally
   let iconName = $state(packIcon || 'ti-puzzle')
 
   // Реальна іконка джерела через packAsset (як у sidebar): локальні
   // іконки (local-file://) і CDN-URL конвертуються у data-URL бекендом —
   // інакше <img> показував би биту картинку для локальних збірок.
   const effectiveIcon = $derived(packAsset(packIconUrl) ?? undefined)
+  // svelte-ignore state_referenced_locally
   let color = $state(packColor || '#ff8a00')
   let iconSrcPath = $state('')
   let copySettings = $state(true)
@@ -457,7 +459,7 @@
               spellcheck="false"
             />
             {#if treeFilter}
-              <button class="dup-search-clear" onclick={() => (treeFilter = '')} use:launcherTip={t('export.clearAll')}>
+              <button aria-label={t('export.clearAll')} class="dup-search-clear" onclick={() => (treeFilter = '')} use:launcherTip={t('export.clearAll')}>
                 <i class="ti ti-x"></i>
               </button>
             {/if}
@@ -561,7 +563,7 @@
               </div>
               <div class="dup-colorbar">
                 {#each colorPresets as c (c)}
-                  <button class="dup-cdot" class:sel={color === c} style="background:{c}" onclick={() => color = c} use:launcherTip={c}></button>
+                  <button aria-label={c} class="dup-cdot" class:sel={color === c} style="background:{c}" onclick={() => color = c} use:launcherTip={c}></button>
                 {/each}
                 <label class="dup-ccustom" use:launcherTip={t('duplicate.customColor')}>
                   <input type="color" bind:value={color} />

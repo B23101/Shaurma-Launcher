@@ -28,12 +28,14 @@
     onClose?: () => void
   } = $props()
 
+  // svelte-ignore state_referenced_locally
   const storageKey = `shaurma.export.${packId}`
 
   let candidates = $state<ExportCandidate[]>([])
   let loadingCandidates = $state(true)
   let included = $state<string[]>([])
   let excluded = $state<string[]>([])
+  // svelte-ignore state_referenced_locally
   let name = $state(packName)
   let version = $state('1.0.0')
   let summary = $state('')
@@ -416,7 +418,7 @@
                 <button class="btn btn-ghost btn-xs" onclick={clearAll}><i class="ti ti-square-x"></i> {t('export.clearAll')}</button>
               </span>
             </div>
-            <div class="ep-hint">{t('export.filesHint')}</div>
+            
             {#if loadingCandidates}
               <div class="ep-empty"><i class="ti ti-loader" style="animation:spin 1s linear infinite"></i></div>
             {:else if tree.length === 0}
@@ -467,12 +469,6 @@
                   </label>
                 {/each}
               </div>
-              {#if formats.includes('curseforge')}
-                <div class="ep-format-hint">{t('export.cfHint')}</div>
-              {/if}
-              {#if formats.includes('shaurmpack')}
-                <div class="ep-format-hint">{t('export.shaurmpackHint')}</div>
-              {/if}
             </div>
 
             <label class="ep-field">

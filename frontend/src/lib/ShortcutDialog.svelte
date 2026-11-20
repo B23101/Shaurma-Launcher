@@ -168,7 +168,7 @@
         {#if location === 'custom'}
           <div class="sc-custom">
             <input class="input mono" bind:value={customDir} placeholder="C:\..." disabled={busy} />
-            <button class="btn btn-ghost" onclick={browse} disabled={busy} use:launcherTip={t('shortcut.browse')}>
+            <button aria-label={t('shortcut.browse')} class="btn btn-ghost" onclick={browse} disabled={busy} use:launcherTip={t('shortcut.browse')}>
               <i class="ti ti-folder-open"></i>
             </button>
           </div>

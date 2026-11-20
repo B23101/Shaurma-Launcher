@@ -21,6 +21,7 @@
     accent?: 'red' | 'yellow'
   }>()
 
+  // svelte-ignore state_referenced_locally
   let open = $state(!collapsedByDefault)
 
   async function copyMessage() {
@@ -34,11 +35,12 @@
   <div class="ep-head" role="button" tabindex="0" onclick={() => open = !open}
        onkeydown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open = !open } }}>
     <span class="ep-title"><i class="ti ti-alert-triangle"></i> <span class="ep-title-text">{title}</span></span>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <div class="ep-acts" role="group" onclick={(e: any) => e.stopPropagation()}>
       <button class="ep-btn" onclick={copyMessage} use:launcherTip={t('error.copy')}>
         <i class="ti ti-copy"></i> {t('error.copy')}
       </button>
-      <button class="ep-btn" onclick={() => open = !open} use:launcherTip={open ? t('error.collapse') : t('error.expand')}>
+      <button aria-label={open ? t('error.collapse') : t('error.expand')} class="ep-btn" onclick={() => open = !open} use:launcherTip={open ? t('error.collapse') : t('error.expand')}>
         <i class="ti {open ? 'ti-chevron-up' : 'ti-chevron-down'}"></i>
       </button>
     </div>

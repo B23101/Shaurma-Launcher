@@ -58,9 +58,11 @@
     invite_perm:    { color: '#06b6d4', icon: 'ti-infinity',              on: '#032329' },
     server_started: { color: '#14b8a6', icon: 'ti-player-play-filled',    on: '#032420' },
     server_stopped: { color: '#94a3b8', icon: 'ti-player-stop',    on: '#101722' },
+    profile_comment:  { color: '#f472b6', icon: 'ti-message-dots',  on: '#2a0a1c' },
+    profile_reaction: { color: '#fb7185', icon: 'ti-heart',         on: '#2a0a10' },
   }
   // Події, де в заголовку — нік друга (потрібна його голова).
-  const FRIEND_EVENTS = new Set(['chat', 'friend_request', 'share_build', 'share_server', 'share_mod', 'invite_temp', 'invite_perm', 'server_started', 'server_stopped'])
+  const FRIEND_EVENTS = new Set(['chat', 'friend_request', 'share_build', 'share_server', 'share_mod', 'invite_temp', 'invite_perm', 'server_started', 'server_stopped', 'profile_comment', 'profile_reaction'])
 
   interface Card {
     key: string
@@ -534,7 +536,7 @@
   .np-mini { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 5px; image-rendering: pixelated; }
   .np-line {
     font: 500 11.5px/1.35 var(--font-ui); color: var(--text-mute);
-    display: -webkit-box; line-clamp: 2; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    display: -webkit-box; line-clamp: 2; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden; word-break: break-word;
   }
   .np-line.err { color: color-mix(in srgb, var(--c) 55%, var(--text)); }

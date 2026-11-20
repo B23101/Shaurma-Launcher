@@ -40,6 +40,7 @@ var forceQuitConfirmed bool
 func trayMenuJSON() string {
 	items := []map[string]any{
 		{"id": "show", "label": "Показати лаунчер"},
+		{"id": "ai_off", "label": "Вимкнути ШІ-агента (MCP)"},
 		{"id": "quit", "label": "Вийти", "separator": true},
 	}
 	b, _ := json.Marshal(items)
@@ -87,6 +88,8 @@ func (a *App) onTrayClick(id string) {
 	switch id {
 	case "show":
 		a.showWindow()
+	case "ai_off":
+		_, _ = a.SetAIAgentEnabled(false)
 	case "quit":
 		a.quitNow()
 	}
@@ -118,6 +121,8 @@ func (a *App) shutdown() {
 	a.saveWindowStateOnExit()
 	// Локальний loopback-сервер іконок модів (modicon_server.go).
 	stopModIconServer()
+	// Локальний MCP-сервер ШІ-агентів.
+	a.aiAgentStop()
 	// Журнал помилок: лише локальне збереження, у мережу нічого не йде.
 	a.AutoSaveLauncherErrorLog()
 	// Discord Rich Presence: завершуємо serve-цикл.

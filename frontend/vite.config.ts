@@ -5,6 +5,30 @@ import {svelte} from '@sveltejs/vite-plugin-svelte'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [svelte(), {
+    // tabler-icons постачає той самий шрифт у woff2+woff+ttf. WebView2 (Windows)
+    // і WebKitGTK (Linux) завжди беруть woff2, тож .woff/.ttf того самого
+    // шрифта — кілька МБ мертвого вантажу в бандлі та інсталяторі. Прибираємо
+    // їх із виходу і точково чистимо лише їхні посилання в CSS (інші шрифти —
+    // Inter, JetBrains Mono — не чіпаємо; у них свій ttf і woff2-альтернативи нема).
+    name: 'drop-redundant-tabler-font-formats',
+    generateBundle(_options, bundle) {
+      const dropped: string[] = []
+      for (const name of Object.keys(bundle)) {
+        if (/tabler-icons[^/\\]*\.(ttf|woff)$/i.test(name)) { // .woff2 закінчується на «2» — не підпадає
+          delete bundle[name]
+          dropped.push(name.split(/[/\\]/).pop()!)
+        }
+      }
+      if (dropped.length === 0) return
+      const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const refRe = new RegExp(`,?\\s*url\\([^)]*(?:${dropped.map(esc).join('|')})[^)]*\\)\\s*format\\([^)]*\\)`, 'gi')
+      for (const output of Object.values(bundle)) {
+        if (output.type !== 'asset' || !output.fileName.endsWith('.css')) continue
+        const css = typeof output.source === 'string' ? output.source : Buffer.from(output.source).toString('utf8')
+        output.source = css.replace(refRe, '')
+      }
+    }
+  }, {
     name: 'bundled-license-inventory',
     generateBundle(_options, bundle) {
       const packages = new Set<string>()

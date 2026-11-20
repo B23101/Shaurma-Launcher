@@ -85,6 +85,27 @@ export function loadHidden(me: string, chatId: string): Set<number> {
   } catch { return new Set() }
 }
 
+// «Очистити чат» (лише в себе): усе з id ≤ межі ховається на цьому пристрої.
+const CLEAR_PREFIX = 'shaurma.chat.clearedUpTo.'
+
+export function loadClearedUpTo(me: string, chatId: string): number {
+  if (!me || !chatId) return 0
+  try {
+    const all = JSON.parse(localStorage.getItem(CLEAR_PREFIX + me) || '{}')
+    const n = Number(all?.[chatId])
+    return Number.isFinite(n) && n > 0 ? n : 0
+  } catch { return 0 }
+}
+
+export function saveClearedUpTo(me: string, chatId: string, upTo: number) {
+  if (!me || !chatId) return
+  try {
+    const all = JSON.parse(localStorage.getItem(CLEAR_PREFIX + me) || '{}')
+    all[chatId] = upTo
+    localStorage.setItem(CLEAR_PREFIX + me, JSON.stringify(all))
+  } catch { /* приватний режим / квота — чат очищено до перезапуску */ }
+}
+
 export function saveHidden(me: string, chatId: string, ids: Set<number>) {
   if (!me || !chatId) return
   try {

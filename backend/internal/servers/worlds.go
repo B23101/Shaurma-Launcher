@@ -36,6 +36,8 @@ type BackupInfo struct {
 	Files int `json:"files,omitempty"`
 	// Auto — бекап створено автоматично (таймером/при зупинці), а не кнопкою.
 	Auto bool `json:"auto,omitempty"`
+	// CreatedBy — хто створив копію, якщо це ШІ-агент (позначку ставить App; порожньо = користувач/авто).
+	CreatedBy string `json:"createdBy,omitempty"`
 }
 
 // BackupProgress — стан створення бекапу для UI (прогрес-бар).

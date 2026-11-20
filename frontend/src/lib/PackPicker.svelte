@@ -176,6 +176,7 @@
             return { src: ic, paused: false, pcol: r?.color || fpcol, preset: r?.icon || 'ti-puzzle' }
           })}
           <div class="pp-folder" class:open={isOpen} style="--pcol:{fpcol}">
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="pp-folder-head" onclick={() => toggle(item.id)} use:launcherTip={f.name}>
               <div class="pp-stack">
                 {#if f.packIds.length === 0}
@@ -208,6 +209,7 @@
                     {@const pcol = r.color || 'var(--orange)'}
                     {@const ic = iconFor(r)}
                     {@const sel = isSel(pid)}
+                    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
                     <div
                       class="pp-row pp-in-folder"
                       class:sel={sel}
@@ -233,6 +235,7 @@
                         {/if}
                       </span>
                       {#if rowActions}
+                        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                         <span class="pp-actions" onclick={(e: any) => e.stopPropagation()}>
                           {@render rowActions(pid)}
                         </span>
@@ -254,6 +257,7 @@
           {@const pcol = r.color || 'var(--orange)'}
           {@const ic = iconFor(r)}
           {@const sel = isSel(item.id)}
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="pp-row"
             class:sel={sel}
@@ -279,6 +283,7 @@
               {/if}
             </span>
             {#if rowActions}
+              <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
               <span class="pp-actions" onclick={(e: any) => e.stopPropagation()}>
                 {@render rowActions(item.id)}
               </span>

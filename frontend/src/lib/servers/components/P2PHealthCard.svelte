@@ -171,7 +171,7 @@
               onfocus={() => (customOpen = true)} onchange={applyCustom} aria-label={t('servers.p2p.udp.portLabel')} />
           {/if}
         </div>
-        <div class="phc-vd">{t('servers.p2p.health.appliedLive')}</div>
+        
         <div class="phc-exposure"><i class="ti ti-alert-triangle"></i><span>{t('servers.p2p.health.exposure')}</span></div>
       {/if}
     </div>

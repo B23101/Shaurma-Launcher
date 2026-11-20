@@ -35,12 +35,12 @@
   import { cubicOut } from 'svelte/easing'
   import { flip } from 'svelte/animate'
   import { t } from './i18n.svelte'
-  import { App } from './wails'
+  import { App, on } from './wails'
   import { toast, confirmDialog } from './toast.svelte'
   import type { WardrobeViewerHandle } from './wardrobe3d'
   import MiniSkin3D from './MiniSkin3D.svelte'
   import WardrobeModal from './WardrobeModal.svelte'
-  import type { SkinPreset, CapeInfo, PlayerProfile, Account } from './types'
+  import type { SkinPreset, CapeInfo, PlayerProfile, Account, ShaurmaCapes } from './types'
   import steveSkin from '../assets/skins/steve.png'
   import alexSkin from '../assets/skins/alex.png'
   import noorSkin from '../assets/skins/noor.png'
@@ -298,14 +298,18 @@
     // Пресети нового акаунта ще вантажаться: не показуємо проміжний стан (інакше модель
     // перемикалась би двічі — спершу за виглядом акаунта, потім за його активним пресетом).
     if (!p && loading) return
+    const sc = shaurmaCapes // залежність: плащі Шаурми підвантажились / змінились
     let alive = true
     const show = (look: { skin: string | null; cape: string | null; slim: boolean }) => {
       if (alive && v.setLook(look)) pulseSceneFade()
     }
     if (p) {
+      // Плащ пресету: із системи Шаурми (каталог) або з Mojang-кешу пресету.
+      const shaurmaCape = presetShaurmaCape(p)
       Promise.all([
         App.GetWardrobeTextureDataURL(p.skinPath),
-        p.capePath ? App.GetWardrobeTextureDataURL(p.capePath).catch(() => null) : Promise.resolve(null),
+        shaurmaCape !== undefined ? Promise.resolve(shaurmaCape)
+          : p.capePath ? App.GetWardrobeTextureDataURL(p.capePath).catch(() => null) : Promise.resolve(null),
       ]).then(([skin, cape]) => show({ skin, cape, slim: p.slimArms })).catch(() => {})
       return () => { alive = false }
     }
@@ -313,13 +317,31 @@
     if (!acc?.id) return
     App.GetWardrobeActiveLook(acc.id).then((look) => {
       // Немає скіна (новий/офлайн-акаунт) — показуємо стандартного Steve, а не лишаємо персонажа
-      // попереднього акаунта.
+      // попереднього акаунта. Плащ бекенд уже бере з профілю гри на сервері (як бачить гра).
+      void sc
       show({ skin: look?.skinDataUrl || null, cape: look?.capeDataUrl ?? null, slim: !!look?.slimArms })
     }).catch(() => {})
     return () => { alive = false }
   })
 
   $effect(() => { viewer?.playAnimation(anim) })
+
+  // Плащ Шаурми пресету: data URL, null (система Шаурми, без плаща) або undefined (не система Шаурми —
+  // беремо Mojang-плащ пресету як раніше). Для пірата старі пресети теж показують плащ Шаурми, що
+  // зараз обраний на сервері, — саме його бачитимуть у грі.
+  function presetShaurmaCape(p: SkinPreset): string | null | undefined {
+    const sc = shaurmaCapes
+    if (!sc) return undefined
+    if (p.capeSystem === 'shaurma') return sc.capes.find((c) => c.id === p.shaurmaCapeId)?.texture || null
+    if (!p.capeSystem && !sc.licensed) return sc.capes.find((c) => c.id === sc.active)?.texture || null
+    return undefined
+  }
+
+  // Плащі Шаурми потрібні не лише редактору: сцена й картки пресетів показують обраний плащ.
+  onMount(() => {
+    loadShaurmaCapes()
+    return on('capes:changed', () => { loadShaurmaCapes() })
+  })
 
   // ── Міні-3D превʼю карток пресетів ──
   let presetTextures = $state<Record<string, string>>({})
@@ -415,6 +437,10 @@
   $effect(() => {
     const v = editorViewer
     if (!v || !editorOpen) return
+    if (editorCapeSystem === 'shaurma') {
+      v.setCapeTexture(editorShaurmaCapeId ? (shaurmaCapes?.capes.find((c) => c.id === editorShaurmaCapeId)?.texture || null) : null)
+      return
+    }
     const url = editorPreviewCapeUrl
     if (!url) { v.setCapeTexture(null); return }
     let alive = true
@@ -513,6 +539,75 @@
   let editorSelectedCapeId = $state<string>('')
   let editorPreviewCapeUrl = $state<string | null>(null)
   let editorCapeTouched = $state(false)
+  // ── Плащі Шаурми: система плаща пресету (mojang | shaurma) ──
+  // Ліцензійний обирає, звідки плащ у грі: з Mojang (як раніше) чи з Шаурми.
+  // Пірат має лише плащі Шаурми. Сам плащ призначає сервер — тут лише вибір.
+  let shaurmaCapes = $state<ShaurmaCapes | null>(null)
+  let shaurmaThumbs = $state<Record<string, string>>({})
+  let editorCapeSystem = $state<'mojang' | 'shaurma'>('mojang')
+  let editorShaurmaCapeId = $state('')
+  let editorCapeSystemTouched = $state(false)
+  let redeemCode = $state('')
+  let redeemBusy = $state(false)
+  let redeemMsg = $state<{ tone: 'good' | 'bad'; text: string } | null>(null)
+  let redeemOpen = $state(false)
+
+  // Експорт PNG скіна туди, куди скаже гравець (діалог збереження).
+  async function exportSkinPNG(dataUrl: string | null | undefined, name: string) {
+    if (!dataUrl) return
+    try {
+      const path = await App.ExportWardrobeSkinPNG(dataUrl, name)
+      if (path) toast(t('wardrobe.exported'), 'success')
+    } catch (e) {
+      toast(String(e), 'error')
+    }
+  }
+  async function exportEditorSkin() {
+    const data = editorPendingSkin ?? (editorPreset ? await App.GetWardrobeTextureDataURL(editorPreset.skinPath).catch(() => null) : null)
+    await exportSkinPNG(data, editorName.trim() || editorPreset?.name || 'skin')
+  }
+  const editorLicensed = $derived(!!activeAccount?.isLicensed)
+
+  async function loadShaurmaCapes() {
+    if (!shaurma) { shaurmaCapes = null; return }
+    try {
+      const st = await App.GetShaurmaCapesFor(activeAccount?.id ?? '')
+      shaurmaCapes = st
+      const next: Record<string, string> = {}
+      await Promise.all(st.capes.map(async (c) => {
+        if (c.texture) { try { next[c.id] = await cropCapeFront(c.texture) } catch { /* без превʼю */ } }
+      }))
+      shaurmaThumbs = next
+    } catch {
+      shaurmaCapes = null
+    }
+  }
+
+  async function redeemCape() {
+    const code = redeemCode.trim()
+    if (!code || redeemBusy) return
+    redeemBusy = true
+    redeemMsg = null
+    try {
+      const r = await App.RedeemShaurmaCapeFor(activeAccount?.id ?? '', code)
+      if (r.result === 'granted' && r.cape) {
+        redeemCode = ''
+        redeemMsg = { tone: 'good', text: t('capes.redeem.granted', { name: r.cape.title }) }
+        await loadShaurmaCapes()
+        editorCapeSystem = 'shaurma'
+        editorShaurmaCapeId = r.cape.id
+        editorCapeSystemTouched = true
+      } else if (r.result === 'too_many_attempts') {
+        redeemMsg = { tone: 'bad', text: t('capes.redeem.too_many_attempts', { min: Math.max(1, Math.ceil((r.retryAfterSec ?? 60) / 60)) }) }
+      } else {
+        redeemMsg = { tone: 'bad', text: t('capes.redeem.' + r.result) }
+      }
+    } catch (e) {
+      redeemMsg = { tone: 'bad', text: String(e) }
+    } finally {
+      redeemBusy = false
+    }
+  }
   let editorFileInput: HTMLInputElement | undefined = $state()
   let editorCapeThumbs = $state<Record<string, string>>({})
   // Обраний у редакторі файл скіна ще НЕ збережено: тримаємо data-URL лише
@@ -755,7 +850,14 @@
     editorCapeTouched = false
     editorPendingSkin = null
     editorPendingSkinName = ''
+    editorCapeSystem = (p?.capeSystem as 'mojang' | 'shaurma') || (activeAccount?.isLicensed ? 'mojang' : 'shaurma')
+    editorShaurmaCapeId = p?.shaurmaCapeId ?? ''
+    editorCapeSystemTouched = false
+    redeemCode = ''
+    redeemMsg = null
+    redeemOpen = false
     editorOpen = true
+    loadShaurmaCapes()
     try {
       editorCapeGrid = await App.GetWardrobeOwnedCapes(activeAccount?.id ?? '')
     } catch {
@@ -835,8 +937,8 @@
       toast(t('wardrobe.editor.noSkin'), 'error')
       return
     }
-    await saveEditorCape()
-    const capeUrl = editorCapeTouched
+    if (editorCapeSystem === 'mojang') await saveEditorCape()
+    const capeUrl = editorCapeSystem === 'mojang' && editorCapeTouched
       ? (editorSelectedCapeId === '' ? '' : (editorCapeGrid.find((c) => c.id === editorSelectedCapeId)?.url ?? ''))
       : (origin?.capeUrl ?? '')
     try {
@@ -856,12 +958,28 @@
       if (!base?.id) { editorOpen = false; return }
       const savedBase = base
       // 2) Назва / тонкі руки / плащ.
-      const updated = await App.UpdateWardrobePreset(accId, savedBase.id, editorName || savedBase.name, editorSlim, capeUrl)
+      let updated = await App.UpdateWardrobePreset(accId, savedBase.id, editorName || savedBase.name, editorSlim, capeUrl)
+      // Система плаща Шаурми: зберігаємо в пресеті й ОДРАЗУ передаємо серверу — саме сервер
+      // вирішує, який плащ бачить гра (інжектор) і всі моделі гравця в лаунчері.
+      const capeId = editorCapeSystem === 'shaurma' ? editorShaurmaCapeId : ''
+      const capeSysChanged = !!shaurmaCapes &&
+        (editorCapeSystem !== (origin?.capeSystem || '') || capeId !== (origin?.shaurmaCapeId ?? ''))
+      if (capeSysChanged) {
+        updated = await App.SetWardrobePresetCape(accId, updated.id, editorCapeSystem, capeId)
+      }
+      if (shaurmaCapes) {
+        try {
+          await App.SelectShaurmaCapeFor(accId, editorCapeSystem, capeId)
+          await loadShaurmaCapes()
+        } catch (e) {
+          toast(t('capes.saveFailed', { error: String(e) }), 'error')
+        }
+      }
       presets = [updated, ...presets.filter((x) => x.id !== savedBase.id && x.id !== updated.id)]
       selectedPresetId = updated.id
       // Застосовуємо на акаунт лише коли справді змінився вигляд наявного
       // пресету; створення нового пресету — без мережі.
-      const lookChanged = !!origin?.id && (pending != null || editorSlim !== origin!.slimArms || capeUrl !== (origin!.capeUrl ?? ''))
+      const lookChanged = !!origin?.id && (pending != null || editorSlim !== origin!.slimArms || capeUrl !== (origin!.capeUrl ?? '') || capeSysChanged)
       if (lookChanged) {
         try { await App.ApplyWardrobePreset(accId, updated.id); activePresetId = updated.id }
         catch (e) { toast(String(e), 'error'); editorOpen = false; return }
@@ -1000,6 +1118,7 @@
           <div class="wr2-section-count">{presets.length}</div>
         </div>
 
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div class="wr2-grid" ondragover={onGridDragOver} ondrop={onGridDrop} ondragend={onPresetDragEnd}>
           <button
             class="wr2-add-card"
@@ -1034,7 +1153,7 @@
                 {#if presetTextures[p.id] === undefined}
                   <div class="wr2-skeleton"></div>
                 {/if}
-                <MiniSkin3D slim={p.slimArms} textureUrl={presetTextures[p.id]} capeTextureUrl={presetCapeTextures[p.id]} />
+                <MiniSkin3D slim={p.slimArms} textureUrl={presetTextures[p.id]} capeTextureUrl={presetShaurmaCape(p) !== undefined ? (presetShaurmaCape(p) ?? '') : presetCapeTextures[p.id]} />
               </div>
 
               <div class="wr2-card-info">
@@ -1048,10 +1167,10 @@
               </div>
 
               <div class="wr2-card-actions">
-                <button class="wr2-icon-btn" onclick={(e) => { e.stopPropagation(); openEditor(p) }} use:launcherTip={t('wardrobe.editor.editShort')}>
+                <button aria-label={t('wardrobe.editor.editShort')} class="wr2-icon-btn" onclick={(e) => { e.stopPropagation(); openEditor(p) }} use:launcherTip={t('wardrobe.editor.editShort')}>
                   <i class="ti ti-edit"></i>
                 </button>
-                <button class="wr2-icon-btn wr2-icon-danger" onclick={(e) => deletePreset(p, e)} use:launcherTip={t('wardrobe.editor.delete')}>
+                <button aria-label={t('wardrobe.editor.delete')} class="wr2-icon-btn wr2-icon-danger" onclick={(e) => deletePreset(p, e)} use:launcherTip={t('wardrobe.editor.delete')}>
                   <i class="ti ti-trash"></i>
                 </button>
               </div>
@@ -1074,6 +1193,7 @@
 
         <div class="wr2-grid wr2-grid-compact">
           {#each DEFAULT_SKINS as d, i (d.name)}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div
               class="wr2-card wr2-card-compact
                 {selectedPresetId === defaultPresetIds[d.name] ? 'active' : ''}
@@ -1179,7 +1299,7 @@
               <div class="wm-toggle-hint">{t('wardrobe.copy.withCapeHint')}</div>
             </div>
             <button
-              class="wm-toggle {copyIncludeCape ? 'on' : ''} {!copyResult.capeUrl ? 'disabled' : ''}"
+              aria-label={t('wardrobe.copy.withCapeLabel')} class="wm-toggle {copyIncludeCape ? 'on' : ''} {!copyResult.capeUrl ? 'disabled' : ''}"
               onclick={() => { if (copyResult?.capeUrl) copyIncludeCape = !copyIncludeCape }}
               disabled={!copyResult.capeUrl}
               aria-pressed={copyIncludeCape}
@@ -1192,6 +1312,10 @@
   {/snippet}
 
   {#snippet foot()}
+    <button class="wr2-btn wr2-btn-ghost wm-foot-left" disabled={!copyResult}
+      onclick={async () => { if (copyResult) exportSkinPNG(await App.GetWardrobeRemoteSkinDataURL(copyResult.skinUrl).catch(() => null), copyResult.nickname) }}>
+      <i class="ti ti-file-download"></i> {t('wardrobe.exportPng')}
+    </button>
     <button class="wr2-btn wr2-btn-ghost" onclick={() => (copyModalOpen = false)}>
       {t('wardrobe.editor.cancel')}
     </button>
@@ -1221,7 +1345,9 @@
       </div>
 
       <div class="wm-editor-right">
+        <div class="wm-row2">
         <div>
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="wm-label">{t('wardrobe.editor.nameLabel')}</label>
           <div class="wm-input-row">
             <i class="ti ti-tag"></i>
@@ -1233,8 +1359,9 @@
         </div>
 
         <div>
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="wm-label">{t('wardrobe.editor.armLabel')}</label>
-          <div class="wm-seg">
+          <div class="wm-seg wm-seg-sm">
             <div class="wm-seg-thumb" style="transform: translateX({editorSlim ? 100 : 0}%);"></div>
             <button class="wm-seg-btn {!editorSlim ? 'active' : ''}" onclick={() => (editorSlim = false)}>
               {t('wardrobe.editor.armClassic')}
@@ -1244,23 +1371,84 @@
             </button>
           </div>
         </div>
+        </div>
 
         <div>
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="wm-label">{t('wardrobe.editor.fileLabel')}</label>
-          <button class="wm-drop" onclick={pickEditorFile}>
-            <div class="wm-drop-icon"><i class="ti ti-upload"></i></div>
-            <div>
-              <div class="wm-drop-title">{editorPendingSkin ? t('wardrobe.editor.selectedFile', { name: editorPendingSkinName }) : t('wardrobe.editor.dropHint')}</div>
-              <div class="wm-drop-sub">{t('wardrobe.editor.dropSpec')}</div>
-            </div>
+          <div class="wm-file-row">
+            <button class="wm-file-btn" onclick={pickEditorFile} use:launcherTip={t('wardrobe.editor.dropSpec')}>
+              <i class="ti ti-upload"></i>
+              <span>{editorPendingSkin ? editorPendingSkinName + '.png' : t('wardrobe.editor.replaceSkin')}</span>
+            </button>
+            <button class="wm-file-btn wm-file-export" onclick={exportEditorSkin} disabled={!editorPendingSkin && !editorPreset}
+              aria-label={t('wardrobe.exportPng')} use:launcherTip={t('wardrobe.exportPng')}>
+              <i class="ti ti-file-download"></i><span>PNG</span>
+            </button>
             <input type="file" bind:this={editorFileInput} accept=".png" style="display:none;" onchange={onEditorFileChange} />
-          </button>
+          </div>
         </div>
 
         <div class="wm-editor-capes">
+          <!-- svelte-ignore a11y_label_has_associated_control -->
+          {#if shaurmaCapes && editorLicensed}
+            <div class="wm-cape-head">
+              <!-- svelte-ignore a11y_label_has_associated_control -->
+              <label class="wm-label">{t('capes.system')}</label>
+              <div class="wm-seg wm-seg-sm">
+                <div class="wm-seg-thumb" style="transform: translateX({editorCapeSystem === 'shaurma' ? 100 : 0}%);"></div>
+                <button class="wm-seg-btn {editorCapeSystem === 'mojang' ? 'active' : ''}"
+                  onclick={() => { editorCapeSystem = 'mojang'; editorCapeSystemTouched = true }}>Mojang</button>
+                <button class="wm-seg-btn {editorCapeSystem === 'shaurma' ? 'active' : ''}"
+                  onclick={() => { editorCapeSystem = 'shaurma'; editorCapeSystemTouched = true }}>{t('capes.shaurma')}</button>
+              </div>
+            </div>
+          {/if}
+          {#if shaurmaCapes && editorCapeSystem === 'shaurma'}
+          {#if !editorLicensed}
+            <!-- svelte-ignore a11y_label_has_associated_control -->
+            <label class="wm-label">{t('capes.system')}</label>
+          {/if}
+          <div class="wm-cape-grid wm-cape-grid-sm">
+            <button aria-label={t('wardrobe.editor.noCape')}
+              class="wm-cape wm-cape-none {editorShaurmaCapeId === '' ? 'sel' : ''}"
+              onclick={() => { editorShaurmaCapeId = ''; editorCapeSystemTouched = true }}
+              use:launcherTip={t('wardrobe.editor.noCape')}
+            >
+              <div class="wm-cape-swatch wm-cape-swatch-none"><i class="ti ti-ban"></i></div>
+              <div class="wm-cape-check"><i class="ti ti-check"></i></div>
+            </button>
+            {#each shaurmaCapes.capes as cape (cape.id)}
+              <button aria-label={cape.title}
+                class="wm-cape {editorShaurmaCapeId === cape.id ? 'sel' : ''}"
+                onclick={() => { editorShaurmaCapeId = cape.id; editorCapeSystemTouched = true }}
+                use:launcherTip={cape.title}
+              >
+                <div class="wm-cape-swatch" style="background-image:url('{shaurmaThumbs[cape.id] ?? ''}');"></div>
+                <div class="wm-cape-check"><i class="ti ti-check"></i></div>
+              </button>
+            {/each}
+          </div>
+          {#if redeemOpen}
+            <form class="wm-redeem" onsubmit={(e) => { e.preventDefault(); redeemCape() }}>
+              <!-- svelte-ignore a11y_autofocus -->
+              <input class="wm-redeem-input" bind:value={redeemCode} maxlength="80" autocomplete="off" spellcheck="false" autofocus
+                placeholder={t('capes.redeem.placeholder')} aria-label={t('capes.redeem.placeholder')} />
+              <button type="submit" class="wr2-btn wr2-btn-ghost" disabled={redeemBusy || !redeemCode.trim()}>
+                <i class="ti {redeemBusy ? 'ti-loader spin' : 'ti-key'}"></i> {t('capes.redeem.button')}
+              </button>
+            </form>
+          {:else}
+            <button class="wm-redeem-link" onclick={() => (redeemOpen = true)}><i class="ti ti-key"></i> {t('capes.redeem.have')}</button>
+          {/if}
+          {#if redeemMsg}
+            <div class="wm-redeem-msg {redeemMsg.tone}" role="status">{redeemMsg.text}</div>
+          {/if}
+          {:else}
+          <!-- svelte-ignore a11y_label_has_associated_control -->
           <label class="wm-label">{t('wardrobe.editor.capeLabel')}</label>
           <div class="wm-cape-grid">
-            <button
+            <button aria-label={t('wardrobe.editor.noCape')}
               class="wm-cape wm-cape-none {editorSelectedCapeId === '' ? 'sel' : ''}"
               onclick={() => { editorSelectedCapeId = ''; editorPreviewCapeUrl = null; editorCapeTouched = true }}
               use:launcherTip={t('wardrobe.editor.noCape')}
@@ -1269,7 +1457,7 @@
               <div class="wm-cape-check"><i class="ti ti-check"></i></div>
             </button>
             {#each editorCapeGrid as cape (cape.id)}
-              <button
+              <button aria-label={cape.alias || cape.id}
                 class="wm-cape {editorSelectedCapeId === cape.id ? 'sel' : ''}"
                 onclick={() => { editorSelectedCapeId = cape.id; editorPreviewCapeUrl = cape.url; editorCapeTouched = true }}
                 use:launcherTip={cape.alias || cape.id}
@@ -1282,6 +1470,7 @@
               <div class="wm-cape-empty">{t('wardrobe.editor.capeLocked')}</div>
             {/if}
           </div>
+          {/if}
         </div>
       </div>
     </div>
@@ -2011,6 +2200,44 @@
   }
   .wm-drop-title { font-size: 13px; font-weight: 600; color: var(--text); }
   .wm-drop-sub { font-size: 12px; color: var(--text-mute); margin-top: 2px; }
+
+  /* Компактний редактор: назва й руки в рядок, файл — однорядкова кнопка, менші плащі */
+  .wm-row2 { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(170px, 1fr); gap: 12px; align-items: start; }
+  .wm-seg-sm .wm-seg-btn { padding-top: 7px; padding-bottom: 7px; font-size: 12.5px; }
+  .wm-file-row { display: flex; gap: 8px; }
+  .wm-file-btn {
+    flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; border-radius: var(--r-md); cursor: pointer;
+    background: var(--bg-input); border: 1px solid var(--border-hi); color: var(--text);
+    font: 600 12.5px var(--font-ui); text-align: left;
+    transition: border-color .15s, background .15s;
+  }
+  .wm-file-btn span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .wm-file-btn i { color: var(--orange); font-size: 16px; flex: none; }
+  .wm-file-btn:hover:not(:disabled) { border-color: rgba(var(--orange-rgb), .6); background: rgba(var(--orange-rgb), .06); }
+  .wm-file-btn:disabled { opacity: .45; cursor: default; }
+  .wm-file-export { flex: none; }
+  .wm-cape-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .wm-cape-head .wm-label { margin: 0; }
+  .wm-cape-head .wm-seg { width: 210px; }
+  .wm-cape-grid-sm { grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 6px; max-height: 172px; }
+  .wm-redeem-link {
+    align-self: flex-start; margin-top: 8px; padding: 4px 0; border: 0; background: none; cursor: pointer;
+    color: var(--text-mute); font: 600 12px var(--font-ui); display: inline-flex; align-items: center; gap: 6px;
+  }
+  .wm-redeem-link:hover { color: var(--orange); }
+  /* Плащі Шаурми: джерело плаща та активація коду */
+  .wm-cape-src { margin-bottom: 10px; }
+  .wm-redeem { display: flex; gap: 8px; margin-top: 10px; }
+  .wm-redeem-input {
+    flex: 1; min-width: 0; padding: 8px 11px; border-radius: 9px;
+    font: 600 12.5px var(--font-mono); letter-spacing: .5px; text-transform: uppercase;
+    color: var(--text); background: var(--bg-input); border: 1px solid var(--wr2-border);
+  }
+  .wm-redeem-input:focus { outline: none; border-color: var(--orange); }
+  .wm-redeem-msg { margin-top: 6px; font-size: 12px; }
+  .wm-redeem-msg.good { color: var(--green); }
+  .wm-redeem-msg.bad { color: var(--red); }
 
   /* Editor cape grid */
   .wm-editor-capes {

@@ -472,6 +472,35 @@ function New-AsciiBuildRoot {
 # Розпаковує frontend.zip/updater-frontend.zip у staging, кладе поруч
 # local-only.flag (апдейтер бачить його і не робить жодних запитів до CDN)
 # і пише локальний launcher-version.json, щоб backend показував версію.
+# Shaurma Game Agent (game-agent/, Maven) для ЛОКАЛЬНОЇ збірки без оновлень: jar кладеться в <app>\game-agent\,
+# бо реліз із GitHub у такій збірці не використовується. Не фатально: без JDK 17+/Maven збірка йде без агента.
+function Add-LocalGameAgent([string]$AppDir) {
+    $agentSrc = Join-Path $Root 'game-agent'
+    if (-not (Test-Path (Join-Path $agentSrc 'pom.xml'))) { return }
+    $mvn = Get-Command mvn -ErrorAction SilentlyContinue
+    if (-not $mvn) {
+        Write-Warning 'Maven not found: Shaurma Game Agent is not bundled (AI game control stays unavailable in this local build).'
+        return
+    }
+    Write-Step 'game agent (Maven)'
+    Push-Location $agentSrc
+    try {
+        & $mvn.Source -B -ntp -q verify
+        if ($LASTEXITCODE -ne 0) { throw "mvn verify exit code $LASTEXITCODE" }
+    }
+    catch {
+        Write-Warning "Game agent build failed: $($_.Exception.Message) - continuing without it."
+        return
+    }
+    finally { Pop-Location }
+    $jar = Join-Path $agentSrc 'target\shaurma-game-agent.jar'
+    if (Test-Path $jar) {
+        $dst = Join-Path $AppDir 'game-agent'
+        New-Item -ItemType Directory -Force -Path $dst | Out-Null
+        Copy-Item $jar (Join-Path $dst 'shaurma-game-agent.jar') -Force
+    }
+}
+
 function New-LocalBundle([string]$AppDir, [string]$ed, [bool]$LocalOnly = $true) {
     Write-Step 'full bundle (frontend dirs + launcher-version.json)'
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -480,7 +509,10 @@ function New-LocalBundle([string]$AppDir, [string]$ed, [bool]$LocalOnly = $true)
         if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
         [System.IO.Compression.ZipFile]::ExtractToDirectory((Join-Path $AppDir $pair.zip), $dest)
     }
-    if ($LocalOnly) { Set-Content -Path (Join-Path $AppDir 'local-only.flag') -Value 'local build' -Encoding ascii }
+    if ($LocalOnly) {
+        Set-Content -Path (Join-Path $AppDir 'local-only.flag') -Value 'local build' -Encoding ascii
+        Add-LocalGameAgent $AppDir
+    }
     $specs = @(
         @{ path = $ShellNames[$ed]; kind = ''; extractTo = '' },
         @{ path = 'backend.dll'; kind = ''; extractTo = '' },

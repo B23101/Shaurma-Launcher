@@ -524,3 +524,62 @@ func preflightControl(parent context.Context, controlURL, tag string) {
 	launchlog.Info(compNode, "[%s] preflight HTTPS /health → HTTP %d (%s) | %s | тіло=%q", tag, resp.StatusCode, sw, tm, snippet(body, 120))
 	checkClockSkew(resp.Header, tag)
 }
+
+// ── Діагностика відповідей lobby ──────────────────────────────────────────
+
+// describeAuth — які облікові дані реально пішли в запиті (значення НЕ логуються, лише факт і довжина):
+// саме це відрізняє «клієнт не надіслав» від «сервер відхилив».
+func describeAuth(h http.Header) string {
+	has := func(name string) string {
+		if v := h.Get(name); v != "" {
+			return fmt.Sprintf("є(len=%d)", len(v))
+		}
+		return "немає"
+	}
+	gen := h.Get("X-Shaurma-Client-Gen")
+	if gen == "" {
+		gen = "—"
+	}
+	jwt := "немає"
+	if strings.HasPrefix(h.Get("Authorization"), "Bearer ") {
+		jwt = "є"
+	}
+	return fmt.Sprintf("токен-каналу=%s client-gen=%s entitlement=%s JWT=%s HWID=%s",
+		has("X-Shaurma-Token"), gen, has("X-Shaurma-Entitlement"), jwt, has("X-Shaurma-HWID"))
+}
+
+// edgeInfo — заголовки відповіді, за якими видно, хто її віддав: Cloudflare/проксі чи сам VPS.
+func edgeInfo(h http.Header) string {
+	var parts []string
+	for _, k := range []string{"Server", "Cf-Ray", "Cf-Mitigated", "Content-Type", "Via", "Retry-After"} {
+		if v := strings.TrimSpace(h.Get(k)); v != "" {
+			r := []rune(v)
+			if len(r) > 60 {
+				v = string(r[:60]) + "…"
+			}
+			parts = append(parts, strings.ToLower(k)+"="+v)
+		}
+	}
+	if len(parts) == 0 {
+		return "edge[—]"
+	}
+	return "edge[" + strings.Join(parts, " ") + "]"
+}
+
+// classifyFailureSource — найімовірніше джерело помилкової відповіді; "" — звичайна відповідь P2P-логіки.
+func classifyFailureSource(status int, h http.Header, code, msg string) string {
+	if status < 400 {
+		return ""
+	}
+	if v := h.Get("Cf-Mitigated"); v != "" {
+		return "Cloudflare (cf-mitigated=" + v + ")"
+	}
+	if strings.Contains(strings.ToLower(h.Get("Content-Type")), "text/html") {
+		return "Cloudflare/проксі (HTML замість JSON)"
+	}
+	if status == http.StatusForbidden &&
+		(code == "" || strings.EqualFold(code, "forbidden")) && (msg == "" || strings.EqualFold(msg, "forbidden")) {
+		return "гейт шлюзу VPS (токен/Client-Gen) або правило Cloudflare"
+	}
+	return ""
+}

@@ -81,11 +81,13 @@
               {#if m.required}
                 <span class="bm-badge req">{t('import.blocked.required')}</span>
               {/if}
-              <button class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl)} use:launcherTip={m.websiteUrl}>
+              <button aria-label={m.websiteUrl} class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl)} use:launcherTip={m.websiteUrl}>
                 <i class="ti ti-external-link"></i>
               </button>
             </div>
           {/each}
+        </div>
+      </div>
     {#snippet footer()}
       <button class="btn btn-ghost" onclick={() => onresolve?.('cancel', checked)}>{t('import.blocked.cancel')}</button>
       <button class="btn bm-skip" onclick={() => onresolve?.('skip', checked)}>
@@ -151,7 +153,7 @@
     transition: all .14s;
   }
   .bm-link:hover { background: var(--bg-input-hi); color: var(--violet); }
-  .bm-foot { gap: 8px; }
+  
   .bm-skip {
     background: var(--bg-input-hi); border: 1px solid var(--border-hi); color: var(--text);
     transition: all .14s;

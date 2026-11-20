@@ -930,6 +930,7 @@
           <i class="ti ti-chevron-down"></i>
         </span>
         {#if accMenuOpen}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
           <div class="acc-menu" onclick={(e: any) => e.stopPropagation()}>
             {#each ctx.accounts as acc (acc.accountId)}
               <button class="acc-item" class:active={acc.accountId === ctx.accountId}
@@ -948,13 +949,13 @@
 
     <div class="gc-actions">
       {#if standalone}
-        <button class="gbtn" use:launcherTip={t('win.minimize')} onclick={winMin}><i class="ti ti-minus"></i></button>
-        <button class="gbtn" use:launcherTip={t('win.maximize')} onclick={winMax}><i class="ti {maximized ? 'ti-copy' : 'ti-square'}"></i></button>
-        <button class="gbtn close" use:launcherTip={t('win.close')} onclick={winClose}><i class="ti ti-x"></i></button>
+        <button aria-label={t('win.minimize')} class="gbtn" use:launcherTip={t('win.minimize')} onclick={winMin}><i class="ti ti-minus"></i></button>
+        <button aria-label={t('win.maximize')} class="gbtn" use:launcherTip={t('win.maximize')} onclick={winMax}><i class="ti {maximized ? 'ti-copy' : 'ti-square'}"></i></button>
+        <button aria-label={t('win.close')} class="gbtn close" use:launcherTip={t('win.close')} onclick={winClose}><i class="ti ti-x"></i></button>
       {:else}
         <!-- Кнопка «відкрити вікно» у вкладці: перемикає вікно САМЕ ЦІЄЇ
              збірки (packID) — кілька збірок = кілька незалежних вікон. -->
-        <button class="gbtn" use:launcherTip={t('console.openWindow')} onclick={() => App.ToggleConsoleWindowFor(packID || '')}><i class="ti ti-arrows-maximize"></i></button>
+        <button aria-label={t('console.openWindow')} class="gbtn" use:launcherTip={t('console.openWindow')} onclick={() => App.ToggleConsoleWindowFor(packID || '')}><i class="ti ti-arrows-maximize"></i></button>
       {/if}
     </div>
   </div>
@@ -1061,6 +1062,7 @@
       <i class="ti ti-search"></i>
       <input bind:value={search} placeholder={t('console.searchPlaceholder')} />
       {#if search}
+        <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
         <i class="ti ti-x gc-search-clear" onclick={clearSearch}></i>
       {/if}
     </div>
@@ -1069,9 +1071,9 @@
       <button class="tbtn" use:launcherTip={t('console.copyLog')} onclick={copyLog}>
         {#if copiedTick > 0 && Date.now() - copiedTick < 1500}<i class="ti ti-check" style="color:var(--green)"></i>{:else}<i class="ti ti-copy"></i>{/if}
       </button>
-      <button class="tbtn" use:launcherTip={t('console.saveLog')} onclick={saveLog}><i class="ti ti-download"></i></button>
-      <button class="tbtn" use:launcherTip={t('console.shareLog')} onclick={shareLog}><i class="ti ti-cloud-upload"></i></button>
-      <button class="tbtn" use:launcherTip={t('console.clear')} onclick={clearLog}><i class="ti ti-trash"></i></button>
+      <button aria-label={t('console.saveLog')} class="tbtn" use:launcherTip={t('console.saveLog')} onclick={saveLog}><i class="ti ti-download"></i></button>
+      <button aria-label={t('console.shareLog')} class="tbtn" use:launcherTip={t('console.shareLog')} onclick={shareLog}><i class="ti ti-cloud-upload"></i></button>
+      <button aria-label={t('console.clear')} class="tbtn" use:launcherTip={t('console.clear')} onclick={clearLog}><i class="ti ti-trash"></i></button>
     </div>
   </div>
 
@@ -1099,7 +1101,7 @@
       <button class="tbtn" use:launcherTip={t('console.copyLog')} onclick={copyCrashLog}>
         {#if crashCopiedTick > 0 && Date.now() - crashCopiedTick < 1500}<i class="ti ti-check" style="color:var(--green)"></i>{:else}<i class="ti ti-copy"></i>{/if}
       </button>
-      <button class="tbtn" use:launcherTip={t('console.saveLog')} onclick={saveCrashLog}><i class="ti ti-download"></i></button>
+      <button aria-label={t('console.saveLog')} class="tbtn" use:launcherTip={t('console.saveLog')} onclick={saveCrashLog}><i class="ti ti-download"></i></button>
     </div>
   </div>
   <div class="gc-term gc-crashfile" style="font-size:{consoleFontSize}px;font-family:{consoleFontStack}">
@@ -1557,19 +1559,14 @@
     transition: background-color .12s ease;
   }
   .line:hover { background: color-mix(in srgb, var(--text) 5%, transparent); }
-  .line .l-ts { color: var(--text-dim); flex-shrink: 0; user-select: none; -webkit-user-select: none; font-size: var(--fs-min); opacity: .8; font-variant-numeric: tabular-nums; }
+  
   /* Рівень — кольоровий «бейдж» (колір береться з рядка через currentColor,
      тож налаштування кольорів консолі продовжують працювати). */
-  .line .l-lvl {
-    flex-shrink: 0; width: 40px; text-align: center; font-weight: 800; font-size: var(--fs-min); letter-spacing: .4px;
-    line-height: 16px; height: 16px; border-radius: 5px; align-self: center;
-    background: color-mix(in srgb, currentColor 14%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 22%, transparent);
-  }
+  
   .line.warn { background: color-mix(in srgb, #ffd166 6%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, #ffd166 70%, transparent); }
   .line.error { background: color-mix(in srgb, #ff6b6b 9%, transparent); box-shadow: inset 2px 0 0 color-mix(in srgb, #ff6b6b 80%, transparent); }
   .line.warn:hover, .line.error:hover { filter: brightness(1.15); }
-  .line .l-msg { flex: 1; min-width: 0; }
+  
   /* Банер запуску: без префіксів, блоки «█» стикуються між рядками
      (розмір шрифту = висота рядка / 1.2), ліга/кернінг вимкнені. */
   .line.banner {
@@ -1579,7 +1576,7 @@
     font-weight: 700; user-select: none; -webkit-user-select: none;
   }
   .line.banner:hover { background: none; }
-  .line .l-msg :global(mark) { background: rgba(var(--orange-rgb), .4); color: #fff; border-radius: 2px; }
+  
 
   /* Перенесення довгих рядків (налаштування consoleWrap, як у Prism):
      довгі рядки ломаються на нові рядки замість горизонтального скролу. */
@@ -1591,7 +1588,7 @@
     line-height: var(--cons-line, 22px);
     align-items: flex-start;
   }
-  .gc.wrap .line .l-lvl { align-self: flex-start; margin-top: calc((var(--cons-line, 22px) - 16px) / 2); }
+  
 
   .line.culprit {
     background: rgba(239, 68, 68, .16);

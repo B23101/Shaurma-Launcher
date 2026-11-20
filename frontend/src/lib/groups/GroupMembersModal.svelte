@@ -68,9 +68,9 @@
 <style>
   .gs-sec { margin: 14px 0 6px; font-size: var(--fs-min, 11px); font-weight: 800; text-transform: uppercase; letter-spacing: .4px; color: var(--text-mute); }
   .gs-sec:first-child { margin-top: 0; }
-  .gs-in { flex: 1; min-width: 0; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--border-hi); background: var(--bg-input); color: var(--text); font: inherit; font-size: 13px; }
-  .gs-in:focus { outline: none; border-color: var(--orange); }
-  .gs-q { width: 100%; margin: 8px 0; }
+  
+  
+  
   .gs-m { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 4px; max-height: none; overflow-y: auto; }
   .gs-m li { display: flex; align-items: center; gap: 6px; padding: 12px; border-radius: 10px; background: var(--bg-input); border: 1px solid var(--border); }
   .gs-mn { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 600; }
@@ -86,8 +86,8 @@
   .gs-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: inherit; color: inherit; border-radius: 0; }
   .gs-name:focus-visible { outline-offset: 0; }
   .gs-name:not(:disabled):hover > span { text-decoration: underline; }
-  .gs-ro { margin: 6px 0; font-size: 12px; line-height: 1.45; color: var(--text-mute); }
-  .gs-sec2 { display: flex; gap: 6px; margin: 14px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--text-mute); }
-  .gs-sec2 i { flex: none; margin-top: 1px; }
+  
+  
+  
   .gs-mn small { display: block; margin-top: 4px; color: var(--text-mute); font-size: 12px; font-weight: 400; }
 </style>

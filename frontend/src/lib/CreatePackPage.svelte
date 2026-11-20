@@ -24,6 +24,7 @@
   import MigrationPanel from './MigrationPanel.svelte'
   import { ModMigrationFlow } from './modMigrationFlow.svelte'
   import AppearanceEditor from './AppearanceEditor.svelte'
+  import JavaPicker from './JavaPicker.svelte'
   import type { CustomLoader, MCVersionEntry, LoaderVersionEntry, DetectedPack, Settings, LaunchProgress, ShaurmbundlePreview } from './types'
   import { launchStageLabel, launchStagePct, launchStageColor, downloadStageLabel, downloadStageColor, downloadStageIcon, downloadStageGlow } from './launchStages'
   import vanillaIcon from '../assets/images/vanilla_icon.png'
@@ -58,6 +59,7 @@
     folders?: { id: string; name: string; color?: string }[]
   }>()
 
+  // svelte-ignore state_referenced_locally
   let tab = $state<'manual' | 'import'>(initialTab)
   $effect(() => { onTabChange?.(tab) })
   let submitting = $state(false)
@@ -224,11 +226,16 @@
   // ── Java ──
   let useSeparateJava = $state(false)
   let javaPath = $state('')
+  // Провайдер Java для нової збірки ("" = як у налаштуваннях лаунчера).
+  let javaProvider = $state('')
 
-  async function browseJava() {
+  // ── Тека збірки (довільна, поза стандартною) ──
+  let customLocation = $state(false)
+  let location = $state('')
+  async function browseLocation() {
     try {
       const p = await App.BrowseFolder()
-      if (p) javaPath = p
+      if (p) location = p
     } catch { /* діалог скасовано */ }
   }
 
@@ -332,7 +339,8 @@
         name: finalName, description, iconSrcPath, backgroundSrcPath, icon: iconName, color,
         mcVersion, loader, loaderVersion,
         useCustomRam, minRamMb: useCustomRam ? ramMinValue : 0, maxRamMb: useCustomRam ? ramMaxValue : 0,
-        useSeparateJava, javaPath,
+        useSeparateJava, javaPath, javaProvider,
+        location: customLocation ? location.trim() : '',
       })
       // Після створення асинхронно качаємо ОБРАНІ моди в нову збірку
       // (found/update; already/not-found пропускаються). StartModMigration
@@ -757,7 +765,7 @@
           <i class="ti {previewDsti.icon}"></i>
         </div>
       {:else}
-        <button class="it-btn it-{previewBtnClass}" use:launcherTip={previewStateLabel}>
+        <button aria-label={previewStateLabel} class="it-btn it-{previewBtnClass}" use:launcherTip={previewStateLabel}>
           <i class="ti {previewBtnIcon} {previewBtnSpin ? 'spin' : ''}"></i>
         </button>
       {/if}
@@ -809,20 +817,16 @@
       <div class="card" data-tour="basic">
         <div class="card-head">
           <div class="ci"><i class="ti ti-id"></i></div>
-          <div class="ctw"><div class="ct">{t('createPack.section.basic')}</div><div class="cd">{t('createPack.section.basic.desc')}</div></div>
+          <div class="ctw"><div class="ct">{t('createPack.section.basic')}</div></div>
           <span class="step-num">1</span>
         </div>
         <div class="row col">
           <div class="rl-name">{t('createPack.name')}</div>
           <input class="input" placeholder={tab === 'manual' ? (suggestedName || t('createPack.namePlaceholder')) : t('createPack.namePlaceholder')} bind:value={name} />
-          {#if tab === 'manual' && suggestedName}
-            <div class="rl-sub" style="margin-top:2px;color:var(--text-mute)">
-              <i class="ti ti-info-circle"></i> {t('createPack.nameEmptyHint', { name: suggestedName })}
-            </div>
-          {/if}
+
         </div>
         <div class="row">
-          <div class="row-label"><div class="rl-name">{t('createPack.id')}</div><div class="rl-sub">{t('createPack.idHint')}</div></div>
+          <div class="row-label"><div class="rl-name">{t('createPack.id')}</div></div>
           <span class="input mono" style="width:auto;color:var(--text-mute)">{slugId}</span>
         </div>
         <div class="row col">
@@ -831,7 +835,7 @@
         </div>
         {#if folders.length > 0}
           <div class="row">
-            <div class="row-label"><div class="rl-name">{t('createPack.folder')}</div><div class="rl-sub">{t('createPack.folderHint')}</div></div>
+            <div class="row-label"><div class="rl-name">{t('createPack.folder')}</div></div>
             <SelectField
               value={targetFolderId}
               onchange={(v: string) => targetFolderId = v}
@@ -849,14 +853,14 @@
       <div class="card" data-tour="version">
         <div class="card-head">
           <div class="ci violet"><i class="ti ti-versions"></i></div>
-          <div class="ctw"><div class="ct">{t('createPack.section.version')}</div><div class="cd">{t('createPack.section.version.desc')}</div></div>
+          <div class="ctw"><div class="ct">{t('createPack.section.version')}</div></div>
           <span class="step-num">2</span>
         </div>
         <div class="row">
           <div class="row-label"><div class="rl-name">{t('createPack.mcVersion')}</div></div>
           <div class="flex gap8">
-            <span class="chip" class:on={showSnapshots} onclick={() => showSnapshots = !showSnapshots} role="button" tabindex="0">{t('createPack.mcVersion.snapshot')}</span>
-            <span class="chip" class:on={showOld} onclick={() => showOld = !showOld} role="button" tabindex="0">{t('createPack.mcVersion.old')}</span>
+            <button type="button" aria-pressed={showSnapshots} class="chip" class:on={showSnapshots} onclick={() => showSnapshots = !showSnapshots}  >{t('createPack.mcVersion.snapshot')}</button>
+            <button type="button" aria-pressed={showOld} class="chip" class:on={showOld} onclick={() => showOld = !showOld}  >{t('createPack.mcVersion.old')}</button>
             <VersionPickerModal
               value={mcVersion}
               onselect={(v) => mcVersion = v}
@@ -877,11 +881,11 @@
           {/if}
           <div class="loader-grid" data-tour="loader">
             {#each loaders.filter(l => availableLoaders.includes(l.id)) as l (l.id)}
-              <div class="loader-opt" class:sel={loader === l.id} onclick={() => selectLoader(l.id)} role="button" tabindex="0">
+              <button type="button" aria-pressed={loader === l.id} class="loader-opt" class:sel={loader === l.id} onclick={() => selectLoader(l.id)}  >
                 <img class="loader-ic" src={l.icon} alt="" style="--lcol:{l.color}" />
                 <span class="ln">{t(`createPack.loader.${l.id}`)}</span>
-                <span class="lt">{t(`createPack.loader.${l.id}.sub`)}</span>
-              </div>
+
+              </button>
             {/each}
           </div>
           {#if loader !== 'vanilla'}
@@ -923,11 +927,12 @@
       <div class="card" data-tour="perf">
         <div class="card-head">
           <div class="ci green"><i class="ti ti-cpu"></i></div>
-          <div class="ctw"><div class="ct">{t('createPack.section.perf')}</div><div class="cd">{t('createPack.section.perf.desc')}</div></div>
+          <div class="ctw"><div class="ct">{t('createPack.section.perf')}</div></div>
           <span class="step-num">3</span>
         </div>
         <div class="row">
-          <div class="row-label"><div class="rl-name">{t('createPack.customRam')}</div><div class="rl-sub">{useCustomRam ? t('createPack.customRam.on') : t('createPack.customRam.off')}</div></div>
+          <div class="row-label"><div class="rl-name">{t('createPack.customRam')}</div></div>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div class="toggle" class:on={useCustomRam} onclick={() => useCustomRam = !useCustomRam} role="button" tabindex="0"></div>
         </div>
         {#if useCustomRam}
@@ -936,6 +941,7 @@
               <div class="rl-sub">{t('createPack.ramMin')}: <b class="mono" style="color:#fff">{ramMinValue} MB</b></div>
               <div class="rl-sub">{t('createPack.ramMax')}: <b class="mono" style="color:var(--pc)">{ramMaxValue} MB</b></div>
             </div>
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="ram-track" onpointerdown={startRamDrag} onpointermove={onRamDragMove} onpointerup={stopRamDrag} onpointercancel={stopRamDrag}>
               <div class="ram-fill" style="left:{ramMinPct}%;width:{ramMaxPct - ramMinPct}%"></div>
               <div class="ram-knob" style="left:{ramMaxPct}%"></div>
@@ -949,19 +955,28 @@
       <div class="card" data-tour="java">
         <div class="card-head">
           <div class="ci"><i class="ti ti-coffee"></i></div>
-          <div class="ctw"><div class="ct">{t('createPack.section.java')}</div><div class="cd">{t('createPack.section.java.desc')}</div></div>
+          <div class="ctw"><div class="ct">{t('createPack.section.java')}</div></div>
           <span class="step-num">4</span>
         </div>
-        <div class="row">
-          <div class="row-label"><div class="rl-name">{t('createPack.separateJava')}</div></div>
-          <div class="toggle" class:on={useSeparateJava} onclick={() => useSeparateJava = !useSeparateJava} role="button" tabindex="0"></div>
+        <div class="row col">
+          <div class="rl-name">{t('java.provider')}</div>
+          <JavaPicker provider={useSeparateJava ? 'custom' : javaProvider} path={javaPath} {mcVersion}
+            onchange={(p, path) => {
+              if (p === 'custom') { useSeparateJava = true; javaPath = path }
+              else { useSeparateJava = false; javaProvider = p }
+            }} />
         </div>
-        {#if useSeparateJava}
+        <div class="row">
+          <div class="row-label"><div class="rl-name">{t('createPack.customLocation')}</div></div>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
+          <div class="toggle" class:on={customLocation} onclick={() => customLocation = !customLocation} role="button" tabindex="0"></div>
+        </div>
+        {#if customLocation}
           <div class="row col">
-            <div class="rl-name">{t('createPack.separateJavaPath')}</div>
+            <div class="rl-name">{t('createPack.customLocationPath')}</div>
             <div class="folder-row">
-              <input class="input" bind:value={javaPath} />
-              <button class="btn btn-ghost" onclick={browseJava}><i class="ti ti-folder"></i></button>
+              <input class="input" bind:value={location} placeholder={t('createPack.customLocationHint')} />
+              <button class="btn btn-ghost" onclick={browseLocation} aria-label={t('export.browse')}><i class="ti ti-folder"></i></button>
             </div>
           </div>
         {/if}
@@ -993,6 +1008,7 @@
     <div>
       <div class="card">
         <div class="row col">
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div class="dropzone" class:big={!importArchivePath} class:drag-over={dragOver}
             role="button" tabindex="0"
             onclick={pickArchive}
@@ -1001,7 +1017,7 @@
             ondrop={onDrop}>
             <i class="ti ti-cloud-upload"></i>
             <div class="rl-name">{importArchivePath ? importArchivePath.split(/[\\/]/).pop() : t('createPack.import.dropTitle')}</div>
-            <div class="rl-sub">{t('createPack.import.dropSub')}</div>
+
           </div>
         </div>
 
@@ -1041,7 +1057,7 @@
               <div>
                 <div class="dp-name">{t('createPack.import.bundleDetected')}</div>
                 <div class="dp-meta">{t('createPack.import.bundlePacks', { count: bundlePreview.packCount })} · {t('createPack.import.bundleFiles', { count: bundlePreview.totalFiles })}</div>
-                <div class="rl-sub" style="margin-top:6px">{t('createPack.import.bundleHint')}</div>
+
               </div>
             </div>
           </div>
@@ -1061,20 +1077,18 @@
         {/if}
       </div>
 
-      <div class="idea">
-        <div class="ico"><i class="ti ti-download"></i></div>
-        <div><h4>{t('createPack.import.hintTitle')}</h4><p>{t('createPack.import.hintBody')}</p></div>
-      </div>
+
 
       {#if detected}
         <div class="card">
           <div class="card-head">
             <div class="ci green"><i class="ti ti-cpu"></i></div>
-            <div class="ctw"><div class="ct">{t('createPack.section.perf')}</div><div class="cd">{t('createPack.section.perf.desc')}</div></div>
+            <div class="ctw"><div class="ct">{t('createPack.section.perf')}</div></div>
           <span class="step-num">3</span>
           </div>
           <div class="row">
-            <div class="row-label"><div class="rl-name">{t('createPack.customRam')}</div><div class="rl-sub">{useCustomRam ? t('createPack.customRam.on') : t('createPack.customRam.off')}</div></div>
+            <div class="row-label"><div class="rl-name">{t('createPack.customRam')}</div></div>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div class="toggle" class:on={useCustomRam} onclick={() => useCustomRam = !useCustomRam} role="button" tabindex="0"></div>
           </div>
           {#if useCustomRam}
@@ -1083,6 +1097,7 @@
                 <div class="rl-sub">{t('createPack.ramMin')}: <b class="mono" style="color:#fff">{ramMinValue} MB</b></div>
                 <div class="rl-sub">{t('createPack.ramMax')}: <b class="mono" style="color:var(--pc)">{ramMaxValue} MB</b></div>
               </div>
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div class="ram-track" onpointerdown={startRamDrag} onpointermove={onRamDragMove} onpointerup={stopRamDrag} onpointercancel={stopRamDrag}>
                 <div class="ram-fill" style="left:{ramMinPct}%;width:{ramMaxPct - ramMinPct}%"></div>
                 <div class="ram-knob" style="left:{ramMaxPct}%"></div>

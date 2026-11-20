@@ -51,6 +51,8 @@ export interface Settings {
   accentCustom2?: string
   accentCustomMode?: string
   theme: string
+  // Масштаб інтерфейсу лаунчера, % (70–150).
+  uiScale?: number
   animationsEnabled: boolean
   // Анімувати іконки збірок у sidebar завжди (не лише для вибраної збірки).
   sidebarAnimAlways?: boolean
@@ -82,6 +84,8 @@ export interface Settings {
   saveLogs: boolean
   instanceDir: string
   javaPath: string
+  // Провайдер Java: mojang | adoptium | zulu.
+  javaProvider?: string
   maxRAM: number
   javaArgs: string
   activeAccountId: string
@@ -180,6 +184,8 @@ export interface Settings {
   // Авто-видалення версій Minecraft, які після видалення збірки більше
   // не використовуються (versions + бібліотеки й асети).
   cleanupAfterPackDelete: boolean
+  // Хешування модів старих збірок (дедуплікація через Modrinth), за замовчуванням вимкнено.
+  hashOldPacks?: boolean
 
   // Сповіщення про онлайн друзів Xbox (перемикач у шухляді «Друзі»).
   xboxOnlineNotify?: boolean
@@ -208,6 +214,8 @@ export interface Settings {
   notifyEnabled?: boolean
   notifyDurationSec?: number
   notifyDnd?: boolean
+  // notifyProfileActivity — тост, коли друг залишає коментар або реакцію в моєму профілі.
+  notifyProfileActivity?: boolean
 }
 
 export interface FolderPaths {
@@ -1021,6 +1029,7 @@ export interface ModEntry {
   status?: string // checking | done | error
   error?: string
   isDuplicate?: boolean
+  hashed?: boolean
   incompatible?: boolean
   incompatibleReason?: string
   // viaConnector — Fabric/Quilt-мод, що працює у Forge/NeoForge-збірці через Sinytra Connector
@@ -1746,6 +1755,7 @@ export interface InstanceConfig {
   useCustomCommands: boolean
   useSeparateJava: boolean
   javaPathOverride: string
+  javaProviderOverride?: string
   accountIdOverride: string
   autoJoinEnabled: boolean
   autoJoinType: string
@@ -1839,6 +1849,41 @@ export interface CustomPackFormParams {
   maxRamMb: number
   useSeparateJava: boolean
   javaPath: string
+  javaProvider?: string
+  location?: string
+}
+
+// Плащі Шаурми (App.GetShaurmaCapes / RedeemShaurmaCape).
+export interface ShaurmaCape {
+  id: string
+  title: string
+  kind: 'default' | 'code'
+  texture: string
+}
+export interface ShaurmaCapes {
+  licensed: boolean
+  source: 'mojang' | 'shaurma'
+  active: string
+  capes: ShaurmaCape[]
+}
+export interface CapeRedeemResult {
+  result: 'granted' | 'invalid' | 'already_owned' | 'already_redeemed' | 'too_many_attempts' | 'bad_format'
+  retryAfterSec?: number
+  cape?: ShaurmaCape
+}
+
+// Перевірка своєї Java (App.InspectJava).
+export interface JavaCheck {
+  ok: boolean
+  path: string
+  major: number
+  version: string
+  vendor: string
+  arch: string
+  bits: number
+  required: number
+  status: 'ok' | 'newer' | 'too_old' | 'legacy' | '32bit' | 'not_java' | 'error'
+  error?: string
 }
 
 export type ModpackFormat = 'mrpack' | 'curseforge' | 'generic' | 'shaurmpack'
@@ -2024,6 +2069,9 @@ export interface SkinPreset {
   source: string // "local" | "mojang-copy" | "default"
   sourceNick?: string
   createdAt: number
+  // Система плаща: mojang | shaurma ('' — старий пресет).
+  capeSystem?: string
+  shaurmaCapeId?: string
 }
 
 // Стан повернення скіна збірки після зупинки гри (бекенд → UI).
@@ -2797,6 +2845,8 @@ export interface BackupInfo {
   files?: number
   // auto — копія створена автоматично (таймер / зупинка / старт).
   auto?: boolean
+  // createdBy — хто створив копію: порожньо = користувач/авто; "ai-agent" або назва клієнта = ШІ-агент.
+  createdBy?: string
 }
 
 // ServerBackupProgress — дзеркало backend/internal/servers/worlds.go
@@ -3271,6 +3321,7 @@ export type NotifyEventKind =
   | 'share_build' | 'share_server' | 'share_mod'
   | 'invite_temp' | 'invite_perm'
   | 'server_started' | 'server_stopped'
+  | 'profile_comment' | 'profile_reaction'
 export interface SocialNotifyPayload {
   groupIcon?: string
   groupColor?: string

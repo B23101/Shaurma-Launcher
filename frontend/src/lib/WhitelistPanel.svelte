@@ -74,7 +74,7 @@
               <div class="wlp-modid">{e.modId}</div>
             </div>
             {#if e.projectUrl}
-              <a href={e.projectUrl} target="_blank" rel="noopener noreferrer" class="wlp-link" use:launcherTip={t('whitelist.openPage')}>
+              <a aria-label={t('whitelist.openPage')} href={e.projectUrl} target="_blank" rel="noopener noreferrer" class="wlp-link" use:launcherTip={t('whitelist.openPage')}>
                 <i class="ti ti-external-link"></i>
               </a>
             {/if}

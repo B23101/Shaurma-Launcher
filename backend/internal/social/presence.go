@@ -51,6 +51,8 @@ type PresenceConfig struct {
 	OnMessageEdited    func(EditedEvent)    // автор змінив текст повідомлення
 	OnPinsUpdated      func(PinsEvent)      // змінився список закріплених
 	OnReactionsUpdated func(ReactionsEvent) // змінились реакції одного повідомлення
+	// OnProfileActivity — друг залишив коментар або реакцію в МОЄМУ профілі (VPS шле власнику).
+	OnProfileActivity func(ProfileActivityEvent)
 
 	// Кілька пристроїв (SERVER → цей клієнт).
 	OnDeviceRevoked  func(reason string)    // ЦЕЙ пристрій вилучено з акаунта (після цього — розрив)
@@ -1115,6 +1117,10 @@ type inEvent struct {
 	PackName   string `json:"packName"`
 	PackColor  string `json:"packColor"`
 	Code       string `json:"code"`
+	// Профіль (profile_activity): kind = comment | reaction; text — текст коментаря.
+	Kind       string `json:"kind"`
+	Text       string `json:"text"`
+	CommentID  int64  `json:"commentId"`
 	// Message — об'єкт у групових подіях (group_message / group_message_edited).
 	Message    json.RawMessage `json:"message"`
 
@@ -1302,6 +1308,19 @@ func (p *PresenceClient) readLoop(ctx context.Context, conn *websocket.Conn) err
 			if p.cfg.OnP2PHostRevoked != nil && ev.Address != "" {
 				p.cfg.OnP2PHostRevoked(P2PHostRevokedEvent{Address: CleanText(ev.Address, 128), Reason: CleanText(ev.Reason, 64)})
 			}
+		case "profile_activity":
+			// Відправник МУСИТЬ бути другом (як і для чату): скомпрометований VPS не підсуне подію чужого акаунта.
+			if p.cfg.OnProfileActivity == nil || !p.isFriend(ev.From) || (ev.Kind != "comment" && ev.Kind != "reaction") {
+				break
+			}
+			e := ProfileActivityEvent{Kind: ev.Kind, From: ev.From, CommentID: ev.CommentID, Text: CleanText(ev.Text, MaxCommentRunes)}
+			if ev.Kind == "reaction" {
+				if !validCommentEmoji(ev.Emoji) {
+					break
+				}
+				e.Emoji = ev.Emoji
+			}
+			p.cfg.OnProfileActivity(e)
 		case "server_invite_revoked":
 			if p.cfg.OnServerInviteRevoked != nil {
 				p.cfg.OnServerInviteRevoked(CleanText(ev.InviteID, 64))

@@ -137,7 +137,7 @@
               </div>
               <div class="ms-path" use:launcherTip={s.path}>{s.path}</div>
             </div>
-            <button class="icon-btn del" disabled={busy} onclick={() => remove(s.id)} use:launcherTip={t('modsrc.detach')}>
+            <button aria-label={t('modsrc.detach')} class="icon-btn del" disabled={busy} onclick={() => remove(s.id)} use:launcherTip={t('modsrc.detach')}>
               <i class="ti ti-unlink"></i>
             </button>
           </div>

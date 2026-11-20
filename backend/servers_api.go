@@ -212,7 +212,11 @@ func (a *App) CreateWorldBackup(serverID, worldName string) (string, error) {
 	return a.srvAPI.CreateWorldBackup(serverID, worldName)
 }
 func (a *App) ListWorldBackups(serverID, worldName string) ([]servers.BackupInfo, error) {
-	return a.srvAPI.ListWorldBackups(serverID, worldName)
+	list, err := a.srvAPI.ListWorldBackups(serverID, worldName)
+	for i := range list {
+		list[i].CreatedBy = a.aiProvenanceOf("server-backup", serverID+"|"+list[i].ID)
+	}
+	return list, err
 }
 func (a *App) RestoreWorldBackup(serverID, worldName, backupID string) error {
 	return a.srvAPI.RestoreWorldBackup(serverID, worldName, backupID)

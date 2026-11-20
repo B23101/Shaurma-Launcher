@@ -13,11 +13,13 @@
 !/bridge/
 !/installer/
 !/flatpak/
+!/game-agent/
 !/build-linux-shell.sh
 !/LICENSE
 !/README.md
 !/PRIVACY.md
 
+/game-agent/target/
 /shell/android/
 /shell/ios/
 /shell/darwin/
@@ -70,3 +72,4 @@ node_modules/
 .vscode/
 Thumbs.db
 .DS_Store
+/PENDING_CHANGES.md

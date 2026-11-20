@@ -32,8 +32,11 @@
     onchanged?: (s: ServerView) => void
   } = $props()
 
+  // svelte-ignore state_referenced_locally
   let core = $state(srv.core)
+  // svelte-ignore state_referenced_locally
   let mcVersion = $state(srv.mcVersion)
+  // svelte-ignore state_referenced_locally
   let loaderVer = $state(srv.loaderVer)
 
   let mcVersions = $state<MCVersionEntry[]>([])

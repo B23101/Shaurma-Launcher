@@ -90,7 +90,7 @@
     <button class="btn btn-ghost btn-sm" onclick={onOpenFolder} use:launcherTip={t('servers.toolbar.openFolder')}><i class="ti ti-folder-open"></i> {t('pack.openFolder')}</button>
     <button class="btn btn-ghost btn-sm" onclick={onOpenConsole} use:launcherTip={t('servers.toolbar.openConsole')}><i class="ti ti-terminal-2"></i> {t('pack.openConsole')}</button>
     {#if onShare}
-      <button class="btn btn-ghost btn-sm" onclick={onShare} use:launcherTip={"Поділитися з друзями"}><i class="ti ti-share-3"></i> Поділитися</button>
+      <button class="btn btn-ghost btn-sm" onclick={onShare} use:launcherTip={t('shareFriends.tip')}><i class="ti ti-share-3"></i> {t('shareFriends.btn')}</button>
     {/if}
   {/if}
   <ServerActionsBar {displayStatus} {actionBusy} {onStart} {onStop} {onKill} {canStart} {canStop} canKill={!remoteOwner} />

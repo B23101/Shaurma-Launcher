@@ -149,6 +149,7 @@
       {:else}
         <div class="ap-grid">
           {#each projects as p (p.source + '|' + (p.projectId || p.id))}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div class="ap-card" role="button" tabindex="0" onclick={() => openProject(p.source, p.projectId || p.id)}>
               {#if p.iconUrl}
                 <img class="ap-card-ic" src={p.iconUrl} alt="" loading="lazy" />
@@ -261,7 +262,7 @@
   .ap-card-src.cf { background: rgba(241,100,54,.15); color: #f16436; }
   .ap-card-desc {
     font-size: 11.5px; color: var(--text-mute); line-height: 1.4;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   }
   .ap-card-meta { display: flex; align-items: center; gap: 6px; margin-top: auto; flex-wrap: wrap; }
   .ap-card-meta .chip { font-size: var(--fs-min); padding: 2px 7px; }

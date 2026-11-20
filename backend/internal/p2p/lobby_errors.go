@@ -4,6 +4,7 @@ package p2p
 import (
 	"errors"
 	"net/http"
+	"strings"
 )
 
 // Машинні коди поля error у відповідях вузла.
@@ -55,6 +56,20 @@ type LobbyError struct {
 	// повідомив. Порожній — режим невідомий або гравця не пустив чорний список: тоді
 	// режим не розкриваємо (reject.go).
 	Access string
+	// Source — звідки, найімовірніше, прийшла помилка (див. classifyFailureSource): гейт шлюзу VPS,
+	// Cloudflare/WAF тощо. Порожній — звичайна відповідь P2P-логіки. Лише для логів і діагностики.
+	Source string
+}
+
+// IsGateDenied — 403 БЕЗ пояснення (порожнє тіло або голе {"error":"Forbidden"}): так відповідає
+// гейт шлюзу VPS (чужий/порожній токен каналу, див. gateway.go) або правило Cloudflare ще ДО
+// P2P-логіки. Це НЕ рішення власника кімнати: воно приходить з кодом p2p_not_allowed.
+func (e *LobbyError) IsGateDenied() bool {
+	if e == nil || e.Status != http.StatusForbidden {
+		return false
+	}
+	return (e.Code == "" || strings.EqualFold(e.Code, "forbidden")) &&
+		(e.Message == "" || strings.EqualFold(e.Message, "forbidden"))
 }
 
 func (e *LobbyError) Error() string { return e.Text }

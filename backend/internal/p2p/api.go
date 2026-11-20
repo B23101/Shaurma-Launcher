@@ -539,7 +539,7 @@ func (a *API) startHostSession(minecraftPort, subdomain string, udpPort int, sec
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 
-	authKey, err := a.lobbyClient().RequestAuthKey(ctx)
+	authKey, err := a.lobbyClient().RequestAuthKey(ctx, "host")
 	if err != nil {
 		return nil, fmt.Errorf("p2p: не вдалося отримати доступ до мережі: %w", err)
 	}
@@ -550,7 +550,7 @@ func (a *API) startHostSession(minecraftPort, subdomain string, udpPort int, sec
 		ControlURL:    ControlURL,
 		AuthKey:       authKey,
 		AuthKeyFunc: func(ctx context.Context) (string, error) {
-			return a.lobbyClient().RequestAuthKey(ctx)
+			return a.lobbyClient().RequestAuthKey(ctx, "host")
 		},
 		LobbyBaseURL: a.baseURL(),
 		LobbyToken:   a.token(),
@@ -940,7 +940,7 @@ func (a *API) ensureGuestLocked() error {
 		LobbyToken:   a.token(),
 		LobbyAuth:    a.auth,
 		AuthKeyFunc: func(ctx context.Context) (string, error) {
-			return a.lobbyClient().RequestAuthKey(ctx)
+			return a.lobbyClient().RequestAuthKey(ctx, "guest")
 		},
 		LocalHostPort:    a.LocalHostPort,
 		LocalHostUDPPort: a.LocalHostUDPPort,

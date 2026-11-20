@@ -269,7 +269,7 @@
   <!-- ═ Нік нового акаунта Шаурми ═ -->
   <div class="blk" in:fly={{ y: 10, duration: 300 }}>
     <h1>{t('wz.nick.title')}</h1>
-    <p class="sub">{nickAsk.noLicense ? t('wz.nick.subNoLicense') : t('wz.nick.sub')}</p>
+    {#if nickAsk.noLicense}<p class="sub">{t('wz.nick.subNoLicense')}</p>{/if}
     <div class="nick-big" class:ok={nickSt === 'ok'} class:bad={nickSt === 'bad'}>
       <PlayerHead skin="steve" size={40} radius={9} />
       <input value={nick} maxlength="16" placeholder={t('nickname')} oninput={(e: any) => nickInput(e.target.value)}
@@ -389,8 +389,6 @@
           <button class:sel={tab === 'skin'} onclick={() => (tab = 'skin')}><i class="ti ti-shirt"></i> {t('wz.tab.skin')}</button>
           <button class:sel={tab === 'profile'} onclick={() => (tab = 'profile')}><i class="ti ti-id-badge-2"></i> {t('wz.tab.profile')}</button>
         </div>
-      {:else}
-        <p class="sub">{t('wz.prof.licSub')}</p>
       {/if}
 
       {#if tab === 'skin' && showSkin}
@@ -422,7 +420,7 @@
               {applied === skinSel + (slim ? ':s' : '') ? t('wz.skin.on') : t('wz.skin.apply')}
             </button>
           </div>
-          <div class="note"><i class="ti ti-rotate-360"></i> {t('wz.skin.hint')}</div>
+          
         </div>
       {:else}
         <div class="prof" in:fly={{ x: 14, duration: 260 }}>

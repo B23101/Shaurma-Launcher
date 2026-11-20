@@ -80,6 +80,8 @@ func SettingsSchema() []model.SettingDef {
 				{Value: "flat", Label: "settings.accentCustomMode.flat"},
 				{Value: "gradient", Label: "settings.accentCustomMode.gradient"},
 			}},
+		// uiScale — масштаб інтерфейсу лаунчера (зум вікна WebView), 100 = як є.
+		{Key: "uiScale", Type: "int", Group: "appearance", Label: "settings.uiScale", Desc: "settings.uiScaleDesc", Default: 100, Min: intPtr(70), Max: intPtr(150), Step: intPtr(5)},
 		{Key: "theme", Type: "select", Group: "appearance", Label: "settings.theme", Desc: "settings.themeDesc", Default: "dark",
 			Options: []model.SettingOption{
 				// system — слідує за темою ОС (prefers-color-scheme), див.
@@ -159,6 +161,13 @@ func SettingsSchema() []model.SettingDef {
 		// Ці параметри стосуються запуску Minecraft, а не лаунчера.
 		// RAM, JVM-аргументи, дискретна GPU — все що впливає на процес гри.
 		{Key: "maxRAM", Type: "ram", Group: "javaDefaults", Label: "settings.ram", Desc: "settings.ramDesc", Default: 4096, Min: intPtr(1024), Max: intPtr(16384), Step: intPtr(512)},
+		// javaProvider — звідки лаунчер ставить Java для збірок (кожна збірка може мати свій).
+		{Key: "javaProvider", Type: "select", Group: "javaDefaults", Label: "settings.javaProvider", Desc: "settings.javaProviderDesc", Default: "mojang",
+			Options: []model.SettingOption{
+				{Value: "mojang", Label: "settings.javaProvider.mojang"},
+				{Value: "adoptium", Label: "settings.javaProvider.adoptium"},
+				{Value: "zulu", Label: "settings.javaProvider.zulu"},
+			}},
 		{Key: "javaArgs", Type: "jvmargs", Group: "javaDefaults", Label: "settings.javaArgs", Desc: "settings.javaArgsDesc", Default: ""},
 		// useDedicatedGPU — запуск гри на дискретній GPU ноутбука.
 		// Стосується процесу гри (GPU_PREFERENCE env), не лаунчера.
@@ -292,6 +301,8 @@ func SettingsSchema() []model.SettingDef {
 		// увімкнено за замовчуванням (як у старого лаунчера: зайве не
 		// накопичується).
 		{Key: "cleanupAfterPackDelete", Type: "bool", Group: "storage", Label: "settings.storage.autoDeleteVersions", Desc: "settings.storage.autoDeleteVersionsDesc", Default: true},
+		// Хешування модів старих збірок (дедуплікація через Modrinth sha1).
+		{Key: "hashOldPacks", Type: "bool", Group: "storage", Label: "settings.storage.hashOldPacks", Desc: "settings.storage.hashOldPacksDesc", Default: false},
 
 		// ── Запуск і вікно ──
 		// Один параметр на етап життя вікна (рішення — internal/winbehavior,
@@ -358,5 +369,6 @@ func SettingsSchema() []model.SettingDef {
 		// налаштування саме чатів.
 		{Key: "chatMuteAll", Type: "bool", Group: "notifications", Label: "settings.chatMuteAll", Desc: "settings.chatMuteAllDesc", Default: false},
 		{Key: "chatMuteSound", Type: "bool", Group: "notifications", Label: "settings.chatMuteSound", Desc: "settings.chatMuteSoundDesc", Default: false},
+		{Key: "notifyProfileActivity", Type: "bool", Group: "notifications", Label: "settings.notifyProfileActivity", Desc: "settings.notifyProfileActivityDesc", Default: true},
 	}
 }

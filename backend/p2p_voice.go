@@ -183,17 +183,17 @@ func (a *App) p2pBuildChecks(st *P2PVoiceState, srv servers.ServerView) {
 
 	if !h.Active {
 		if st.Subdomain != "" && !a.p2pDisabled() {
-			add("tunnel_off", "info", "P2P-тунель не запущено", "Друзі не зможуть зайти, поки тунель не запущено.", "start_p2p")
+			add("tunnel_off", "info", "Відкрити доступ друзям", "", "start_p2p")
 		}
 	} else {
 		if !h.Alive {
-			add("tunnel_dead", "error", "Тунель мертвий", "Сесія P2P зупинилась. Перезапусти P2P.", "restart_p2p")
+			add("tunnel_dead", "error", "З’єднання перервано", "Перезапусти доступ друзям.", "restart_p2p")
 		}
 		if h.Disabled {
 			add("room_disabled", "error", "Кімнату вимкнено адміністратором", "Гості отримуватимуть відмову, доки кімнату не ввімкнуть знову.", "")
 		}
 		if !serverUp {
-			add("server_down", "error", "Minecraft-сервер не запущено", "Тунель піднято, але гравцям нема куди заходити. Запусти сервер.", "")
+			add("server_down", "error", "Minecraft-сервер не запущено", "Запусти сервер.", "")
 		} else if !h.LocalGameOK {
 			detail := h.LocalGameErr
 			if ip := serverIPProp(srv.Dir); ip != "" && ip != "0.0.0.0" && ip != "127.0.0.1" {

@@ -23,6 +23,7 @@
   const color = $derived(safeGroupColor(s.color))
 
   // Чернетка назви: застосовується кнопкою (не на кожен символ).
+  // svelte-ignore state_referenced_locally
   let title = $state(group.title)
   const letter = $derived(((clean(title) || group.title).trim().charAt(0) || '?').toUpperCase())
   const COLORS = ['', '#ff8a32', '#fb7185', '#4ade80', '#60a5fa', '#b69aff', '#2dd4bf', '#f472b6']
@@ -92,11 +93,11 @@
     <p class="gs-ro">{t('groups.link.hint')}</p>
     <div class="gs-row"><button class="btn btn-secondary" disabled={linkBusy || g.busy} onclick={() => groupLink()}><i class="ti ti-link"></i>{t('groups.link.copy')}</button><button class="btn btn-ghost" disabled={linkBusy || g.busy} onclick={() => groupLink(true)}>{t('groups.link.revoke')}</button></div>
     <div class="gs-sec">{t('groups.settings.rules')}</div>
-    <div class="gs-t"><span>{t('groups.settings.history')}<small>{t('groups.settings.historyHint')}</small></span>
+    <div class="gs-t"><span>{t('groups.settings.history')}</span>
       <button type="button" class="st-switch" class:on={s.historyForNew} role="switch" aria-checked={s.historyForNew} aria-label={t('groups.settings.history')} disabled={g.busy} onclick={() => save({ historyForNew: !s.historyForNew })}></button></div>
-    <div class="gs-t"><span>{t('groups.settings.mods')}<small>{t('groups.settings.modsHint')}</small></span>
+    <div class="gs-t"><span>{t('groups.settings.mods')}</span>
       <button type="button" class="st-switch" class:on={s.allowMods} role="switch" aria-checked={s.allowMods} aria-label={t('groups.settings.mods')} disabled={g.busy} onclick={() => save({ allowMods: !s.allowMods })}></button></div>
-    <div class="gs-t"><span>{t('groups.settings.builds')}<small>{t('groups.settings.buildsHint')}</small></span>
+    <div class="gs-t"><span>{t('groups.settings.builds')}</span>
       <button type="button" class="st-switch" class:on={s.allowBuilds} role="switch" aria-checked={s.allowBuilds} aria-label={t('groups.settings.builds')} disabled={g.busy} onclick={() => save({ allowBuilds: !s.allowBuilds })}></button></div>
     {#each [['pinBy', 'groups.settings.pinBy'], ['unpinBy', 'groups.settings.unpinBy']] as [key, label] (key)}
       <div class="gs-t"><span>{t(label)}</span>
@@ -147,7 +148,7 @@
   .gs-c.on { border-color: var(--text); box-shadow: 0 0 0 2px var(--bg-input), 0 0 0 4px var(--c, var(--orange)); }
   .gs-t { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card); margin-bottom: 8px; font-size: 13px; }
   .gs-t span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .gs-t small { font-size: 11.5px; color: var(--text-mute); }
+  
   .gs-ro { margin: 6px 0; font-size: 12px; line-height: 1.45; color: var(--text-mute); }
   .gs-sec2 { display: flex; gap: 6px; margin: 14px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--text-mute); }
   .gs-sec2 i { flex: none; margin-top: 1px; }

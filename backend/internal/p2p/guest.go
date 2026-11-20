@@ -656,8 +656,9 @@ func (g *GuestService) resolveHostOnce(address, tag string) (*RoomInfo, error) {
 	sw := startWatch()
 	roomInfo, err := client.JoinAddress(ctx, address)
 	if err != nil {
-		launchlog.Warn(compGuest, "[%s] резолв %s НЕ вдався за %s: %v  ⇒ %s", tag, address, sw, err, explainLobbyErr(err))
-		return nil, withReason(g.reasonForResolveErr(err), fmt.Errorf("адресу не знайдено: %w", err))
+		reason := g.reasonForResolveErr(err)
+		launchlog.Warn(compGuest, "[%s] резолв %s НЕ вдався за %s: %v  ⇒ %s | гравцеві буде показано: %s", tag, address, sw, err, explainLobbyErr(err), RejectKey(reason))
+		return nil, withReason(reason, fmt.Errorf("адресу не знайдено: %w", err))
 	}
 	roomInfo.Subdomain = address // див. коментар біля поля RoomInfo.Subdomain
 	g.p2pTickets.remember(address, roomInfo.Ticket, roomInfo.TicketExpiresAt)

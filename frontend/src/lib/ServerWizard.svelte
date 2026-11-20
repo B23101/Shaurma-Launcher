@@ -104,15 +104,15 @@
   // fabric/forge/neoforge/quilt) — використовуємо Tabler-іконку з
   // кольоровим квадратом, той самий патерн, що .ci у card-head.
   // Velocity у цьому списку НЕМАЄ — це окремий шлях serverType='proxy'.
-  type CoreDef = { id: string; label: string; sub: string; icon?: string; ti?: string; color: string; group: 'vanilla' | 'mod' | 'plugin' }
+  type CoreDef = { id: string; label: string; icon?: string; ti?: string; color: string; group: 'vanilla' | 'mod' | 'plugin' }
   const cores: CoreDef[] = [
-    { id: 'vanilla', label: 'Vanilla', sub: 'Офіційний сервер Mojang', icon: vanillaIcon, color: '#8b8b8b', group: 'vanilla' },
-    { id: 'paper', label: 'Paper', sub: 'Плагіни, висока продуктивність', icon: papermcIcon, color: '#10b981', group: 'plugin' },
-    { id: 'purpur', label: 'Purpur', sub: 'Форк Paper з фічами Purpur', icon: purpurIcon, color: '#ef4444', group: 'plugin' },
-    { id: 'fabric', label: 'Fabric', sub: 'Легкий модлоадер', icon: fabricIcon, color: '#ff8a00', group: 'mod' },
-    { id: 'forge', label: 'Forge', sub: 'Класичний модлоадер', icon: forgeIcon, color: '#d08b5b', group: 'mod' },
-    { id: 'neoforge', label: 'NeoForge', sub: 'Форк Forge', icon: neoforgeIcon, color: '#ff6b35', group: 'mod' },
-    { id: 'quilt', label: 'Quilt', sub: 'Форк Fabric', icon: quiltIcon, color: '#9d7cff', group: 'mod' },
+    { id: 'vanilla', label: 'Vanilla', icon: vanillaIcon, color: '#8b8b8b', group: 'vanilla' },
+    { id: 'paper', label: 'Paper', icon: papermcIcon, color: '#10b981', group: 'plugin' },
+    { id: 'purpur', label: 'Purpur', icon: purpurIcon, color: '#ef4444', group: 'plugin' },
+    { id: 'fabric', label: 'Fabric', icon: fabricIcon, color: '#ff8a00', group: 'mod' },
+    { id: 'forge', label: 'Forge', icon: forgeIcon, color: '#d08b5b', group: 'mod' },
+    { id: 'neoforge', label: 'NeoForge', icon: neoforgeIcon, color: '#ff6b35', group: 'mod' },
+    { id: 'quilt', label: 'Quilt', icon: quiltIcon, color: '#9d7cff', group: 'mod' },
   ]
   let core = $state('vanilla')
   const selectedCore = $derived(cores.find(c => c.id === core) ?? cores[0])
@@ -302,6 +302,7 @@
   // підказуємо бекенду бажане значення: 0 = «обери вільний» (звичайні
   // сервери), 25577 — звичний порт Velocity (якщо зайнятий, бекенд візьме
   // наступний вільний і ми покажемо це в «Властивості»).
+  // svelte-ignore state_referenced_locally
   let port = $state(serverType === 'proxy' ? 25577 : 0)
 
   // Проксі не тримає світів: свої межі RAM і 512 МБ за замовчуванням
@@ -558,7 +559,7 @@
   async function submitFolder() {
     if (!folderPath) { toast('Оберіть папку сервера', 'error'); return }
     if (!detected) { toast('Спочатку дочекайтесь визначення ядра', 'error'); return }
-    if (detected.confidence === 'low') { toast('Не вдалося впевнено визначити ядро цієї папки', 'error'); return }
+    if (detected.confidence === 'low') { toast('Не вдалося визначити ядро сервера', 'error'); return }
     if (folderNeedsEula && !folderEulaAccepted) { folderEulaModal = true; return }
 
     submitting = true
@@ -625,23 +626,11 @@
 
 {#snippet previewBlock()}
   <div>
-    <div class="section-label" style="margin:2px 2px 8px;display:block">ПРЕВʼЮ</div>
+    <div class="section-label" style="margin:2px 2px 8px;display:block">{t('swz.preview')}</div>
     <!-- Справжні картка бібліотеки й банер сторінки сервера (а не окрема «імітація»):
          превʼю завжди збігається з тим, що з'явиться після створення. Лише для перегляду — без кліків. -->
     <div class="pv-real" aria-hidden="true" inert>
       <ServerCard srv={previewSrv} />
-    </div>
-    <div class="rl-sub" style="margin-top:10px">
-      <i class="ti ti-info-circle"></i>
-      {#if tab === 'folder'}
-        Ядро вже стоїть у цій папці — install не знадобиться, сервер стартує одразу.
-      {:else if serverType === 'proxy'}
-        Проксі Velocity працює з будь-якою версією Minecraft — версію гри обирати не потрібно.
-        {#if launchAfterCreate} Після створення сервер одразу почне встановлення й стартує сам.{/if}
-      {:else}
-        Ядро довантажиться при запуску — так само, як компоненти збірки якаються лише при старті гри.
-        {#if launchAfterCreate} Після створення сервер одразу почне встановлення й стартує сам.{/if}
-      {/if}
     </div>
     <div class="pv-real" style="margin-top:14px" aria-hidden="true" inert>
       <ServerBanner srv={previewSrv} hideToolbar />
@@ -668,25 +657,23 @@
       <div class="card">
         <div class="card-head">
           <div class="ci violet"><i class="ti ti-stack-2"></i></div>
-          <div class="ctw"><div class="ct">Тип сервера</div><div class="cd">Minecraft-сервер або проксі для мережі</div></div>
+          <div class="ctw"><div class="ct">{t('swz.type')}</div></div>
           <span class="step-num">1</span>
         </div>
         <div class="row col">
           <div class="type-seg">
             <button class="type-seg-btn" class:sel={serverType === 'mc'} onclick={() => switchType('mc')} type="button">
               <i class="ti ti-package" style="color:#ff8a00"></i>
-              <span class="ts-name">Minecraft-сервер</span>
+              <span class="ts-name">{t('swz.mcServer')}</span>
               <span class="ts-sub">Vanilla, Paper, Fabric, Forge…</span>
             </button>
             <button class="type-seg-btn" class:sel={serverType === 'proxy'} onclick={() => switchType('proxy')} type="button">
               <i class="ti ti-router" style="color:#3b82f6"></i>
-              <span class="ts-name">Проксі — Velocity</span>
-              <span class="ts-sub">Обʼєднує кілька серверів в одну мережу</span>
+              <span class="ts-name">{t('swz.proxy')}</span>
+              <span class="ts-sub">{t('swz.proxyHint')}</span>
             </button>
           </div>
-          {#if serverType === 'proxy'}
-            <div class="field-hint" style="margin-top:8px;color:var(--blue)"><i class="ti ti-info-circle"></i> Velocity — проксі: йому байдуже, яка версія Minecraft у тебе на серверах. Вкажи лише версію самого проксі.</div>
-          {/if}
+          
         </div>
       </div>
 
@@ -695,18 +682,18 @@
         <div class="card">
           <div class="card-head">
             <div class="ci"><i class="ti ti-versions"></i></div>
-            <div class="ctw"><div class="ct">Версія проксі</div><div class="cd">Версія Velocity (не залежить від версії гри)</div></div>
+            <div class="ctw"><div class="ct">{t('swz.proxyVer')}</div></div>
             <span class="step-num">2</span>
           </div>
           <div class="row">
-            <div class="row-label"><div class="rl-name">Версія Velocity</div><div class="rl-sub">Найновіша рекомендована за замовчуванням</div></div>
+            <div class="row-label"><div class="rl-name">{t('swz.velocityVer')}</div></div>
             <VersionPickerModal
               value={coreVersion}
               onselect={(v) => coreVersion = v}
               disabled={coreVersionsLoading || coreVersions.length === 0}
               minWidth="190px"
               placeholder={coreVersionsLoading ? '…' : coreVersions.length === 0 ? 'немає версій' : ''}
-              title="Версія Velocity"
+              title={t('swz.velocityVer')}
               icon="ti-versions"
               ariaLabel="Версія Velocity"
               emptyText="немає версій"
@@ -724,20 +711,20 @@
         <div class="card">
           <div class="card-head">
             <div class="ci"><i class="ti ti-cube"></i></div>
-            <div class="ctw"><div class="ct">Версія Minecraft</div><div class="cd">Обери версію гри — під неї покажуться сумісні ядра</div></div>
+            <div class="ctw"><div class="ct">{t('swz.mcVer')}</div></div>
             <span class="step-num">2</span>
           </div>
           <div class="row">
-            <div class="row-label"><div class="rl-name">Версія гри</div><div class="rl-sub">Стабільна за замовчуванням; снапшоти — за бажанням</div></div>
+            <div class="row-label"><div class="rl-name">{t('swz.gameVer')}</div></div>
             <div class="flex gap8">
-              <span class="chip" class:on={showSnapshots} onclick={() => showSnapshots = !showSnapshots} role="button" tabindex="0">Снапшоти</span>
+              <button type="button" aria-pressed={showSnapshots} class="chip" class:on={showSnapshots} onclick={() => showSnapshots = !showSnapshots}  >{t('swz.snapshots')}</button>
               <VersionPickerModal
                 value={mcVersion}
                 onselect={(v) => mcVersion = v}
                 disabled={mcVersionsLoading}
                 minWidth="170px"
                 placeholder={mcVersionsLoading ? '…' : ''}
-                title="Версія Minecraft"
+                title={t('swz.mcVer')}
                 icon="ti-versions"
                 ariaLabel="Версія Minecraft"
                 options={filteredMCVersions.map(v => ({ value: v.id, label: v.id, sub: v.type !== 'release' ? v.type : undefined }))}
@@ -750,24 +737,23 @@
         <div class="card">
           <div class="card-head">
             <div class="ci"><i class="ti ti-server-2"></i></div>
-            <div class="ctw"><div class="ct">Ядро сервера</div><div class="cd">Оберіть тип ядра — визначає доступні плагіни/моди</div></div>
+            <div class="ctw"><div class="ct">{t('swz.core')}</div></div>
             <span class="step-num">3</span>
           </div>
           <div class="row col">
             {#if availableCores.length < cores.length}
-              <div class="field-hint" style="margin-bottom:6px;color:var(--yellow)"><i class="ti ti-alert-triangle"></i> Деякі ядра приховані — немає версій під обрану Minecraft</div>
+              <div class="field-hint" style="margin-bottom:6px;color:var(--yellow)"><i class="ti ti-alert-triangle"></i> {t('swz.coreLimited')}</div>
             {/if}
             <div class="loader-grid">
               {#each cores.filter(c => availableCores.includes(c.id)) as c (c.id)}
-                <div class="loader-opt" class:sel={core === c.id} onclick={() => selectCore(c.id)} role="button" tabindex="0">
+                <button type="button" aria-pressed={core === c.id} class="loader-opt" class:sel={core === c.id} onclick={() => selectCore(c.id)}  >
                   {#if c.icon}
                     <img class="loader-ic" src={c.icon} alt="" style="--lcol:{c.color}" />
                   {:else}
                     <i class="ti {c.ti}" style="font-size:26px;color:{c.color}"></i>
                   {/if}
                   <span class="ln">{c.label}</span>
-                  <span class="lt">{c.sub}</span>
-                </div>
+                </button>
               {/each}
             </div>
           </div>
@@ -778,11 +764,11 @@
         <div class="card">
           <div class="card-head">
             <div class="ci"><i class="ti ti-versions"></i></div>
-            <div class="ctw"><div class="ct">Версія {selectedCore.label}</div><div class="cd">Рекомендована позначена зірочкою</div></div>
+            <div class="ctw"><div class="ct">Версія {selectedCore.label}</div></div>
             <span class="step-num">4</span>
           </div>
           <div class="row">
-            <div class="row-label"><div class="rl-name">Версія {selectedCore.label}</div><div class="rl-sub">{selectedCore.id === 'paper' || selectedCore.id === 'purpur' ? 'Номер білда' : 'Версія лоадера'}</div></div>
+            <div class="row-label"><div class="rl-name">Версія {selectedCore.label}</div></div>
             <VersionPickerModal
               value={coreVersion}
               onselect={(v) => coreVersion = v}
@@ -819,16 +805,15 @@
       <div class="card">
         <div class="card-head">
           <div class="ci"><i class="ti ti-network"></i></div>
-          <div class="ctw"><div class="ct">Сервери мережі</div><div class="cd">Приєднай наявні Paper/Purpur-сервери — вони «склеяться» з проксі (спільний forwarding secret)</div></div>
+          <div class="ctw"><div class="ct">{t('swz.netServers')}</div></div>
           <span class="step-num">3</span>
         </div>
         <div class="row col" style="gap:6px">
           {#if attachLoading}
-            <div class="rl-sub"><i class="ti ti-loader spin"></i> Завантаження серверів…</div>
+            <div class="rl-sub"><i class="ti ti-loader spin"></i> {t('swz.loadingServers')}</div>
           {:else if attachCandidates.length === 0}
-            <div class="rl-sub">Зупинених серверів без мережі немає — створи Paper/Purpur-сервер, і він зʼявиться тут.</div>
+            <div class="rl-sub">{t('swz.noFree')}</div>
           {:else}
-            <div class="rl-sub" style="margin-bottom:2px">Обрані сервери стартуватимуть разом з проксі (можна змінити пізніше на сторінці «Мережа»).</div>
             <div class="attach-list">
               {#each attachCandidates as c}
                 <label class="attach-row" style="--acol:{cores.find(x => x.id === c.core)?.color || 'var(--orange)'}">
@@ -859,18 +844,18 @@
       <div class="card">
         <div class="card-head">
           <div class="ci"><i class="ti ti-id"></i></div>
-          <div class="ctw"><div class="ct">Назва та порт</div></div>
+          <div class="ctw"><div class="ct">{t('swz.nameAndPort')}</div></div>
           <span class="step-num">{serverType === 'proxy' ? 4 : needsCoreVersion ? 5 : 4}</span>
         </div>
         <div class="row col">
-          <div class="rl-name">Назва сервера</div>
-          <input class="input" placeholder={suggestedName || 'Назва сервера'} bind:value={name} />
+          <div class="rl-name">{t('swz.name')}</div>
+          <input class="input" placeholder={suggestedName || t('swz.name')} bind:value={name} />
         </div>
         <!-- ID сервера (тека на диску) — як ID збірки: можна лишити
              порожнім (виведеться з назви) або задати свій. Жива перевірка
              зайнятості: два сервери в одній теці перетерли б світи. -->
         <div class="row col">
-          <div class="rl-name">ID сервера (тека)</div>
+          <div class="rl-name">{t('swz.id')}</div>
           <input
             class="input"
             placeholder={autoFolder || suggestedName || 'id-сервера'}
@@ -882,31 +867,20 @@
             {:else if folderCheck}
               {#if folderCheck.free}
                 <i class="ti ti-circle-check" style="color:#10b981"></i>
-                {t('servers.wizard.folderFree', { folder: folderCheck.folder })}
               {:else}
                 <i class="ti ti-circle-x" style="color:#ef4444"></i>
                 {folderCheck.reason || t('servers.wizard.folderTaken')}
               {/if}
-            {:else}
-              <i class="ti ti-info-circle"></i>
-              {t('servers.wizard.folderHint')}
             {/if}
           </div>
         </div>
-        <div class="card-note">
-          <i class="ti ti-info-circle"></i>
-          <span>{t('servers.wizard.portHint')}</span>
-        </div>
-        {#if serverType === 'proxy'}
-          <div class="card-note"><i class="ti ti-info-circle"></i><span>{t('servers.wizard.velocityPortHint')}</span></div>
-        {/if}
       </div>
 
       <!-- ПРОДУКТИВНІСТЬ -->
       <div class="card">
         <div class="card-head">
           <div class="ci green"><i class="ti ti-cpu"></i></div>
-          <div class="ctw"><div class="ct">Продуктивність</div><div class="cd">Оперативна памʼять для сервера</div></div>
+          <div class="ctw"><div class="ct">{t('swz.perf')}</div></div>
           <span class="step-num">{serverType === 'proxy' ? 5 : needsCoreVersion ? 6 : 5}</span>
         </div>
         <div class="row col">
@@ -914,6 +888,7 @@
             <div class="rl-sub">RAM: <b class="mono" style="color:var(--orange)">{ramMB} MB</b></div>
             {#if ramWarn}<div class="rl-sub" style="color:var(--yellow)"><i class="ti ti-alert-triangle"></i> {ramWarn}</div>{/if}
           </div>
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div class="ram-track" onpointerdown={startRamDrag} onpointermove={onRamDragMove} onpointerup={stopRamDrag} onpointercancel={stopRamDrag}>
             <div class="ram-fill" style="left:0%;width:{ramPct}%"></div>
             <div class="ram-knob" style="left:{ramPct}%"></div>
@@ -927,11 +902,12 @@
       <div class="card">
         <div class="card-head">
           <div class="ci {eulaNeeded ? 'yellow' : 'green'}"><i class="ti {eulaNeeded ? 'ti-file-text' : 'ti-rocket'}"></i></div>
-          <div class="ctw"><div class="ct">Запуск</div><div class="cd">{eulaNeeded ? 'Перед створенням буде запропоновано прийняти EULA Minecraft' : 'Проксі не потребує EULA — лише виріши, чи стартувати одразу'}</div></div>
+          <div class="ctw"><div class="ct">{t('swz.launch')}</div></div>
           <span class="step-num">{serverType === 'proxy' ? 6 : needsCoreVersion ? 7 : 6}</span>
         </div>
         <div class="row">
-          <div class="row-label"><div class="rl-name">Створити й одразу запустити</div><div class="rl-sub">Install ядра та старт java підуть одним потоком у консолі сервера</div></div>
+          <div class="row-label"><div class="rl-name">{t('swz.createStart')}</div></div>
+          <!-- svelte-ignore a11y_click_events_have_key_events -->
           <div class="toggle" class:on={launchAfterCreate} onclick={() => launchAfterCreate = !launchAfterCreate} role="button" tabindex="0"></div>
         </div>
       </div>
@@ -948,15 +924,15 @@
     <div>
       <div class="idea">
         <div class="ico"><i class="ti ti-folder-open"></i></div>
-        <div><h4>Наявний сервер</h4><p>Вкажіть теку вже готового сервера — лаунчер сам визначить ядро, версію Minecraft і порт.</p></div>
+        <div><h4>{t('swz.existing')}</h4><p>{t('swz.existingHint')}</p></div>
       </div>
 
       <div class="card">
-        <div class="card-head"><div class="ci"><i class="ti ti-folder"></i></div><div class="ctw"><div class="ct">ПАПКА СЕРВЕРА</div></div></div>
+        <div class="card-head"><div class="ci"><i class="ti ti-folder"></i></div><div class="ctw"><div class="ct">{t('swz.folder')}</div></div></div>
         <div class="row col">
           <div class="folder-row">
-            <input class="input" placeholder="Шлях до папки сервера" bind:value={folderPath} />
-            <button class="btn btn-ghost" onclick={pickFolder}><i class="ti ti-folder"></i></button>
+            <input class="input" placeholder={t('swz.pathPh')} bind:value={folderPath} />
+            <button class="btn btn-ghost" onclick={pickFolder} aria-label={t('swz.pickFolder')}><i class="ti ti-folder"></i></button>
           </div>
         </div>
 
@@ -979,13 +955,13 @@
             </div>
           </div>
           <div class="row">
-            <div class="row-label"><div class="rl-name">{t('servers.wizard.netImport')}</div><div class="rl-sub">{t('servers.wizard.netImportHint')}</div></div>
+            <div class="row-label"><div class="rl-name">{t('servers.wizard.netImport')}</div></div>
             <button class="btn btn-primary" onclick={importNetwork} disabled={importingNet}>
               {#if importingNet}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-topology-star-3"></i>{/if} {t('servers.wizard.netImportBtn')}
             </button>
           </div>
         {:else if detecting}
-          <div class="row"><div class="rl-sub"><i class="ti ti-loader spin"></i> Визначення ядра…</div></div>
+          <div class="row"><div class="rl-sub"><i class="ti ti-loader spin"></i> {t('swz.detecting')}</div></div>
         {:else if detectError}
           <div class="row"><div class="rl-sub" style="color:var(--red)">{detectError}</div></div>
         {:else if detected}
@@ -997,7 +973,7 @@
                 <div class="dp-meta">
                   {detected.core || '—'}
                   {#if detected.core === 'velocity' && !detected.mcVersion}
-                    · проксі (версія гри не застосовується)
+                    · проксі
                   {:else if detected.mcVersion}
                     · {detected.mcVersion}
                   {/if}
@@ -1010,8 +986,8 @@
             </div>
           </div>
           <div class="row col">
-            <div class="rl-name">Назва сервера</div>
-            <input class="input" placeholder="Назва" bind:value={folderName} />
+            <div class="rl-name">{t('swz.name')}</div>
+            <input class="input" placeholder={t('swz.namePh')} bind:value={folderName} />
           </div>
           <div class="row col">
             <div class="flex" style="justify-content:space-between">
@@ -1020,12 +996,13 @@
             <NumberInput class="input mono" step="256" bind:value={folderRamMB} style="width:140px" />
           </div>
           <div class="row">
-            <div class="row-label"><div class="rl-name">Одразу запустити</div></div>
+            <div class="row-label"><div class="rl-name">{t('swz.startNow')}</div></div>
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div class="toggle" class:on={folderLaunchAfterCreate} onclick={() => folderLaunchAfterCreate = !folderLaunchAfterCreate} role="button" tabindex="0"></div>
           </div>
           {#if folderNeedsEula}
             <div class="row">
-              <div class="row-label"><div class="rl-name">Угода Minecraft EULA</div><div class="rl-sub">Прийняти треба при натисканні «Додати сервер» — модалка зʼявиться сама</div></div>
+              <div class="row-label"><div class="rl-name">{t('swz.eula')}</div></div>
             </div>
           {/if}
         {/if}
@@ -1039,10 +1016,10 @@
         <!-- ВИГЛЯД: той самий віджет, що у «Створити»/налаштуваннях
              сервера (іконка лаунчера + колір), авто/після-створення. -->
         <div style="margin-top:14px">
-          <div class="section-label" style="margin:2px 2px 8px;display:block">ВИГЛЯД СЕРВЕРА</div>
+          <div class="section-label" style="margin:2px 2px 8px;display:block">{t('swz.appearance')}</div>
           <AppearanceEditor
-            title="Іконка та колір"
-            desc="Зберігається в картці сервера — як у збірках"
+            title={t('swz.iconColor')}
+            desc=""
             ciClass="violet"
             iconPreviewUrl={folderIconPreview}
             iconName={folderIcon}
@@ -1063,7 +1040,7 @@
 </div>
 
 <div class="create-footer">
-  <button class="btn btn-ghost" onclick={onclose}><i class="ti ti-x"></i> Скасувати</button>
+  <button class="btn btn-ghost" onclick={onclose}><i class="ti ti-x"></i> {t('cancel')}</button>
   <button
     class="btn btn-primary"
     disabled={submitting || (tab === 'folder' && !detected) || (tab === 'create' && !!folderCheck && !folderCheck.free)}
@@ -1078,15 +1055,15 @@
      сервер», якщо EULA ще не прийнята — не окремий крок-картка. -->
 {#if eulaModal || folderEulaModal}
   <UiModal open={true} onclose={() => { eulaModal = false; folderEulaModal = false }} icon="ti-file-text" color="var(--yellow)"
-           width="460px" title="Угода Minecraft EULA">
+           width="460px" title={t('swz.eula')}>
     <div style="font-size:12.5px;line-height:1.6;color:var(--text)">
-      Щоб запускати сервер Minecraft, ти маєш прийняти
+      Для запуску сервера прийми
       <a href="https://www.minecraft.net/eula" target="_blank" rel="noopener" style="color:var(--blue)">End User License Agreement</a>
-      від Mojang. Без прийняття сервер не запуститься.
+      від Mojang.
     </div>
     {#snippet footer()}
-      <button class="btn btn-ghost" onclick={() => { eulaModal = false; folderEulaModal = false }}>Скасувати</button>
-      <button class="btn btn-primary" onclick={eulaConfirm}><i class="ti ti-check"></i> Я приймаю EULA</button>
+      <button class="btn btn-ghost" onclick={() => { eulaModal = false; folderEulaModal = false }}>{t('cancel')}</button>
+      <button class="btn btn-primary" onclick={eulaConfirm}><i class="ti ti-check"></i> {t('swz.eulaAccept')}</button>
     {/snippet}
   </UiModal>
 {/if}

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n.svelte'
   // NumberInput.svelte — числове поле у стилі лаунчера. Замінює нативний
   // <input type="number">, у якого браузерні стрілки (spin-button) не
   // підлаштовуються під тему. Власні кнопки ▲/▼ усередині поля:
@@ -61,11 +62,11 @@
   <input bind:this={el} bind:value type="number" class="nf-in {cls}" {...rest} />
   {#if !rest.disabled && !rest.readonly}
     <span class="nf-steps" aria-hidden="true">
-      <button type="button" tabindex="-1" class="nf-up"
+      <button type="button" tabindex="-1" class="nf-up" aria-label={t('num.inc')}
               onpointerdown={(e) => down(e, 1)} onpointerup={() => stop(true)} onpointercancel={() => stop(true)}>
         <i class="ti ti-chevron-up"></i>
       </button>
-      <button type="button" tabindex="-1" class="nf-down"
+      <button type="button" tabindex="-1" class="nf-down" aria-label={t('num.dec')}
               onpointerdown={(e) => down(e, -1)} onpointerup={() => stop(true)} onpointercancel={() => stop(true)}>
         <i class="ti ti-chevron-down"></i>
       </button>

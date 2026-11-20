@@ -228,6 +228,11 @@ func dispatch(method string, argsJSON string) (res invokeResult) {
 			"%s: очікує %d аргумент(ів), отримано %d", method, mt.NumIn(), len(rawArgs))}
 	}
 
+	// Збірку, яку зараз редагує ШІ-агент, гравець змінювати/запускати не може.
+	if err := appInstance.aiEditGuard(method, rawArgs); err != nil {
+		return invokeResult{OK: false, Error: err.Error()}
+	}
+
 	callArgs := make([]reflect.Value, mt.NumIn())
 	for i := 0; i < mt.NumIn(); i++ {
 		paramPtr := reflect.New(mt.In(i))

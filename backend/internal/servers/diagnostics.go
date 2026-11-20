@@ -39,33 +39,50 @@ type RunningChecker func(serverID string) bool
 // Тому першочергово питаємо ОС, чи є СПРАВЖНІЙ LISTENING-сокет:
 //   - Windows: netstat -ano (рядки з LISTENING);
 //   - Linux:   ss -ltnH (fallback: lsof).
+//
 // Якщо утиліта працює — її відповідь і є істиною (LISTENING є → зайнято,
 // немає → вільно, незалежно від TIME_WAIT). Ліші фолбеки (dial/listen)
 // використовуються лише там, де утиліт немає (мінімальні системи).
 func isPortActuallyBound(port int) bool {
-	// 1. Пряма мова ОС про активні слухачі.
-	if busy, holder, ok := activeListener(port); ok {
-		_ = holder
-		return busy
-	}
-
-	// 2. Фолбек без утиліт: dial — хтось приймає з'єднання на loopback.
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
-	conn, err := net.DialTimeout("tcp", addr, 300*time.Millisecond)
-	if err == nil {
-		conn.Close()
+	// 1. Пряма мова ОС: LISTENING або живий вихідний сокет на цьому порту.
+	busy, _, netstatOK := activeListener(port)
+	if busy {
 		return true
 	}
 
-	// Listen-тест: вдається → вільно; ні — з великою ймовірністю зайнято
-	// (але без утиліт ОС ми не можемо відрізнити LISTENING від TIME_WAIT,
-	// тому тут ідемо на компроміс: для запуску сервера краще дізнатись про
-	// реальну зайнятість із джерела, якому довіряємо — крок 1).
+	// 2. Контрольна перевірка dial-ом: хтось ПРИЙМАЄ з'єднання на loopback.
+	//    Потрібна навіть тоді, коли утиліта ОС відповіла «вільно»: netstat
+	//    може працювати з обмеженими правами/в ізольованому оточенні й не
+	//    бачити сокетів — саме так лаунчер казав «порт вільний» на зайнятому
+	//    порту. На закритому порту dial падає одразу (RST), тож перевірка
+	//    майже безкоштовна; на TIME_WAIT він теж не спрацьовує — примара не
+	//    відповідає, тому хибних «зайнято» немає.
+	if dialLoopback(port) {
+		return true
+	}
+	if netstatOK {
+		return false
+	}
+
+	// 3. Утиліт ОС немає зовсім: остання інстанція — пробний bind (так само,
+	//    як це робитиме сервер). Тут можливі хибні «зайнято» через
+	//    TIME_WAIT — але без іншого джерела правди краще так.
 	ln, lErr := net.Listen("tcp", fmt.Sprintf(":%d", port))
 	if lErr == nil {
 		ln.Close()
 		return false
 	}
+	return true
+}
+
+// dialLoopback — чи відповідає хтось на 127.0.0.1:port (тобто порт реально
+// слухають). Короткий таймаут: на закритому порту ОС відповідає одразу.
+func dialLoopback(port int) bool {
+	conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", port), 300*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	conn.Close()
 	return true
 }
 
@@ -118,15 +135,35 @@ func portSnapshot() ([]string, bool) {
 // activeListenerWindows — netstat -ano: рядок із LISTENING і локальним
 // адресом :<port>. Якщо netstat запустився — ми довіряємо його відповіді
 // (ok=true), навіть коли LISTENING не знайдено: це й означає «вільно».
+//
+// ДРУГИЙ ВИПАДОК — вихідний сокет на тому ж локальному порту. Для bind
+// це така сама зайнятість: якщо будь-яке з'єднання вже використовує
+// локальний порт 65017 (192.168.0.218:65017 → 1.2.3.4:443), сервер не
+// зможе зайняти *:65017 і впаде з «Address already in use: bind» — хоча
+// LISTENING-рядка немає і стара перевірка казала «вільно». Саме так
+// виглядав краш на порту з ефемерного діапазону.
+// TIME_WAIT навмисно ігноруємо (див. isPortActuallyBound): це примара
+// щойно закритого з'єднання, вона не блокує bind і давала хибні «зайнято».
 func activeListenerWindows(port int) (bool, string, bool) {
 	lines, ok := portSnapshot()
 	if !ok {
 		return false, "", false
 	}
+	busy, holder := scanWindowsPortRows(lines, port)
+	return busy, holder, true
+}
+
+// scanWindowsPortRows розбирає вивід netstat -ano і каже, чи зайнятий
+// ЛОКАЛЬНИЙ порт. Окрема функція — щоб розбір рядків можна було
+// перевірити юніт-тестом без реального netstat.
+func scanWindowsPortRows(lines []string, port int) (bool, string) {
 	suffix := fmt.Sprintf(":%d", port)
+	holder := ""
 	for _, line := range lines {
-		lower := strings.ToLower(line)
-		if !strings.Contains(lower, "listening") {
+		// netstat -ano: рядки починаються з пробілів («  TCP  0.0.0.0:25565 …»),
+		// тому перед перевіркою протоколу обрізаємо відступ.
+		lower := strings.ToLower(strings.TrimSpace(line))
+		if !strings.HasPrefix(lower, "tcp") {
 			continue
 		}
 		fields := strings.Fields(line)
@@ -138,9 +175,43 @@ func activeListenerWindows(port int) (bool, string, bool) {
 		if !strings.HasSuffix(local, suffix) {
 			continue
 		}
-		return true, fmt.Sprintf("PID %s", fields[len(fields)-1]), true
+		if strings.Contains(lower, "listening") {
+			return true, fmt.Sprintf("PID %s", fields[len(fields)-1])
+		}
+		// TIME_WAIT — примара щойно закритого з'єднання, bind не блокує.
+		if strings.Contains(lower, "time_wait") {
+			continue
+		}
+		// Живий вихідний сокет на цьому ж локальному порту.
+		if holder == "" {
+			holder = fmt.Sprintf("вихідне з'єднання (PID %s)", fields[len(fields)-1])
+		}
 	}
-	return false, "", true
+	if holder != "" {
+		return true, holder
+	}
+	return false, ""
+}
+
+// firstEphemeralPort — початок динамічного (ефемерного) діапазону Windows.
+// Порти звідси ОС сама роздає вихідним з'єднанням (браузер, лаунчер, будь-яка
+// програма з HTTPS), тому тримати на них ігровий сервер не можна: порт може
+// «зникнути» в будь-яку мить і сервер не забайндиться.
+const firstEphemeralPort = 49152
+
+// inEphemeralPortRange — чи порт лежить у динамічному діапазоні ОС.
+// Перевіряємо лише Windows: там межа фіксована (49152–65535), а на Linux
+// вона залежить від net.ipv4.ip_local_port_range.
+func inEphemeralPortRange(port int) bool {
+	return runtime.GOOS == "windows" && port >= firstEphemeralPort && port <= 65535
+}
+
+// portScanLimit — верхня межа (не включно) для автоматичного підбору порту.
+func portScanLimit() int {
+	if runtime.GOOS == "windows" {
+		return firstEphemeralPort
+	}
+	return 65536
 }
 
 // activeListenerUnix — ss -ltnH (fallback: lsof). Порожній вивід = ніхто
@@ -230,13 +301,32 @@ func CheckPortFree(port int, ourServers map[string]*Server, excludeServerID stri
 
 // ScanFreePort шукає вільний порт починаючи з preferred, ігноруючи
 // порти власних запущених серверів (excludeServerID виключає себе).
+//
+// Автопідбір НІКОЛИ не бере порт з ефемерного діапазону ОС: такий порт
+// займе будь-яке вихідне з'єднання (див. inEphemeralPortRange), і сервер
+// упаде з «Address already in use: bind» без жодного видимого винуватця.
 func ScanFreePort(preferred int, ourServers map[string]*Server, excludeServerID string, isRunning RunningChecker) int {
 	if preferred <= 0 || preferred > 65535 {
 		preferred = 25565
 	}
-	for port := preferred; port < 65536; port++ {
-		res := CheckPortFree(port, ourServers, excludeServerID, isRunning)
-		if res.Free {
+	limit := portScanLimit()
+	if preferred >= limit {
+		preferred = 25565
+	}
+	scan := func(from, to int) int {
+		for port := from; port < to; port++ {
+			if CheckPortFree(port, ourServers, excludeServerID, isRunning).Free {
+				return port
+			}
+		}
+		return 0
+	}
+	if port := scan(preferred, limit); port != 0 {
+		return port
+	}
+	// Хвіст діапазону нижче preferred (порти вище — ефемерні або зайняті).
+	if preferred > 25565 {
+		if port := scan(25565, preferred); port != 0 {
 			return port
 		}
 	}

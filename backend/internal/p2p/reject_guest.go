@@ -91,6 +91,9 @@ func (g *GuestService) reasonForLobby(le *LobbyError) RejectReason {
 			return RejHostOfflineAnon
 		}
 		return RejHostOffline
+	case le.IsGateDenied():
+		// 403 без пояснення — це шлюз/Cloudflare, а не рішення власника (власник = p2p_not_allowed вище).
+		return RejGateDenied
 	case le.Status == 403:
 		return RejNotAllowed
 	}
@@ -116,6 +119,8 @@ func (g *GuestService) negTTL(err error) time.Duration {
 		return 30 * time.Second
 	case RejRateLimited:
 		return 20 * time.Second
+	case RejGateDenied:
+		return 10 * time.Second
 	case RejLobbyUnreachable:
 		return 8 * time.Second
 	}

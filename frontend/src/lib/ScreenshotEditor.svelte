@@ -41,7 +41,7 @@
   let redoStack = $state<Action[]>([])
   let cropRect = $state<{ x: number; y: number; w: number; h: number } | null>(null)
 
-  let canvasEl: HTMLCanvasElement
+  let canvasEl = $state<HTMLCanvasElement>(null!)
   let wrapEl: HTMLDivElement
   let baseImg = $state<HTMLImageElement | null>(null)
   let loading = $state(true)
@@ -672,34 +672,34 @@
   <div class="editor-topbar">
     <div class="editor-file" use:launcherTip={entry.fileName}><i class="ti ti-photo"></i> {entry.title || entry.fileName}</div>
     <div style="flex:1"></div>
-    <button class="btn btn-ghost btn-sm" onclick={undo} disabled={actions.length === 0} use:launcherTip={t('editor.undo')}><i class="ti ti-arrow-back-up"></i></button>
-    <button class="btn btn-ghost btn-sm" onclick={redo} disabled={redoStack.length === 0} use:launcherTip={t('editor.redo')}><i class="ti ti-arrow-forward-up"></i></button>
-    <button class="btn btn-ghost btn-sm" onclick={resetAll} disabled={actions.length === 0} use:launcherTip={t('editor.reset')}><i class="ti ti-trash-x"></i></button>
-    <button class="btn btn-ghost btn-sm" onclick={copyToClipboard} use:launcherTip={t('editor.copyToClipboard')}><i class="ti ti-copy"></i></button>
+    <button aria-label={t('editor.undo')} class="btn btn-ghost btn-sm" onclick={undo} disabled={actions.length === 0} use:launcherTip={t('editor.undo')}><i class="ti ti-arrow-back-up"></i></button>
+    <button aria-label={t('editor.redo')} class="btn btn-ghost btn-sm" onclick={redo} disabled={redoStack.length === 0} use:launcherTip={t('editor.redo')}><i class="ti ti-arrow-forward-up"></i></button>
+    <button aria-label={t('editor.reset')} class="btn btn-ghost btn-sm" onclick={resetAll} disabled={actions.length === 0} use:launcherTip={t('editor.reset')}><i class="ti ti-trash-x"></i></button>
+    <button aria-label={t('editor.copyToClipboard')} class="btn btn-ghost btn-sm" onclick={copyToClipboard} use:launcherTip={t('editor.copyToClipboard')}><i class="ti ti-copy"></i></button>
     <button class="btn btn-ghost btn-sm" onclick={saveAsCopy} disabled={saving}><i class="ti ti-copy-plus"></i> {t('editor.saveAsCopy')}</button>
     <button class="btn btn-primary btn-sm" onclick={saveOverwrite} disabled={saving}>
       {#if saving}<i class="ti ti-loader spin"></i> {t('editor.saving')}{:else}<i class="ti ti-device-floppy"></i> {t('editor.save')}{/if}
     </button>
-    <button class="btn btn-ghost btn-sm" onclick={requestClose} use:launcherTip={t('gallery.close')}><i class="ti ti-x"></i></button>
+    <button aria-label={t('gallery.close')} class="btn btn-ghost btn-sm" onclick={requestClose} use:launcherTip={t('gallery.close')}><i class="ti ti-x"></i></button>
   </div>
 
   <div class="editor-body">
     {#if tool !== 'crop'}
       <div class="editor-toolside">
-        <button class="etool" class:active={tool === 'brush'} onclick={() => tool = 'brush'} use:launcherTip={t('editor.tool.brush')}><i class="ti ti-brush"></i></button>
-        <button class="etool" class:active={tool === 'marker'} onclick={() => tool = 'marker'} use:launcherTip={t('editor.tool.marker')}><i class="ti ti-highlight"></i></button>
-        <button class="etool" class:active={tool === 'eraser'} onclick={() => tool = 'eraser'} use:launcherTip={t('editor.tool.eraser')}><i class="ti ti-eraser"></i></button>
-        <button class="etool" class:active={tool === 'line'} onclick={() => tool = 'line'} use:launcherTip={t('editor.tool.line')}><i class="ti ti-slash"></i></button>
-        <button class="etool" class:active={tool === 'arrow'} onclick={() => tool = 'arrow'} use:launcherTip={t('editor.tool.arrow')}><i class="ti ti-arrow-up-right"></i></button>
-        <button class="etool" class:active={tool === 'rect'} onclick={() => tool = 'rect'} use:launcherTip={t('editor.tool.rect')}><i class="ti ti-square"></i></button>
-        <button class="etool" class:active={tool === 'ellipse'} onclick={() => tool = 'ellipse'} use:launcherTip={t('editor.tool.ellipse')}><i class="ti ti-circle"></i></button>
+        <button aria-label={t('editor.tool.brush')} class="etool" class:active={tool === 'brush'} onclick={() => tool = 'brush'} use:launcherTip={t('editor.tool.brush')}><i class="ti ti-brush"></i></button>
+        <button aria-label={t('editor.tool.marker')} class="etool" class:active={tool === 'marker'} onclick={() => tool = 'marker'} use:launcherTip={t('editor.tool.marker')}><i class="ti ti-highlight"></i></button>
+        <button aria-label={t('editor.tool.eraser')} class="etool" class:active={tool === 'eraser'} onclick={() => tool = 'eraser'} use:launcherTip={t('editor.tool.eraser')}><i class="ti ti-eraser"></i></button>
+        <button aria-label={t('editor.tool.line')} class="etool" class:active={tool === 'line'} onclick={() => tool = 'line'} use:launcherTip={t('editor.tool.line')}><i class="ti ti-slash"></i></button>
+        <button aria-label={t('editor.tool.arrow')} class="etool" class:active={tool === 'arrow'} onclick={() => tool = 'arrow'} use:launcherTip={t('editor.tool.arrow')}><i class="ti ti-arrow-up-right"></i></button>
+        <button aria-label={t('editor.tool.rect')} class="etool" class:active={tool === 'rect'} onclick={() => tool = 'rect'} use:launcherTip={t('editor.tool.rect')}><i class="ti ti-square"></i></button>
+        <button aria-label={t('editor.tool.ellipse')} class="etool" class:active={tool === 'ellipse'} onclick={() => tool = 'ellipse'} use:launcherTip={t('editor.tool.ellipse')}><i class="ti ti-circle"></i></button>
         <div class="etool-sep"></div>
-        <button class="etool" onclick={enterCrop} use:launcherTip={t('editor.tool.crop')}><i class="ti ti-crop"></i></button>
+        <button aria-label={t('editor.tool.crop')} class="etool" onclick={enterCrop} use:launcherTip={t('editor.tool.crop')}><i class="ti ti-crop"></i></button>
         <div class="etool-sep"></div>
         <div class="etool-label">{t('editor.color')}</div>
         <div class="etool-colors">
           {#each colorPresets as c}
-            <button class="ecolor" class:active={color === c} style="background:{c}" onclick={() => color = c}></button>
+            <button aria-label={`${t('editor.color')}: ${c}`} class="ecolor" class:active={color === c} style="background:{c}" onclick={() => color = c}></button>
           {/each}
         </div>
         <input class="ecolor-custom" type="color" bind:value={color} use:launcherTip={t('editor.color')} />
@@ -730,6 +730,7 @@
           {#if tool === 'crop' && cropRect}
             <div class="crop-overlay">
               <div class="crop-mask" style="clip-path: polygon(0% 0%, 0% 100%, {cropRect.x*displayScale}px 100%, {cropRect.x*displayScale}px {cropRect.y*displayScale}px, {(cropRect.x+cropRect.w)*displayScale}px {cropRect.y*displayScale}px, {(cropRect.x+cropRect.w)*displayScale}px {(cropRect.y+cropRect.h)*displayScale}px, {cropRect.x*displayScale}px {(cropRect.y+cropRect.h)*displayScale}px, {cropRect.x*displayScale}px 100%, 100% 100%, 100% 0%)"></div>
+              <!-- svelte-ignore a11y_no_static_element_interactions -->
               <div class="crop-box"
                    style="left:{cropRect.x*displayScale}px;top:{cropRect.y*displayScale}px;width:{cropRect.w*displayScale}px;height:{cropRect.h*displayScale}px;cursor:{cropCursors[cropDragMode ?? cropHoverHandle ?? 'move']}"
                    onpointerdown={onCropPointerDown} onpointermove={onCropPointerMove} onpointerup={onCropPointerUp}>

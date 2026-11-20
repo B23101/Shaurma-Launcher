@@ -269,8 +269,11 @@ func (c *ModrinthClient) ResolveDependency(depName, gameVersion, loader, modsDir
 		return c.tryCurseForge(depName, gameVersion, loader, modsDir, fmt.Errorf("немає файлу для завантаження"))
 	}
 	file := v.Files[v.PrimaryFileIndex()]
-	filename := file.Filename
-	if filename == "" {
+	// Ім'я приходить з віддаленого API — беремо лише базовий компонент, інакше
+	// крафтнутий Filename ("..\\..\\Startup\\evil.jar") вийшов би за межі modsDir
+	// через filepath.Join (path traversal).
+	filename := filepath.Base(strings.ReplaceAll(file.Filename, "\\", "/"))
+	if filename == "" || filename == "." || filename == ".." {
 		filename = best.Slug + ".jar"
 	}
 	dest := filepath.Join(modsDir, filename)

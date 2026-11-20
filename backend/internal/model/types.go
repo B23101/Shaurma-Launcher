@@ -163,6 +163,8 @@ type Settings struct {
 	// (один колір, другий тон вираховується автозатемненням, як раніше).
 	AccentCustomMode string `json:"accentCustomMode"`
 	Theme            string `json:"theme"` // dark | light
+	// UIScale — масштаб інтерфейсу лаунчера у відсотках (70–150, 100 = як є).
+	UIScale int `json:"uiScale"`
 	// SidebarAnimAlways — анімувати іконки збірок у sidebar ЗАВЖДИ
 	// (не лише для вибраної збірки). За замовчуванням GIF/анімовані іконки
 	// у sidebar грають лише для активної (вибраної) збірки, щоб не
@@ -200,6 +202,8 @@ type Settings struct {
 	AutoDownloadAfterCreate bool   `json:"autoDownloadAfterCreate"`
 	InstanceDir             string `json:"instanceDir"`
 	JavaPath                string `json:"javaPath"`
+	// JavaProvider — звідки лаунчер ставить Java: mojang | adoptium | zulu.
+	JavaProvider            string `json:"javaProvider"`
 	MaxRAM                  int    `json:"maxRAM"`
 	JavaArgs                string `json:"javaArgs"`
 	// Активний (обраний для гри) акаунт. Зберігається в settings.json —
@@ -268,6 +272,9 @@ type Settings struct {
 	// діалогу). Список зберігається локально і не залежить від дружби —
 	// чат лишається мутнутим і після видалення друга.
 	MutedChats []string `json:"mutedChats"`
+	// NotifyProfileActivity — тост, коли друг залишає коментар або реакцію в моєму профілі.
+	// За замовчуванням УВІМКНЕНО; вимикається в Налаштування → Сповіщення.
+	NotifyProfileActivity bool `json:"notifyProfileActivity"`
 
 	// ── Консоль ──
 	// Ліміт буфера — у РЯДКАХ (consoleMaxLines), не символах: користувачу
@@ -409,6 +416,10 @@ type Settings struct {
 	// після видалення збірки більше не використовує жодна інша збірка
 	// (versions + їх бібліотеки й асети). Увімкнено за замовчуванням.
 	CleanupAfterPackDelete bool `json:"cleanupAfterPackDelete"`
+	// HashOldPacks — «хешувати» моди збірок, які не запускали понад місяць:
+	// jar, який Modrinth впізнав за sha1, стає hardlink-ом на спільне сховище
+	// (економія місця). Невпізнані моди не чіпаються. За замовчуванням вимкнено.
+	HashOldPacks bool `json:"hashOldPacks"`
 
 	// ── CurseForge ──
 	// CurseForgeAPIKey — ВЛАСНИЙ API-ключ користувача (введений у
@@ -908,6 +919,8 @@ type InstanceConfig struct {
 
 	UseSeparateJava  bool   `json:"useSeparateJava"`
 	JavaPathOverride string `json:"javaPathOverride"`
+	// JavaProviderOverride — провайдер Java саме для цієї збірки ("" = як у лаунчері).
+	JavaProviderOverride string `json:"javaProviderOverride"`
 
 	// AccountIDOverride — якщо задано, ЦЯ збірка завжди запускається під
 	// вказаним акаунтом, ігноруючи активний акаунт лаунчера (аналог
@@ -1130,6 +1143,8 @@ type ModEntry struct {
 	HasMissingDeps bool     `json:"hasMissingDeps"`
 	MissingDeps    []string `json:"missingDeps,omitempty"`
 	Sha1           string   `json:"sha1,omitempty"`
+	// Hashed — мод «захешований» (дедуплікований через спільне сховище).
+	Hashed bool `json:"hashed,omitempty"`
 	// SourceKind/SourcePath/SourceMissing — мод походить із «єдиного
 	// джерела» (internal/modsource): "file" (окремий jar) або "folder"
 	// (уся тека модів іншої збірки). Такий мод не можна вимикати,

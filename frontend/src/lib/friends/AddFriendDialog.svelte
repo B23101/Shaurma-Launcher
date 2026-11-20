@@ -94,14 +94,16 @@
   <div class="ad-res" aria-live="polite">
     {#if hits.length > 0}
       {#each hits as h (h.accountId)}
-        <button class="ad-hit" onclick={() => pick(h)} disabled={adding}>
-          <FAvatar head={s.heads[h.nickname] ?? ''} initial={initialOf(h.nickname)} size={34} />
-          <span class="ad-hit-m">
-            <span class="ad-hit-n">{clean(h.nickname)}</span>
-            {#if h.handle}<span class="ad-hit-h">@{h.handle}</span>{/if}
-          </span>
-          <span class="ad-hit-go"><i class="ti ti-user-plus"></i></span>
-        </button>
+        <div class="ad-hit">
+          <button class="ad-hit-open" onclick={() => s.openProfileById(h.accountId, h.nickname, h.handle ?? '')} aria-label={t('ff.profile.open')}>
+            <FAvatar head={s.heads[h.nickname] ?? ''} initial={initialOf(h.nickname)} size={34} />
+            <span class="ad-hit-m">
+              <span class="ad-hit-n">{clean(h.nickname)}</span>
+              {#if h.handle}<span class="ad-hit-h">@{h.handle}</span>{/if}
+            </span>
+          </button>
+          <button class="ad-hit-go" onclick={() => pick(h)} disabled={adding} aria-label={t('social.add')}><i class="ti ti-user-plus"></i></button>
+        </div>
       {/each}
     {:else if searched && searched === query && !searching}
       <div class="ad-note"><i class="ti ti-user-search"></i>{t('social.suggest.none')}</div>
@@ -132,14 +134,17 @@
 
   /* Стала висота: результати з'являються без зсуву вікна. */
   .ad-res { display: flex; flex-direction: column; gap: 2px; margin-top: 12px; min-height: 176px; max-height: 232px; overflow-y: auto; }
-  .ad-hit { display: flex; align-items: center; gap: 12px; flex: 0 0 auto; height: 50px; padding: 0 10px; box-sizing: border-box; border: 0; border-radius: 12px; background: transparent; color: var(--text); text-align: left; cursor: pointer; transition: background-color .12s; animation: ad-in .2s var(--ff-ease) both; }
-  .ad-hit:hover:not(:disabled), .ad-hit:focus-visible { background: var(--hover); outline: none; }
-  .ad-hit:disabled { opacity: .55; cursor: default; }
+  .ad-hit { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; height: 50px; padding: 0 10px 0 0; box-sizing: border-box; border-radius: 12px; transition: background-color .12s; animation: ad-in .2s var(--ff-ease) both; }
+  .ad-hit:hover, .ad-hit:focus-within { background: var(--hover); }
+  .ad-hit-open { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 0 0 10px; border: 0; border-radius: 12px; background: transparent; color: var(--text); text-align: left; cursor: pointer; }
+  .ad-hit-open:focus-visible { outline: 2px solid var(--orange); outline-offset: -2px; }
   .ad-hit-m { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .ad-hit-n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 13px/1.2 var(--font-ui); }
   .ad-hit-h { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11px/1.2 var(--font-mono); color: var(--text-mute); }
-  .ad-hit-go { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: var(--orange); font-size: 16px; background: rgba(var(--orange-rgb), .12); transition: transform .14s; }
-  .ad-hit:hover:not(:disabled) .ad-hit-go { transform: scale(1.08); }
+  .ad-hit-go { flex: 0 0 auto; width: 30px; height: 30px; display: grid; place-items: center; border: 0; border-radius: 9px; cursor: pointer; color: var(--orange); font-size: 16px; background: rgba(var(--orange-rgb), .12); transition: transform .14s; }
+  .ad-hit-go:hover:not(:disabled) { transform: scale(1.08); }
+  .ad-hit-go:focus-visible { outline: 2px solid var(--orange); outline-offset: 2px; }
+  .ad-hit-go:disabled { opacity: .55; cursor: default; }
   .ad-note { display: flex; align-items: flex-start; gap: 10px; margin: auto 0; padding: 14px; border-radius: 12px; font: 400 12px/1.5 var(--font-ui); color: var(--text-dim); }
   .ad-note i { flex: 0 0 auto; font-size: 18px; color: var(--orange); }
   @keyframes ad-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

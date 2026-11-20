@@ -50,7 +50,9 @@
   // Серверні P2P-кімнати, які ЗАРАЗ працюють (не тимчасові).
   let serverRooms = $state<{ sub: string; address: string; name: string; players: number; online: boolean; version: string }[]>([])
   let useServer = $state('')
+  // svelte-ignore state_referenced_locally
   let chosen = $state<Set<string>>(new Set(preselect ? [preselect] : []))
+  // svelte-ignore state_referenced_locally
   let chosenGroups = $state<Set<string>>(new Set(preselectGroup ? [preselectGroup] : []))
   let busy = $state(false)
   let err = $state('')
@@ -124,11 +126,11 @@
     try {
       const upd = await App.SetTempInviteUDP(useExisting, udpValue)
       existing = existing.map((x) => (x.id === upd.id ? upd : x))
-      toast(upd.udpPort ? `Голос тунелюється на UDP ${upd.udpPort}` : 'Голос вимкнено', 'success')
+      toast(upd.udpPort ? `Голосовий чат увімкнено: порт ${upd.udpPort}` : 'Голос вимкнено', 'success')
     } catch (e) { err = String(e) } finally { udpBusy = false }
   }
 
-  const kindLabel = (k: string) => (k === 'lan' ? 'LAN-світ' : k === 'modded' ? 'Сервер з модами' : 'Сервер')
+  const kindLabel = (k: string) => (k === 'lan' ? t('kind.lan') : k === 'modded' ? t('kind.modded') : t('kind.server'))
   const kindIcon = (k: string) => (k === 'lan' ? 'ti-world' : k === 'modded' ? 'ti-puzzle' : 'ti-server-2')
   const statusLabel = (f: SocialFriend) => {
     const s = f.presence?.status
@@ -202,7 +204,7 @@
     busy = true
     err = ''
     const ex = existing.find((e) => e.meta.port === p)
-    if (ex) { useExisting = ex.id; picked = null; busy = false; toast('Для цього порту доступ уже відкрито — вибрано його', 'info'); return }
+    if (ex) { useExisting = ex.id; picked = null; busy = false; toast('Доступ до цього сервера вже відкрито', 'info'); return }
     try { picked = await App.ProbeLocalServer(p); useExisting = '' } catch (e) { err = String(e) } finally { busy = false }
   }
 
@@ -256,7 +258,7 @@
         }
         if (failed > 0) { err = `Надіслано: ${sent}. Не вдалося: ${failed}. ${String(lastErr)}`; return }
         toast(
-          sent > 0 ? `Запрошення надіслано (${sent}) — «${room.name}».${failed ? ` Не вдалося: ${failed}.` : ''}` : 'Вже запрошено — повторно не надсилаю.',
+          sent > 0 ? `Запрошення надіслано (${sent}) — «${room.name}».${failed ? ` Не вдалося: ${failed}.` : ''}` : 'Уже запрошено',
           sent > 0 ? 'success' : 'info',
         )
       } else if (useExisting || picked) {
@@ -308,7 +310,7 @@
 </script>
 
 <UiModal open title={groupList.length ? 'Запросити друзів і групи' : 'Запросити друга'}
-         subtitle={useServer ? 'Окремі друзі отримають приватне запрошення, обрані групи — одне повідомлення у груповому чаті. Правила доступу до сервера залишаються чинними.' : 'Тимчасовий доступ: зайти зможуть лише запрошені друзі та поточні учасники обраних груп, поки світ відкритий.'}
+         subtitle={useServer ? 'Запрошення не змінює права доступу до сервера.' : 'Поки світ відкритий, доступ мають запрошені друзі й учасники груп.'}
          icon="ti-door-enter" color="var(--orange)" size="xl" bodyClass="inv-ui" onclose={onclose}>
   <div class="inv-body" data-testid="temp-invite-modal">
 
@@ -316,7 +318,7 @@
     <section class="inv-step inv-left">
       <header class="inv-h">
         <span class="inv-num" class:done={sourceChosen}>{#if sourceChosen}<i class="ti ti-check"></i>{:else}1{/if}</span>
-        <span class="inv-ht">Що відкрити</span>
+        <span class="inv-ht">{t('tinv.what')}</span>
         <button class="inv-mini inv-h-act" data-testid="temp-invite-scan" onclick={scan} disabled={scanning}>
           <i class="ti {scanning ? 'ti-loader-2 spin' : 'ti-radar-2'}"></i> {scanning ? 'Шукаю…' : 'Оновити'}
         </button>
@@ -324,7 +326,7 @@
 
       <div class="inv-src inv-scroll">
         {#if serverRooms.length}
-          <div class="inv-group"><i class="ti ti-server-2"></i> Мої сервери <small>постійний P2P</small></div>
+          <div class="inv-group"><i class="ti ti-server-2"></i> {t('tinv.myServers')} <small>{t('tinv.permP2P')}</small></div>
           {#each serverRooms as r (r.sub)}
             <button class="inv-card" class:sel={useServer === r.sub} data-testid="temp-invite-server-{r.sub}"
                     onclick={() => { useServer = r.sub; useExisting = ''; picked = null }}>
@@ -342,7 +344,7 @@
         {/if}
 
         {#if existing.length || freshFound.length || (picked && !found.some((f) => f.port === picked?.port))}
-          <div class="inv-group"><i class="ti ti-world"></i> Світ на цьому ПК <small>тимчасовий доступ</small></div>
+          <div class="inv-group"><i class="ti ti-world"></i> {t('tinv.localWorld')} <small>{t('tinv.tempAccess')}</small></div>
         {/if}
 
         {#each existing as ex (ex.id)}
@@ -387,32 +389,32 @@
         {:else if scanned && !scanning && freshFound.length === 0 && existing.length === 0 && serverRooms.length === 0}
           <div class="inv-empty">
             <i class="ti ti-world-search"></i>
-            <span>Нічого не знайдено. Увімкніть P2P у налаштуваннях сервера, або в Minecraft натисніть Esc → «Відкрити для мережі», або введіть порт нижче.</span>
+            <span>{t('tinv.portHint')}</span>
           </div>
         {/if}
 
         <div class="inv-port">
           <i class="ti ti-plug-connected"></i>
-          <input data-testid="temp-invite-port" inputmode="numeric" placeholder="Порт вручну, напр. 51234" bind:value={manualPort}
+          <input data-testid="temp-invite-port" inputmode="numeric" placeholder={t('tinv.portPh')} bind:value={manualPort}
                  onkeydown={(e) => { if (e.key === 'Enter') probe() }} />
-          <button class="inv-mini" onclick={probe} disabled={busy || !manualPort}>Перевірити</button>
+          <button class="inv-mini" onclick={probe} disabled={busy || !manualPort}>{t('tinv.check')}</button>
         </div>
 
         {#if selPort}
           <div class="inv-voice" data-testid="temp-invite-voice">
             <div class="inv-voice-h"><i class="ti ti-microphone"></i> Голосовий чат (UDP)
               {#if voice?.detected}<small>{voice.name}{voice.sameAsWorld ? ' · порт світу' : ''} → {voice.autoPort}</small>
-              {:else if voice}<small>мод не знайдено — порт невідомий лаунчеру</small>{/if}
+              {:else if voice}<small>{t('tinv.modMissing')}</small>{/if}
             </div>
             <div class="inv-voice-r">
               <button class="inv-chip" class:on={udpMode === 'auto'} onclick={() => (udpMode = 'auto')}>Авто{voice ? ` (${voice.autoPort})` : ''}</button>
-              <button class="inv-chip" class:on={udpMode === 'custom'} onclick={() => (udpMode = 'custom')}>Свій порт</button>
-              <button class="inv-chip" class:on={udpMode === 'off'} onclick={() => (udpMode = 'off')}>Вимк.</button>
+              <button class="inv-chip" class:on={udpMode === 'custom'} onclick={() => (udpMode = 'custom')}>{t('tinv.customPort')}</button>
+              <button class="inv-chip" class:on={udpMode === 'off'} onclick={() => (udpMode = 'off')}>{t('tinv.off')}</button>
               {#if udpMode === 'custom'}
-                <input class="inv-voice-in" data-testid="temp-invite-udp" inputmode="numeric" placeholder="UDP, напр. 24454" bind:value={udpCustom} />
+                <input class="inv-voice-in" data-testid="temp-invite-udp" inputmode="numeric" placeholder={t('tinv.udpPh')} bind:value={udpCustom} />
               {/if}
               {#if useExisting}
-                <button class="inv-mini" onclick={applyUdp} disabled={udpBusy || !udpValid}>Застосувати</button>
+                <button class="inv-mini" onclick={applyUdp} disabled={udpBusy || !udpValid}>{t('apply')}</button>
               {/if}
             </div>
             {#if voice?.issues?.length}
@@ -427,20 +429,20 @@
     <section class="inv-step inv-right">
       <header class="inv-h">
         <span class="inv-num" class:done={willInvite > 0}>{#if willInvite > 0}<i class="ti ti-check"></i>{:else}2{/if}</span>
-        <span class="inv-ht">Куди надіслати <em>{willInvite}</em></span>
+        <span class="inv-ht">{t('tinv.sendTo')} <em>{willInvite}</em></span>
         <button class="inv-mini inv-h-act" onclick={selectAll} disabled={pendingFriends.length === 0}>
           <i class="ti {allSelected ? 'ti-square-off' : 'ti-checks'}"></i> {allSelected ? 'Зняти все' : 'Обрати всіх'}
         </button>
       </header>
 
       {#if friends.length === 0 && groupList.length === 0}
-        <div class="inv-empty"><i class="ti ti-users"></i><span>Друзів ще немає — спершу додайте їх на сторінці «Друзі».</span></div>
+        <div class="inv-empty"><i class="ti ti-users"></i><span>{t('tinv.addFriends')}</span></div>
       {:else}
         <div class="inv-tools">
           <label class="inv-search">
             <i class="ti ti-search"></i>
-            <input placeholder="Знайти друга" bind:value={q} />
-            {#if q}<button class="inv-x" onclick={() => (q = '')} aria-label="Очистити"><i class="ti ti-x"></i></button>{/if}
+            <input placeholder={t('tinv.findPh')} bind:value={q} />
+            {#if q}<button class="inv-x" onclick={() => (q = '')} aria-label={t('clear')}><i class="ti ti-x"></i></button>{/if}
           </label>
           <button class="inv-chip" class:on={onlyOnline} onclick={() => (onlyOnline = !onlyOnline)}>
             <i class="ti ti-point-filled"></i> У мережі
@@ -449,7 +451,7 @@
 
         <div class="inv-friends inv-scroll">
           {#if shownGroups.length}
-            <div class="inv-sec"><i class="ti ti-users-group"></i> Групи</div>
+            <div class="inv-sec"><i class="ti ti-users-group"></i> {t('tinv.groups')}</div>
             {#each shownGroups as g (g.id)}
               {@const full = groupFullyInvited(g)}
               {@const on = !full && chosenGroups.has(g.id)}
@@ -465,7 +467,7 @@
                 <span class="inv-fr-ck" aria-hidden="true"><i class="ti {full ? 'ti-lock' : 'ti-check'}"></i></span>
               </button>
             {/each}
-            {#if visibleFriends.length}<div class="inv-sec"><i class="ti ti-user"></i> Друзі</div>{/if}
+            {#if visibleFriends.length}<div class="inv-sec"><i class="ti ti-user"></i> {t('tinv.friends')}</div>{/if}
           {/if}
           {#each visibleFriends as f (f.accountId)}
             {@const inv = invitedSet.has(f.accountId)}
@@ -483,7 +485,7 @@
             </button>
           {/each}
           {#if !shownGroups.length && !visibleFriends.length}
-            <div class="inv-empty span"><i class="ti ti-mood-empty"></i><span>Нікого не знайдено</span></div>
+            <div class="inv-empty span"><i class="ti ti-mood-empty"></i><span>{t('tinv.noOne')}</span></div>
           {/if}
         </div>
       {/if}
@@ -508,7 +510,7 @@
         {/if}
         <span class="inv-picked-t">{willInvite ? `Обрано: ${willInvite}${selectedGroups.length ? ` · груп: ${selectedGroups.length}` : ''}` : 'Нікого не обрано'}</span>
       </div>
-      <button class="btn btn-ghost" onclick={onclose}>Скасувати</button>
+      <button class="btn btn-ghost" onclick={onclose}>{t('cancel')}</button>
       <button class="btn btn-primary" data-testid="temp-invite-send" onclick={send} disabled={busy || !sourceChosen || willInvite === 0}>
         {#if busy}<i class="ti ti-loader-2 spin"></i>{:else}<i class="ti ti-send"></i>{/if} Запросити
       </button>
@@ -637,7 +639,7 @@
   .inv-sec { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; padding: 2px 2px 0; font: 800 var(--fs-min)/1 var(--font-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim); }
   .inv-sec i { font-size: 13px; }
   .inv-note { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; padding: 9px 12px; border-radius: 11px; background: rgba(var(--orange-rgb), .08); border: 1px solid rgba(var(--orange-rgb), .3); color: var(--text); font: 500 12px/1.4 var(--font-ui); }
-  .inv-note i { color: var(--orange); font-size: 15px; flex: 0 0 auto; margin-top: 1px; }
+  
   .inv-err { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 11px; background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); color: var(--red); font: 500 12.5px/1.4 var(--font-ui); }
 
   .inv-foot { display: flex; align-items: center; gap: 8px; width: 100%; }

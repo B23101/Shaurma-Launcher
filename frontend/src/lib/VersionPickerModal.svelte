@@ -133,6 +133,7 @@
 >
   <div class="vpm-search-row">
     <i class="ti ti-search"></i>
+    <!-- svelte-ignore a11y_autofocus -->
     <input
       class="vpm-search-input"
       type="text"

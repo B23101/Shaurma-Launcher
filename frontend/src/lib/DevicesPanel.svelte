@@ -139,7 +139,7 @@
     <h4><i class="ti ti-devices"></i> {t('dev.title')}</h4>
     {#if list}<span class="dv-count">{t('dev.count', { n: active.length, max: list.max })}</span>{/if}
   </header>
-  <p class="dv-intro">{t('dev.intro')}</p>
+  
 
   {#if loading}
     <div class="dv-dim"><div class="spinner" style="width:14px;height:14px"></div></div>
@@ -188,7 +188,7 @@
             {#if !d.current}
               <button class="btn btn-ghost btn-sm" disabled={!!busy} onclick={() => notMe(d)}><i class="ti ti-alert-octagon"></i> {t('dev.notMe')}</button>
             {/if}
-            <button class="btn btn-danger btn-sm" disabled={!!busy} onclick={() => revoke(d)}>
+            <button class="btn btn-danger-quiet btn-sm" disabled={!!busy} onclick={() => revoke(d)}>
               <i class="ti ti-logout"></i> {d.current ? t('dev.revokeThis') : t('dev.revoke')}
             </button>
           </div>
@@ -237,7 +237,7 @@
         <b>{t('dev.securityTitle')}</b>
         <span>{t('dev.securityText')}</span>
       </div>
-      <button class="btn btn-danger btn-sm" disabled={!!busy} onclick={emergency}>{t('dev.emergency')}</button>
+      <button class="btn btn-danger-quiet btn-sm" disabled={!!busy} onclick={emergency}>{t('dev.emergency')}</button>
     </div>
 
     <div class="dv-end">
@@ -313,8 +313,8 @@
   .dv-toggle:hover { color:var(--text); }
 
   /* «Мій акаунт скомпрометовано» — окрема зона безпеки з поясненням, а не одинока кнопка серед списку. */
-  .dv-sec { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:rgba(255,80,80,.06); border:1px solid rgba(255,80,80,.25); }
-  .dv-sec-ic { font-size:20px; color:var(--red); }
+  .dv-sec { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; background:var(--bg-input); border:1px solid var(--border); border-left:3px solid rgba(239,68,68,.55); }
+  .dv-sec-ic { font-size:18px; color:var(--text-mute); }
   .dv-sec-txt { flex:1; min-width:0; display:flex; flex-direction:column; gap:3px; }
   .dv-sec-txt b { font:700 12.5px/1.2 var(--font-ui); color:var(--text); }
   .dv-sec-txt span { font-size:11.5px; line-height:1.4; color:var(--text-mute); }

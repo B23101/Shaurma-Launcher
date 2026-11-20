@@ -175,6 +175,7 @@
     />
     <i class="ti ti-chevron-down tr"></i>
   {:else}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div class="sf-trigger" role="button" tabindex={disabled ? -1 : 0}
          aria-label={ariaLabel || current?.label || placeholder}
          use:launcherTip={current?.label || placeholder}
@@ -196,6 +197,7 @@
     </div>
   {/if}
   {#if open && !disabled}
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="sf-menu" class:sf-lg={size === 'lg'} bind:this={menuEl} onclick={(e) => e.stopPropagation()}>
       {#each filteredOptions as opt}
         <button class="sf-item" class:sel={value === opt.value} onclick={() => pick(opt)} use:launcherTip={opt.label}>

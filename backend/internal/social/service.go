@@ -100,7 +100,8 @@ type Service struct {
 	stop    chan struct{}
 	stopped chan struct{}
 	games   map[string]gameInfo
-	// Статус «відійшов»: вікно лаунчера неактивне довше за AwayAfter.
+	// Статус «відійшов»: ПК без вводу довше за поріг (SetUserIdle) або, де простій не міряється,
+	// вікно лаунчера неактивне довше за AwayAfter (SetWindowActive).
 	winActive bool
 	away      bool
 	// manualAway — «Відійшов», поставлений вручну (тримається, доки користувач не змінить;
@@ -201,6 +202,7 @@ func (s *Service) Start() error {
 		OnMessageEdited:       s.onMessageEdited,
 		OnPinsUpdated:         s.onPinsUpdated,
 		OnReactionsUpdated:    s.onReactionsUpdated,
+		OnProfileActivity:     func(e ProfileActivityEvent) { s.d.Emit("profile:activity", e) },
 		OnGroupEvent:          func(t string, raw json.RawMessage) { s.d.Emit("group:event", GroupEvent{Type: t, Data: raw}) },
 		OnGroupShareClaim:     func(c GroupShareClaim) { s.d.Emit("group:share_claim", c) },
 		OnDeviceRevoked:       s.onDeviceRevoked,
@@ -513,8 +515,23 @@ func (s *Service) loop(stop, stopped chan struct{}) {
 			s.mu.Unlock()
 			if !wsOK {
 				s.Refresh()
+				s.reviveWS()
 			}
 		}
+	}
+}
+
+// reviveWS перезапускає presence-WebSocket, якщо він зупинився сам. Цикл PresenceClient виходить
+// назавжди на першому not_logged_in (напр. коли VPS через збій БД відповів 401), а HTTP-опитування
+// друзів потім відновлюється — і лишалось «друзі видно, а чат/групи просять вхід», аж до
+// перемикання акаунта. Якщо HTTP-сесія жива (Refresh виставив LoggedIn), стартуємо WS знову;
+// PresenceClient.Start ідемпотентний: працюючий цикл не чіпає.
+func (s *Service) reviveWS() {
+	s.mu.Lock()
+	pc, ok := s.pc, s.stop != nil && s.st.LoggedIn && s.st.Conn == ConnOff
+	s.mu.Unlock()
+	if ok && pc != nil {
+		_ = pc.Start()
 	}
 }
 
@@ -957,6 +974,19 @@ func (s *Service) SetWindowActive(active bool) {
 		s.away = true
 		s.syncGameLocked()
 	})
+}
+
+// SetUserIdle викликається, коли змінюється простій ПК: idle=true — у системі немає вводу довше
+// за поріг («відійшов»), idle=false — користувач знову за комп'ютером («в мережі»). Не залежить
+// від вікна лаунчера. У грі статус лишається «у грі» (див. syncGameLocked).
+func (s *Service) SetUserIdle(idle bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.stop == nil || s.away == idle {
+		return
+	}
+	s.away = idle
+	s.syncGameLocked()
 }
 
 // ErrClockSkew — годинник цього ПК розходиться із сервером: «Виправте дату й час».

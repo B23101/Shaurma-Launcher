@@ -115,7 +115,8 @@
   // Акаунт, який реально запускатиме збірку (прив'язаний або активний) —
   // від нього залежить, чи показувати блок «Скін збірки» (лише ліцензійні).
   const launchAccount = $derived(accounts.find((a: Account) => a.id === cfg.accountIdOverride) ?? activeAccount ?? null)
-  const skinLicensed = $derived(!!launchAccount?.isLicensed)
+  // Скін збірки: ліцензійний (Mojang) або піратський з акаунтом Шаурми (скін Шаурми).
+  const skinLicensed = $derived(!!launchAccount?.isLicensed || !!(launchAccount as any)?.isShaurmaSkinAccount)
 
   // Пресети Гардероба вибраного акаунта — список для випадаючого меню.
   let wardrobePresets = $state<SkinPreset[]>([])
@@ -139,6 +140,19 @@
     }),
   )
 
+  // Плащі Шаурми акаунта запуску: пресет із системою «Шаурма» показує САМЕ той плащ, який
+  // буде в грі (а не плащ Mojang із кешу пресета).
+  let shaurmaCapeTex = $state<Record<string, string>>({})
+  let shaurmaCapesFor = ''
+  $effect(() => {
+    const id = launchAccount?.id ?? ''
+    if (!id || id === shaurmaCapesFor) return
+    shaurmaCapesFor = id
+    App.GetShaurmaCapesFor(id)
+      .then((st) => { shaurmaCapeTex = Object.fromEntries(st.capes.map((c) => [c.id, c.texture])) })
+      .catch(() => { shaurmaCapeTex = {} })
+  })
+
   async function loadWardrobePresets() {
     if (!launchAccount) {
       wardrobePresets = []
@@ -160,7 +174,8 @@
     const list = wardrobePresets
     if (list.length === 0) return
     for (const p of list) {
-      const sig = p.skinPath + '|' + (p.capePath ?? '')
+      const shaurmaTex = p.capeSystem === 'shaurma' ? (shaurmaCapeTex[p.shaurmaCapeId ?? ''] ?? '') : null
+      const sig = p.skinPath + '|' + (p.capePath ?? '') + '|' + (p.capeSystem ?? '') + '|' + (p.shaurmaCapeId ?? '') + '|' + (shaurmaTex ? 's' : '')
       if (thumbSig[p.id] === sig) continue
       thumbSig[p.id] = sig
       // Скидаємо стару мініатюру, щоб опція не показувала чуже прев'ю.
@@ -173,7 +188,10 @@
           if (thumbSig[p.id] !== sig) return
           head = await cropSkinHead(skinDataUrl)
           if (thumbSig[p.id] !== sig) return
-          if (p.capePath) {
+          if (shaurmaTex !== null) {
+            // Система «Шаурма»: плащ каталогу або без плаща.
+            if (shaurmaTex) { try { cape = await cropCapeFront(shaurmaTex) } catch { cape = null } }
+          } else if (p.capePath) {
             try {
               const capeDataUrl = await App.GetWardrobeTextureDataURL(p.capePath)
               if (thumbSig[p.id] !== sig) return
@@ -873,7 +891,7 @@
       <div class="st-row">
         <div class="st-row-text">
           <div class="st-row-name">{t('pack.game.skinEnable')}</div>
-          <div class="st-row-hint">{t('pack.game.skinBuildHint')}</div>
+
         </div>
         <div class="st-row-ctl">
           <button type="button" class="st-switch" class:on={!!cfg.skinPresetId} role="switch"
@@ -938,7 +956,7 @@
     <div class="st-row">
       <div class="st-row-text">
         <div class="st-row-name">{t('pack.game.autoJoin')}</div>
-        <div class="st-row-hint">{t('pack.game.autoJoinHint')}</div>
+
       </div>
       <div class="st-row-ctl">
         <button type="button" class="st-switch" class:on={cfg.autoJoinEnabled} role="switch"
@@ -1033,7 +1051,7 @@
   {#if packId}<PackServerLinkCard {packId} />{/if}
 
   <!-- ═══ options.txt ═══ -->
-  <SCard icon="ti-settings" tone="green" title={t('pack.game.options')} desc={t('pack.game.optionsHint')}>
+  <SCard icon="ti-settings" tone="green" title={t('pack.game.options')} desc="">
     {#if optionsLoading && !optionsView}
       <div class="st-empty"><i class="ti ti-loader spin"></i></div>
     {:else if optionsView}
@@ -1059,7 +1077,7 @@
       <div class="st-row">
         <div class="st-row-text">
           <div class="st-row-name">{t('pack.game.optionsCopy')}</div>
-          <div class="st-row-hint">{t('pack.game.optionsCopyRowHint')}</div>
+
         </div>
         <div class="st-row-ctl">
           <button type="button" class="btn btn-ghost btn-sm" disabled={copying || busy} onclick={openCopyModal}>
@@ -1087,7 +1105,7 @@
           <div class="st-row">
             <div class="st-row-text">
               <div class="st-row-name">{t('defaults.guiscale')}</div>
-              <div class="st-row-hint">{t('defaults.guiscaleHint')}</div>
+
             </div>
             <div class="st-row-ctl">
               <StSelect value={opts.guiScale} options={guiScaleOptions}

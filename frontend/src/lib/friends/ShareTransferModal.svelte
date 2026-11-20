@@ -352,7 +352,7 @@
   .st-pres { font-size: 11px; font-weight: 600; color: var(--text-mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .st-pres.online { color: #22c55e; }
   .st-pres.in_game { color: var(--orange); }
-  .st-pres.away { color: var(--yellow); }
+  .st-pres.away { color: var(--st-away, #a78bfa); }
   .st-cdnchip { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 8px 11px; border-radius: 10px;
     background: color-mix(in srgb, var(--green) 12%, var(--bg-input)); border: 1px solid color-mix(in srgb, var(--green) 40%, transparent); }
   .st-cdnchip > i { color: var(--green); font-size: 15px; }

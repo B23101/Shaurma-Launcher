@@ -119,6 +119,11 @@ type App struct {
 	// поле з іншої горутини (клік по UI), не варто ганяти мьютекс заради
 	// одного порівняння рядків.
 	activeInstallID atomic.Value // string
+	// launchCancelReq — збірки, для яких гравець натиснув «Зупинити» під час
+	// підготовки запуску. LaunchInstance перевіряє прапорець між етапами
+	// (перевірка, джерела модів, файли збірки, Java, лоадер), тож скасування
+	// працює на БУДЬ-ЯКОМУ етапі, а не лише під час качки Java/лоадера.
+	launchCancelReq sync.Map // instanceID → struct{}
 	rpc             *discordrpc.Manager
 	avatars         *avatar.Service
 	wardrobe        *wardrobe.Service
@@ -635,6 +640,9 @@ func (a *App) ServiceStartup() error {
 	go markUpdateHealthy(a.cfg.InstallDir(), readLauncherVersion(a.cfg.InstallDir()))
 	// Активація приватного доступу (§3): сертифікат біля лаунчера → ключ пристрою.
 	a.startAccess()
+	// Локальний MCP-сервер для ШІ-агентів (лише якщо користувач його ввімкнув).
+	a.startAIAgentIfEnabled()
+	a.startModHashJob()
 	// Shell до 2.7.28 вшитий з невідповідним ключем маніфесту й відкидає
 	// updater.dll.new та <exe>.new — backend перевіряє їх правильним ключем і
 	// ставить на місце (діють з наступного запуску).
@@ -764,6 +772,8 @@ func (a *App) ServiceStartup() error {
 	// лаунчер просто стоїть у треї або поруч запущена гра (memtrim.go).
 	a.applyMemoryProfile(a.cfg.GetSettings().LowMemoryMode)
 	a.startMemoryTrimmer()
+	// Статус «відійшов» для друзів — за простоєм ПК (social_idle_shaurma.go).
+	a.startSocialIdleWatcher()
 
 	// Ліміт рядків буфера консолі береться з налаштувань (consoleMaxLines),
 	// щоб консоль витримувала великі сплески логів без зайвої пам'яті.
@@ -1583,6 +1593,24 @@ func (a *App) isLauncherManagedJava(javaPath string) bool {
 // форвардиться у launch:progress — бар на сторінці збірки показує
 // "Завантаження Java 21... 45%" замість статичного підпису.
 func (a *App) ensureJavaForLaunch(instanceID, javaPath string, major int, component string) (string, error) {
+	return a.ensureJavaFromProvider(instanceID, javaPath, major, component, a.javaProviderFor(instanceID))
+}
+
+// javaProviderFor — провайдер Java збірки: власний (налаштування збірки) або
+// глобальний з налаштувань лаунчера.
+func (a *App) javaProviderFor(instanceID string) string {
+	if instanceID != "" {
+		if p := a.cfg.GetInstanceConfig(instanceID).JavaProviderOverride; p != "" && java.ValidProvider(p) {
+			return p
+		}
+	}
+	if p := a.cfg.GetSettings().JavaProvider; java.ValidProvider(p) {
+		return p
+	}
+	return java.ProviderMojang
+}
+
+func (a *App) ensureJavaFromProvider(instanceID, javaPath string, major int, component, provider string) (string, error) {
 	inst := a.javaInst
 	if javaPath != "" && javaPath != a.cfg.JavaDir() {
 		// Користувач обрав СВОЮ теку Java — ставимо Java саме туди.
@@ -1598,7 +1626,13 @@ func (a *App) ensureJavaForLaunch(instanceID, javaPath string, major int, compon
 		a.emit("java:progress", p)
 		a.emitLaunchProgressPct(instanceID, LaunchStageJava, p.Message, p.Percent)
 	})
-	installed, err := inst.EnsureMajorWithComponent(major, component)
+	installed, err := inst.EnsureProviderMajor(provider, major, component)
+	if err != nil && provider != java.ProviderMojang && !errors.Is(err, java.ErrInstallCancelled) {
+		// Провайдер недоступний (мережа, немає збірки під цю ОС) — гра все одно
+		// має запуститись: ставимо Java від Mojang і кажемо про це в консолі.
+		a.emitLaunchProgress(instanceID, LaunchStageJava, fmt.Sprintf("%s недоступний (%v) — ставимо Java від Mojang", java.ProviderTitle(provider), err))
+		installed, err = inst.EnsureMajorWithComponent(major, component)
+	}
 	inst.SetProgressHandler(prevJava)
 	if err != nil {
 		return "", err
@@ -1623,6 +1657,7 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// збіглись у часі (LaunchInstance свідомо дозволяє паралельний запуск
 	// різних збірок на одному акаунті).
 	a.activeInstallID.Store(instanceID)
+	a.launchCancelReq.Delete(instanceID)
 	// Авто-збірка оновлює компоненти нової версії (кнопка «Завантажити»
 	// після авто-перемикання конфіга на нову версію Mojang): запуск під
 	// час качки заблокований — інакше гра стартувала б «напівпорожньою»
@@ -1652,6 +1687,9 @@ func (a *App) LaunchInstance(instanceID string) error {
 	if err != nil {
 		a.emitLaunchError(instanceID, err)
 		return err
+	}
+	if a.launchAborted(instanceID) {
+		return ErrLaunchCancelled
 	}
 	accounts := a.cfg.GetAccounts()
 	if len(accounts) == 0 {
@@ -1782,8 +1820,14 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// джерел (окремих jar або теки модів іншої збірки) з mods/ і копіюємо
 	// змінене — з візуальним прогресом (стадія mod_sources). Для збірок
 	// без джерел і для Shaurma-збірок — миттєвий no-op.
+	if a.launchAborted(instanceID) {
+		return ErrLaunchCancelled
+	}
 	if !build.IsShaurma {
 		a.syncSourcesForLaunch(instanceID)
+		if a.launchAborted(instanceID) {
+			return ErrLaunchCancelled
+		}
 	}
 
 	// Шаурма-збірки: перед запуском ЗАВЖДИ звіряємо локальний стан файлів
@@ -1796,6 +1840,9 @@ func (a *App) LaunchInstance(instanceID string) error {
 			a.packs.DownloadPack(instanceID, a)
 			a.waitForSyncStartThenFinish(instanceID)
 			a.unsetLaunchTracked(instanceID)
+			if a.launchAborted(instanceID) {
+				return ErrLaunchCancelled
+			}
 			// Реєстр міг змінитись — перечитуємо build (на випадок, якщо
 			// worker відкоригував версію лоадера/гри у маніфесті).
 			if nb, err := a.resolveLaunchBuild(instanceID); err == nil {
@@ -1870,6 +1917,9 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// Тека, в яку лаунчер ставить Java (порожня = вбудована cfg.JavaDir()).
 	// Захоплюємо ДО першого перепризначення javaPath на шлях до exe.
 	managedJavaDir := javaPath
+	if a.launchAborted(instanceID) {
+		return ErrLaunchCancelled
+	}
 	a.emitLaunchProgress(instanceID, LaunchStageJava, "Перевірка Java...")
 	// Порожній javaPath (налаштування не збережені / дефолт) = вбудована Java
 	// лаунчера: EnsureMajorWithComponent сам ставить ПОТРІБНИЙ мажор (Java 21 для
@@ -1923,6 +1973,9 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// mcVersion; для Fabric/Quilt/Forge/NeoForge — ID loader-профілю
 	// (versions/<id>.json з InheritsFrom), яким і запускається гра.
 	// Processor Java = та, що для гри (Forge processors потребують Java).
+	if a.launchAborted(instanceID) {
+		return ErrLaunchCancelled
+	}
 	a.inst.SetProcessorJava(javaPath)
 	a.emitLaunchProgress(instanceID, LaunchStageLoader, "Встановлення лоадера...")
 	// Реальний прогрес встановлення Minecraft (клієнтський jar, бібліотеки,
@@ -1933,12 +1986,15 @@ func (a *App) LaunchInstance(instanceID string) error {
 		a.emit("installer:progress", p)
 		a.emitLaunchProgressPct(instanceID, LaunchStageLoader, p.Message, p.Percent)
 	})
+	a.inst.BeginInstallCycle()
 	launchVersion, err := a.inst.EnsureLoader(build.Loader, build.MCVersion, build.LoaderVersion)
 	if err != nil {
+		a.inst.EndInstallCycle()
 		a.inst.SetInstallProgressHandler(prevInst)
 		return a.launchInstallErr(instanceID, err, "ensure loader")
 	}
 	vjson, err := a.inst.EnsureVersion(launchVersion)
+	a.inst.EndInstallCycle()
 	a.inst.SetInstallProgressHandler(prevInst)
 	if err != nil {
 		return a.launchInstallErr(instanceID, err, "ensure version")
@@ -1982,6 +2038,9 @@ func (a *App) LaunchInstance(instanceID string) error {
 		}
 	}
 
+	if a.launchAborted(instanceID) {
+		return ErrLaunchCancelled
+	}
 	inst := model.Instance{
 		ID:            build.ID,
 		Name:          build.Name,
@@ -2082,6 +2141,8 @@ func (a *App) LaunchInstance(instanceID string) error {
 	// wardrobe_inject.go + authlib_injector.go). Помилки не блокують
 	// запуск — лише попередження в консоль збірки.
 	extraJVMArgs := a.prepareOfflineAccount(account, build.ID, gameDir)
+	// Shaurma Game Agent: лише у запусках ШІ під акаунтом агента (ai_agent_game.go); у гравця — ніколи.
+	extraJVMArgs = append(extraJVMArgs, a.aiGameJVMArgs(build.ID, account)...)
 	a.wireSessionLauncher(launcher, account, build, buf, nil)
 	if err := a.sessionsM.Start(&sessions.Session{
 		AccountID:   account.ID,
@@ -2647,6 +2708,14 @@ func (a *App) CancelGameInstall(instanceID string) {
 	if instanceID == "" {
 		return
 	}
+	// Прапорець для етапів без інсталера (перевірка, джерела модів, файли
+	// збірки): LaunchInstance зупиниться на найближчій точці перевірки.
+	a.launchCancelReq.Store(instanceID, struct{}{})
+	// Файли Шаурма-збірки качаються під час запуску — ставимо їх на паузу
+	// (.part лишаються, наступний запуск докачає).
+	if a.isLaunchTracked(instanceID) {
+		a.PauseDownload(instanceID)
+	}
 	active, _ := a.activeInstallID.Load().(string)
 	if active != instanceID {
 		// Ця збірка зараз НЕ власник глобального інсталера — реально
@@ -2660,6 +2729,16 @@ func (a *App) CancelGameInstall(instanceID string) {
 	// Minecraft (EnsureLoader/EnsureVersion), І качку Java.
 	a.inst.RequestCancelInstall()
 	a.javaInst.RequestCancelInstall()
+}
+
+// launchAborted — чи гравець скасував запуск цієї збірки. Якщо так, шле
+// launch:cancelled (UI повертає кнопку «Грати» без червоної помилки).
+func (a *App) launchAborted(instanceID string) bool {
+	if _, ok := a.launchCancelReq.LoadAndDelete(instanceID); !ok {
+		return false
+	}
+	a.emitLaunchCancelled(instanceID)
+	return true
 }
 
 func (a *App) StopGame() error {
@@ -3644,7 +3723,7 @@ func (a *App) GetAccounts() []model.Account {
 	// config.GetAccounts віддає внутрішній зріз менеджера (без копії) — тож токени
 	// прибираємо в НОВОМУ зрізі, а не на місці, інакше вони зникнуть із пам'яті лаунчера.
 	// У WebView токени не віддаємо ніколи (див. model.Account.Public).
-	src := a.cfg.GetAccounts()
+	src := a.cfg.GetUserAccounts()
 	accounts := make([]model.Account, len(src))
 	for i := range src {
 		accounts[i] = src[i].Public()
@@ -3914,7 +3993,9 @@ func (a *App) AnalyzeUnusedJava() UnusedJavaInfo {
 				continue
 			}
 			var major int
-			if _, err := fmt.Sscanf(e.Name(), "java-%d", &major); err == nil {
+			// Точна назва: тимчасові java-21.update/.old (автооновлення
+			// Java) не мають рахуватись окремою Java.
+			if _, err := fmt.Sscanf(e.Name(), "java-%d", &major); err == nil && e.Name() == fmt.Sprintf("java-%d", major) {
 				dirs = append(dirs, jdir{name: e.Name(), major: major})
 			}
 		}
@@ -5600,6 +5681,15 @@ func (a *App) ApplyWardrobePreset(accountID, presetID string) error {
 			return err
 		}
 	}
+	// Вибір плаща пресету (Шаурма / Mojang) — на акаунт. Скін уже застосовано, тож при
+	// збої кажемо саме про плащ.
+	if acc := a.accountByID(accountID); acc.ID != "" {
+		if p, ok := a.presetByID(acc.Username, presetID); ok {
+			if err := a.applyPresetCape(accountID, p); err != nil {
+				return fmt.Errorf("скін застосовано, але плащ не збережено: %w", err)
+			}
+		}
+	}
 	// Скін змінився (на Mojang для ліцензійного акаунта, або на сервері
 	// скінів Shaurma для офлайн-акаунта) — знаходимо UUID І нік акаунта,
 	// чия аватарка кешується, і скидаємо ОБИДВА можливих записи кеша.
@@ -5651,10 +5741,15 @@ func (a *App) GetWardrobeActivePresetID(accountID string) (string, error) {
 // гардеробом, щоб показати в 3D-переглядачі скін, який реально стоїть на
 // акаунті, коли жоден пресет не збігається (як це робив старий лаунчер).
 func (a *App) GetWardrobeActiveLook(accountID string) (*model.ActiveLook, error) {
-	if look, handled, err := a.activeLookFromSkinServer(accountID); handled {
-		return look, err
+	look, handled, err := a.activeLookFromSkinServer(accountID)
+	if !handled {
+		look, err = a.wardrobe.ActiveLook(accountID)
 	}
-	return a.wardrobe.ActiveLook(accountID)
+	// Плащ — такий, як бачить гра (сервер Шаурми: плащ Шаурми / Mojang / без плаща).
+	if err == nil && look != nil {
+		a.applyGameCape(look, accountGameUUID(a.accountByID(accountID)), nil)
+	}
+	return look, err
 }
 
 // SaveWardrobeActiveLookPreset створює пресет з поточного вигляду акаунта —

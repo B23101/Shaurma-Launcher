@@ -112,7 +112,7 @@
             oninput={(e: any) => editRow(i, e.target.value)}
             onblur={(e: any) => editRow(i, e.target.value)}
           />
-          <button class="btn-icon jvm-del" onclick={() => deleteRow(i)} use:launcherTip={t('delete')}>
+          <button aria-label={t('delete')} class="btn-icon jvm-del" onclick={() => deleteRow(i)} use:launcherTip={t('delete')}>
             <i class="ti ti-trash"></i>
           </button>
         </div>

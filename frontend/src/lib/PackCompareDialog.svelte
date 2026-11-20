@@ -52,6 +52,7 @@
 
   // Стартові id: ліва — збірка, з якої відкрито порівнювач; права — поки
   // не обрана. Обидві надалі змінюються незалежно через пікер.
+  // svelte-ignore state_referenced_locally
   let leftPackId = $state(packId)
   let rightPackId = $state('')
   // Яку сторону зараз редагує відкритий пікер ('left' | 'right').

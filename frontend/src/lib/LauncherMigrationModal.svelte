@@ -39,6 +39,7 @@
   let launchers = $state<MigrationLauncher[]>([])
   // Є дані зі статусу — стартуємо без «Сканування…», щоб не показувати
   // нескінченне завантаження.
+  // svelte-ignore state_referenced_locally
   let loading = $state((initialLaunchers ?? []).length === 0)
   let scanError = $state('')
   let activeTab = $state<string>('')

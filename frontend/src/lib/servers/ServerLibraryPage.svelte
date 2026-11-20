@@ -1104,55 +1104,57 @@
 {/if}
 
 {#if ctxMenu && ctxSrv}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="ctx-menu" bind:clientHeight={ctxH} bind:clientWidth={ctxW}
        style="left:{ctxLeft}px;top:{ctxTop}px;z-index:1000002;max-height:calc(100vh - 16px);overflow-y:auto;visibility:{ctxH ? 'visible' : 'hidden'}"
        oncontextmenu={(e) => e.preventDefault()}>
-    <div class="ctx-item" onclick={() => ctxAction('open', ctxSrv.id)}>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('open', ctxSrv.id)}>
       <i class="ti ti-arrow-right"></i> {t('servers.ctx.open')}
-    </div>
+    </button>
     <div class="ctx-sep"></div>
     {#if ctxSrv.status === 'running'}
-      <div class="ctx-item" onclick={() => ctxAction('stop', ctxSrv.id)}>
+      <button type="button" class="ctx-item" onclick={() => ctxAction('stop', ctxSrv.id)}>
         <i class="ti ti-player-stop"></i> {t('servers.card.stop')}
-      </div>
+      </button>
     {:else if !['starting', 'stopping', 'installing'].includes(ctxSrv.status)}
-      <div class="ctx-item" onclick={() => ctxAction('start', ctxSrv.id)}>
+      <button type="button" class="ctx-item" onclick={() => ctxAction('start', ctxSrv.id)}>
         <i class="ti ti-player-play"></i> {t('servers.card.start')}
-      </div>
+      </button>
     {/if}
-    <div class="ctx-item" onclick={() => ctxAction('console', ctxSrv.id)}>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('console', ctxSrv.id)}>
       <i class="ti ti-terminal-2"></i> {t('servers.toolbar.openConsole')}
-    </div>
-    <div class="ctx-item" onclick={() => ctxAction('folder', ctxSrv.id)}>
+    </button>
+    <button type="button" class="ctx-item" onclick={() => ctxAction('folder', ctxSrv.id)}>
       <i class="ti ti-folder-open"></i> {t('servers.card.folder')}
-    </div>
+    </button>
     <div class="ctx-sep"></div>
     {#if folderOf(ctxSrv.id)}
-      <div class="ctx-item" onclick={() => { const id = ctxSrv.id; ctxMenu = null; takeOutOfFolder(id) }}>
+      <button type="button" class="ctx-item" onclick={() => { const id = ctxSrv.id; ctxMenu = null; takeOutOfFolder(id) }}>
         <i class="ti ti-folder-minus"></i> {t('folder.servers.takeOut')}
-      </div>
+      </button>
     {/if}
     {#each folders.filter(f => !f.serverIds.includes(ctxSrv.id)) as f (f.id)}
-      <div class="ctx-item" onclick={() => { const id = ctxSrv.id; ctxMenu = null; moveToFolder(id, f.id) }}>
+      <button type="button" class="ctx-item" onclick={() => { const id = ctxSrv.id; ctxMenu = null; moveToFolder(id, f.id) }}>
         <i class="ti {safeFolderIcon(f.icon)}" style="color:{f.color || 'var(--orange)'}"></i> {t('folder.servers.moveTo')} «{f.name}»
-      </div>
+      </button>
     {/each}
-    <div class="ctx-item" onclick={() => { const id = ctxSrv.id; ctxMenu = null; openCreateFolder([id]) }}>
+    <button type="button" class="ctx-item" onclick={() => { const id = ctxSrv.id; ctxMenu = null; openCreateFolder([id]) }}>
       <i class="ti ti-folder-plus"></i> {t('folder.servers.create')}
-    </div>
+    </button>
     <div class="ctx-sep"></div>
-    <div class="ctx-item danger" onclick={() => ctxAction('delete', ctxSrv.id)}>
+    <button type="button" class="ctx-item danger" onclick={() => ctxAction('delete', ctxSrv.id)}>
       <i class="ti ti-trash"></i> {t('delete')}
-    </div>
+    </button>
   </div>
 {/if}
 
 {#if folderCtx}
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="ctx-menu" style="left:{folderCtx.x}px;top:{folderCtx.y}px;z-index:1000002" oncontextmenu={(e) => e.preventDefault()}>
-    <div class="ctx-item" onclick={() => { const id = folderCtx!.id; folderCtx = null; openFolderId = id }}><i class="ti ti-folder-open"></i> {t('folder.open')}</div>
-    <div class="ctx-item" onclick={() => { const id = folderCtx!.id; folderCtx = null; openEditFolder(id) }}><i class="ti ti-edit"></i> {t('folder.edit')}</div>
+    <button type="button" class="ctx-item" onclick={() => { const id = folderCtx!.id; folderCtx = null; openFolderId = id }}><i class="ti ti-folder-open"></i> {t('folder.open')}</button>
+    <button type="button" class="ctx-item" onclick={() => { const id = folderCtx!.id; folderCtx = null; openEditFolder(id) }}><i class="ti ti-edit"></i> {t('folder.edit')}</button>
     <div class="ctx-sep"></div>
-    <div class="ctx-item danger" onclick={() => { const id = folderCtx!.id; folderCtx = null; deleteFolder(id) }}><i class="ti ti-trash"></i> {t('folder.delete')}</div>
+    <button type="button" class="ctx-item danger" onclick={() => { const id = folderCtx!.id; folderCtx = null; deleteFolder(id) }}><i class="ti ti-trash"></i> {t('folder.delete')}</button>
   </div>
 {/if}
 

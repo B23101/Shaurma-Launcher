@@ -66,7 +66,7 @@
               <span class="bm-badge req">{t('import.blocked.required')}</span>
             {/if}
             {#if m.websiteUrl}
-              <button class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl!)} use:launcherTip={m.websiteUrl}>
+              <button aria-label={m.websiteUrl} class="bm-link" onclick={() => App.OpenExternal(m.websiteUrl!)} use:launcherTip={m.websiteUrl}>
                 <i class="ti ti-external-link"></i>
               </button>
             {/if}

@@ -45,7 +45,7 @@
   <button class="fr-av" tabindex={readonly || compact ? -1 : 0} disabled={readonly || compact}
           aria-label={t('ff.profile.open')}
           onclick={(e) => { e.stopPropagation(); s.openProfile(f) }}>
-    <FAvatar size={compact ? 34 : 30} head={s.heads[f.nickname] ?? ''} initial={initialOf(f.nickname)} status={readonly ? '' : (status as any)} ring={pc} />
+    <FAvatar size={34} head={s.heads[f.nickname] ?? ''} initial={initialOf(f.nickname)} status={readonly ? '' : (status as any)} ring={pc} />
     {#if compact && unread > 0}<span class="ff-badge fr-ub">{unread > 99 ? '99+' : unread}</span>{/if}
   </button>
 
@@ -59,9 +59,9 @@
       {:else if subtitle}
         <div class="fr-sub">{subtitle}</div>
       {:else if pack}
-        <div class="fr-sub game"><i class="ti ti-device-gamepad-2"></i><span>{pack}</span></div>
+        <div class="fr-pill"><span>{pack}</span></div>
       {:else if status === 'in_game'}
-        <div class="fr-sub game"><i class="ti ti-device-gamepad-2"></i><span>{t('social.playing')}</span></div>
+        <div class="fr-pill"><span>{t('social.playing')}</span></div>
       {:else if status === 'away'}
         <div class="fr-sub away">{t('social.status.away')}</div>
       {:else if status === 'online'}
@@ -88,23 +88,20 @@
 </div>
 
 <style>
-  .fr { --pc: var(--orange); position: relative; display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 10px 0 8px; margin: 1px 0; border-radius: var(--r-md, 12px);
+  .fr { --pc: var(--orange); position: relative; display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 8px 10px; margin: 0; border-radius: 12px;
     cursor: pointer; box-sizing: border-box; user-select: none; border: 1px solid transparent;
-    content-visibility: auto; contain-intrinsic-size: auto 46px;
+    content-visibility: auto; contain-intrinsic-size: auto 50px;
     transition: background-color .16s, border-color .16s; }
   .fr.enter { animation: fr-in .3s var(--ff-ease) both; }
   @keyframes fr-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
   .fr:hover { background: var(--hover); }
-  /* Гравець у грі: картка тоновано кольором його збірки. */
-  .fr.in_game { background: linear-gradient(100deg, color-mix(in srgb, var(--pc) 15%, transparent), color-mix(in srgb, var(--pc) 3%, transparent) 70%); }
-  .fr.in_game:hover { background: linear-gradient(100deg, color-mix(in srgb, var(--pc) 22%, transparent), color-mix(in srgb, var(--pc) 6%, transparent) 70%); }
-  .fr.sel, .fr.sel:hover { background: rgba(var(--orange-rgb), .14); }
+  .fr.sel, .fr.sel:hover { background: rgba(var(--orange-rgb), .12); border-color: rgba(var(--orange-rgb), .3); }
   .fr.sel .fr-nick { color: var(--orange); }
   .fr.offline:not(.sel):not(:hover) .fr-info { opacity: .7; }
   .fr.busy { opacity: .5; pointer-events: none; }
   .fr:focus-visible { outline: 2px solid color-mix(in srgb, var(--orange) 70%, transparent); outline-offset: -2px; }
 
-  .fr-av { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; border-radius: 12px; cursor: pointer; transition: transform .18s var(--ff-spring); }
+  .fr-av { position: relative; flex: 0 0 auto; padding: 0; border: 0; background: none; border-radius: 12px; line-height: 0; cursor: pointer; transition: transform .18s var(--ff-spring); }
   .fr-av:not(:disabled):hover { transform: scale(1.06); }
   /* disabled-кнопка не віддає клік батьківському рядку: у згорнутому списку аватар — майже вся клікабельна
      площа, тож чат відкривався лише при кліку повз нього («не з першого разу»). pointer-events:none
@@ -119,11 +116,16 @@
   .fr-nick { flex: 0 1 auto; min-width: 3ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .fr-sub { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 11px/1.2 var(--font-ui); color: var(--text-mute); }
   .fr-sub.online { color: var(--ff-ok); }
-  .fr-sub.away { color: var(--ff-warn); }
+  .fr-sub.away { color: var(--st-away, #a78bfa); }
   .fr-sub.typing { color: var(--orange); }
   .fr-sub.game { color: color-mix(in srgb, var(--pc) 80%, var(--text)); font-weight: 650; }
   .fr-sub.game i { flex: 0 0 auto; font-size: 13px; color: var(--pc); }
   .fr-sub.game span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* «У грі» — пілюля з назвою збірки (як .game-pill у макеті). */
+  .fr-pill { display: inline-flex; align-self: flex-start; max-width: 100%; margin-top: 1px; padding: 1px 6px; border-radius: 6px; overflow: hidden;
+    font: 600 10.5px/1.35 var(--font-ui); color: var(--orange); background: rgba(var(--orange-rgb), .14); border: 1px solid rgba(var(--orange-rgb), .28); }
+  .fr-pill span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .fr-tail { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
   .fr-muted { font-size: 14px; color: var(--text-dim); }
@@ -133,9 +135,9 @@
   .fr-act { position: absolute; right: 5px; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 26px; opacity: 0; pointer-events: none; transition: opacity .14s;
     background: linear-gradient(90deg, transparent, var(--fl-bg, var(--bg-panel)) 24px); border-radius: 0 10px 10px 0; }
   .fr:hover .fr-act, .fr:focus-within .fr-act { opacity: 1; pointer-events: auto; }
-  .fr-act-b { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px; border-radius: 7px; cursor: pointer; white-space: nowrap;
-    font: 700 var(--fs-min)/1 var(--font-ui); color: #fff; background: linear-gradient(135deg, var(--orange), var(--orange-2, var(--orange))); border: 0;
-    box-shadow: 0 3px 8px rgba(var(--orange-rgb), .24); transition: transform .12s, filter .14s; }
+  .fr-act-b { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px; border-radius: 8px; cursor: pointer; white-space: nowrap;
+    font: 700 11px/1 var(--font-ui); color: var(--accent-ink, #0c0d11); background: var(--orange); border: 0;
+    transition: transform .12s, filter .14s; }
   .fr-act-b:hover { filter: brightness(1.08); }
   .fr-act-b:active { transform: scale(.94); }
   .fr-act-b:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
@@ -144,9 +146,6 @@
   .dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: dot-b 1.1s ease-in-out infinite; }
   .dots i:nth-child(2) { animation-delay: .15s; } .dots i:nth-child(3) { animation-delay: .3s; }
   @keyframes dot-b { 0%, 60%, 100% { transform: translateY(0); opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
-
-  /* Згорнутий список-рейка: лише аватари по центру. */
-  :global(.fl.compact) .fr { justify-content: center; padding: 0; margin: 2px 0; height: 46px; contain-intrinsic-size: auto 46px; }
 
   @media (prefers-reduced-motion: reduce) { .fr.enter, .dots i { animation: none; } .fr, .fr-act, .fr-av { transition: none; } }
 </style>

@@ -206,7 +206,7 @@
               <div class="ui-acts">{@render actions()}</div>
             {/if}
             {#if dismissible}
-              <button class="md-close ui-x" onclick={requestClose} disabled={locked} use:launcherTip={t('win.close')}>
+              <button aria-label={t('win.close')} class="md-close ui-x" onclick={requestClose} disabled={locked} use:launcherTip={t('win.close')}>
                 <i class="ti ti-x"></i>
               </button>
             {/if}

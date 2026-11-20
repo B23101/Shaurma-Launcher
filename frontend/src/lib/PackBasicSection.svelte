@@ -446,7 +446,7 @@
       <div class="card">
         <div class="card-head">
           <div class="ci"><i class="ti ti-pencil"></i></div>
-          <div class="ctw"><div class="ct">{t('pack.basic.editTitle')}</div><div class="cd">{t('pack.basic.editDesc')}</div></div>
+          <div class="ctw"><div class="ct">{t('pack.basic.editTitle')}</div></div>
         </div>
 
         {#if loadingCfg}
@@ -469,7 +469,7 @@
                кнопкою: раніше дві незалежні кнопки в одній формі означали,
                що застосовувалась лише частина зміненого). -->
           <div class="row col" style="margin-top:4px">
-            <div class="rl-name">{t('pack.basic.idLabel')} <span class="muted" style="font-size:11px;font-weight:400">({t('pack.basic.idHint')})</span></div>
+            <div class="rl-name">{t('pack.basic.idLabel')}</div>
             <input class="input mono" bind:value={editPackId} oninput={onPackIdInput} spellcheck={false} disabled={isAutoPack} />
             {#if packIdCheck?.exists}
               <div class="field-hint" style="color:var(--red)">
@@ -496,8 +496,8 @@
           <div class="row">
             <div class="row-label"><div class="rl-name">{t('createPack.mcVersion')}</div></div>
             <div class="flex gap8">
-              <span class="chip" class:on={showSnapshots} onclick={() => !isAutoPack && (showSnapshots = !showSnapshots)} role="button" tabindex="0" aria-disabled={isAutoPack}>{t('createPack.mcVersion.snapshot')}</span>
-              <span class="chip" class:on={showOld} onclick={() => !isAutoPack && (showOld = !showOld)} role="button" tabindex="0" aria-disabled={isAutoPack}>{t('createPack.mcVersion.old')}</span>
+              <button type="button" aria-pressed={showSnapshots} class="chip" class:on={showSnapshots} onclick={() => !isAutoPack && (showSnapshots = !showSnapshots)}   disabled={isAutoPack}>{t('createPack.mcVersion.snapshot')}</button>
+              <button type="button" aria-pressed={showOld} class="chip" class:on={showOld} onclick={() => !isAutoPack && (showOld = !showOld)}   disabled={isAutoPack}>{t('createPack.mcVersion.old')}</button>
               <VersionPickerModal
                 value={mcVersion}
                 onselect={(v) => mcVersion = v}
@@ -510,9 +510,7 @@
               />
             </div>
           </div>
-          {#if !isAutoPack && mcVersion && mcVersion !== pack.mc_version}
-            <div class="field-hint" style="padding:0 4px;color:var(--yellow)"><i class="ti ti-alert-triangle"></i> {t('pack.basic.versionChangeHint')}</div>
-          {/if}
+
 
           <div class="row col" class:disabled-block={isAutoPack}>
             <div class="rl-name">{t('createPack.loader')}</div>
@@ -521,11 +519,11 @@
             {/if}
             <div class="loader-grid">
               {#each loaders.filter(l => availableLoaders.includes(l.id)) as l (l.id)}
-                <div class="loader-opt" class:sel={loader === l.id} class:disabled={isAutoPack} onclick={() => !isAutoPack && selectLoader(l.id)} role="button" tabindex="0" aria-disabled={isAutoPack}>
+                <button type="button" aria-pressed={loader === l.id} class="loader-opt" class:sel={loader === l.id} class:disabled={isAutoPack} onclick={() => !isAutoPack && selectLoader(l.id)}   disabled={isAutoPack}>
                   <img class="loader-ic" src={l.icon} alt="" style="--lcol:{l.color}" />
                   <span class="ln">{t(`createPack.loader.${l.id}`)}</span>
-                  <span class="lt">{t(`createPack.loader.${l.id}.sub`)}</span>
-                </div>
+
+                </button>
               {/each}
             </div>
             {#if loader !== 'vanilla'}
@@ -576,7 +574,7 @@
              одна розмітка, одна палітра, один PresetIconPicker. -->
         <AppearanceEditor
           title={t('pack.basic.appearanceTitle')}
-          desc={t('pack.basic.appearanceDesc')}
+          desc=""
           ciClass="violet"
           {iconPreviewUrl}
           {iconName}

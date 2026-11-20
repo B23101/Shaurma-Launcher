@@ -487,7 +487,6 @@
                  onblur={() => setTimeout(() => (searchFocused = false), 150)} />
           {#if query}
             <button class="st-search-clear" onmousedown={(e) => e.preventDefault()} onclick={() => (query = '')} aria-label={t('servers.lib.clear')}><i class="ti ti-x"></i></button>
-          {:else}
           {/if}
           {#if query.trim() && searchFocused}
             <div class="st-search-menu" role="listbox">

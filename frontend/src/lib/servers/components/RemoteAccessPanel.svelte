@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from '../../i18n.svelte'
   import { tip as launcherTip } from '../../friends/tooltip'
 
   // ── Доступ друзів до цього сервера (віддалене керування) ───────────────
@@ -38,7 +39,7 @@
 
   $effect(() => { void serverId; void load() })
   $effect(() => {
-    const off1 = on('remote:key_changed', (d: any) => { keyWarn = d?.message ?? 'Ключ сервера Шаурми змінився — перевірте з’єднання' })
+    const off1 = on('remote:key_changed', (d: any) => { keyWarn = d?.message ?? 'Захист з’єднання змінився — перевірте його' })
     const off2 = on('friends:update', () => { void load() })
     return () => { off1(); off2() }
   })
@@ -90,7 +91,7 @@
   <header class="rap-hero" data-skey="pause">
     <div class="rap-ic"><i class="ti ti-users-group"></i></div>
     <div class="rap-ht">
-      <div class="rap-t">Доступ друзів</div>
+      <div class="rap-t">{t('rap.title')}</div>
       <div class="rap-s">{#if friends.length === 0}Додайте друзів, щоб дати їм доступ{:else}Доступ мають {withAccess} із {friends.length}{/if}</div>
     </div>
     <button class="btn {view.paused ? 'btn-primary' : 'btn-ghost'}" onclick={togglePause}>
@@ -103,18 +104,18 @@
     <div class="rap-banner warn"><i class="ti ti-alert-triangle"></i><span>{keyWarn}</span></div>
   {/if}
   {#if view.paused}
-    <div class="rap-banner warn"><i class="ti ti-player-pause"></i><span>Доступ призупинено: друзі нічого не можуть робити з вашими серверами.</span></div>
+    <div class="rap-banner warn"><i class="ti ti-player-pause"></i><span>{t('rap.paused')}</span></div>
   {/if}
 
   <div class="rap-banner info">
     <i class="ti ti-shield-lock"></i>
-    <span>Друг керує сервером, лише поки ваш лаунчер у мережі. Кожну дію перевіряє сервер Шаурми і ваш лаунчер.</span>
+    <span>{t('rap.hint')}</span>
   </div>
 
   {#if friends.length === 0}
-    <div class="rap-empty"><i class="ti ti-user-plus"></i> У вас ще немає друзів у Shaurma.</div>
+    <div class="rap-empty"><i class="ti ti-user-plus"></i> {t('rap.noFriends')}</div>
   {:else}
-    <div class="rap-h"><i class="ti ti-users"></i> Друзі</div>
+    <div class="rap-h"><i class="ti ti-users"></i> {t('accp.perk.friends')}</div>
     <div class="rap-list" data-skey="friends">
       {#each friends as f (f.accountId)}
         {@const g = grantOf(f.accountId)}
@@ -133,7 +134,7 @@
               {@const dis = busy || (p.k === 'exec' && !g?.console) || (p.k === 'network' && !g?.start && !g?.stop)}
               <button class="rap-perm" class:on aria-pressed={on} disabled={dis}
                       use:launcherTip={p.k === 'exec' && !g?.console ? 'Спершу дозвольте перегляд консолі'
-                        : p.k === 'network' ? 'Запуск і зупинка (як позначено ліворуч) діють і на кожен сервер мережі проксі. Консоль серверів мережі — окремо на кожному сервері.' : ''}
+                        : p.k === 'network' ? 'Дозволяє запускати й зупиняти також сервери цієї мережі.' : ''}
                       onclick={() => setGrant(f.accountId, { [p.k]: !on })}>
                 <i class="ti {p.icon}"></i> {p.label}
               </button>
@@ -143,21 +144,21 @@
       {/each}
     </div>
 
-    <div class="rap-h"><i class="ti ti-adjustments"></i> Додаткові дозволи</div>
+    <div class="rap-h"><i class="ti ti-adjustments"></i> {t('rap.extra')}</div>
     <div class="rap-opts">
       <div class="rap-opt" data-skey="stopplayers">
-        <div class="rap-ot"><b>Зупинка, коли на сервері є гравці</b><span>Інакше зупинку заблоковано, поки хтось онлайн.</span></div>
-        <button class="toggle" class:on={acc.allowStopWithPlayers} role="switch" aria-checked={acc.allowStopWithPlayers} aria-label="Дозволити зупинку з гравцями" onclick={() => flag('players', !acc.allowStopWithPlayers)}></button>
+        <div class="rap-ot"><b>{t('rap.stopWithPlayers')}</b></div>
+        <button class="toggle" class:on={acc.allowStopWithPlayers} role="switch" aria-checked={acc.allowStopWithPlayers} aria-label={t('rap.stopAria')} onclick={() => flag('players', !acc.allowStopWithPlayers)}></button>
       </div>
       <div class="rap-opt" data-skey="privileged">
-        <div class="rap-ot"><b>Привілейовані команди</b><span><code>op</code>, <code>deop</code>, <code>whitelist</code>, <code>save-off</code>, плагіни прав (<code>lp</code>, <code>pex</code>) і <code>sudo</code> — також усередині <code>execute … run</code>. Небезпечні, вмикайте лише для довірених.</span></div>
-        <button class="toggle" class:on={acc.allowPrivileged} role="switch" aria-checked={acc.allowPrivileged} aria-label="Дозволити привілейовані команди" onclick={() => flag('priv', !acc.allowPrivileged)}></button>
+        <div class="rap-ot"><b>{t('rap.priv')}</b><span><code>op</code>, <code>deop</code>, <code>whitelist</code>, <code>save-off</code>, плагіни прав (<code>lp</code>, <code>pex</code>) і <code>sudo</code> — також усередині <code>execute … run</code>. Дозволяйте лише друзям, яким довіряєте.</span></div>
+        <button class="toggle" class:on={acc.allowPrivileged} role="switch" aria-checked={acc.allowPrivileged} aria-label={t('rap.privAria')} onclick={() => flag('priv', !acc.allowPrivileged)}></button>
       </div>
     </div>
   {/if}
 
   <button class="rap-audit-h" class:open={showAudit} onclick={toggleAudit} data-skey="audit">
-    <span><i class="ti ti-history"></i> Журнал дій друзів</span>
+    <span><i class="ti ti-history"></i> {t('rap.log')}</span>
     <i class="ti ti-chevron-down rap-chev"></i>
   </button>
   {#if showAudit}
@@ -173,7 +174,7 @@
           {#if a.cmd}<code>{a.cmd}</code>{/if}
         </div>
       {:else}
-        <div class="rap-empty sm">Журнал порожній.</div>
+        <div class="rap-empty sm">{t('rap.logEmpty')}</div>
       {/each}
     </div>
   {/if}

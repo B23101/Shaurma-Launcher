@@ -111,7 +111,7 @@
     <i class="ti ti-search"></i>
     <input class="input" placeholder={t('iconPicker.search')} value={query} oninput={(e) => (query = e.currentTarget.value)} />
     {#if query}
-      <button class="icon-btn" use:launcherTip={t('win.close')} onclick={() => (query = '')}><i class="ti ti-x"></i></button>
+      <button aria-label={t('win.close')} class="icon-btn" use:launcherTip={t('win.close')} onclick={() => (query = '')}><i class="ti ti-x"></i></button>
     {/if}
   </div>
 
@@ -136,7 +136,7 @@
 
     <div class="pip-grid">
       {#each activeCategory.icons as ic (ic)}
-        <button class="icon-preset" class:sel={value === ic} onclick={() => onSelect(ic)} use:launcherTip={ic} style="--pcol:{color}" type="button">
+        <button aria-label={ic} class="icon-preset" class:sel={value === ic} onclick={() => onSelect(ic)} use:launcherTip={ic} style="--pcol:{color}" type="button">
           <i class="ti {ic}"></i>
         </button>
       {/each}
@@ -144,7 +144,7 @@
   {:else if searchResults.length > 0}
     <div class="pip-grid">
       {#each searchResults as r (r.id)}
-        <button class="icon-preset" class:sel={value === r.id} onclick={() => onSelect(r.id)} use:launcherTip={(r.id) + " · " + (r.catLabel)} style="--pcol:{color}" type="button">
+        <button aria-label={(r.id) + " · " + (r.catLabel)} class="icon-preset" class:sel={value === r.id} onclick={() => onSelect(r.id)} use:launcherTip={(r.id) + " · " + (r.catLabel)} style="--pcol:{color}" type="button">
           <i class="ti {r.id}"></i>
         </button>
       {/each}

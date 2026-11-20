@@ -308,6 +308,8 @@ Source: "{#AppImageDir}\updater-frontend.zip"; DestDir: "{app}"; Flags: ignoreve
 Source: "{#AppImageDir}\launcher-version.json"; DestDir: "{app}"; Flags: ignoreversion
 #ifdef LocalOnly
 Source: "{#AppImageDir}\local-only.flag"; DestDir: "{app}"; Flags: ignoreversion
+; Shaurma Game Agent у локальній збірці (без оновлень): збирається Maven'ом разом зі збіркою (scripts/build-windows.ps1).
+Source: "{#AppImageDir}\game-agent\*"; DestDir: "{app}\game-agent"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
 #endif
 Source: "{#AppImageDir}\frontend\*"; DestDir: "{app}\frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#AppImageDir}\updater-frontend\*"; DestDir: "{app}\updater-frontend"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -421,6 +423,8 @@ Type: filesandordirs; Name: "{app}\frontend.zip"
 Type: filesandordirs; Name: "{app}\updater-frontend.zip"
 Type: filesandordirs; Name: "{app}\frontend"
 Type: filesandordirs; Name: "{app}\updater-frontend"
+; Компонент агента (jar + .prev), окремо від компонентів лаунчера.
+Type: filesandordirs; Name: "{app}\game-agent"
 Type: filesandordirs; Name: "{app}\launcher-version.json"
 Type: filesandordirs; Name: "{app}\launcher-version-beta.json"
 ; Маркер локальної збірки (створює лише /DLocalInstall=1). В офіційній

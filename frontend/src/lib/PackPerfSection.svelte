@@ -1,5 +1,4 @@
 <script lang="ts">
-  import NumberInput from './NumberInput.svelte'
   // ── Розділ «Продуктивність» на сторінці збірки ─────────────────────────
   // Per-instance налаштування запуску: RAM (-Xmx/-Xms), JVM-аргументи,
   // окрема Java, вікно гри (повноекранний режим / розмір) та команди.
@@ -12,6 +11,8 @@
   import { App } from './wails'
   import JvmArgsEditor from './JvmArgsEditor.svelte'
   import GlobalOverride from './GlobalOverride.svelte'
+  import JavaPicker from './JavaPicker.svelte'
+  import WindowSizePicker from './WindowSizePicker.svelte'
   import PackResourceMetrics from './PackResourceMetrics.svelte'
   import AutoRepairDialog from './AutoRepairDialog.svelte'
   import type { InstanceConfig, Settings } from './types'
@@ -26,6 +27,7 @@
     // користувач не натискав їх наосліп.
     packId = '',
     packName = '',
+    mcVersion = '',
     repairing = false,
     reinstalling = false,
     onRepair = () => {},
@@ -36,6 +38,7 @@
     onUpdate: (key: keyof InstanceConfig, value: InstanceConfig[keyof InstanceConfig]) => void
     packId?: string
     packName?: string
+    mcVersion?: string
     repairing?: boolean
     reinstalling?: boolean
     onRepair?: () => void
@@ -163,6 +166,7 @@
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('pack.perf.ram')}</span><span class="mono text-orange">{effectiveRAM} МБ</span>
       </div>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="ram-track" data-value={`${effectiveRAM} MB`} onclick={setRamFromClick} onpointerdown={startRamDragMax} onpointermove={ramDragMaxMove}
            onpointerup={stopRamDragMax} onpointercancel={stopRamDragMax}>
         <div class="ram-fill" style="width:{ramPct}%"></div>
@@ -173,6 +177,7 @@
       <div class="rl-name flex" style="justify-content:space-between">
         <span>{t('pack.game.ramMin')}</span><span class="mono text-orange">{effectiveMinRAM} МБ</span>
       </div>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="ram-track" data-value={`${effectiveMinRAM} MB`} onclick={setMinRamFromClick} onpointerdown={startRamDragMin} onpointermove={ramDragMinMove}
            onpointerup={stopRamDragMin} onpointercancel={stopRamDragMin}>
         <div class="ram-fill" style="width:{minRamPct}%"></div>
@@ -200,22 +205,22 @@
       onchange={(v: string) => onUpdate('javaArgsOverride', v)}
     />
   </div>
-  <div class="row">
-    <div class="row-label"><div class="rl-name">{t('pack.perf.separateJava')}</div></div>
-    <div class="toggle" class:on={cfg.useSeparateJava} onclick={() => onUpdate('useSeparateJava', !cfg.useSeparateJava)}></div>
+  <div class="row col">
+    <div class="rl-name">{t('java.provider')}</div>
+    <JavaPicker
+      provider={cfg.useSeparateJava ? 'custom' : (cfg.javaProviderOverride ?? '')}
+      path={cfg.javaPathOverride ?? ''}
+      {mcVersion}
+      onchange={(p, path) => {
+        if (p === 'custom') {
+          onUpdate('useSeparateJava', true)
+          onUpdate('javaPathOverride', path)
+        } else {
+          onUpdate('useSeparateJava', false)
+          onUpdate('javaProviderOverride', p)
+        }
+      }} />
   </div>
-  {#if cfg.useSeparateJava}
-    <div class="row col">
-      <div class="rl-name">{t('pack.perf.javaPath')}</div>
-      <div class="folder-row">
-        <input class="input mono" style="flex:1" value={cfg.javaPathOverride}
-               onchange={(e: any) => onUpdate('javaPathOverride', e.target.value)} />
-        <button class="btn btn-ghost" onclick={async () => { const p = await App.BrowseFolder(); if (p) onUpdate('javaPathOverride', p) }}>
-          <i class="ti ti-folder"></i>
-        </button>
-      </div>
-    </div>
-  {/if}
 </div>
 
 <div class="card">
@@ -227,18 +232,16 @@
                   current={settings.fullscreen ? t('pack.perf.fullscreen') : `${settings.windowWidth}×${settings.windowHeight}`}>
     <div class="row">
       <div class="row-label"><div class="rl-name">{t('pack.perf.fullscreen')}</div></div>
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
       <div class="toggle" class:on={effectiveFullscreen} onclick={() => onUpdate('fullscreenOverride', !effectiveFullscreen)}></div>
     </div>
     {#if !effectiveFullscreen}
       <div class="row">
-        <div class="row-label"><div class="rl-name">{t('pack.perf.windowWidth')}</div></div>
-        <NumberInput class="input mono" style="max-width:110px" value={cfg.windowWidthOverride || settings.windowWidth}
-               onchange={(e: any) => onUpdate('windowWidthOverride', Number(e.target.value) || 0)} />
-      </div>
-      <div class="row">
-        <div class="row-label"><div class="rl-name">{t('pack.perf.windowHeight')}</div></div>
-        <NumberInput class="input mono" style="max-width:110px" value={cfg.windowHeightOverride || settings.windowHeight}
-               onchange={(e: any) => onUpdate('windowHeightOverride', Number(e.target.value) || 0)} />
+        <div class="row-label"><div class="rl-name">{t('window.size')}</div></div>
+        <WindowSizePicker
+          width={cfg.windowWidthOverride || settings.windowWidth || 854}
+          height={cfg.windowHeightOverride || settings.windowHeight || 480}
+          onchange={(w, h) => { onUpdate('windowWidthOverride', w); onUpdate('windowHeightOverride', h) }} />
       </div>
     {/if}
   </GlobalOverride>

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n.svelte'
   // ══════════════════════════════════════════════════════════════════════
   // Акаунт Шаурми АКТИВНОГО акаунта лаунчера (обидві редакції).
   // Кожен акаунт лаунчера має СВІЙ акаунт Шаурми (окремі друзі, чат, P2P, скін). Акаунт
@@ -76,8 +77,8 @@
   async function remove() {
     const proceed = await confirmDialog(
       'Видалити акаунт Шаурми?',
-      'Акаунт, його друзі, чат і скін буде видалено на сервері та тут. Це незворотно: ID не відновити. Сам акаунт лаунчера й гра не зачіпаються.',
-      { confirmLabel: 'Видалити', cancelLabel: 'Скасувати', danger: true },
+      'Акаунт Шаурми, друзі, чат і скін зникнуть назавжди.',
+      { confirmLabel: 'Видалити', cancelLabel: t('cancel'), danger: true },
     )
     if (!proceed) return
     busy = 'delete'
@@ -103,7 +104,7 @@
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const fr = new FileReader()
         fr.onload = () => resolve(String(fr.result))
-        fr.onerror = () => reject(new Error('Не вдалося прочитати файл'))
+        fr.onerror = () => reject(new Error(t('sap.readFail')))
         fr.readAsDataURL(file)
       })
       skinPreview = dataUrl
@@ -117,7 +118,7 @@
     busy = 'skin'
     try {
       await App.UploadSkin(skinB64, model)
-      toast('Скін завантажено на сервер скінів', 'success')
+      toast('Скін завантажено', 'success')
       skinPreview = ''
       skinB64 = ''
     } catch (e: any) { toast(String(e), 'error') }
@@ -129,55 +130,54 @@
   <div class="sap-note">
     <i class="ti ti-info-circle"></i>
     <div>
-      Акаунт Шаурми — <b>окремий для кожного акаунта лаунчера</b>: свої друзі, чат, P2P і скін.
-      Акаунт лише з ніком його не має, тож доступу до друзів, P2P і скінів не отримує.
-      Це не Minecraft-акаунт: жодні ліцензійні дані чи токени на сервер Шаурми не передаються.
+      Акаунт Шаурми <b>{t('sap.noteB')}</b>.
+      {t('sap.note2')}
+      {t('sap.note3')}
     </div>
   </div>
 
   {#if loading}
-    <div class="sap-state"><i class="ti ti-loader spin"></i> Перевірка…</div>
+    <div class="sap-state"><i class="ti ti-loader spin"></i> {t('sap.checking')}</div>
   {:else if info?.reason === 'no_launcher_account'}
-    <div class="sap-warn"><i class="ti ti-alert-triangle"></i> Спершу додайте акаунт у лаунчері.</div>
+    <div class="sap-warn"><i class="ti ti-alert-triangle"></i> {t('sap.addFirst')}</div>
   {:else if info?.reason === 'no_hwid'}
-    <div class="sap-warn"><i class="ti ti-alert-triangle"></i> Не вдалося визначити цей комп'ютер — акаунт Шаурми тут недоступний.</div>
+    <div class="sap-warn"><i class="ti ti-alert-triangle"></i> {t('sap.unavailable')}</div>
   {:else if !info?.hasAccount}
     <div class="sap-block">
-      <div class="sap-title"><i class="ti ti-user-plus"></i> Створити акаунт Шаурми</div>
+      <div class="sap-title"><i class="ti ti-user-plus"></i> {t('accp.create.title')}</div>
       <div class="sap-sub">
-        Для акаунта лаунчера «{info?.launcherNick || accountName}». Нік — лише те, як вас бачать друзі й у грі, він не обов'язково
-        унікальний. Унікальний — ID, який ви отримаєте: за ним вас додають у друзі.
+        Для акаунта «{info?.launcherNick || accountName}».
       </div>
-      <input class="input mono" bind:value={newNick} placeholder="Нік" maxlength="16" disabled={waiting} />
+      <input class="input mono" bind:value={newNick} placeholder={t('accp.nick.ph')} maxlength="16" disabled={waiting} />
       {#if waiting}
         <div class="sap-wait">
           <i class="ti ti-loader spin"></i>
-          <span>Очікування входу в браузері… завершіть вхід.</span>
-          <button class="btn btn-ghost btn-sm" onclick={cancelLogin}>Скасувати</button>
+          <span>{t('accp.login.finish')}</span>
+          <button class="btn btn-ghost btn-sm" onclick={cancelLogin}>{t('cancel')}</button>
         </div>
       {:else}
         <div class="sap-row-inline">
-          <button class="btn btn-primary" onclick={() => create('google')}><i class="ti ti-brand-google"></i> Підтвердити через Google</button>
-          <button class="btn btn-ghost" onclick={() => create('microsoft')}><i class="ti ti-brand-windows"></i> Через Microsoft</button>
+          <button class="btn btn-primary" onclick={() => create('google')}><i class="ti ti-brand-google"></i> {t('sap.viaGoogle')}</button>
+          <button class="btn btn-ghost" onclick={() => create('microsoft')}><i class="ti ti-brand-windows"></i> {t('sap.viaMicrosoft')}</button>
         </div>
-        <div class="sap-sub">Вхід лише підтверджує, що ви — жива людина (захист від ботів). Пароль, пошта й доступ до вашого акаунта серверу не передаються.</div>
+        <div class="sap-sub">{t('accp.privacy.noPass')}</div>
       {/if}
     </div>
   {:else}
     <div class="sap-block">
-      <div class="sap-title"><i class="ti ti-id-badge-2"></i> Ваш ID</div>
-      <div class="sap-sub">За цим ID вас додають у друзі. Він унікальний і не змінюється; нік можна міняти.</div>
+      <div class="sap-title"><i class="ti ti-id-badge-2"></i> {t('sap.idTitle')}</div>
+      <div class="sap-sub">{t('sap.idHint')}</div>
       <div class="sap-row-inline">
         <input class="input mono" value={info.accountId} readonly onfocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
-        <button class="btn btn-primary btn-sm" onclick={copyId}><i class="ti ti-copy"></i> Копіювати</button>
+        <button class="btn btn-primary btn-sm" onclick={copyId}><i class="ti ti-copy"></i> {t('copy')}</button>
       </div>
     </div>
 
     <div class="sap-block">
-      <div class="sap-title"><i class="ti ti-user"></i> Нік (відображення)</div>
-      <div class="sap-sub">Його бачать друзі й гра. Можна міняти не частіше двох разів на тиждень.</div>
+      <div class="sap-title"><i class="ti ti-user"></i> {t('accp.nick.ph')}</div>
+      <div class="sap-sub">{t('accp.nick.limit')}</div>
       <div class="sap-row-inline">
-        <input class="input mono" bind:value={nickDraft} placeholder="Ваш нік" maxlength="16"
+        <input class="input mono" bind:value={nickDraft} placeholder={t('accp.nick.label')} maxlength="16"
                onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') saveNickname() }} />
         <button class="btn btn-primary btn-sm" onclick={saveNickname} disabled={busy === 'nick' || !nickDraft.trim() || nickDraft.trim() === info.nickname}>
           {#if busy === 'nick'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-check"></i>{/if} Зберегти
@@ -186,8 +186,8 @@
     </div>
 
     <div class="sap-block">
-      <div class="sap-title"><i class="ti ti-photo"></i> Власний скін</div>
-      <div class="sap-sub">PNG 64×64 (формат Minecraft). Скіни можна міняти не частіше ніж раз на 10 секунд.</div>
+      <div class="sap-title"><i class="ti ti-photo"></i> {t('sap.skinTitle')}</div>
+      <div class="sap-sub">{t('sap.skinHint')}</div>
       <div class="sap-skin">
         <div class="sap-skin-preview">
           {#if skinPreview}
@@ -251,10 +251,10 @@
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     font: 500 11px/1.4 var(--font-ui); color: var(--orange);
   }
-  .sap-rows { display: flex; flex-direction: column; gap: 3px; }
-  .sap-row { display: flex; gap: 8px; font: 400 11px/1.4 var(--font-ui); }
-  .sap-row span { color: var(--text-dim); min-width: 84px; }
-  .sap-row b { color: var(--text); font-family: var(--font-mono); font-weight: 600; word-break: break-all; }
+  
+  
+  
+  
   .sap-row-inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .sap-row-inline .input { flex: 1 1 180px; min-width: 0; }
   .sap-skin { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }

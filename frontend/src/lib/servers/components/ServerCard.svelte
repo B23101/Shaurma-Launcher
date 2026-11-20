@@ -72,6 +72,7 @@
   function act(e: Event, fn: () => void) { e.stopPropagation(); fn() }
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 <article
   class="sc rise-in"
   class:running
@@ -153,11 +154,6 @@
       <div class="sc-fail"><i class="ti ti-alert-triangle"></i><span>{srv.lastError || t(srv.status === 'crashed' ? 'servers.status.crashed' : 'servers.status.error')}</span></div>
     {:else if transient}
       <div class="sc-idle"><i class="ti ti-loader-2 spin"></i> {t(srv.status === 'starting' ? 'servers.status.starting' : 'servers.status.stopping')}</div>
-    {:else}
-      <div class="sc-idle">
-        <i class="ti ti-moon-stars"></i>
-        {#if !srv.coreInstalled}{t('servers.card.coreMissing')}{:else}{t('servers.card.idle')}{/if}
-      </div>
     {/if}
   </div>
 

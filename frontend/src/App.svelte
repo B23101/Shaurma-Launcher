@@ -1,12 +1,11 @@
 <script lang="ts">
   import { tip as launcherTip } from './lib/friends/tooltip'
 
-  import javaLogo from './assets/images/java.svg'
   import UiModal from './lib/UiModal.svelte'
   import P2PNetworkDialog from './lib/P2PNetworkDialog.svelte'
   import './lib/settings/settings.css'
   import './style.css'
-  import { onMount, onDestroy, flushSync } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import { fade, fly, slide } from 'svelte/transition'
   import { flip } from 'svelte/animate'
   import { cubicOut, quintOut } from 'svelte/easing'
@@ -34,6 +33,8 @@
   import Wizard from './lib/Wizard.svelte'
   import BirthdayMode from './lib/BirthdayMode.svelte'
   import Toasts from './lib/Toasts.svelte'
+import AIAgentIndicator from './lib/AIAgentIndicator.svelte'
+  import { aiBusyLabel, initAIEdit } from './lib/aiAgentEdit.svelte'
   import NewScreenshotWidget from './lib/NewScreenshotWidget.svelte'
   import { initShareStore, shareRecoverable, shareUi, showOffer } from './lib/friends/shareStore.svelte'
   import P2PJoinModal from './lib/servers/components/P2PJoinModal.svelte'
@@ -83,7 +84,7 @@
   import FolderTile from './lib/FolderTile.svelte'
   import { windowVisibility } from './lib/visible.svelte'
   import { windowActive as windowActiveState, initWindowActive } from './lib/windowActive.svelte'
-  import { launchStageLabel, launchStageColor, launchStagePct, downloadStageLabel, downloadStageColor, downloadStageIcon, downloadStageGlow } from './lib/launchStages'
+  import { launchStageLabel, launchStageColor, launchStagePct, downloadStageLabel, downloadStageColor, downloadStageIcon, downloadStageGlow, launchStageIcon as sharedStageIcon } from './lib/launchStages'
   import { getUIState, updateUIState, pushPackHistory, removePackState, resolveOpenPackId, readContentScroll, restoreContentScroll, setPackUI, initUIState, flushUIState } from './lib/uiState'
   import steveHead from './assets/images/steve-head.png'
   import fabricIcon from './assets/images/fabric_icon.png'
@@ -1160,28 +1161,28 @@
     })
   }
 
-  // Плавний перехід між розділами: View Transitions API робить справжній
-  // cross-fade старої й нової сторінки (раніше стара зникала миттєво, а
-  // гардероб/налаштування/друзі/аналітика з'являлись без анімації взагалі).
-  // Де API немає (WebKitGTK), вимкнені анімації або режим продуктивності —
-  // звичайна миттєва зміна + CSS-fade появи (див. style.css, html:not([data-vt])).
+  // Перехід між розділами. View Transitions тут більше не використовуються: поки монтувався важкий
+  // розділ (налаштування, гардероб), браузер тримав «заморожений» знімок
+  // старого розділу, і той блимав ще ~секунду після кліку. Тепер старий
+  // розділ зникає в тому ж кадрі, а новий монтується наступним кадром і
+  // проявляється CSS-fade (page-view-in).
+  let pageReady = $state(true)
+  let pageReadyRaf = 0
+  let pageReadyTimer: ReturnType<typeof setTimeout> | undefined
   function pageTransition(change: () => void) {
-    const doc = document as any
-    const html = document.documentElement
-    if (
-      typeof doc.startViewTransition !== 'function' ||
-      html.dataset.animations === 'off' ||
-      html.dataset.performanceMode === 'on' ||
-      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    ) { change(); return }
-    html.dataset.vt = '1'
-    try {
-      const vt = doc.startViewTransition(() => { flushSync(change) })
-      vt.finished.catch(() => {}).finally(() => { delete html.dataset.vt })
-    } catch {
-      delete html.dataset.vt
-      change()
+    cancelAnimationFrame(pageReadyRaf)
+    clearTimeout(pageReadyTimer)
+    pageReady = false
+    change()
+    const ready = () => {
+      cancelAnimationFrame(pageReadyRaf)
+      clearTimeout(pageReadyTimer)
+      pageReady = true
     }
+    // Два кадри: перший малює порожню область, у другому монтується розділ.
+    // Таймер — запас для прихованого вікна, де rAF не крутиться.
+    pageReadyRaf = requestAnimationFrame(() => { pageReadyRaf = requestAnimationFrame(ready) })
+    pageReadyTimer = setTimeout(ready, 120)
   }
 
   // ── Глобальний пошук (модалка Ctrl+F / клік по полю пошуку) ──────────
@@ -1692,6 +1693,7 @@
     // збережені стани/тестові моки без цього поля не мають раптово
     // вимикати анімації всім).
     applyAnimations((settings as any).animationsEnabled !== false)
+    applyUIScale(settings.uiScale)
     // Performance Mode: за замовчуванням вимкнено (undefined → false, на
     // відміну від animationsEnabled — тут дефолт саме «вимкнено», щоб
     // не позбавляти блюру всіх існуючих користувачів без свідомого вибору).
@@ -3557,16 +3559,11 @@
   //   java           → ЧЕРВОНА іконка Java, рухається вгору-вниз
   //   loader         → іконка саме того лоадера (fabric/forge/…), вгору-вниз
   // Кнопка НЕ клікабельна (div, не button) — це індикатор, а не дія.
+  // Іконки етапів — ті самі, що в панелі запуску (LAUNCH_STAGES у launchStages.ts), без логотипів-картинок.
   function launchStageIcon(stage?: string): { icon: string; cls: string } | null {
-    switch (stage) {
-      case 'checking': return { icon: 'ti-search', cls: 'st-check' }
-      case 'worker_update': return { icon: 'ti-refresh', cls: 'st-update' }
-      // Іконка Java в sidebar — ti-coffee (чашка кави = Java), яка точно
-      // існує у Tabler 3.46 (старий ti-brand-java був прибраний з набору).
-      case 'java': return { icon: 'ti-coffee', cls: 'st-java' }
-      case 'loader': return { icon: 'ti-package', cls: 'st-loader' }
-      default: return null
-    }
+    const cls: Record<string, string> = { checking: 'st-check', mod_sources: 'st-update', worker_update: 'st-update', java: 'st-java', loader: 'st-loader' }
+    if (!stage || !cls[stage]) return null
+    return { icon: sharedStageIcon(stage), cls: cls[stage] }
   }
   // Іконка стадії СИНХРОНІЗАЦІЇ ФАЙЛІВ (downloading/manifest_fetched/
   // extracting/finalizing) — той самий принцип, що launchStageIcon, але
@@ -4430,6 +4427,19 @@
   // яскравості) і пушка з 6 райдужних цяток навколо неї (напрямок/дистанція/
   // колір — у CSS-змінних, цятки самі видаляються по onanimationend).
   // Глобальний вимикач анімацій (Налаштування → Вигляд) обнулить її до 1ms.
+  // Масштаб інтерфейсу: зум WebView (як Ctrl+колесо в браузері) — вся розкладка,
+  // меню й координати масштабуються узгоджено. Без підтримки в оболонці —
+  // CSS zoom кореня як запасний варіант.
+  function applyUIScale(v: number | undefined) {
+    const pct = Math.max(70, Math.min(150, Math.round(Number(v) || 100)))
+    Window.SetZoom(pct / 100).then(() => {
+      document.documentElement.style.removeProperty('zoom')
+    }).catch(() => {
+      if (pct === 100) document.documentElement.style.removeProperty('zoom')
+      else document.documentElement.style.setProperty('zoom', String(pct / 100))
+    })
+  }
+
   function updateSetting(key: string, v: any) {
     (settings as any)[key] = v
     if (key === 'accent' || key === 'accentCustom' || key === 'accentCustom2' || key === 'accentCustomMode') {
@@ -4440,6 +4450,7 @@
       applyTheme((settings as any).theme, { bg: (settings as any).themeCustomBg, card: (settings as any).themeCustomCard, text: (settings as any).themeCustomText, extra: (settings as any).themeCustomExtra })
     }
     if (key === 'animationsEnabled') applyAnimations(v !== false)
+    if (key === 'uiScale') applyUIScale(v)
     if (key === 'performanceMode') applyPerformanceMode(!!v)
     if (key === 'sidebarAnimAlways') sidebarAnimAlways = !!v
     if (key === 'pinnedServersCompact') pinnedServersCompact = !!v
@@ -5492,6 +5503,8 @@
   }
 
   onMount(async () => {
+    // Стан «збіркою керує ШІ» для сайдбару, «Моїх збірок» і кнопки «Грати».
+    initAIEdit()
     // Відгук на кожен клік (стиск + пружина + хвиля) — див. lib/pressFx.ts.
     installPressFx()
     installRangeFx()
@@ -5824,6 +5837,8 @@
     // Перша перевірка мережі одразу (подія могла прийти до підписки).
     App.CheckNetwork().then((ok) => { networkOnline = ok }).catch(() => {})
     on('builds:changed', () => refreshBuilds())
+    // ШІ-агент змінив порядок/папки збірок — перечитуємо розкладку.
+    on('layout:changed', () => { loadPackLayout(); loadPackFolders() })
     on('friends:update', (s: { invites?: unknown[]; unread?: Record<string, number> }) => {
       socialInvites = Array.isArray(s?.invites) ? s.invites.length : 0
       if (s?.unread && typeof s.unread === 'object') socialUnread = s.unread
@@ -6017,7 +6032,7 @@
     })
     on('shaurma-account:autocreate', (ev: { status: string; message?: string }) => {
       if (!ev) return
-      if (ev.status === 'start') toast('Підтвердіть вхід у Microsoft у браузері, щоб створити акаунт Шаурми', 'info', 8000)
+      if (ev.status === 'start') toast('Підтвердіть вхід у Microsoft у браузері', 'info', 8000)
       else if (ev.status === 'ok') toast('Акаунт Шаурми створено', 'success', 4000)
       else if (ev.status === 'error') toast(`Акаунт Шаурми не створено: ${ev.message || 'помилка'}. Спробуйте тут: ${settingPathText('card:account/profile')}`, 'error', 9000)
     })
@@ -6110,11 +6125,11 @@
   {@const lp = launchProgress[pk.id]}
   {@const sti = lp && !lp.done ? launchStageIcon(lp.stage) : null}
   {@const dsti = !sti ? syncStageIcon(bv) : null}
-  {@const limg = lp && !lp.done && lp.stage === 'loader' ? loaderImgFor(pk.loaderType) : undefined}
   {@const glow = glowClass(bv, lp)}
   {@const mig = migrateByPack[pk.id]}
   {@const isDragSrc = dragSrcId === pk.id}
   {@const isDropTarget = dropTargetId === pk.id}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="inst-tile rise-in" class:running={status === 'running'} class:pin-badge={isPinned(pk.id)} class:glow-green={glow === 'glow-green'} class:glow-orange={glow === 'glow-orange'} class:glow-red={glow === 'glow-red'} class:glow-blue={glow === 'glow-blue'} class:glow-yellow={glow === 'glow-yellow'} class:glow-mig={!!mig && !lp} class:drag-src={isDragSrc} class:drop-before={isDropTarget && dropPos === 'before'} class:drop-after={isDropTarget && dropPos === 'after'} data-pack-id={pk.id} onpointerdown={(e) => packPointerDown(e, pk.id, pcol, inFolder)} onpointermove={packPointerMove} onpointerup={pointerDragEnd} oncontextmenu={(e) => openCtxMenu(e, pk.id)} onclick={() => { if (inFolder) { if (suppressPackClick) return; folderModalId = null } openPackPage(pk.id) }} style="--pcol:{pcol};--drop-c:{dragPackColor};animation-delay:{Math.min(gi,5)*12}ms">
     <div class="it-ic" class:has-icon={!!iconSrc} class:blink={status === 'downloading' || status === 'updating'} style="--pcol:{pcol}">
       {#if iconSrc}
@@ -6131,8 +6146,11 @@
     </div>
     <div class="it-info">
       <div class="it-name">{pk.name}</div>
-      <div class="it-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating'}>
-        {#if lp && !lp.done}
+      <div class="it-sub" class:live={!!lp && !lp.done || status === 'downloading' || status === 'updating' || !!aiBusyLabel(pk.id)}>
+        {#if aiBusyLabel(pk.id)}
+          <i class="ti ti-robot ai-state-ic"></i>
+          <span class="ai-state-txt" use:launcherTip={t('ai.state.tip')}>{aiBusyLabel(pk.id)}</span>
+        {:else if lp && !lp.done}
           <i class="ti ti-loader spin"></i>
           <span>{launchStageLabel(lp.stage)}</span>
         {:else if mig && !lp}
@@ -6176,14 +6194,8 @@
       <!-- Під час встановлення Java/лоадера/оновлення файлів
            кнопка стає «Стоп» (скасувати встановлення) — 1:1 як
            у sidebar (.sp-st). -->
-      <button class="it-st st-{lp.stage} sp-stop" onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} use:launcherTip={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
-        {#if lp?.stage === 'java'}
-              <img src={javaLogo} alt="" />
-            {:else if limg}
-          <img src={limg} alt="" />
-        {:else}
-          <i class="ti {sti.icon}"></i>
-        {/if}
+      <button class="it-st st-{lp.stage} sp-stop" aria-label={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')} onclick={(e: any) => { e.stopPropagation(); cancelGameInstall(pk.id) }} use:launcherTip={launchStageLabel(lp.stage) + ' — ' + t('pack.stop')}>
+        <i class="ti {sti.icon}"></i>
       </button>
     {:else if dsti}
       <!-- Під час синхронізації файлів (downloading/
@@ -6194,7 +6206,7 @@
         <i class="ti {dsti.icon}"></i>
       </div>
     {:else if mig && !lp}
-      <button class="it-btn it-mig" disabled use:launcherTip={t('mods.migratingTitle')}>
+      <button aria-label={t('mods.migratingTitle')} class="it-btn it-mig" disabled use:launcherTip={t('mods.migratingTitle')}>
         <i class="ti ti-arrows-right-left"></i>
       </button>
     {:else}
@@ -6255,6 +6267,7 @@
     <!-- Віджет-тост встановлення: помилка або успішне завершення фонового
          завантаження. Фіксований праворуч знизу, auto-зникає за 7с,
          клік — закрити одразу. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <div class="install-toast {toastMsg.kind}" role="alert" onclick={() => (toastMsg = null)}>
       <div class="it-icon">
         {#if toastMsg.kind === 'error'}
@@ -6374,7 +6387,9 @@
            (інакше порожній flex:1 .page-view штовхає контент на середину
            вікна — той самий баг, що був у браузера). -->
       <div class="page-view" hidden={(currentPage === 'browser' && !browserProject && !browserAuthor) || currentPage === 'wardrobe' || currentPage === 'settings' || currentPage === 'analytics' || currentPage === 'friends'}>
-      {#if currentPage === 'instances' && showCreatePack}
+      {#if !pageReady}
+        <!-- розділ монтується наступним кадром (див. pageTransition) -->
+      {:else if currentPage === 'instances' && showCreatePack}
         <CreatePackPage {settings} initialTab={createPackTab} onTabChange={(v) => (createPackTab = v)} folders={packFolders} onCancel={closeCreatePack} onCreated={onPackCreated} />
       {:else if currentPage === 'instances' && openPack}
         <!-- Кожна збірка = своє власне «вікно»: {#key openPack.id} перемонтовує
@@ -6394,6 +6409,7 @@
             allBuilds={orderedAllBuildViews}
             packPicker={packPicker}
             runningAccounts={otherRunningAccounts(builds.find(b => b.build.id === stablePack.id))}
+            aiRunning={(builds.find(b => b.build.id === stablePack.id)?.runningOn ?? []).some(r => r.accountId?.startsWith('ai-agent-'))}
             headOf={(a: Account) => headFor(a.uuid)}
             activeAccount={activeAccount()}
             launchProgress={launchProgress[stablePack.id] ?? null}
@@ -6641,7 +6657,7 @@
         </div>
       {/if}
 
-      {#if currentPage === 'wardrobe'}
+      {#if pageReady && currentPage === 'wardrobe'}
         <!-- shaurma — гейт для скін-системи (Google-вхід / нік / власний
              скін офлайн-акаунта): у базовій редакції цих методів у
              backend.dll немає взагалі. Передаємо skinsEnabled, а не сам
@@ -6650,7 +6666,7 @@
         <Wardrobe activeAccount={activeAccount()} shaurma={skinsEnabled} nickMismatch={wardrobeNickMismatch} skinAuthNick={skinAuth.ok ? skinAuth.nick : ''} />
       {/if}
 
-      {#if currentPage === 'friends'}
+      {#if pageReady && currentPage === 'friends'}
         <!-- Розділ «Друзі»: список + чат (Shaurma) і друзі Minecraft. -->
         <FriendsPage
           shaurmaAvailable={shaurmaFriendsVisible}
@@ -6660,7 +6676,7 @@
         />
       {/if}
 
-      {#if currentPage === 'analytics'}
+      {#if pageReady && currentPage === 'analytics'}
         <!-- Розділ «Аналітика»: підсумки ігрового часу, стовпчики за 7 днів /
              тижні / місяці / роки та топ збірок. Оновлюється після кожної
              завершеної сесії (loadAnalytics у build:exit). -->
@@ -6669,7 +6685,7 @@
         </div>
       {/if}
 
-      {#if currentPage === 'settings'}
+      {#if pageReady && currentPage === 'settings'}
       <SettingsPage
         bind:settingsTab={settingsTab}
         settings={settings}
@@ -7039,70 +7055,71 @@
          (дублюють клік по картці і tooltips). Лишаються: тека збірки,
          закріпити, завантажити/оновити, експорт, оновити з джерела,
          дублювати, видалити. -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="ctx-menu" style="left:{ctxMenu.x}px;top:{ctxMenu.y}px" oncontextmenu={(e) => e.preventDefault()}>
-      <div class="ctx-item" class:pin-on={isPinned(ctxPack.build.id)} onclick={() => ctxAction('pin', ctxPack.build.id)}>
+      <button type="button" class="ctx-item" class:pin-on={isPinned(ctxPack.build.id)} onclick={() => ctxAction('pin', ctxPack.build.id)}>
         <i class="ti ti-pin"></i> {isPinned(ctxPack.build.id) ? t('packs.unpin') : t('packs.pin')}
-      </div>
+      </button>
       {#if ctxPack.status === 'not-installed' || ctxPack.status === 'needs-update'}
-        <div class="ctx-item" onclick={() => ctxAction('download', ctxPack.build.id)}>
+        <button type="button" class="ctx-item" onclick={() => ctxAction('download', ctxPack.build.id)}>
           <i class="ti ti-download"></i> {ctxPack.status === 'needs-update' ? t('pack.update') : t('pack.download')}
-        </div>
+        </button>
       {/if}
       {#if ctxPack.installed}
         <!-- Відкрити теку збірки у Провіднику: для всіх встановлених
              збірок (файли на диску є). Користувач просив — без цього
              пункту доводилось шукати теку вручну. -->
         <div class="ctx-sep"></div>
-        <div class="ctx-item" onclick={() => ctxAction('folder', ctxPack.build.id)}>
+        <button type="button" class="ctx-item" onclick={() => ctxAction('folder', ctxPack.build.id)}>
           <i class="ti ti-folder-open"></i> {t('pack.openFolder')}
-        </div>
+        </button>
         {#if ctxPack.build.kind === 'custom'}
           <!-- Експорт офіційних Shaurma-збірок заборонено на бекенді
                (ExportPack повертає errExportForbidden) — тому пункт
                меню взагалі не показуємо для не-custom збірок, щоб не
                давати клікати в кнопку, яка все одно завершиться помилкою. -->
           <div class="ctx-sep"></div>
-          <div class="ctx-item" onclick={() => ctxAction('export', ctxPack.build.id)}>
+          <button type="button" class="ctx-item" onclick={() => ctxAction('export', ctxPack.build.id)}>
             <i class="ti ti-package-export"></i> {t('pack.export')}
-          </div>
+          </button>
         {/if}
         {#if ctxPack.build.source === 'modrinth' || ctxPack.build.source === 'curseforge'}
           <div class="ctx-sep"></div>
-          <div class="ctx-item" onclick={() => ctxAction('updateSource', ctxPack.build.id)}>
+          <button type="button" class="ctx-item" onclick={() => ctxAction('updateSource', ctxPack.build.id)}>
             <i class="ti ti-refresh"></i> {t('browser.updateFromSource')}
-          </div>
+          </button>
         {/if}
         <!-- Дублювання доступне лише для КАСТОМНИХ збірок: офіційні Shaurma-збірки
              керуються лаунчером і синкуються з каталогу, тож копія все одно була б
              перезаписана при оновленні (бекенд DuplicatePack теж відхиляє Shaurma). -->
         {#if ctxPack.build.kind === 'custom'}
           <div class="ctx-sep"></div>
-          <div class="ctx-item" onclick={() => ctxAction('duplicate', ctxPack.build.id)}>
+          <button type="button" class="ctx-item" onclick={() => ctxAction('duplicate', ctxPack.build.id)}>
             <i class="ti ti-copy"></i> {t('pack.duplicate')}
-          </div>
+          </button>
         {/if}
         <!-- Ярлик збірки (як Modrinth App / Prism): подвійний клік запускає
              лаунчер і одразу цю збірку. «Створити ярлик…» відкриває діалог
              з вибором назви і місця (як CreateShortcutDialog у Prism); якщо
              ярлик уже є — окремий пункт видаляє його. -->
         <div class="ctx-sep"></div>
-        <div class="ctx-item" onclick={() => ctxAction('shortcut', ctxPack.build.id)}>
+        <button type="button" class="ctx-item" onclick={() => ctxAction('shortcut', ctxPack.build.id)}>
           <i class="ti ti-external-link"></i>
           {shortcutByPack[ctxPack.build.id] ? t('pack.shortcutEdit') : t('pack.shortcutCreate')}
-        </div>
+        </button>
         {#if shortcutByPack[ctxPack.build.id]}
-          <div class="ctx-item" onclick={() => ctxAction('shortcutRemove', ctxPack.build.id)}>
+          <button type="button" class="ctx-item" onclick={() => ctxAction('shortcutRemove', ctxPack.build.id)}>
             <i class="ti ti-trash"></i> {t('pack.shortcutRemove')}
-          </div>
+          </button>
         {/if}
       {/if}
       {#if ctxPack.build.kind === 'custom'}
         <!-- Створити папку: одразу з цією збіркою всередині й відкритим
              редактором назви/кольору. -->
         <div class="ctx-sep"></div>
-        <div class="ctx-item" onclick={() => { const pid = ctxPack.build.id; ctxMenu = null; folderEditor = { id: '', name: t('packs.folderNewName'), color: '#ff8a00', icon: 'ti-folder', mode: 'create', selected: new Set([pid]) } }}>
+        <button type="button" class="ctx-item" onclick={() => { const pid = ctxPack.build.id; ctxMenu = null; folderEditor = { id: '', name: t('packs.folderNewName'), color: '#ff8a00', icon: 'ti-folder', mode: 'create', selected: new Set([pid]) } }}>
           <i class="ti ti-folder-plus"></i> {t('packs.folderCreate')}
-        </div>
+        </button>
       {/if}
       <!-- Видалення: кастомні збірки — завжди (і БЕЗ файлів: щойно створена «не завантажена»
            картка з браузера контенту чи порожня ручна збірка, інакше їх не прибрати інакше, ніж
@@ -7111,9 +7128,9 @@
            (її можна завантажити знову) — тому діалог підтвердження і не страшний. -->
       {#if ctxPack.build.kind === 'custom' || ctxPack.installed}
         <div class="ctx-sep"></div>
-        <div class="ctx-item danger" data-testid="ctx-pack-delete" onclick={() => ctxAction('delete', ctxPack.build.id)}>
+        <button type="button" class="ctx-item danger" data-testid="ctx-pack-delete" onclick={() => ctxAction('delete', ctxPack.build.id)}>
           <i class="ti ti-trash"></i> {t('pack.delete')}
-        </div>
+        </button>
       {/if}
     </div>
   {/if}
@@ -7150,22 +7167,23 @@
 	         TypeError «Cannot read properties of null (reading 'id')». -->
 	    {@const fv = folderCtxMenu ? folderViews.find(v => v.folder.id === folderCtxMenu?.id) : undefined}
     {#if fv}
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="ctx-menu" style="left:{folderCtxMenu.x}px;top:{folderCtxMenu.y}px" oncontextmenu={(e) => e.preventDefault()}>
-        <div class="ctx-item" onclick={() => folderCtxAction('open', fv.folder.id)}>
+        <button type="button" class="ctx-item" onclick={() => folderCtxAction('open', fv.folder.id)}>
           <i class="ti ti-folder-open"></i> {t('packs.folderOpen')}
-        </div>
+        </button>
         {#if !fv.folder.serverManaged}
-          <div class="ctx-item" onclick={() => folderCtxAction('rename', fv.folder.id)}>
+          <button type="button" class="ctx-item" onclick={() => folderCtxAction('rename', fv.folder.id)}>
             <i class="ti ti-edit"></i> {t('packs.folderRename')}
-          </div>
+          </button>
           <div class="ctx-sep"></div>
-          <div class="ctx-item" onclick={() => { folderCtxMenu = null; openFolderBundleExport(fv.folder.id) }}>
+          <button type="button" class="ctx-item" onclick={() => { folderCtxMenu = null; openFolderBundleExport(fv.folder.id) }}>
             <i class="ti ti-archive"></i> {t('packs.folderExportBundle')}
-          </div>
+          </button>
           <div class="ctx-sep"></div>
-          <div class="ctx-item danger" onclick={() => folderCtxAction('delete', fv.folder.id)}>
+          <button type="button" class="ctx-item danger" onclick={() => folderCtxAction('delete', fv.folder.id)}>
             <i class="ti ti-trash"></i> {t('packs.folderDelete')}
-          </div>
+          </button>
         {:else}
           <!-- Серверна папка (Pack Manager, packs-index.json folderId):
                членство/назва/колір керуються ВИКЛЮЧНО звідти й
@@ -7200,7 +7218,7 @@
             <div class="fe-label">{t('packs.bundleExportDir')}</div>
             <div class="folder-row">
               <input class="st-input grow" bind:value={bse.outDir} placeholder={t('packs.bundleExportDirPlaceholder')} />
-              <button class="btn btn-ghost" onclick={pickBundleExportDir} use:launcherTip={t('browse')}><i class="ti ti-folder"></i></button>
+              <button aria-label={t('browse')} class="btn btn-ghost" onclick={pickBundleExportDir} use:launcherTip={t('browse')}><i class="ti ti-folder"></i></button>
             </div>
           </div>
         {/if}
@@ -7313,6 +7331,7 @@
         <div class="upsrc-list">
           {#each d.versions ?? [] as v (v.id)}
             {@const sel = v.id === d.selected}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="upsrc-row" class:sel onclick={() => d.selected = v.id}>
               <div class="upsrc-info">
                 <div class="upsrc-name">
@@ -7365,6 +7384,7 @@
   {/if}
 
   <Toasts />
+  <AIAgentIndicator />
   <ConfirmModal />
   <!-- Офлайн-попередження запуску (launch:progress.warning): модалка з
        одною кнопкою «Зрозуміло». Не плутати з помилкою — гра СТАРТУЄ

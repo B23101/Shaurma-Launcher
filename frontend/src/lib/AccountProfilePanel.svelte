@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t } from './i18n.svelte'
   import { tip as launcherTip } from './friends/tooltip'
 
   // ══════════════════════════════════════════════════════════════════════
@@ -184,8 +185,8 @@
   async function remove() {
     const proceed = await confirmDialog(
       'Видалити акаунт Шаурми?',
-      'Акаунт, його друзі, чат і скін буде видалено на сервері та тут. Це незворотно: ID не відновити. Сам акаунт лаунчера й гра не зачіпаються.',
-      { confirmLabel: 'Видалити', cancelLabel: 'Скасувати', danger: true },
+      t('accp.delete.hint'),
+      { confirmLabel: 'Видалити', cancelLabel: t('cancel'), danger: true },
     )
     if (!proceed) return
     busy = 'delete'
@@ -216,9 +217,9 @@
     <div class="skel hero-skel"></div>
     <div class="stats"><div class="skel tile-skel"></div><div class="skel tile-skel"></div><div class="skel tile-skel"></div></div>
   {:else if profile?.reason === 'no_launcher_account'}
-    <EmptyState icon="ti-user-exclamation" color="var(--yellow)" title="Немає акаунта лаунчера" hint="Спершу додайте акаунт у лаунчері — акаунт Шаурми прив'язується до нього." />
+    <EmptyState icon="ti-user-exclamation" color="var(--yellow)" title={t('accp.noLauncherAcc')} hint="Спершу додайте акаунт у лаунчері." />
   {:else if profile?.reason === 'no_hwid'}
-    <EmptyState icon="ti-device-desktop-off" color="var(--yellow)" title="Комп'ютер не визначено" hint="Не вдалося визначити цей комп'ютер — акаунт Шаурми тут недоступний." />
+    <EmptyState icon="ti-device-desktop-off" color="var(--yellow)" title={t('accp.noDevice')} hint="Акаунт Шаурми недоступний на цьому комп’ютері." />
   {:else if !profile?.hasAccount}
     <!-- ── Створення акаунта ───────────────────────────────────────── -->
     <div class="hero create">
@@ -229,45 +230,45 @@
           <span class="avatar-dot off"><i class="ti ti-plus"></i></span>
         </div>
         <div class="hero-txt">
-          <div class="hero-name">Створити акаунт Шаурми</div>
+          <div class="hero-name">{t('accp.create.title')}</div>
           <div class="hero-sub">для акаунта лаунчера «{profile?.launcherNick || accountName}»</div>
         </div>
       </div>
 
       <div class="perks">
-        <div class="perk"><i class="ti ti-users"></i><span>Друзі</span></div>
-        <div class="perk"><i class="ti ti-message-circle"></i><span>Чат</span></div>
-        <div class="perk"><i class="ti ti-affiliate"></i><span>P2P-ігри</span></div>
-        <div class="perk"><i class="ti ti-hanger"></i><span>Скіни</span></div>
+        <div class="perk"><i class="ti ti-users"></i><span>{t('accp.perk.friends')}</span></div>
+        <div class="perk"><i class="ti ti-message-circle"></i><span>{t('accp.perk.chat')}</span></div>
+        <div class="perk"><i class="ti ti-affiliate"></i><span>{t('accp.perk.p2p')}</span></div>
+        <div class="perk"><i class="ti ti-hanger"></i><span>{t('accp.perk.skins')}</span></div>
       </div>
 
       <div class="field">
-        <label class="field-l" for="acc-new-nick"><i class="ti ti-user"></i> Ваш нік</label>
-        <input id="acc-new-nick" class="inp mono" bind:value={newNick} placeholder="Нік" maxlength="16" disabled={waiting} />
-        <div class="field-h">Так вас бачать друзі й гра. Унікальний — ID, який ви отримаєте. Для ліцензійного акаунта нік і скін беруться з Mojang.</div>
+        <label class="field-l" for="acc-new-nick"><i class="ti ti-user"></i> {t('accp.nick.label')}</label>
+        <input id="acc-new-nick" class="inp mono" bind:value={newNick} placeholder={t('accp.nick.ph')} maxlength="16" disabled={waiting} />
+        <div class="field-h">{t('accp.nick.hintLicensed')}</div>
       </div>
 
       {#if waiting}
         <div class="wait">
           <i class="ti ti-loader spin"></i>
-          <span>Очікування входу в браузері… завершіть вхід.</span>
-          <button class="btn btn-ghost btn-sm" onclick={cancelLogin}>Скасувати</button>
+          <span>{t('accp.login.finish')}</span>
+          <button class="btn btn-ghost btn-sm" onclick={cancelLogin}>{t('cancel')}</button>
         </div>
       {:else}
         <div class="prov">
           <button class="prov-btn google" onclick={() => create('google')}>
             <span class="prov-ic"><i class="ti ti-brand-google"></i></span>
-            <span class="prov-t"><b>Продовжити з Google</b><small>Швидко, без пароля</small></span>
+            <span class="prov-t"><b>{t('accp.prov.google')}</b></span>
             <i class="ti ti-arrow-right prov-go"></i>
           </button>
           <button class="prov-btn ms" onclick={() => create('microsoft')}>
             <span class="prov-ic"><i class="ti ti-brand-windows"></i></span>
-            <span class="prov-t"><b>Продовжити з Microsoft</b><small>Для ліцензійних акаунтів</small></span>
+            <span class="prov-t"><b>{t('accp.prov.microsoft')}</b><small>{t('accp.prov.microsoftSub')}</small></span>
             <i class="ti ti-arrow-right prov-go"></i>
           </button>
         </div>
         <div class="privacy"><i class="ti ti-shield-lock"></i>
-          <span>Вхід лише підтверджує, що ви — людина. Пароль, пошта й доступ до вашого акаунта серверу не передаються.</span>
+          <span>{t('accp.privacy.noPass')}</span>
         </div>
       {/if}
     </div>
@@ -276,8 +277,8 @@
       <div class="upgrade">
         <div class="upgrade-ic"><i class="ti ti-arrow-up-circle"></i></div>
         <div>
-          <b>Доступне оновлення до ліцензійного типу</b>
-          <span>У цього акаунта лаунчера з'явилася ліцензія. Щоб нік і скін бралися з Mojang, видаліть акаунт Шаурми нижче й створіть його знову, підтвердивши вхід Microsoft.</span>
+          <b>{t('accp.upgrade.title')}</b>
+          <span>{t('accp.upgrade.hint')}</span>
         </div>
       </div>
     {/if}
@@ -294,11 +295,11 @@
           <div class="hero-name">{profile.nickname || '—'}</div>
           <div class="badges">
             {#if profile.licensed}
-              <span class="badge green"><i class="ti ti-rosette-discount-check"></i> Ліцензійний · Mojang</span>
+              <span class="badge green"><i class="ti ti-rosette-discount-check"></i> {t('accp.badge.licensed')}</span>
             {:else}
-              <span class="badge orange"><i class="ti ti-user-off"></i> Неліцензійний</span>
+              <span class="badge orange"><i class="ti ti-user-off"></i> {t('accp.badge.offline')}</span>
             {/if}
-            <span class="badge blue"><i class="ti ti-cloud-check"></i> Акаунт Шаурми</span>
+            <span class="badge blue"><i class="ti ti-cloud-check"></i> {t('accp.badge.shaurma')}</span>
           </div>
           <div class="hero-sub"><i class="ti ti-calendar-event"></i> З нами з {fmtDate(profile.createdAt)}</div>
         </div>
@@ -308,23 +309,23 @@
         <div class="idbar-ic"><i class="ti {profile.handle ? 'ti-at' : 'ti-fingerprint'}"></i></div>
         <div class="idbar-body">
           {#if profile.handle}
-            <small>Ідентифікатор · за ним вас додають у друзі</small>
+            <small>{t('accp.id.addHint')}</small>
             <input class="idbar-val" value={'@' + profile.handle} readonly onfocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
           {:else}
-            <small>ID акаунта · задайте короткий ідентифікатор нижче</small>
+            <small>{t('accp.id.setHint')}</small>
             <input class="idbar-val" value={profile.accountId} readonly onfocus={(e) => (e.currentTarget as HTMLInputElement).select()} />
           {/if}
         </div>
         {#if profile.handle}
-          <button class="copy" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} use:launcherTip={"Копіювати ідентифікатор"}>
+          <button aria-label={"Копіювати ідентифікатор"} class="copy" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} use:launcherTip={"Копіювати ідентифікатор"}>
             <i class="ti {copied === 'handle' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
         {:else}
-          <button class="copy" class:ok={copied === 'id'} onclick={() => copyText('id', profile?.accountId)} use:launcherTip={"Копіювати ID"}>
+          <button aria-label={"Копіювати ID"} class="copy" class:ok={copied === 'id'} onclick={() => copyText('id', profile?.accountId)} use:launcherTip={"Копіювати ID"}>
             <i class="ti {copied === 'id' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
         {/if}
-        <button class="copy" class:ok={copied === 'link'} onclick={copyInviteLink} use:launcherTip={"Копіювати посилання на дружбу"}>
+        <button aria-label={"Копіювати посилання на дружбу"} class="copy" class:ok={copied === 'link'} onclick={copyInviteLink} use:launcherTip={"Копіювати посилання на дружбу"}>
           <i class="ti {copied === 'link' ? 'ti-check' : 'ti-link'}"></i>
         </button>
       </div>
@@ -335,48 +336,48 @@
       <div class="tile t-orange">
         <div class="tile-ic"><i class="ti ti-clock-play"></i></div>
         <div class="tile-v">{fmtDuration(profile.gameSeconds)}</div>
-        <div class="tile-l">Ігровий час</div>
+        <div class="tile-l">{t('accp.stat.time')}</div>
       </div>
       <div class="tile t-violet">
         <div class="tile-ic"><i class="ti ti-packages"></i></div>
         <div class="tile-v">{profile.buildsCount}</div>
-        <div class="tile-l">Збірок зіграно</div>
+        <div class="tile-l">{t('accp.stat.packs')}</div>
       </div>
       <div class="tile t-blue">
         <div class="tile-ic"><i class="ti ti-users"></i></div>
         <div class="tile-v">{profile.friends}</div>
-        <div class="tile-l">Друзів</div>
+        <div class="tile-l">{t('accp.stat.friends')}</div>
       </div>
     </div>
-    <div class="note"><i class="ti ti-info-circle"></i> Статистика лаунчера; загальний час — з історії запусків на цьому комп'ютері.</div>
+    <div class="note"><i class="ti ti-info-circle"></i> {t('accp.stat.note')}</div>
 
     <!-- ── Дані акаунта ────────────────────────────────────────────── -->
     <div class="acard">
-      <div class="acard-t"><i class="ti ti-id-badge-2"></i> Дані акаунта</div>
+      <div class="acard-t"><i class="ti ti-id-badge-2"></i> {t('accp.data.title')}</div>
       <div class="list">
         <div class="li">
           <span class="li-ic"><i class="ti ti-shield-check"></i></span>
-          <span class="li-k">Тип</span>
-          <span class="li-v">{profile.licensed ? 'Ліцензійний (Mojang)' : 'Неліцензійний'}</span>
+          <span class="li-k">{t('accp.data.type')}</span>
+          <span class="li-v">{profile.licensed ? 'Ліцензійний (Mojang)' : t('accp.badge.offline')}</span>
         </div>
         <div class="li">
           <span class="li-ic"><i class="ti ti-hash"></i></span>
           <span class="li-k">UUID</span>
           <span class="li-v mono">{profile.uuid || '—'}</span>
           {#if profile.uuid}
-            <button class="copy sm" class:ok={copied === 'uuid'} onclick={() => copyText('uuid', profile?.uuid)} use:launcherTip={"Копіювати UUID"}>
+            <button aria-label={"Копіювати UUID"} class="copy sm" class:ok={copied === 'uuid'} onclick={() => copyText('uuid', profile?.uuid)} use:launcherTip={"Копіювати UUID"}>
               <i class="ti {copied === 'uuid' ? 'ti-check' : 'ti-copy'}"></i>
             </button>
           {/if}
         </div>
         <div class="li">
           <span class="li-ic"><i class="ti ti-calendar-plus"></i></span>
-          <span class="li-k">Створено</span>
+          <span class="li-k">{t('accp.data.created')}</span>
           <span class="li-v">{fmtDate(profile.createdAt)}</span>
         </div>
         <div class="li">
           <span class="li-ic"><i class="ti ti-device-gamepad-2"></i></span>
-          <span class="li-k">Акаунт лаунчера</span>
+          <span class="li-k">{t('accp.data.launcherAcc')}</span>
           <span class="li-v">{profile.launcherNick || accountName || '—'}</span>
         </div>
       </div>
@@ -384,7 +385,7 @@
 
     <!-- ── Нік ─────────────────────────────────────────────────────── -->
     <div class="acard">
-      <div class="acard-t"><i class="ti ti-signature"></i> Нік
+      <div class="acard-t"><i class="ti ti-signature"></i> {t('accp.nick.ph')}
         {#if !profile.nickLocked && typeof profile.nickChangesLeft === 'number'}
           <span class="nchip" class:zero={profile.nickChangesLeft <= 0}><i class="ti ti-refresh"></i> змін лишилось: {profile.nickChangesLeft}</span>
         {/if}
@@ -392,19 +393,19 @@
       {#if profile.nickLocked}
         <div class="locked">
           <i class="ti ti-lock"></i>
-          <span>Нік береться з Mojang і тут не редагується. Змініть його на сайті Mojang, а потім підтягніть сюди.</span>
+          <span>{t('accp.nick.mojangHint')}</span>
         </div>
         <div>
           <button class="btn btn-ghost btn-sm" onclick={syncNickname} disabled={busy === 'sync'}>
-            {#if busy === 'sync'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-refresh"></i>{/if} Підтягнути нік з Mojang
+            {#if busy === 'sync'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-refresh"></i>{/if} Оновити нік з Mojang
           </button>
         </div>
       {:else}
-        <div class="field-h">Його бачать друзі й гра. Змінювати можна не частіше двох разів на тиждень.</div>
+        <div class="field-h">{t('accp.nick.limit')}</div>
         <div class="nickrow">
           <div class="inp-wrap">
             <i class="ti ti-user"></i>
-            <input class="inp mono" bind:value={nickDraft} placeholder="Ваш нік" maxlength="16"
+            <input class="inp mono" bind:value={nickDraft} placeholder={t('accp.nick.label')} maxlength="16"
                    onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') saveNickname() }} />
           </div>
           <button class="btn btn-primary btn-sm" onclick={saveNickname} disabled={busy === 'nick' || !nickDraft.trim() || nickDraft.trim() === profile.nickname}>
@@ -418,12 +419,12 @@
     <div class="acard">
       <div class="acard-t"><i class="ti ti-at"></i> Мій ідентифікатор
         {#if profile.handle}
-          <button class="copy sm" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} use:launcherTip={"Копіювати"}>
+          <button aria-label={"Копіювати"} class="copy sm" class:ok={copied === 'handle'} onclick={() => copyText('handle', '@' + profile?.handle)} use:launcherTip={"Копіювати"}>
             <i class="ti {copied === 'handle' ? 'ti-check' : 'ti-copy'}"></i>
           </button>
         {/if}
       </div>
-      <div class="field-h">За ним друзі знаходять тебе без довгого ID: 3–32 символи, a–z, 0–9, «_» і крапка. Змінювати можна раз на 7 днів; старий звільняється не одразу (14 днів).</div>
+      <div class="field-h">{t('accp.id.rules')}</div>
       <div class="nickrow">
         <div class="inp-wrap">
           <i class="ti ti-at"></i>
@@ -436,7 +437,7 @@
         </button>
       </div>
       {#if handleDraft.trim() && !handleNorm}
-        <div class="field-h" style="color: var(--red)">Невалідний формат: без «..», «__» та без «.» чи «_» на краях.</div>
+        <div class="field-h" style="color: var(--red)">{t('accp.id.rules2')}</div>
       {:else if handleWait}
         <div class="field-h">Змінити знову можна {fmtDate(profile.handleNextChangeAt)}.</div>
       {/if}
@@ -445,30 +446,30 @@
     <!-- ── Про себе: біо + колір фону профілю ───────────────────────── -->
     <div class="acard">
       <div class="acard-t"><i class="ti ti-palette"></i> Про себе та колір профілю
-        {#if styleDirty}<span class="nchip"><i class="ti ti-pencil"></i> не збережено</span>{/if}
+        {#if styleDirty}<span class="nchip"><i class="ti ti-pencil"></i> {t('accp.unsaved')}</span>{/if}
       </div>
-      <div class="field-h">Це бачать лише ваші друзі — у вікні вашого профілю. До {BIO_MAX} символів, один рядок, лише текст (посилання не клікабельні).</div>
+      <div class="field-h">Видно лише друзям, до {BIO_MAX} символів.</div>
 
       <div class="bio-wrap" class:bad={!bioNorm.ok}>
-        <textarea class="inp bio" rows="3" placeholder="Розкажіть про себе: що граєте, у які збірки…"
+        <textarea class="inp bio" rows="3" placeholder={t('accp.bio.ph')}
                   value={bioDraft} oninput={onBioInput} spellcheck="false" autocomplete="off"
-                  aria-label="Про себе" aria-describedby="bio-count"
+                  aria-label={t('accp.bio.aria')} aria-describedby="bio-count"
                   onkeydown={(e: KeyboardEvent) => { if (e.key === 'Enter') { e.preventDefault(); if (e.ctrlKey || e.metaKey) saveStyle() } }}></textarea>
         <span id="bio-count" class="bio-count" class:warn={bioCount >= BIO_MAX - 10} class:full={bioCount >= BIO_MAX}>{bioCount}/{BIO_MAX}</span>
       </div>
-      {#if !bioNorm.ok}<div class="field-h" style="color: var(--red)">Занадто довге або містить недійсні символи.</div>{/if}
+      {#if !bioNorm.ok}<div class="field-h" style="color: var(--red)">{t('accp.bio.invalid')}</div>{/if}
 
-      <div class="field-l"><i class="ti ti-droplet"></i> Колір фону</div>
-      <div class="swatches" role="group" aria-label="Колір фону профілю">
-        <button class="sw sw-none" class:on={colorDraft === ''} onclick={() => (colorDraft = '')} use:launcherTip={"Стандартний (за акаунтом)"} aria-pressed={colorDraft === ''}>
+      <div class="field-l"><i class="ti ti-droplet"></i> {t('accp.bgColor')}</div>
+      <div class="swatches" role="group" aria-label={t('accp.bgColor.aria')}>
+        <button aria-label={"Стандартний (за акаунтом)"} class="sw sw-none" class:on={colorDraft === ''} onclick={() => (colorDraft = '')} use:launcherTip={"Стандартний (за акаунтом)"} aria-pressed={colorDraft === ''}>
           <i class="ti ti-x"></i>
         </button>
         {#each PROFILE_COLORS as c}
           <button class="sw" class:on={safeColor(colorDraft) === c} style="--c:{c}" onclick={() => (colorDraft = c)} use:launcherTip={c} aria-label={c} aria-pressed={safeColor(colorDraft) === c}></button>
         {/each}
-        <label class="sw sw-custom" class:on={colorDraft !== '' && !(PROFILE_COLORS as readonly string[]).includes(safeColor(colorDraft))} use:launcherTip={"Свій колір"}>
+        <label class="sw sw-custom" class:on={colorDraft !== '' && !(PROFILE_COLORS as readonly string[]).includes(safeColor(colorDraft))} use:launcherTip={t('accp.customColor')}>
           <i class="ti ti-color-picker"></i>
-          <input type="color" value={safeColor(colorDraft) || '#ff7a1a'} oninput={(e) => (colorDraft = safeColor((e.currentTarget as HTMLInputElement).value))} aria-label="Свій колір" />
+          <input type="color" value={safeColor(colorDraft) || '#ff7a1a'} oninput={(e) => (colorDraft = safeColor((e.currentTarget as HTMLInputElement).value))} aria-label={t('accp.customColor')} />
         </label>
       </div>
 
@@ -480,7 +481,7 @@
           {#if busy === 'style'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-check"></i>{/if} Зберегти
         </button>
         {#if styleDirty}
-          <button class="btn btn-ghost btn-sm" onclick={revertStyle} disabled={busy === 'style'}><i class="ti ti-arrow-back-up"></i> Скасувати зміни</button>
+          <button class="btn btn-ghost btn-sm" onclick={revertStyle} disabled={busy === 'style'}><i class="ti ti-arrow-back-up"></i> {t('accp.revert')}</button>
         {/if}
       </div>
     </div>
@@ -492,8 +493,8 @@
     <div class="danger">
       <div class="danger-ic"><i class="ti ti-alert-triangle"></i></div>
       <div class="danger-txt">
-        <b>Видалити акаунт Шаурми</b>
-        <span>Друзі, чат і скін буде видалено на сервері. ID не відновити. Акаунт лаунчера й гра не зачіпаються.</span>
+        <b>{t('accp.delete.title')}</b>
+        <span>{t('accp.delete.hint')}</span>
       </div>
       <button class="btn-danger" onclick={remove} disabled={busy === 'delete'}>
         {#if busy === 'delete'}<i class="ti ti-loader spin"></i>{:else}<i class="ti ti-trash"></i>{/if} Видалити

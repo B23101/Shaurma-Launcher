@@ -89,7 +89,7 @@
       </div>
     </div>
     <div class="row">
-      <div class="row-label"><div class="rl-name">{t('metrics.disk')}</div><div class="rl-sub">{t('metrics.diskHint')}</div></div>
+      <div class="row-label"><div class="rl-name">{t('metrics.disk')}</div></div>
       <span class="mono">{fmtMb(m.diskMb)}</span>
     </div>
     <div class="row" style="border-bottom:none">

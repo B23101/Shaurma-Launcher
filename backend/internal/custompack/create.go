@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"shaurma-launcher-backend/internal/pathlink"
 	"strings"
 
 	"shaurma-launcher-backend/internal/imageconvert"
@@ -32,6 +33,10 @@ type CreateParams struct {
 	// пресет замість PNG".
 	IconChanged bool
 	Color       string
+
+	// Location — довільна тека, де житиме збірка (лише Create). Порожньо —
+	// стандартне місце installations/<id>. Тека має бути порожньою або новою.
+	Location string
 
 	MCVersion     string
 	Loader        Loader
@@ -117,6 +122,23 @@ func Create(store *Store, instanceDir string, p CreateParams) (Pack, error) {
 
 	id := store.UniqueID(name)
 	packDir := filepath.Join(instanceDir, id)
+	location := ""
+	if loc := strings.TrimSpace(p.Location); loc != "" {
+		// Збірка в довільній теці: реальні файли лежать у loc, а
+		// installations/<id> — посилання (junction) на неї. Увесь код, що ходить
+		// у installations/<id>, працює без змін.
+		abs, err := prepareLocation(loc)
+		if err != nil {
+			return Pack{}, err
+		}
+		if err := os.MkdirAll(instanceDir, 0755); err != nil {
+			return Pack{}, fmt.Errorf("не вдалося створити теку збірок: %w", err)
+		}
+		if err := pathlink.MakeDirLink(packDir, abs); err != nil {
+			return Pack{}, fmt.Errorf("не вдалося прив'язати теку збірки: %w", err)
+		}
+		location = abs
+	}
 	if err := os.MkdirAll(packDir, 0755); err != nil {
 		return Pack{}, fmt.Errorf("не вдалося створити теку збірки: %w", err)
 	}
@@ -141,6 +163,7 @@ func Create(store *Store, instanceDir string, p CreateParams) (Pack, error) {
 		UseSeparateJava: p.UseSeparateJava,
 		JavaPath:        p.JavaPath,
 		Source:          "manual",
+		Location:        location,
 	}
 
 	if p.IconSrcPath != "" {
@@ -260,6 +283,15 @@ func Delete(store *Store, instanceDir, id string) error {
 		return err
 	}
 	packDir := filepath.Join(instanceDir, id)
+	if pathlink.IsLink(packDir) {
+		// Збірка в довільній теці: спершу її вміст, потім сам «вхід».
+		if real := pathlink.Resolve(packDir); real != packDir {
+			if err := safedel.RemoveAll(real); err != nil {
+				return err
+			}
+		}
+		return os.Remove(packDir)
+	}
 	// RemoveAll на теці конкретної збірки — безпечно, бо id завжди
 	// підконтрольний slug (SlugifyName), а не довільний ввід користувача.
 	return safedel.RemoveAll(packDir)
@@ -299,4 +331,26 @@ func copyAssetInto(packDir, baseName, srcPath string) (string, error) {
 	// pack.IconPath = "icon.png" замість "C:\...\packs\mymod\icon.png".
 	// Повний шлях розв'язується динамічно через Pack.ResolveIconPath().
 	return baseName + ext, nil
+}
+
+// prepareLocation перевіряє обрану теку збірки: абсолютна, нова або порожня.
+func prepareLocation(loc string) (string, error) {
+	abs, err := filepath.Abs(loc)
+	if err != nil {
+		return "", fmt.Errorf("некоректний шлях: %w", err)
+	}
+	if filepath.Dir(abs) == abs {
+		return "", fmt.Errorf("не можна обрати корінь диска")
+	}
+	if entries, err := os.ReadDir(abs); err == nil {
+		if len(entries) > 0 {
+			return "", fmt.Errorf("тека %s не порожня — оберіть порожню або нову", abs)
+		}
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("тека недоступна: %w", err)
+	}
+	if err := os.MkdirAll(abs, 0755); err != nil {
+		return "", fmt.Errorf("не вдалося створити теку: %w", err)
+	}
+	return abs, nil
 }

@@ -93,9 +93,9 @@
   </div>
   <TransferWidget onOpenMod={onopenmod} />
   <div class="ctrl-box">
-    <button class="ctrl-btn" use:launcherTip={t('win.minimize')} onclick={onmin}><i class="ti ti-minus"></i></button>
-    <button class="ctrl-btn" use:launcherTip={t('win.maximize')} onclick={onmax}><i class="ti {isMaximized ? 'ti-copy' : 'ti-square'}"></i></button>
-    <button class="ctrl-btn close" use:launcherTip={t('win.close')} onclick={onclose}><i class="ti ti-x"></i></button>
+    <button aria-label={t('win.minimize')} class="ctrl-btn" use:launcherTip={t('win.minimize')} onclick={onmin}><i class="ti ti-minus"></i></button>
+    <button aria-label={t('win.maximize')} class="ctrl-btn" use:launcherTip={t('win.maximize')} onclick={onmax}><i class="ti {isMaximized ? 'ti-copy' : 'ti-square'}"></i></button>
+    <button aria-label={t('win.close')} class="ctrl-btn close" use:launcherTip={t('win.close')} onclick={onclose}><i class="ti ti-x"></i></button>
   </div>
 </div>
 

@@ -70,6 +70,7 @@
     { id: 'datapacks',    contentDir: 'datapacks',     projectType: 'datapack',    label: () => t('content.tab.datapacks'),    icon: 'ti-database', color: 'var(--blue)',    mods: false },
     { id: 'shaderpacks',  contentDir: 'shaderpacks',   projectType: 'shader',      label: () => t('content.tab.shaders'),      icon: 'ti-brush',    color: '#ff6b9d',        mods: false },
   ]
+  // svelte-ignore state_referenced_locally
   let sub = $state<string>(canMods ? 'mods' : 'resourcepacks')
 
   // ── Стан списку контенту ──
@@ -616,6 +617,7 @@
 
 
     <!-- Список з drag&drop -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="ct-dropzone"
       class:drag={dragOver}
@@ -753,25 +755,25 @@
 	                  <!-- Оновити до останньої версії — лише коли є оновлення
 	                       (як кнопка оновлення у менеджері модів) -->
 	                  {#if e.hasUpdate}
-	                    <button class="icon-btn upd" onclick={() => updateOne(e)} use:launcherTip={t('content.updateOne')} disabled={updatingAll}>
+	                    <button aria-label={t('content.updateOne')} class="icon-btn upd" onclick={() => updateOne(e)} use:launcherTip={t('content.updateOne')} disabled={updatingAll}>
 	                      <i class="ti ti-arrow-up"></i>
 	                    </button>
 	                  {/if}
 	                  <!-- Зміна версії — іконка міграції ресурса (ti-replace) -->
-	                  <button class="icon-btn" onclick={() => openVersions(e)} use:launcherTip={t('content.changeVersion')}>
+	                  <button aria-label={t('content.changeVersion')} class="icon-btn" onclick={() => openVersions(e)} use:launcherTip={t('content.changeVersion')}>
 	                    <i class="ti ti-replace"></i>
 	                  </button>
                   <!-- Скопіювати посилання -->
-                  <button class="icon-btn" onclick={() => copyLink(e)} use:launcherTip={t('content.copyLink')}>
+                  <button aria-label={t('content.copyLink')} class="icon-btn" onclick={() => copyLink(e)} use:launcherTip={t('content.copyLink')}>
                     <i class="ti ti-link"></i>
                   </button>
                 {/if}
                 <!-- Копіювати в іншу збірку -->
-                <button class="icon-btn" onclick={() => openCopy(e)} use:launcherTip={t('content.copyToPack')}>
+                <button aria-label={t('content.copyToPack')} class="icon-btn" onclick={() => openCopy(e)} use:launcherTip={t('content.copyToPack')}>
                   <i class="ti ti-copy"></i>
                 </button>
                 <!-- Видалити -->
-                <button class="icon-btn del" onclick={() => deleteEntry(e)} use:launcherTip={t('content.delete')}>
+                <button aria-label={t('content.delete')} class="icon-btn del" onclick={() => deleteEntry(e)} use:launcherTip={t('content.delete')}>
                   <i class="ti ti-trash"></i>
                 </button>
                 <!-- Перемикач увімкнення -->
@@ -815,7 +817,7 @@
         <button class="btn btn-ghost btn-sm ct-bulk-del" onclick={bulkDelete} disabled={bulkWorking}>
           <i class="ti ti-trash"></i> {t('content.bulkDelete')}
         </button>
-        <button class="ct-bulk-clear" onclick={clearSelection} use:launcherTip={t('content.clearSelection')}>
+        <button aria-label={t('content.clearSelection')} class="ct-bulk-clear" onclick={clearSelection} use:launcherTip={t('content.clearSelection')}>
           <i class="ti ti-x"></i>
         </button>
       </div>

@@ -16,7 +16,7 @@
   import { t } from './i18n.svelte'
   import { App } from './wails'
   import { toast } from './toast.svelte'
-  import { createWardrobeViewer, type WardrobeViewerHandle } from './wardrobe3d'
+  import type { WardrobeViewerHandle } from './wardrobe3d'
   import { PROFILE_COLORS, normalizeBio, bioLength, safeColor, hueOf, shortId } from './friends/profileStyle'
   import { lastSeenText } from './friends/lastSeen'
   import { tip } from './friends/tooltip'
@@ -128,6 +128,7 @@
     { id: 'privacy', icon: 'ti-shield-lock', key: 'acc.modal.tab.privacy' },
     { id: 'look', icon: 'ti-adjustments-horizontal', key: 'acc.modal.tab.look' },
   ]
+  // svelte-ignore state_referenced_locally
   let tab = $state<Tab>(initialTab)
   const tabIdx = $derived(TABS.findIndex((x) => x.id === tab))
 
@@ -372,6 +373,7 @@
     let timer: ReturnType<typeof setTimeout> | undefined
     const boot = async () => {
       try {
+        const { createWardrobeViewer } = await import('./wardrobe3d')
         const v = await createWardrobeViewer(el)
         if (dead) { v.dispose(); return }
         viewer = v
@@ -421,7 +423,7 @@
   ]
 
   const STATUS_COLOR: Record<string, string> = {
-    online: '#22c55e', in_game: '#ff8a00', away: '#f59e0b', dnd: '#ef4444',
+    online: '#22c55e', in_game: '#ff8a00', away: '#a78bfa', dnd: '#ef4444',
     invisible: '#9ca3af', offline: '#6b7280', connecting: '#eab308',
   }
   const accKind = $derived(

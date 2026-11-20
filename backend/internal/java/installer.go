@@ -13,6 +13,7 @@
 package java
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -292,15 +293,19 @@ func (j *Installer) EnsureMajorWithComponent(major int, component string) (strin
 	defer j.mu.Unlock()
 
 	// 1) Своя тека java-<major>/ — нова розкладка, пріоритет.
+	//    Раз на добу звіряємо збірку з маніфестом Mojang і, якщо вийшла
+	//    новіша (виправлення безпеки), тихо оновлюємо (див. update.go).
 	exe := j.MajorExePath(major)
 	if cur := DetectMajor(exe); cur == major {
-		return exe, nil
+		return j.refreshMajorDir(component, major)
 	}
 	// 2) Корінь javaDir — старий стан (майстер ставить туди базову Java 21;
 	//    старі інсталятори могли лишити там інший мажор). Якщо в корені
 	//    вже є ПОТРІБНИЙ мажор — використовуємо його, не перекачуючи.
+	//    Застарілу Java з кореня не перезаписуємо (там лежать інші мажори),
+	//    а ставимо свіжу у java-<major>/.
 	if cur := DetectMajor(j.ExePath()); cur == major {
-		return j.ExePath(), nil
+		return j.refreshRoot(component, major)
 	}
 	// 3) Немає — ставимо у СВОЮ теку java-<major>/. Корінь НЕ чіпаємо:
 	//    там може лежати інший мажор (напр. 21 від майстра) — перезапис
@@ -373,17 +378,23 @@ type mojangPackageManifest struct {
 // вказаний component name (напр. "java-runtime-epsilon", "java-runtime-zeta").
 // Це дозволяє підтримувати нові версії Java автоматично, без оновлення лаунчера.
 func (j *Installer) installComponent(component string, major int, targetDir string) error {
-	os.MkdirAll(targetDir, 0755)
-
 	j.status(fmt.Sprintf("Отримання маніфесту Java %d (%s)...", major, component))
 	j.reportProgress("manifest", 0, fmt.Sprintf("Отримання маніфесту Java %d...", major))
 
-	pkgManifestURL, manifestHash, err := j.resolvePackageManifestURL(component)
+	entry, err := j.resolveRuntime(context.Background(), component)
 	if err != nil {
 		return fmt.Errorf("java manifest для %s: %w", component, err)
 	}
+	return j.installFromEntry(component, major, targetDir, entry)
+}
 
-	pkg, err := j.fetchPackageManifest(pkgManifestURL, manifestHash)
+// installFromEntry качає вже знайдений у маніфесті рантайм у targetDir і
+// записує поруч мітку версії (.shaurma-runtime.json) — по ній лаунчер
+// потім бачить, що Mojang випустив новішу збірку Java.
+func (j *Installer) installFromEntry(component string, major int, targetDir string, entry runtimeEntry) error {
+	os.MkdirAll(targetDir, 0755)
+
+	pkg, err := j.fetchPackageManifest(entry.URL, entry.SHA1)
 	if err != nil {
 		return fmt.Errorf("java package manifest для %s: %w", component, err)
 	}
@@ -397,6 +408,11 @@ func (j *Installer) installComponent(component string, major int, targetDir stri
 
 	if _, err := os.Stat(filepath.Join(targetDir, "bin", exeName())); err != nil {
 		return fmt.Errorf("вбудовану Java %d (%s) не вдалося встановити: %s не знайдено після завантаження", major, component, exeName())
+	}
+	if err := writeRuntimeMarker(targetDir, runtimeMarker{
+		Component: component, Version: entry.Version, SHA1: entry.SHA1, CheckedAt: time.Now(),
+	}); err != nil {
+		j.status(fmt.Sprintf("Не вдалося записати версію Java %d: %v", major, err))
 	}
 	j.status(fmt.Sprintf("Java %d (%s) встановлено: %s", major, component, filepath.Join(targetDir, "bin", exeName())))
 	return nil
@@ -414,36 +430,49 @@ func (j *Installer) installMajorTo(major int, targetDir string) error {
 // resolvePackageManifestURL тягне головний манифест Mojang і повертає URL
 // пакетного манифесту для потрібного компонента на поточній ОС/архітектурі.
 func (j *Installer) resolvePackageManifestURL(component string) (string, string, error) {
-	req, err := http.NewRequest(http.MethodGet, javaRuntimeManifestURL, nil)
+	e, err := j.resolveRuntime(context.Background(), component)
+	return e.URL, e.SHA1, err
+}
+
+// runtimeEntry — актуальна збірка компонента з маніфесту Mojang.
+type runtimeEntry struct {
+	URL     string // пакетний маніфест
+	SHA1    string // його SHA1 — змінюється з кожною новою збіркою Java
+	Version string // напр. "21.0.7" — лише для показу
+}
+
+func (j *Installer) resolveRuntime(ctx context.Context, component string) (runtimeEntry, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, javaRuntimeManifestURL, nil)
 	if err != nil {
-		return "", "", err
+		return runtimeEntry{}, err
 	}
 	req.Header.Set("User-Agent", "ShaurmaLauncher/2.0")
 
 	resp, err := j.runtimeClient().Do(req)
 	if err != nil {
-		return "", "", err
+		return runtimeEntry{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("HTTP %d при отриманні маніфесту java-runtime", resp.StatusCode)
+		return runtimeEntry{}, fmt.Errorf("HTTP %d при отриманні маніфесту java-runtime", resp.StatusCode)
 	}
 
 	var all mojangAllManifest
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&all); err != nil {
-		return "", "", fmt.Errorf("парсинг маніфесту java-runtime: %w", err)
+		return runtimeEntry{}, fmt.Errorf("парсинг маніфесту java-runtime: %w", err)
 	}
 
 	osKey := mojangOSKey()
 	osEntries, ok := all[osKey]
 	if !ok {
-		return "", "", fmt.Errorf("немає записів java-runtime для ОС %q у маніфесті Mojang", osKey)
+		return runtimeEntry{}, fmt.Errorf("немає записів java-runtime для ОС %q у маніфесті Mojang", osKey)
 	}
 	entries, ok := osEntries[component]
 	if !ok || len(entries) == 0 {
-		return "", "", fmt.Errorf("немає доступного компонента %q для ОС %q у маніфесті Mojang", component, osKey)
+		return runtimeEntry{}, fmt.Errorf("немає доступного компонента %q для ОС %q у маніфесті Mojang", component, osKey)
 	}
-	return entries[0].Manifest.URL, entries[0].Manifest.SHA1, nil
+	e := entries[0]
+	return runtimeEntry{URL: e.Manifest.URL, SHA1: e.Manifest.SHA1, Version: e.Version.Name}, nil
 }
 
 // fetchPackageManifest завантажує і парсить пакетний манифест (список

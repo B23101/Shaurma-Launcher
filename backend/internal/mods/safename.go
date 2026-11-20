@@ -17,22 +17,29 @@ import (
 
 var pctRun = regexp.MustCompile(`(?:%[0-9A-Fa-f]{2})+`)
 
-// SafeFileName розкодовує послідовності %XX (якщо вони складають валідний
-// UTF-8), а все, що лишилось від "%" (одинокий "100%.jar"), замінює на "_".
-// Імена без "%" повертаються без змін.
+// SafeFileName зводить рядок до РІВНО одного безпечного компонента імені файлу.
+// Спершу розкодовує послідовності %XX (якщо вони складають валідний UTF-8), а
+// все, що лишилось від "%" (одинокий "100%.jar"), замінює на "_". Потім завжди
+// нейтралізує роздільники шляху ("/" і "\\" → "_"), бо ім'я може приходити з
+// віддаленого API (Modrinth/CurseForge): крафтнутий Filename на кшталт
+// "..\\..\\Startup\\evil.jar" інакше вийшов би за межі теки через filepath.Join
+// (path traversal із записом довільного файлу). Чисте ".."/"."/порожнє ім'я теж
+// неприпустиме — повертаємо "_". Звичайні jar-імена (без роздільників) не
+// змінюються.
 func SafeFileName(name string) string {
-	if !strings.Contains(name, "%") {
-		return name
+	if strings.Contains(name, "%") {
+		name = pctRun.ReplaceAllStringFunc(name, func(run string) string {
+			b, err := hex.DecodeString(strings.ReplaceAll(run, "%", ""))
+			if err != nil || !utf8.Valid(b) {
+				return run
+			}
+			return string(b)
+		})
 	}
-	name = pctRun.ReplaceAllStringFunc(name, func(run string) string {
-		b, err := hex.DecodeString(strings.ReplaceAll(run, "%", ""))
-		if err != nil || !utf8.Valid(b) {
-			return run
-		}
-		return string(b)
-	})
-	// Розкодований результат не має містити роздільників шляху.
 	name = strings.NewReplacer("/", "_", "\\", "_", "%", "_").Replace(name)
+	if name == "" || name == "." || name == ".." {
+		return "_"
+	}
 	return name
 }
 

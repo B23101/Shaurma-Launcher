@@ -48,13 +48,13 @@ var (
 		Data3 uint16
 		Data4 [8]byte
 	}{0x56FDF344, 0xFD6D, 0x11D0, [8]byte{0x95, 0x8A, 0x00, 0x60, 0x97, 0xC9, 0xA0, 0x90}}
-	// IID_ITaskbarList3 {EA1AFB91-9E28-4B86-90E9-9E9F8A5EEA72}
+	// IID_ITaskbarList3 {EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF}
 	iidTaskbarList3 = struct {
 		Data1 uint32
 		Data2 uint16
 		Data3 uint16
 		Data4 [8]byte
-	}{0xEA1AFB91, 0x9E28, 0x4B86, [8]byte{0x90, 0xE9, 0x9E, 0x9F, 0x8A, 0x5E, 0xEA, 0x72}}
+	}{0xEA1AFB91, 0x9E28, 0x4B86, [8]byte{0x90, 0xE9, 0x9E, 0x9F, 0x8A, 0x5E, 0xEF, 0xAF}}
 )
 
 // itaskbarList3 — мінімальний vtable-скелет ITaskbarList3 (лише методи,
@@ -138,7 +138,10 @@ func newTaskbarIface() (iface *itaskbarList3, coOwned bool, err error) {
 	// CoInitializeEx повертає RPC_E_CHANGED_MODE (0x80010106), якщо потік уже
 	// ініціалізовано з іншою моделлю (STA) — це НЕ помилка для нас: об'єкт
 	// все одно створюється і використовується на цьому ж потоці.
-	hr, _, _ := procCoInitialize.Call(0, 0 /*COINIT_MULTITHREADED*/)
+	// ВАЖЛИВО: саме STA (COINIT_APARTMENTTHREADED = 2). CLSID_TaskbarList — apartment-threaded
+	// об'єкт: з MTA-потоку COM віддає проксі, для якого немає proxy/stub ITaskbarList3, і
+	// QueryInterface завжди повертає E_NOINTERFACE (0x80004002).
+	hr, _, _ := procCoInitialize.Call(0, 2 /*COINIT_APARTMENTTHREADED*/)
 	coOwned = coInitializedByUs(uint32(hr))
 	var ppv unsafe.Pointer
 	r, _, _ := procCoCreate.Call(

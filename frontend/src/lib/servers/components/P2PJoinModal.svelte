@@ -155,20 +155,20 @@
   {#if chosen && mode === 'play'}
     <section class="readiness" aria-live="polite" aria-busy={checking}>
       <strong>Готовність: {chosen.name}</strong>
-      {#if checking}<p>Перевіряємо сервер і збірку…</p>
+      {#if checking}<p>{t('pjm.checking')}</p>
       {:else}
         <p>{ping?.online ? '✓ Сервер відповідає' : 'Сервер не відповів. Перевірте, чи друг увімкнув його та надав доступ.'}</p>
         <p>{selectedView?.installed ? '✓ Збірка встановлена' : 'Файли збірки потрібно підготувати під час запуску'}</p>
-        {#if selectedView?.status === 'needs-update'}<p>Перед запуском потрібне оновлення збірки.</p>{/if}
+        {#if selectedView?.status === 'needs-update'}<p>{t('pjm.needsUpdate')}</p>{/if}
         <p>Minecraft збірки: {chosen.mcVersion || 'невідомо'} · сервер: {ping?.version || 'невідомо'}</p>
-        {#if mismatch}<p>Версії Minecraft відрізняються. Оберіть відповідну збірку нижче або змініть її версію на сторінці збірки.</p>{/if}
-        <p>Склад модів сервер не повідомляє: переконайтеся, що обрана та сама збірка, що й у друга.</p>
+        {#if mismatch}<p>{t('pjm.mismatch')}</p>{/if}
+        <p>{t('pjm.noMods')}</p>
         {#if checkError}<p role="alert">{checkError}</p>{/if}
         {#if !ping?.online || mismatch}
-          <label class="pjm-sub"><input type="checkbox" bind:checked={allowUnverified} disabled={!!busy} /> Спробувати вхід попри непідтверджену сумісність або недоступний status ping</label>
+          <label class="pjm-sub"><input type="checkbox" bind:checked={allowUnverified} disabled={!!busy} /> {t('pjm.tryAnyway')}</label>
         {/if}
         <div class="pjm-modes">
-          <button disabled={!!busy} onclick={() => check(chosen!)}>Перевірити знову</button>
+          <button disabled={!!busy} onclick={() => check(chosen!)}>{t('pjm.recheck')}</button>
           <button class="on" disabled={!!busy || ((!ping?.online || mismatch) && !allowUnverified) || !selectedView || ['running', 'downloading', 'updating'].includes(selectedView.status)} onclick={() => play(chosen!)}>{busy ? 'Готуємо запуск…' : 'Підготувати й грати'}</button>
         </div>
       {/if}

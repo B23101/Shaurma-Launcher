@@ -1,6 +1,7 @@
 package main
 
 import (
+	"shaurma-launcher-backend/internal/modstore"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -119,6 +120,11 @@ func (a *App) ScanModsFull(packID string) []model.ModEntry {
 	// a.attachMissingDeps(mods)
 	a.attachDuplicateFlags(mods)
 	a.annotatePackMods(packID, mods)
+	if hs := modstore.HashedSet(a.instanceModsDir(packID)); len(hs) > 0 {
+		for i := range mods {
+			mods[i].Hashed = hs[mods[i].FileName]
+		}
+	}
 	// ПАМ'ЯТЬ: base64-іконки НЕ віддаємо у списку. Відкриття сторінки модів
 	// робить кілька повних сканів (ScanModsWithCachedUpdates,
 	// RefreshModUpdates, VerifyIncompatibleMods) — іконки всіх модів їхали
@@ -2316,7 +2322,9 @@ func (a *App) InstallSuggestedMod(packID, depID, mcVersion, loader string) model
 func findDuplicateGroups(mods []model.ModEntry) []model.DuplicateModGroup {
 	byID := map[string][]model.ModEntry{}
 	for _, m := range mods {
-		if m.ID == "" {
+		// Вимкнені (.jar.disabled) файли не вантажаться грою, тож дублікатом не є:
+		// інакше «вимкнути зайву копію» ніколи б не прибирало попередження.
+		if m.ID == "" || !m.Enabled {
 			continue
 		}
 		byID[m.ID] = append(byID[m.ID], m)

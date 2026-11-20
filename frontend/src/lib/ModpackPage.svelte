@@ -1387,11 +1387,16 @@
     const t = (e.target as HTMLElement).closest?.('.mp-body-video') as HTMLElement | null
     if (!t || !t.dataset.yt) return
     const id = t.dataset.yt
-    t.innerHTML =
-      `<iframe src="https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0" ` +
-      `title="YouTube" ` +
-      `allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" ` +
-      `allowfullscreen></iframe>`
+    // ID — лише символи YouTube; iframe будуємо через DOM, не через innerHTML,
+    // щоб значення з опису ніколи не розбиралося як HTML.
+    if (!/^[A-Za-z0-9_-]{6,20}$/.test(id)) return
+    const frame = document.createElement('iframe')
+    frame.title = 'YouTube'
+    frame.src = `https://www.youtube-nocookie.com/embed/${id}?autoplay=1&rel=0`
+    frame.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+    frame.allowFullscreen = true
+    frame.referrerPolicy = 'no-referrer'
+    t.replaceChildren(frame)
   }
 
   // mdToHtml видалено: самописний порядковий парсер не вмів багаторядкові
@@ -1442,7 +1447,7 @@
          в Modrinth/CurseForge». -->
     <div class="mp-topbar" class:scrolled={topbarScrolled} class:collapsed={heroVisible} style="--tacc:{acc.color}; --tacc-rgb:{acc.rgb}">
       <div class="mp-tb-left">
-        <button class="mp-tb-back" onclick={onBack} use:launcherTip={t('browser.project.back')}>
+        <button aria-label={t('browser.project.back')} class="mp-tb-back" onclick={onBack} use:launcherTip={t('browser.project.back')}>
           <i class="ti ti-arrow-left"></i>
         </button>
         {#if detail.iconUrl}
@@ -1456,7 +1461,7 @@
         </div>
       </div>
       <div class="mp-tb-right">
-        <button
+        <button aria-label={bookmarked ? t('browser.saved.removeBookmark') : t('browser.saved.addBookmark')}
           class="mp-bookmark-btn"
           class:on={bookmarked}
           disabled={bookmarkBusy}
@@ -1466,7 +1471,7 @@
           <i class="ti {bookmarked ? 'ti-star-filled' : 'ti-star'}"></i>
         </button>
         <div class="mp-col-menu-wrap">
-          <button
+          <button aria-label={t('browser.saved.addToCollection')}
             class="mp-bookmark-btn"
             onclick={(e) => { e.stopPropagation(); openCollectionsMenu() }}
             use:launcherTip={t('browser.saved.addToCollection')}
@@ -1474,6 +1479,7 @@
             <i class="ti ti-folder-plus"></i>
           </button>
           {#if collectionsMenuOpen}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="ctx-menu mp-col-menu" onclick={(e) => e.stopPropagation()}>
               {#if collectionsMenuLoading}
                 <div class="ctx-hint"><i class="ti ti-loader spin"></i> {t('loading')}</div>
@@ -1649,6 +1655,7 @@
             <!-- Фолбек: якщо переклад виглядає як сирий JSON ({"... — зі
                  старого кешу або глюка моделі) — показуємо оригінал. -->
             {@const shownBody = (translation && showTranslation && translation.body) ? translation.body : detail.body}
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div class="mp-body" onclick={onBodyClick}>{@html renderBody(shownBody && !shownBody.trim().startsWith('{"') ? shownBody : detail.body, detail.source === 'curseforge')}</div>
           {:else if tab === 'gallery'}
             {#if (detail.gallery ?? []).length === 0}
@@ -1656,6 +1663,7 @@
             {:else}
               <div class="mp-gallery">
                 {#each detail.gallery ?? [] as g, i (g.url)}
+                  <!-- svelte-ignore a11y_click_events_have_key_events -->
                   <div class="mp-g-item" onclick={() => openLightbox(i)} role="button" tabindex="0">
                     <img src={g.url} alt={g.title || ''} loading="lazy" use:smartImage />
                     {#if g.title}<div class="mp-g-cap">{g.title}</div>{/if}
@@ -1682,7 +1690,7 @@
                   {@const thumb = ytId ? `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg` : ''}
                   <div class="mp-video">
                     {#if ytId && playingVideo === ytId}
-                      <iframe
+                      <iframe title="YouTube"
                         src={`https://www.youtube-nocookie.com/embed/${ytId}?autoplay=1&rel=0`}
                         use:launcherTip={"YouTube"}
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -1742,6 +1750,7 @@
                 <div class="mp-empty sm"><i class="ti ti-search-off"></i><div>{t('browser.update.noVersions')}</div></div>
               {:else}
                 {#each filteredVersions as v (v.id)}
+                  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
                   <div class="mp-v-row" class:sel={v.id === selectedVersionId} onclick={() => { selectedVersionId = v.id; autoMatched = false }}>
                     <div class="mp-v-row-main">
                       <div class="mp-v-row-name">
@@ -1878,8 +1887,8 @@
               {/if}
               <span class="mp-auto-badge-txt" use:launcherTip={t('browser.project.autoMatched', { mc: packContext.mcVersion, loader: packContext.loader })}>{t('browser.project.matchForPack', { pack: packContext.name })}</span>
               {#if onChangePackContext}
-                <button class="mp-badge-action" onclick={openPackSwitcher} use:launcherTip={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
-                <button class="mp-badge-action" onclick={clearPackContext} use:launcherTip={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
+                <button aria-label={t('browser.project.changePack')} class="mp-badge-action" onclick={openPackSwitcher} use:launcherTip={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
+                <button aria-label={t('browser.project.clearPack')} class="mp-badge-action" onclick={clearPackContext} use:launcherTip={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
               {/if}
             </div>
           {:else if packContext}
@@ -1892,8 +1901,8 @@
               <span>{packContext.name}</span>
               <span class="mp-target-sub">{packContext.mcVersion} · {loaderNames[packContext.loader] ?? packContext.loader}</span>
               {#if onChangePackContext}
-                <button class="mp-badge-action" onclick={openPackSwitcher} use:launcherTip={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
-                <button class="mp-badge-action" onclick={clearPackContext} use:launcherTip={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
+                <button aria-label={t('browser.project.changePack')} class="mp-badge-action" onclick={openPackSwitcher} use:launcherTip={t('browser.project.changePack')}><i class="ti ti-replace"></i></button>
+                <button aria-label={t('browser.project.clearPack')} class="mp-badge-action" onclick={clearPackContext} use:launcherTip={t('browser.project.clearPack')}><i class="ti ti-x"></i></button>
               {/if}
             </div>
           {:else if onChangePackContext && (packs.length > 0 || canPickServer) && detail.projectType !== 'modpack'}
@@ -2095,6 +2104,7 @@
 <!-- Лайтбокс галереї (повноекранний, як у Modrinth app): зум колесом,
      панорама перетягуванням, prev/next стрілками на екрані і клавіатурою. -->
 {#if lightboxIndex !== null && detail && currentGalleryImage()}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div
     class="lb-overlay"
     oncontextmenu={(e) => e.preventDefault()}
@@ -2103,16 +2113,17 @@
     <div class="lb-toolbar">
       <span class="lb-count">{t('browser.gallery.of', { current: lightboxIndex! + 1, total: detail.gallery.length })}</span>
       <div class="lb-tools">
-        <button class="lb-btn" use:launcherTip={t('browser.gallery.zoomOut')} onclick={() => lightboxZoom = Math.max(0.5, lightboxZoom - 0.25)}><i class="ti ti-zoom-out"></i></button>
-        <button class="lb-btn" use:launcherTip={t('browser.gallery.resetZoom')} onclick={resetLightboxZoom}><i class="ti ti-zoom-reset"></i></button>
-        <button class="lb-btn" use:launcherTip={t('browser.gallery.zoomIn')} onclick={() => lightboxZoom = Math.min(4, lightboxZoom + 0.25)}><i class="ti ti-zoom-in"></i></button>
-        <button class="lb-btn" use:launcherTip={t('browser.gallery.close')} onclick={closeLightbox}><i class="ti ti-x"></i></button>
+        <button aria-label={t('browser.gallery.zoomOut')} class="lb-btn" use:launcherTip={t('browser.gallery.zoomOut')} onclick={() => lightboxZoom = Math.max(0.5, lightboxZoom - 0.25)}><i class="ti ti-zoom-out"></i></button>
+        <button aria-label={t('browser.gallery.resetZoom')} class="lb-btn" use:launcherTip={t('browser.gallery.resetZoom')} onclick={resetLightboxZoom}><i class="ti ti-zoom-reset"></i></button>
+        <button aria-label={t('browser.gallery.zoomIn')} class="lb-btn" use:launcherTip={t('browser.gallery.zoomIn')} onclick={() => lightboxZoom = Math.min(4, lightboxZoom + 0.25)}><i class="ti ti-zoom-in"></i></button>
+        <button aria-label={t('browser.gallery.close')} class="lb-btn" use:launcherTip={t('browser.gallery.close')} onclick={closeLightbox}><i class="ti ti-x"></i></button>
       </div>
     </div>
 
-    <button class="lb-nav lb-prev" use:launcherTip={t('browser.gallery.prev')} onclick={prevLightbox}><i class="ti ti-chevron-left"></i></button>
+    <button aria-label={t('browser.gallery.prev')} class="lb-nav lb-prev" use:launcherTip={t('browser.gallery.prev')} onclick={prevLightbox}><i class="ti ti-chevron-left"></i></button>
 
     <div class="lb-stage" onwheel={onLightboxWheel}>
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <img
         class="lb-img"
         src={currentGalleryImage()!.rawUrl || currentGalleryImage()!.url}
@@ -2126,7 +2137,7 @@
       />
     </div>
 
-    <button class="lb-nav lb-next" use:launcherTip={t('browser.gallery.next')} onclick={nextLightbox}><i class="ti ti-chevron-right"></i></button>
+    <button aria-label={t('browser.gallery.next')} class="lb-nav lb-next" use:launcherTip={t('browser.gallery.next')} onclick={nextLightbox}><i class="ti ti-chevron-right"></i></button>
 
     {#if currentGalleryImage()!.title || lightboxIndex !== null}
       <div class="lb-caption">
@@ -2315,6 +2326,7 @@
         <div class="cb-pack-list">
           {#each filteredPackSwitcherPacks as p (p.id)}
             {@const picon = packAsset(p.iconUrl)}
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
             <div class="cb-pack-row" class:installed={!packContext?.isServer && p.id === packContext?.id} style="--pcol:{p.color || 'var(--orange)'}" onclick={() => pickPackContext(p)} role="button" tabindex="0">
               <div class="cb-pack-info">
                 <span class="cb-pack-ic" class:has-icon={!!picon}>
@@ -2750,7 +2762,7 @@
     font: 500 13px/1.5 var(--font-ui);
     color: var(--text-mute);
     max-width: 62ch;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical;
     overflow: hidden;
     user-select: text; /* короткий опис — так само копіюється */
   }
@@ -3948,7 +3960,7 @@
     .mp-banner { padding: 22px 20px 20px; min-height: 214px; }
     .mp-name { font-size: 20px; }
     .mp-ic { width: 68px; height: 68px; min-width: 68px; }
-    .mp-tagline { -webkit-line-clamp: 3; }
+    .mp-tagline { -webkit-line-clamp: 3; line-clamp: 3; }
     .mp-body, .mp-changelog { padding: 16px 14px; }
     .lb-stage { padding: 60px 20px 70px; }
     .lb-prev { left: 6px; }

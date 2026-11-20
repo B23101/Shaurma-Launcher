@@ -105,7 +105,7 @@
     {#if serverID}
       <ServerConsoleTab serverId={serverID} serverColor={pcol} standalone />
     {:else}
-      <div class="scw-empty"><i class="ti ti-alert-triangle"></i> Сервер не вказано</div>
+      <div class="scw-empty"><i class="ti ti-alert-triangle"></i> {t('scw.noServer')}</div>
     {/if}
   </div>
 </div>

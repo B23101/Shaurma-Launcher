@@ -104,7 +104,7 @@
           <p class="c-text">{cur.text}</p>
           <div class="c-bar"><span style="width:{((idx + 1) / live.length) * 100}%"></span></div>
           <div class="c-foot">
-            <button class="btn btn-ghost btn-sm" class:hide={idx === 0} onclick={back}><i class="ti ti-arrow-left"></i></button>
+            <button class="btn btn-ghost btn-sm" class:hide={idx === 0} onclick={back} aria-label={t('wiz.back')}><i class="ti ti-arrow-left"></i></button>
             <button class="skip" onclick={onDone}>{t('tour.skip')}</button>
             <button class="btn btn-primary btn-sm" onclick={next}>
               {idx >= live.length - 1 ? t('tour.done') : t('tour.next')} <i class="ti {idx >= live.length - 1 ? 'ti-check' : 'ti-arrow-right'}"></i>

@@ -320,6 +320,7 @@
   // Локальний стан + збереження у backend (SaveServerConfig.autoStartP2P).
   // Синхронізується з пропса ЛИШЕ при зміні сервера — інакше збережене
   // значення «відкотилось» би від застарілого пропса після старту/стопу.
+  // svelte-ignore state_referenced_locally
   let autoStartOn = $state(autoStart)
   let autoStartSaving = $state(false)
   let autoOwner = $state('')
@@ -403,9 +404,7 @@
         <i class="ti ti-copy"></i>
       </button>
     </div>
-    <div class="spw-sub">
-      {#if viewState === 'online'}{t('servers.p2p.sub.online')}{:else}{t('servers.p2p.sub.idle')}{/if}
-    </div>
+    {#if viewState === 'online'}<div class="spw-sub">{t('servers.p2p.sub.online')}</div>{/if}
   {:else}
     <div class="spw-empty">
       <div class="spw-empty-t">{t('servers.p2p.sub.missing')}</div>
@@ -441,7 +440,7 @@
     {/if}
   </div>
   {#if viewState === 'idle'}
-    <div class="spw-hint">{#if isRunning}{t('servers.p2p.hint.running')}{:else}{t('servers.p2p.hint.startFirst')}{/if}</div>
+    {#if !isRunning}<div class="spw-hint">{t('servers.p2p.hint.startFirst')}</div>{/if}
   {/if}
 
   {#if claimOpen}
@@ -641,7 +640,7 @@
   .spw-note.warn { color: color-mix(in srgb, #f59e0b 80%, var(--text)); background: rgba(245, 158, 11, .06); border: 1px solid rgba(245, 158, 11, .22); }
   .spw-note.warn i, .spw-note.warn b { color: #f59e0b; }
   .spw-note.caution { padding: 10px 12px; font-size: 11.5px; color: color-mix(in srgb, #fb923c 80%, var(--text)); background: rgba(251, 146, 60, .06); border: 1px solid rgba(251, 146, 60, .18); }
-  .spw-note.caution i, .spw-note.caution b { color: #fb923c; }
+  .spw-note.caution i { color: #fb923c; }
 
 
   /* Вікно «Вибрати зі збережених» */

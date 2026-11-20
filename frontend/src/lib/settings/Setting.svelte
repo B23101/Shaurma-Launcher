@@ -134,6 +134,7 @@
           <span>{current ? optLabel(current) : ''}</span><i class="ti ti-chevron-down"></i>
         </button>
         {#if open}
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_interactive_supports_focus -->
           <div class="st-menu" role="listbox" bind:this={menuEl} onclick={(e) => e.stopPropagation()}>
             {#each def.options ?? [] as o (o.value)}
               <button type="button" role="option" aria-selected={value === o.value} class:sel={value === o.value} onclick={() => pick(o)}>
@@ -148,11 +149,10 @@
       <div class="st-choices" role="radiogroup" aria-label={title}>
         {#each def.options ?? [] as o (o.value)}
           <button type="button" role="radio" aria-checked={value === o.value} class="st-choice" class:sel={value === o.value}
-                  {disabled} onclick={() => onchange(o.value)}>
+                  {disabled} onclick={() => onchange(o.value)} use:launcherTip={optDesc(o) ?? ''}>
             {#if o.icon}<i class="ti {o.icon}"></i>{/if}
             <span class="st-choice-body">
               <span class="st-choice-name">{optLabel(o)}</span>
-              {#if optDesc(o)}<span class="st-choice-desc">{optDesc(o)}</span>{/if}
             </span>
             <span class="st-choice-dot"></span>
           </button>
